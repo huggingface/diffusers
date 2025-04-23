@@ -22,7 +22,7 @@ from ..configuration_utils import ConfigMixin
 
 
 class AutoModel(ConfigMixin):
-    config_name = "config.json"
+    config_name = "model_index.json"
 
     def __init__(self, *args, **kwargs):
         raise EnvironmentError(
@@ -153,15 +153,18 @@ class AutoModel(ConfigMixin):
             "token": token,
             "local_files_only": local_files_only,
             "revision": revision,
+            "subfolder": subfolder,
         }
 
         try:
-            config = cls.load_config(os.path.join(pretrained_model_or_path, "model_index.json"), **load_config_kwargs)
-            library, orig_class_name = config["subfolder"]
+            mindex_kwargs = {k: v for k, v in load_config_kwargs.items() if k != "subfolder"}
+            config = cls.load_config(os.path.join(pretrained_model_or_path), **mindex_kwargs)
+            library, orig_class_name = config[subfolder]
+            library = importlib.import_module(library)
         except Exception:
             # Fallback to loading the config from the config.json file
-            load_config_kwargs["subfolder"] = subfolder
-            config = cls.load_config(os.path.join(pretrained_model_or_path, cls.config_name), **load_config_kwargs)
+            cls.config_name = "config.json"
+            config = cls.load_config(os.path.join(pretrained_model_or_path), **load_config_kwargs)
             library = importlib.import_module("diffusers")
             orig_class_name = config["_class_name"]
 
