@@ -34,7 +34,7 @@ from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..controlnet.multicontrolnet import MultiControlNetModel
 from ..modular_pipeline import (
     AutoPipelineBlocks,
-    ModularPipeline,
+    ModularPipelineLoader,
     PipelineBlock,
     PipelineState,
     InputParam,
@@ -58,6 +58,7 @@ from transformers import (
 
 from ...schedulers import KarrasDiffusionSchedulers
 from ...guiders import GuiderType, ClassifierFreeGuidance
+from ...configuration_utils import FrozenDict
 
 import numpy as np
 
@@ -646,7 +647,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec("image_processor", VaeImageProcessor, obj=VaeImageProcessor()),
+            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 8})),
         ]
 
     @property
@@ -741,8 +742,8 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec("image_processor", VaeImageProcessor, obj=VaeImageProcessor()),
-            ComponentSpec("mask_processor", VaeImageProcessor, obj=VaeImageProcessor(do_normalize=False, do_binarize=True, do_convert_grayscale=True)),
+            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 8})),
+            ComponentSpec("mask_processor", VaeImageProcessor, config=FrozenDict({"do_normalize": False, "vae_scale_factor": 8, "do_binarize": True, "do_convert_grayscale": True})),
         ]
         
 
@@ -1728,7 +1729,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
    
     @property
     def expected_configs(self) -> List[ConfigSpec]:
-        return [ConfigSpec("requires_aesthetics_score", default=False),]
+        return [ConfigSpec("requires_aesthetics_score", False),]
 
     @property
     def description(self) -> str:
@@ -2063,7 +2064,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
+            ComponentSpec("guider", GuiderType, config=FrozenDict({"guidance_scale": 7.5})),
             ComponentSpec("scheduler", KarrasDiffusionSchedulers),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
@@ -2332,11 +2333,11 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
+            ComponentSpec("guider", GuiderType, config=FrozenDict({"guidance_scale": 7.5})),
             ComponentSpec("scheduler", KarrasDiffusionSchedulers),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetModel),
-            ComponentSpec("control_image_processor", VaeImageProcessor, obj=VaeImageProcessor(do_convert_rgb=True, do_normalize=False)),
+            ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False})),
         ]
 
     @property
@@ -2763,8 +2764,8 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetUnionModel),
             ComponentSpec("scheduler", KarrasDiffusionSchedulers),
-            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
-            ComponentSpec("control_image_processor", VaeImageProcessor, obj=VaeImageProcessor(do_convert_rgb=True, do_normalize=False)),
+            ComponentSpec("guider", GuiderType, config=FrozenDict({"guidance_scale": 7.5})),
+            ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False})),
         ]
 
     @property
@@ -3179,7 +3180,7 @@ class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec("image_processor", VaeImageProcessor, obj=VaeImageProcessor())
+            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 8}))
         ]
 
     @property
@@ -3570,9 +3571,14 @@ SDXL_SUPPORTED_BLOCKS = {
 }
 
 
-# YiYi TODO: rename to components etc. and not inherit from ModularPipeline
-class StableDiffusionXLComponentStates(
-    ModularPipeline,
+# YiYi Notes: model specific components:
+## (1) it should inherit from ModularPipelineComponents
+## (2) acts like a container that holds components and configs
+## (3) define default config (related to components), e.g. default_sample_size, vae_scale_factor, num_channels_unet, num_channels_latents
+## (4) inherit from model-specic loader class (e.g. StableDiffusionXLLoraLoaderMixin)
+## (5) how to use together with Components_manager?
+class StableDiffusionXLModularLoader(
+    ModularPipelineLoader,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,
