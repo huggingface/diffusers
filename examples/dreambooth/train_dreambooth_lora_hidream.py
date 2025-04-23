@@ -1762,7 +1762,6 @@ def main(args):
 
         images = None
 
-
     accelerator.end_training()
 
 
