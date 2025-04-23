@@ -613,7 +613,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                         f"number of prompts ({len(prompt_embeds_list)-1}) must match the number of product images {len(image_embeds_prods)}"
                     )
                 prompt_embeds = torch.cat([prompt_embeds_list[-1], image_embeds_bg], dim=1)
-                for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list[:-1]), reversed(image_embeds_prods[:-1])):
+                for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list[:-1]), reversed(image_embeds_prods)):
                     prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
             else:  
                 if len(prompt_embeds_list) != len(image_embeds_prods):
