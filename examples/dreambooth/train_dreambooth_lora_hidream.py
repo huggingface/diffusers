@@ -1305,7 +1305,6 @@ def main(args):
     )
 
     def compute_text_embeddings(prompt, text_encoding_pipeline):
-
         with torch.no_grad():
             (
                 t5_prompt_embeds,
@@ -1409,7 +1408,6 @@ def main(args):
                     t5_prompt_cache.append(t5_prompt_embeds)
                     llama3_prompt_cache.append(llama3_prompt_embeds)
                     pooled_prompt_cache.append(pooled_prompt_embeds)
-
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
     if args.offload or args.cache_latents:
