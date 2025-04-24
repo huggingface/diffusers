@@ -286,7 +286,7 @@ class KDownsample2D(nn.Module):
 
 
 class CogVideoXDownsample3D(nn.Module):
-    # Todo: Wait for paper relase.
+    # Todo: Wait for paper release.
     r"""
     A 3D Downsampling layer using in [CogVideoX]() by Tsinghua University & ZhipuAI
 

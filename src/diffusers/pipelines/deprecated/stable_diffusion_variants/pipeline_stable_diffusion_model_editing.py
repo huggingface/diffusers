@@ -574,7 +574,7 @@ class StableDiffusionModelEditingPipeline(
                 idxs_replace.append(76)
             idxs_replaces.append(idxs_replace)
 
-        # prepare batch: for each pair of setences, old context and new values
+        # prepare batch: for each pair of sentences, old context and new values
         contexts, valuess = [], []
         for old_emb, new_emb, idxs_replace in zip(old_embs, new_embs, idxs_replaces):
             context = old_emb.detach()
