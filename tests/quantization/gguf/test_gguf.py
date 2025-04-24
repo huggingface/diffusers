@@ -19,6 +19,9 @@ from diffusers.utils import load_image
 from diffusers.utils.torch_utils import get_device
 from diffusers.utils.testing_utils import (
     Expectations,
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     enable_full_determinism,
     is_gguf_available,
     nightly,
@@ -79,12 +82,11 @@ class GGUFSingleFileTesterMixin:
         assert (model.get_memory_footprint() / 1024**3) < self.expected_memory_use_in_gb
         inputs = self.get_dummy_inputs()
 
-        torch_accelerator_module = getattr(torch, device)
-        torch_accelerator_module.reset_peak_memory_stats()
-        torch_accelerator_module.empty_cache()
+        backend_reset_peak_memory_stats(device)
+        backend_empty_cache(device)
         with torch.no_grad():
             model(**inputs)
-        max_memory = torch_accelerator_module.max_memory_allocated()
+        max_memory = backend_max_memory_allocated(device)
         assert (max_memory / 1024**3) < self.expected_memory_use_in_gb
 
     def test_keep_modules_in_fp32(self):
@@ -513,7 +515,7 @@ class AuraFlowGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
 
 @require_peft_backend
 @nightly
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @require_accelerate
 @require_gguf_version_greater_or_equal("0.10.0")
 class FluxControlLoRAGGUFTests(unittest.TestCase):
@@ -528,7 +530,7 @@ class FluxControlLoRAGGUFTests(unittest.TestCase):
             "black-forest-labs/FLUX.1-dev",
             transformer=transformer,
             torch_dtype=torch.bfloat16,
-        ).to("cuda")
+        ).to(torch_device)
         pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
 
         prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
