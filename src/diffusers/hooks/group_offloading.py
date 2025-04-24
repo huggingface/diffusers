@@ -57,7 +57,7 @@ class ModuleGroup:
         non_blocking: bool = False,
         stream: Optional[torch.cuda.Stream] = None,
         record_stream: Optional[bool] = False,
-        low_cpu_mem_usage=False,
+        low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
     ) -> None:
         self.modules = modules
@@ -498,6 +498,8 @@ def _apply_group_offloading_block_level(
             option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
             the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
+    if stream is not None and num_blocks_per_group != 1:
+        raise ValueError(f"Using streams is only supported for num_blocks_per_group=1. Got {num_blocks_per_group=}.")
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -521,7 +523,7 @@ def _apply_group_offloading_block_level(
                 stream=stream,
                 record_stream=record_stream,
                 low_cpu_mem_usage=low_cpu_mem_usage,
-                onload_self=stream is None,
+                onload_self=True,
             )
             matched_module_groups.append(group)
             for j in range(i, i + len(current_modules)):
@@ -529,12 +531,8 @@ def _apply_group_offloading_block_level(
 
     # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):
-        next_group = (
-            matched_module_groups[i + 1] if i + 1 < len(matched_module_groups) and stream is not None else None
-        )
-
         for group_module in group.modules:
-            _apply_group_offloading_hook(group_module, group, next_group)
+            _apply_group_offloading_hook(group_module, group, None)
 
     # Parameters and Buffers of the top-level module need to be offloaded/onloaded separately
     # when the forward pass of this module is called. This is because the top-level module is not
@@ -560,8 +558,10 @@ def _apply_group_offloading_block_level(
         record_stream=False,
         onload_self=True,
     )
-    next_group = matched_module_groups[0] if len(matched_module_groups) > 0 else None
-    _apply_group_offloading_hook(module, unmatched_group, next_group)
+    if stream is None:
+        _apply_group_offloading_hook(module, unmatched_group, None)
+    else:
+        _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 
 
 def _apply_group_offloading_leaf_level(
