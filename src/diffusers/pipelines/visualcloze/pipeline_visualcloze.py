@@ -1036,11 +1036,17 @@ class VisualClozePipeline(
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
-        output = []
-        start = 0
-        for n in n_target_per_sample:
-            output.append(image[start : start + n])
-            start += n
+        if output_type == "pil":
+            # Each sample in the batch may have multiple output images. When returning as PIL images, 
+            # these images cannot be concatenated. Therefore, for each sample, 
+            # a list is used to represent all the output images.
+            output = []
+            start = 0
+            for n in n_target_per_sample:
+                output.append(image[start : start + n])
+                start += n
+        else:
+            output = image
 
         # Offload all models
         self.maybe_free_model_hooks()
