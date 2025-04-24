@@ -761,7 +761,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
             "FP8": (4, 3),
             # "INT8": 8, # TODO: enable this upon modelopt release https://github.com/NVIDIA/TensorRT-Model-Optimizer/pull/166
             "INT4": 4,
-            "NF4": 4,
+            # "NF4": 4,  # TODO: enable this upon modelopt release https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/183
             "NVFP4": (2,1),
         }
 
