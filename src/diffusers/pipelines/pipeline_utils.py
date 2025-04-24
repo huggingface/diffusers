@@ -447,7 +447,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # Enable generic support for Intel Gaudi accelerator using GPU/HPU migration
-        if kwargs.pop("hpu_migration", True) and is_hpu_available():
+        if device_type == "hpu" and kwargs.pop("hpu_migration", True) and is_hpu_available():
+            os.environ["PT_HPU_GPU_MIGRATION"] = "1"
+            logger.debug("Environment variable set: PT_HPU_GPU_MIGRATION=1")
+
+            import habana_frameworks.torch  # noqa: F401
+
+            # HPU hardware check
+            if not (hasattr(torch, "hpu") and torch.hpu.is_available()):
+                raise ValueError("You are trying to call `.to('hpu')` but HPU device is unavailable.")
+
             os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
             logger.debug("Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1")
 

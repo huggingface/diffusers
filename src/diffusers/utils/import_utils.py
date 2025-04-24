@@ -337,19 +337,7 @@ def is_timm_available():
 
 
 def is_hpu_available():
-    if (
-        importlib.util.find_spec("habana_frameworks") is None
-        or importlib.util.find_spec("habana_frameworks.torch") is None
-    ):
-        return False
-
-    os.environ["PT_HPU_GPU_MIGRATION"] = "1"
-    logger.debug("Environment variable set: PT_HPU_GPU_MIGRATION=1")
-
-    import habana_frameworks.torch  # noqa: F401
-    import torch
-
-    return hasattr(torch, "hpu") and torch.hpu.is_available()
+    return all(importlib.util.find_spec(lib) for lib in ("habana_frameworks", "habana_frameworks.torch"))
 
 
 # docstyle-ignore
