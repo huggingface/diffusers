@@ -6,6 +6,8 @@ from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
 from diffusers.models.attention_processor import Attention
 from diffusers.utils import is_optimum_quanto_available, is_torch_available
 from diffusers.utils.testing_utils import (
+    backend_reset_peak_memory_stats,
+    backend_empty_cache,
     enable_full_determinism,
     nightly,
     numpy_cosine_similarity_distance,
@@ -41,17 +43,15 @@ class QuantoBaseTesterMixin:
     keep_in_fp32_module = ""
     modules_to_not_convert = ""
     _test_torch_compile = False
-    torch_accelerator_module = None
 
     def setUp(self):
-        self.torch_accelerator_module = getattr(torch, torch_device, torch.cuda)
-        self.torch_accelerator_module.reset_peak_memory_stats()
-        self.torch_accelerator_module.empty_cache()
+        backend_reset_peak_memory_stats(torch_device)
+        backend_empty_cache(torch_device)
         gc.collect()
 
     def tearDown(self):
-        self.torch_accelerator_module.reset_peak_memory_stats()
-        self.torch_accelerator_module.empty_cache()
+        backend_reset_peak_memory_stats(torch_device)
+        backend_empty_cache(torch_device)
         gc.collect()
 
     def get_dummy_init_kwargs(self):
