@@ -2361,6 +2361,7 @@ class FluxAttnProcessor2_0:
         is_qv: Optional[bool] = False, # thesea modified for quick validation
         is_blend_bg_enhance: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation
+        bg_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         bg_mask: Optional[torch.Tensor] = None, # thesea modified for quick validation
         prod_masks: Optional[torch.Tensor] = None, # thesea modified for quick validation
         txt_masks: Optional[torch.Tensor] = None, # thesea modified for text mask
@@ -2503,9 +2504,9 @@ class FluxAttnProcessor2_0:
             attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
             prod_embeds_dim = 512 + int(729 * product_ratio)
             if is_blend_bg_enhance:
-                img_embbeds_dim = int(729 * product_ratio) + 512
+                img_embbeds_dim = int(729 * bg_ratio) + 512
             else:
-                img_embbeds_dim = int(729 * product_ratio)
+                img_embbeds_dim = int(729 * bg_ratio)
             num_of_prompts = int ((query.size(-2) - img_embbeds_dim - 4096)/prod_embeds_dim)
             if num_of_prompts != len(prod_masks):
                 raise ValueError(

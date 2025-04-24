@@ -385,6 +385,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         is_blend_bg_enhance: Optional[bool] = False, # thesea modified for quick validation of product shots
         is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
+        bg_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
         return_dict: bool = True,
@@ -612,7 +613,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     raise ValueError(
                         f"number of prompts ({len(prompt_embeds_list)-1}) must match the number of product images {len(image_embeds_prods)}"
                     )
-                prompt_embeds = torch.cat([prompt_embeds_list[-1], image_embeds_bg[:,:int(729*product_ratio),:]], dim=1)
+                prompt_embeds = torch.cat([prompt_embeds_list[-1], image_embeds_bg[:,:int(729*bg_ratio),:]], dim=1)
                 for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list[:-1]), reversed(image_embeds_prods)):
                     prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
             else:  
@@ -621,7 +622,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                         f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
                     )
             
-                prompt_embeds = image_embeds_bg[:,:int(729*product_ratio),:]
+                prompt_embeds = image_embeds_bg[:,:int(729*bg_ratio),:]
                 for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
                     prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
         else:
