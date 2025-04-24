@@ -1330,8 +1330,8 @@ class VisualClozeProcessor(VaeImageProcessor):
         resolution (int, optional):
             Target resolution for processing images. Each image will be resized to this resolution before being
             concatenated to avoid the out-of-memory error. Defaults to 384.
-        *args: Additional arguments passed to VaeImageProcessor
-        **kwargs: Additional keyword arguments passed to VaeImageProcessor
+        *args: Additional arguments passed to [~image_processor.VaeImageProcessor]
+        **kwargs: Additional keyword arguments passed to [~image_processor.VaeImageProcessor]
     """
 
     def __init__(self, *args, resolution: int = 384, **kwargs):
