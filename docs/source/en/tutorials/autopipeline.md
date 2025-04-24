@@ -35,7 +35,7 @@ pipe_txt2img = AutoPipelineForText2Image.from_pretrained(
 ).to("cuda")
 
 prompt = "cinematic photo of Godzilla eating sushi with a cat in a izakaya, 35mm photograph, film, professional, 4k, highly detailed"
-generator = torch.Generator(device="cpu").manual_seed(37)
+generator = torch.Generator(device="gpu").manual_seed(37)
 image = pipe_txt2img(prompt, generator=generator).images[0]
 image
 ```
@@ -59,7 +59,7 @@ pipe_img2img = AutoPipelineForImage2Image.from_pretrained(
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/autopipeline-text2img.png")
 
 prompt = "cinematic photo of Godzilla eating burgers with a cat in a fast food restaurant, 35mm photograph, film, professional, 4k, highly detailed"
-generator = torch.Generator(device="cpu").manual_seed(53)
+generator = torch.Generator(device="gpu").manual_seed(53)
 image = pipe_img2img(prompt, image=init_image, generator=generator).images[0]
 image
 ```
@@ -94,7 +94,7 @@ init_image = load_image("https://huggingface.co/datasets/huggingface/documentati
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/autopipeline-mask.png")
 
 prompt = "cinematic photo of a owl, 35mm photograph, film, professional, 4k, highly detailed"
-generator = torch.Generator(device="cpu").manual_seed(38)
+generator = torch.Generator(device="gpu").manual_seed(38)
 image = pipeline(prompt, image=init_image, mask_image=mask_image, generator=generator, strength=0.4).images[0]
 image
 ```
