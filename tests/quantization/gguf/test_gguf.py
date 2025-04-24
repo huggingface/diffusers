@@ -16,7 +16,6 @@ from diffusers import (
     StableDiffusion3Pipeline,
 )
 from diffusers.utils import load_image
-from diffusers.utils.torch_utils import get_device
 from diffusers.utils.testing_utils import (
     Expectations,
     backend_empty_cache,
@@ -28,7 +27,6 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate,
     require_big_accelerator,
-    require_big_gpu_with_torch_cuda,
     require_gguf_version_greater_or_equal,
     require_peft_backend,
     torch_device,
@@ -77,16 +75,15 @@ class GGUFSingleFileTesterMixin:
         model = self.model_cls.from_single_file(
             self.ckpt_path, quantization_config=quantization_config, torch_dtype=self.torch_dtype
         )
-        device = get_device()
-        model.to(device)
+        model.to(torch_device)
         assert (model.get_memory_footprint() / 1024**3) < self.expected_memory_use_in_gb
         inputs = self.get_dummy_inputs()
 
-        backend_reset_peak_memory_stats(device)
-        backend_empty_cache(device)
+        backend_reset_peak_memory_stats(torch_device)
+        backend_empty_cache(torch_device)
         with torch.no_grad():
             model(**inputs)
-        max_memory = backend_max_memory_allocated(device)
+        max_memory = backend_max_memory_allocated(torch_device)
         assert (max_memory / 1024**3) < self.expected_memory_use_in_gb
 
     def test_keep_modules_in_fp32(self):
@@ -110,15 +107,13 @@ class GGUFSingleFileTesterMixin:
         quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
         model = self.model_cls.from_single_file(self.ckpt_path, quantization_config=quantization_config)
 
-        device = get_device()
-
         with self.assertRaises(ValueError):
             # Tries with a `dtype`
             model.to(torch.float16)
 
         with self.assertRaises(ValueError):
             # Tries with a `device` and `dtype`
-            device_0 = f"{device}:0"
+            device_0 = f"{torch_device}:0"
             model.to(device=device_0, dtype=torch.float16)
 
         with self.assertRaises(ValueError):
@@ -130,7 +125,7 @@ class GGUFSingleFileTesterMixin:
             model.half()
 
         # This should work
-        model.to(device)
+        model.to(torch_device)
 
     def test_dequantize_model(self):
         quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
@@ -159,11 +154,11 @@ class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
 
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_inputs(self):
         return {
@@ -246,11 +241,11 @@ class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase)
 
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_inputs(self):
         return {
@@ -365,11 +360,11 @@ class SD35MediumGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase
 
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_inputs(self):
         return {
@@ -445,11 +440,11 @@ class AuraFlowGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
 
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_inputs(self):
         return {
