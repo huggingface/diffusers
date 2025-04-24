@@ -36,6 +36,18 @@ class ComponentSpec:
     revision: Optional[str] = None
     variant: Optional[str] = None
 
+@dataclass
+class ComponentLoadSpec:
+    type_hint: type
+    repo: Optional[str] = None
+    subfolder: Optional[str] = None
+    revision: Optional[str] = None
+    variant: Optional[str] = None
+
+    @classmethod
+    def from_component_spec(cls, component_spec: ComponentSpec):
+        return cls(type_hint=component_spec.type_hint, repo=component_spec.repo, subfolder=component_spec.subfolder, revision=component_spec.revision, variant=component_spec.variant)
+
 @dataclass 
 class ConfigSpec:
     """Specification for a pipeline configuration parameter."""

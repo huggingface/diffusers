@@ -34,7 +34,7 @@ from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..controlnet.multicontrolnet import MultiControlNetModel
 from ..modular_pipeline import (
     AutoPipelineBlocks,
-    ModularPipelineLoader,
+    ModularLoader,
     PipelineBlock,
     PipelineState,
     InputParam,
@@ -3578,7 +3578,7 @@ SDXL_SUPPORTED_BLOCKS = {
 ## (4) inherit from model-specic loader class (e.g. StableDiffusionXLLoraLoaderMixin)
 ## (5) how to use together with Components_manager?
 class StableDiffusionXLModularLoader(
-    ModularPipelineLoader,
+    ModularLoader,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,

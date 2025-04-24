@@ -1158,8 +1158,7 @@ class ModularPipelineMixin:
             raise ValueError(f"Output '{output}' is not a valid output type")
 
 
-# YiYi NOTE: not sure if this needs to be a ConfigMixin
-class ModularPipelineLoader(ConfigMixin):
+class ModularLoader(ConfigMixin):
     """
     Base class for all Modular pipelines loaders.
 
