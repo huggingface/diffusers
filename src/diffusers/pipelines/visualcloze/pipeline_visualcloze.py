@@ -947,6 +947,8 @@ class VisualClozePipeline(
         )
 
         # Crop the target image
+        # Since the generated image is a concatenation of the conditional and target regions,
+        # we need to extract only the target regions based on their positions
         images = []
         for b in range(len(cloze_latents)):
             cur_image_size = processor_output["image_size"][b % batch_size]
@@ -1004,6 +1006,10 @@ class VisualClozePipeline(
             vae_scale_factor=self.vae_scale_factor,
         )
 
+        # Upsampling the generated images through SDEdit (https://arxiv.org/abs/2108.01073), 
+        # which enhances details and fix flaws.
+        # The amount of noise added to the initial image in `processor_output["init_image"]` 
+        # is determined by the `upsampling_strength` parameter.
         upsampling_latents = self.denoise(
             processor_output,
             batch_size=len(upsampling_image),
