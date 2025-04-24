@@ -6,16 +6,14 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
-import diffusers
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxTransformer2DModel, VisualClozePipeline
-from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()

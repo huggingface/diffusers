@@ -1006,9 +1006,9 @@ class VisualClozePipeline(
             vae_scale_factor=self.vae_scale_factor,
         )
 
-        # Upsampling the generated images through SDEdit (https://arxiv.org/abs/2108.01073), 
+        # Upsampling the generated images through SDEdit (https://arxiv.org/abs/2108.01073),
         # which enhances details and fix flaws.
-        # The amount of noise added to the initial image in `processor_output["init_image"]` 
+        # The amount of noise added to the initial image in `processor_output["init_image"]`
         # is determined by the `upsampling_strength` parameter.
         upsampling_latents = self.denoise(
             processor_output,
@@ -1037,8 +1037,8 @@ class VisualClozePipeline(
             image = self.image_processor.postprocess(image, output_type=output_type)
 
         if output_type == "pil":
-            # Each sample in the batch may have multiple output images. When returning as PIL images, 
-            # these images cannot be concatenated. Therefore, for each sample, 
+            # Each sample in the batch may have multiple output images. When returning as PIL images,
+            # these images cannot be concatenated. Therefore, for each sample,
             # a list is used to represent all the output images.
             output = []
             start = 0
