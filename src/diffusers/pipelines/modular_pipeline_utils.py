@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from ..utils.import_utils import is_torch_available
@@ -27,26 +27,53 @@ if is_torch_available():
 class ComponentSpec:
     """Specification for a pipeline component."""
     name: str
-    # YiYi NOTE: is type_hint a good fild name? it is the actual class, will be used to create the default instance
-    type_hint: Type
+    type_hint: Type # YiYi Notes: change to component_type?
     description: Optional[str] = None
     config: Optional[FrozenDict[str, Any]] = None  # you can specific default config to create a default component if it is a stateless class like scheduler, guider or image processor
     repo: Optional[Union[str, List[str]]] = None
     subfolder: Optional[str] = None
-    revision: Optional[str] = None
-    variant: Optional[str] = None
+    
+    def create(self, **kwargs) -> Any:
+        """
+        Create the component based on the config and additional kwargs.
+        
+        Args:
+            **kwargs: Additional arguments to pass to the component's __init__ method
+            
+        Returns:
+            The created component
+        """
+        if self.config is not None:
+            init_kwargs = self.config
+        else:
+            init_kwargs = {}
+        return self.type_hint(**init_kwargs, **kwargs)
+    
+    def load(self, **kwargs) -> Any:
+        return self.to_load_spec().load(**kwargs)
+    
+    def to_load_spec(self) -> "ComponentLoadSpec":
+        """Convert to a ComponentLoadSpec for storage in ComponentsManager."""
+        return ComponentLoadSpec.from_component_spec(self)
 
 @dataclass
 class ComponentLoadSpec:
     type_hint: type
     repo: Optional[str] = None
     subfolder: Optional[str] = None
-    revision: Optional[str] = None
-    variant: Optional[str] = None
 
+    def load(self, **kwargs) -> Any:
+        """Load the component from the repository."""
+        repo = kwargs.pop("repo", self.repo)
+        subfolder = kwargs.pop("subfolder", self.subfolder)
+
+        return self.type_hint.from_pretrained(repo, subfolder=subfolder, **kwargs)
+        
+    
     @classmethod
     def from_component_spec(cls, component_spec: ComponentSpec):
-        return cls(type_hint=component_spec.type_hint, repo=component_spec.repo, subfolder=component_spec.subfolder, revision=component_spec.revision, variant=component_spec.variant)
+        return cls(type_hint=component_spec.type_hint, repo=component_spec.repo, subfolder=component_spec.subfolder)
+
 
 @dataclass 
 class ConfigSpec:
@@ -54,7 +81,7 @@ class ConfigSpec:
     name: str
     value: Any
     description: Optional[str] = None
-    repo: Optional[Union[str, List[str]]] = None
+    repo: Optional[Union[str, List[str]]] = None #YiYi Notes: not sure if this field is needed
 
 @dataclass
 class InputParam:

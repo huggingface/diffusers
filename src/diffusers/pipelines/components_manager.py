@@ -241,19 +241,6 @@ class ComponentsManager:
         self.model_hooks = None
         self._auto_offload_enabled = False
 
-    
-    def load_component(self, spec: Union[ComponentSpec, ComponentLoadSpec], **kwargs):
-        module_class = spec.type_hint
-        
-
-        if spec.revision is not None:
-            kwargs["revision"] = spec.revision
-        if spec.variant is not None:
-            kwargs["variant"] = spec.variant
-
-        component = module_class.from_pretrained(spec.repo, subfolder=spec.subfolder, **kwargs)
-        return component
-
     def add(self, name, component, collection: Optional[str] = None, load_spec: Optional[ComponentLoadSpec] = None):
         if name in self.components:
             logger.warning(f"Overriding existing component '{name}' in ComponentsManager")
@@ -284,21 +271,23 @@ class ComponentsManager:
             **kwargs: Additional arguments to pass to the component loader
         """
              
-        if isinstance(spec, ComponentSpec):
-            if spec.config is not None:
-                component = spec.type_hint(**spec.config)   
-                self.add(name, component, collection=collection, load_spec=ComponentLoadSpec.from_component_spec(spec))
-                return
-            
-            spec = ComponentLoadSpec.from_component_spec(spec)
-        
-        for k, v in self.components_specs.items():
-            if v == spec and not force_add:
-                logger.warning(f"will not add {name} to ComponentsManager, as {k} already exists with same spec.Please use force_add=True to add it.")
-                return
+        if isinstance(spec, ComponentSpec) and spec.repo is None:
+            component = spec.create(**kwargs)
+            self.add(name, component, collection=collection)
+        elif isinstance(spec, ComponentSpec):
+            load_spec = spec.to_load_spec()
+        elif isinstance(spec, ComponentLoadSpec):
+            load_spec = spec
+        else:
+            raise ValueError(f"Invalid spec type: {type(spec)}")
 
-        component = self.load_component(spec, **kwargs)
-        self.add(name, component, collection=collection, load_spec=spec)
+        for k, v in self.components_specs.items():
+            if v == load_spec and not force_add:
+                logger.warning(f"{name} is not added to ComponentsManager, because `{k}` already exists with same spec. Please use `force_add=True` to add it.")
+                return
+        
+        component = load_spec.load(**kwargs)
+        self.add(name, component, collection=collection, load_spec=load_spec)
 
     def remove(self, name):
 
