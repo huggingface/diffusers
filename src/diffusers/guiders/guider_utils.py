@@ -39,8 +39,8 @@ class BaseGuidance:
         self._step: int = None
         self._num_inference_steps: int = None
         self._timestep: torch.LongTensor = None
+        self._count_prepared = 0
         self._input_fields: Dict[str, Union[str, Tuple[str, str]]] = None
-        self._num_outputs_prepared: int = 0
         self._enabled = True
 
         if not (0.0 <= start < 1.0):
@@ -67,7 +67,7 @@ class BaseGuidance:
         self._step = step
         self._num_inference_steps = num_inference_steps
         self._timestep = timestep
-        self._num_outputs_prepared = 0
+        self._count_prepared = 0
 
     def set_input_fields(self, **kwargs: Dict[str, Union[str, Tuple[str, str]]]) -> None:
         """
@@ -110,6 +110,14 @@ class BaseGuidance:
         """
         Prepares the models for the guidance technique on a given batch of data. This method should be overridden in
         subclasses to implement specific model preparation logic.
+        """
+        self._count_prepared += 1
+    
+    def cleanup_models(self, denoiser: torch.nn.Module) -> None:
+        """
+        Cleans up the models for the guidance technique after a given batch of data. This method should be overridden in
+        subclasses to implement specific model cleanup logic. It is useful for removing any hooks or other stateful
+        modifications made during `prepare_models`.
         """
         pass
     

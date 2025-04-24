@@ -2278,6 +2278,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
                         added_cond_kwargs=batch.added_cond_kwargs,
                         return_dict=False,
                     )[0]
+                    pipeline.guider.cleanup_models(pipeline.unet)
 
                 # Perform guidance
                 data.noise_pred, scheduler_step_kwargs = pipeline.guider(guider_data)
@@ -2618,29 +2619,20 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
+        pipeline.guider.set_input_fields(
+            prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
+            add_time_ids=("add_time_ids", "negative_add_time_ids"),
+            pooled_prompt_embeds=("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
+            ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
+        )
+
         # (5) Denoise loop
         with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                guider_data = pipeline.guider.prepare_inputs(data)
 
-                (
-                    latents,
-                    prompt_embeds,
-                    add_time_ids,
-                    pooled_prompt_embeds,
-                    mask,
-                    masked_image_latents,
-                    ip_adapter_embeds,
-                ) = pipeline.guider.prepare_inputs(
-                    pipeline.unet,
-                    data.latents,
-                    (data.prompt_embeds, data.negative_prompt_embeds),
-                    (data.add_time_ids, data.negative_add_time_ids),
-                    (data.pooled_prompt_embeds, data.negative_pooled_prompt_embeds),
-                    data.mask,
-                    data.masked_image_latents,
-                    (data.ip_adapter_embeds, data.negative_ip_adapter_embeds),
-                )
+                data.scaled_latents = pipeline.scheduler.scale_model_input(data.latents, t)
 
                 if isinstance(data.controlnet_keep[i], list):
                     data.cond_scale = [c * s for c, s in zip(data.controlnet_conditioning_scale, data.controlnet_keep[i])]
@@ -2649,67 +2641,63 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                     if isinstance(data.controlnet_cond_scale, list):
                         data.controlnet_cond_scale = data.controlnet_cond_scale[0]
                     data.cond_scale = data.controlnet_cond_scale * data.controlnet_keep[i]
-
-                for batch_index, (
-                    latents_i, prompt_embeds_i, add_time_ids_i, pooled_prompt_embeds_i, mask_i, masked_image_latents_i, ip_adapter_embeds_i
-                ) in enumerate(zip(
-                    latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
-                )):
+                
+                for batch in guider_data:
                     pipeline.guider.prepare_models(pipeline.unet)
-                    latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
-                    
-                    # Prepare for inpainting
-                    if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
                     
                     # Prepare additional conditionings
-                    data.added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
-                    if ip_adapter_embeds_i is not None:
-                        data.added_cond_kwargs["image_embeds"] = ip_adapter_embeds_i
+                    if batch.ip_adapter_embeds is not None:
+                        batch.added_cond_kwargs["image_embeds"] = batch.ip_adapter_embeds
                     
                     # Prepare controlnet additional conditionings
-                    data.controlnet_added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.controlnet_added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
 
+                    # Will always be run atleast once with every guider
                     if pipeline.guider.is_conditional or not data.guess_mode:
                         data.down_block_res_samples, data.mid_block_res_sample = pipeline.controlnet(
-                            latents_i,
+                            data.scaled_latents,
                             t,
-                            encoder_hidden_states=prompt_embeds_i,
+                            encoder_hidden_states=batch.prompt_embeds,
                             controlnet_cond=data.control_image,
                             conditioning_scale=data.cond_scale,
                             guess_mode=data.guess_mode,
-                            added_cond_kwargs=data.controlnet_added_cond_kwargs,
+                            added_cond_kwargs=batch.controlnet_added_cond_kwargs,
                             return_dict=False,
                         )
-                    elif pipeline.guider.is_unconditional and data.guess_mode:
-                        data.down_block_res_samples = [torch.zeros_like(d) for d in data.down_block_res_samples]
-                        data.mid_block_res_sample = torch.zeros_like(data.mid_block_res_sample)
-
+                    
+                    batch.down_block_res_samples = data.down_block_res_samples
+                    batch.mid_block_res_sample = data.mid_block_res_sample
+                    
+                    if pipeline.guider.is_unconditional and data.guess_mode:
+                        batch.down_block_res_samples = [torch.zeros_like(d) for d in data.down_block_res_samples]
+                        batch.mid_block_res_sample = torch.zeros_like(data.mid_block_res_sample)
+                    
+                    # Prepare for inpainting
                     if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
+                        data.scaled_latents = torch.cat([data.scaled_latents, data.mask, data.masked_image_latents], dim=1)
 
-                    data.noise_pred = pipeline.unet(
-                        latents_i,
+                    batch.noise_pred = pipeline.unet(
+                        data.scaled_latents,
                         t,
-                        encoder_hidden_states=prompt_embeds_i,
+                        encoder_hidden_states=batch.prompt_embeds,
                         timestep_cond=data.timestep_cond,
                         cross_attention_kwargs=data.cross_attention_kwargs,
-                        added_cond_kwargs=data.added_cond_kwargs,
-                        down_block_additional_residuals=data.down_block_res_samples,
-                        mid_block_additional_residual=data.mid_block_res_sample,
+                        added_cond_kwargs=batch.added_cond_kwargs,
+                        down_block_additional_residuals=batch.down_block_res_samples,
+                        mid_block_additional_residual=batch.mid_block_res_sample,
                         return_dict=False,
                     )[0]
-                    data.noise_pred = pipeline.guider.prepare_outputs(pipeline.unet, data.noise_pred)
+                    pipeline.guider.cleanup_models(pipeline.unet)
                 
                 # Perform guidance
-                outputs, scheduler_step_kwargs = pipeline.guider.outputs
-                data.noise_pred = pipeline.guider(**outputs)
+                data.noise_pred, scheduler_step_kwargs = pipeline.guider(guider_data)
 
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
@@ -3035,28 +3023,19 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
+        pipeline.guider.set_input_fields(
+            prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
+            add_time_ids=("add_time_ids", "negative_add_time_ids"),
+            pooled_prompt_embeds=("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
+            ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
+        )
+
         with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                guider_data = pipeline.guider.prepare_inputs(data)
 
-                (
-                    latents,
-                    prompt_embeds,
-                    add_time_ids,
-                    pooled_prompt_embeds,
-                    mask,
-                    masked_image_latents,
-                    ip_adapter_embeds,
-                ) = pipeline.guider.prepare_inputs(
-                    pipeline.unet,
-                    data.latents,
-                    (data.prompt_embeds, data.negative_prompt_embeds),
-                    (data.add_time_ids, data.negative_add_time_ids),
-                    (data.pooled_prompt_embeds, data.negative_pooled_prompt_embeds),
-                    data.mask,
-                    data.masked_image_latents,
-                    (data.ip_adapter_embeds, data.negative_ip_adapter_embeds),
-                )
+                data.scaled_latents = pipeline.scheduler.scale_model_input(data.latents, t)
 
                 if isinstance(data.controlnet_keep[i], list):
                     data.cond_scale = [c * s for c, s in zip(data.controlnet_conditioning_scale, data.controlnet_keep[i])]
@@ -3065,69 +3044,64 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
                     if isinstance(data.controlnet_cond_scale, list):
                         data.controlnet_cond_scale = data.controlnet_cond_scale[0]
                     data.cond_scale = data.controlnet_cond_scale * data.controlnet_keep[i]
-
-                for batch_index, (
-                    latents_i, prompt_embeds_i, add_time_ids_i, pooled_prompt_embeds_i, mask_i, masked_image_latents_i, ip_adapter_embeds_i
-                ) in enumerate(zip(
-                    latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
-                )):
+                
+                for batch in guider_data:
                     pipeline.guider.prepare_models(pipeline.unet)
-                    latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
-                    
-                    # Prepare for inpainting
-                    if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
                     
                     # Prepare additional conditionings
-                    data.added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
-                    if ip_adapter_embeds_i is not None:
-                        data.added_cond_kwargs["image_embeds"] = ip_adapter_embeds_i
+                    if batch.ip_adapter_embeds is not None:
+                        batch.added_cond_kwargs["image_embeds"] = batch.ip_adapter_embeds
                     
                     # Prepare controlnet additional conditionings
-                    data.controlnet_added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.controlnet_added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
-                
+
+                    # Will always be run atleast once with every guider
                     if pipeline.guider.is_conditional or not data.guess_mode:
                         data.down_block_res_samples, data.mid_block_res_sample = pipeline.controlnet(
-                            latents_i,
+                            data.scaled_latents,
                             t,
-                            encoder_hidden_states=prompt_embeds_i,
+                            encoder_hidden_states=batch.prompt_embeds,
                             controlnet_cond=data.control_image,
                             control_type=data.control_type,
                             control_type_idx=data.control_mode,
                             conditioning_scale=data.cond_scale,
                             guess_mode=data.guess_mode,
-                            added_cond_kwargs=data.controlnet_added_cond_kwargs,
+                            added_cond_kwargs=batch.controlnet_added_cond_kwargs,
                             return_dict=False,
                         )
-                    elif pipeline.guider.is_unconditional and data.guess_mode:
-                        data.down_block_res_samples = [torch.zeros_like(d) for d in data.down_block_res_samples]
-                        data.mid_block_res_sample = torch.zeros_like(data.mid_block_res_sample)
+                    
+                    batch.down_block_res_samples = data.down_block_res_samples
+                    batch.mid_block_res_sample = data.mid_block_res_sample
+                    
+                    if pipeline.guider.is_unconditional and data.guess_mode:
+                        batch.down_block_res_samples = [torch.zeros_like(d) for d in data.down_block_res_samples]
+                        batch.mid_block_res_sample = torch.zeros_like(data.mid_block_res_sample)
 
                     if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
+                        data.scaled_latents = torch.cat([data.scaled_latents, data.mask, data.masked_image_latents], dim=1)
 
-                    data.noise_pred = pipeline.unet(
-                        latents_i,
+                    batch.noise_pred = pipeline.unet(
+                        data.scaled_latents,
                         t,
-                        encoder_hidden_states=prompt_embeds_i,
+                        encoder_hidden_states=batch.prompt_embeds,
                         timestep_cond=data.timestep_cond,
                         cross_attention_kwargs=data.cross_attention_kwargs,
-                        added_cond_kwargs=data.added_cond_kwargs,
-                        down_block_additional_residuals=data.down_block_res_samples,
-                        mid_block_additional_residual=data.mid_block_res_sample,
+                        added_cond_kwargs=batch.added_cond_kwargs,
+                        down_block_additional_residuals=batch.down_block_res_samples,
+                        mid_block_additional_residual=batch.mid_block_res_sample,
                         return_dict=False,
                     )[0]
-                    data.noise_pred = pipeline.guider.prepare_outputs(pipeline.unet, data.noise_pred)
+                    pipeline.guider.cleanup_models(pipeline.unet)
                 
                 # Perform guidance
-                outputs, scheduler_step_kwargs = pipeline.guider.outputs
-                data.noise_pred = pipeline.guider(**outputs)
+                data.noise_pred, scheduler_step_kwargs = pipeline.guider(guider_data)
 
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype

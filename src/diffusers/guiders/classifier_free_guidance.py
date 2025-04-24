@@ -13,11 +13,11 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Union, Tuple, List, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING
 
 import torch
 
-from .guider_utils import BaseGuidance, rescale_noise_cfg, _default_prepare_inputs
+from .guider_utils import BaseGuidance, rescale_noise_cfg
 
 if TYPE_CHECKING:
     from ..pipelines.modular_pipeline import BlockState
@@ -100,7 +100,7 @@ class ClassifierFreeGuidance(BaseGuidance):
 
     @property
     def is_conditional(self) -> bool:
-        return self._num_outputs_prepared == 0
+        return self._count_prepared == 1
 
     @property
     def num_conditions(self) -> int:
