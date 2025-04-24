@@ -760,7 +760,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dequantization.
         """
         hf_quantizer = getattr(self, "hf_quantizer", None)
-        print(hf_quantizer)
 
         if hf_quantizer is None:
             raise ValueError("You need to first quantize your model in order to dequantize it")
