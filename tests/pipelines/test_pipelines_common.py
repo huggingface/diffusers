@@ -53,6 +53,7 @@ from diffusers.utils.testing_utils import (
     require_accelerator,
     require_hf_hub_version_greater,
     require_torch,
+    require_torch_accelerator,
     require_torch_gpu,
     require_transformers_version_greater,
     skip_mps,
@@ -2210,7 +2211,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         _ = pipe(**inputs)[0]
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_group_offloading_inference(self):
         if not self.test_group_offloading:
             return
