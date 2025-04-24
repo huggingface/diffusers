@@ -33,6 +33,24 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
     # 1. get all state_dict_keys
     all_keys = list(state_dict.keys())
     sgm_patterns = ["input_blocks", "middle_block", "output_blocks"]
+    not_sgm_patterns = ["down_blocks", "mid_block", "up_blocks"]
+
+    # check if state_dict contains both patterns
+    contains_sgm_patterns = False
+    contains_not_sgm_patterns = False
+    for key in all_keys:
+        if any(p in key for p in sgm_patterns):
+            contains_sgm_patterns = True
+        elif any(p in key for p in not_sgm_patterns):
+            contains_not_sgm_patterns = True
+
+    # if state_dict contains both patterns, remove sgm
+    # we can then return state_dict immediately
+    if contains_sgm_patterns and contains_not_sgm_patterns:
+        for key in all_keys:
+            if any(p in key for p in sgm_patterns):
+                state_dict.pop(key)
+        return state_dict
 
     # 2. check if needs remapping, if not return original dict
     is_in_sgm_format = False
@@ -126,7 +144,7 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
             )
             new_state_dict[new_key] = state_dict.pop(key)
 
-    if len(state_dict) > 0:
+    if state_dict:
         raise ValueError("At this point all state dict entries have to be converted.")
 
     return new_state_dict
@@ -415,7 +433,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         ait_up_keys = [k + ".lora_B.weight" for k in ait_keys]
         if not is_sparse:
             # down_weight is copied to each split
-            ait_sd.update({k: down_weight for k in ait_down_keys})
+            ait_sd.update(dict.fromkeys(ait_down_keys, down_weight))
 
             # up_weight is split to each split
             ait_sd.update({k: v for k, v in zip(ait_up_keys, torch.split(up_weight, dims, dim=0))})  # noqa: C416
@@ -905,7 +923,7 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
         ait_up_keys = [k + ".lora_B.weight" for k in ait_keys]
 
         # down_weight is copied to each split
-        ait_sd.update({k: down_weight for k in ait_down_keys})
+        ait_sd.update(dict.fromkeys(ait_down_keys, down_weight))
 
         # up_weight is split to each split
         ait_sd.update({k: v for k, v in zip(ait_up_keys, torch.split(up_weight, dims, dim=0))})  # noqa: C416
