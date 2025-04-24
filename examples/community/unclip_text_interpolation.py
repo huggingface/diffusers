@@ -14,7 +14,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
 )
-from diffusers.pipelines.unclip import UnCLIPTextProjModel
+from diffusers.pipelines.deprecated.unclip import UnCLIPTextProjModel
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -78,7 +78,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.__init__
+    # Copied from diffusers.pipelines.deprecated.unclip.pipeline_unclip.UnCLIPPipeline.__init__
     def __init__(
         self,
         prior: PriorTransformer,
@@ -107,7 +107,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
             super_res_scheduler=super_res_scheduler,
         )
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
+    # Copied from diffusers.pipelines.deprecated.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -119,7 +119,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._encode_prompt
+    # Copied from diffusers.pipelines.deprecated.unclip.pipeline_unclip.UnCLIPPipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt,

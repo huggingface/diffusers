@@ -34,4 +34,4 @@ See the [reuse components across pipelines](../../using-diffusers/loading#reuse-
 	- __call__
 
 ## ShapEPipelineOutput
-[[autodoc]] pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput
+[[autodoc]] pipelines.deprecated.shap_e.pipeline_shap_e.ShapEPipelineOutput

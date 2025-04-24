@@ -303,4 +303,4 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 	- __call__
 
 ## TextToVideoPipelineOutput
-[[autodoc]] pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.TextToVideoPipelineOutput
+[[autodoc]] pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.TextToVideoPipelineOutput

@@ -21,7 +21,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import PriorTransformer, UnCLIPPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
-from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
+from diffusers.pipelines.deprecated.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_numpy,

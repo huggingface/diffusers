@@ -21,8 +21,8 @@ from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_torch_version, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
+from ..deprecated.wuerstchen.modeling_paella_vq_model import PaellaVQModel
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 
 
 if is_torch_xla_available():

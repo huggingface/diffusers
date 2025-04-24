@@ -40,7 +40,7 @@ from transformers.utils import ContextManagers
 
 from diffusers import AutoPipelineForText2Image, DDPMWuerstchenScheduler
 from diffusers.optimization import get_scheduler
-from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPrior
+from diffusers.pipelines.deprecated.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPrior
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.logging import set_verbosity_error, set_verbosity_info

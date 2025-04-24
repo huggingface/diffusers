@@ -22,10 +22,10 @@ from transformers.models.blip_2.configuration_blip_2 import Blip2Config
 from transformers.models.clip.configuration_clip import CLIPTextConfig
 
 from diffusers import AutoencoderKL, BlipDiffusionPipeline, PNDMScheduler, UNet2DConditionModel
+from diffusers.pipelines.deprecated.blip_diffusion.blip_image_processing import BlipImageProcessor
+from diffusers.pipelines.deprecated.blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from diffusers.pipelines.deprecated.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 from diffusers.utils.testing_utils import enable_full_determinism
-from src.diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
-from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
-from src.diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 
 from ..test_pipelines_common import PipelineTesterMixin
 

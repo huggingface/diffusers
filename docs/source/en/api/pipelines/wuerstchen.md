@@ -145,7 +145,7 @@ The original codebase, as well as experimental ideas, can be found at [dome272/W
 
 ## WuerstchenPriorPipelineOutput
 
-[[autodoc]] pipelines.wuerstchen.pipeline_wuerstchen_prior.WuerstchenPriorPipelineOutput
+[[autodoc]] pipelines.deprecated.wuerstchen.pipeline_wuerstchen_prior.WuerstchenPriorPipelineOutput
 
 ## WuerstchenDecoderPipeline
 

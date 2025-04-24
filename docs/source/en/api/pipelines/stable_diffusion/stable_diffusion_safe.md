@@ -56,6 +56,6 @@ Make sure to check out the Stable Diffusion [Tips](overview#tips) section to lea
 
 ## StableDiffusionSafePipelineOutput
 
-[[autodoc]] pipelines.stable_diffusion_safe.StableDiffusionSafePipelineOutput
+[[autodoc]] pipelines.deprecated.stable_diffusion_safe.StableDiffusionSafePipelineOutput
 	- all
 	- __call__

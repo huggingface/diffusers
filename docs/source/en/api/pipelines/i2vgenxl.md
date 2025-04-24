@@ -55,4 +55,4 @@ Sample output with I2VGenXL:
 	- __call__
 
 ## I2VGenXLPipelineOutput
-[[autodoc]] pipelines.i2vgen_xl.pipeline_i2vgen_xl.I2VGenXLPipelineOutput
+[[autodoc]] pipelines.deprecated.i2vgen_xl.pipeline_i2vgen_xl.I2VGenXLPipelineOutput
