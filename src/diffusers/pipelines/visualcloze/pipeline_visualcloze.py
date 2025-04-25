@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
-from ...image_processor import VisualClozeProcessor
+from .visualcloze_utils import VisualClozeProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
@@ -650,6 +650,67 @@ class VisualClozePipeline(
         """
         self.vae.disable_tiling()
 
+
+    def _prepare_latents(self, image, mask, gen, vae_scale_factor, device, dtype, upsampling):
+        """Helper function to prepare latents for a single batch."""
+        # Concatenate images and masks along width dimension
+        image = [torch.cat(img, dim=3).to(device=device, dtype=dtype) for img in image]
+        mask = [torch.cat(m, dim=3).to(device=device, dtype=dtype) for m in mask]
+
+        # Generate latent image IDs
+        latent_image_ids = self._prepare_latent_image_ids(image, vae_scale_factor, device, dtype)
+
+        # Encode images to latent space
+        if not upsampling:
+            # For initial encoding, use actual images
+            image_latent = [self._encode_vae_image(img, gen) for img in image]
+            masked_image_latent = [img.clone() for img in image_latent]
+        else:
+            # For post-upsampling, use zero images for masked latents
+            image_latent = [self._encode_vae_image(img, gen) for img in image]
+            masked_image_latent = [self._encode_vae_image(img * 0, gen) for img in image]
+
+        for i in range(len(image_latent)):
+            # Rearrange latents and masks for patch processing
+            num_channels_latents, height, width = image_latent[i].shape[1:]
+            image_latent[i] = self._pack_latents(image_latent[i], 1, num_channels_latents, height, width)
+            masked_image_latent[i] = self._pack_latents(
+                masked_image_latent[i], 1, num_channels_latents, height, width
+            )
+
+            # Rearrange masks for patch processing
+            num_channels_latents, height, width = mask[i].shape[1:]
+            mask[i] = mask[i].view(
+                1,
+                num_channels_latents,
+                height // vae_scale_factor,
+                vae_scale_factor,
+                width // vae_scale_factor,
+                vae_scale_factor,
+            )
+            mask[i] = mask[i].permute(0, 1, 3, 5, 2, 4)
+            mask[i] = mask[i].reshape(
+                1,
+                num_channels_latents * (vae_scale_factor**2),
+                height // vae_scale_factor,
+                width // vae_scale_factor,
+            )
+            mask[i] = self._pack_latents(
+                mask[i],
+                1,
+                num_channels_latents * (vae_scale_factor**2),
+                height // vae_scale_factor,
+                width // vae_scale_factor,
+            )
+
+        # Concatenate along batch dimension
+        image_latent = torch.cat(image_latent, dim=1)
+        masked_image_latent = torch.cat(masked_image_latent, dim=1)
+        mask = torch.cat(mask, dim=1)
+
+        return image_latent, masked_image_latent, mask, latent_image_ids
+
+
     def prepare_latents(
         self,
         input_image,
@@ -668,67 +729,6 @@ class VisualClozePipeline(
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        def _prepare_single_batch(image, mask, gen):
-            """Helper function to prepare latents for a single batch."""
-            with torch.autocast("cuda", dtype):
-                # Concatenate images and masks along width dimension
-                image = [torch.cat(img, dim=3).to(device, non_blocking=True) for img in image]
-                mask = [torch.cat(m, dim=3).to(device, non_blocking=True) for m in mask]
-
-                # Generate latent image IDs
-                latent_image_ids = self._prepare_latent_image_ids(image, vae_scale_factor, device, dtype)
-
-                # Encode images to latent space
-                with torch.no_grad():
-                    if not upsampling:
-                        # For initial encoding, use actual images
-                        image_latent = [self._encode_vae_image(img, gen) for img in image]
-                        masked_image_latent = [img.clone() for img in image_latent]
-                    else:
-                        # For post-upsampling, use zero images for masked latents
-                        image_latent = [self._encode_vae_image(img, gen) for img in image]
-                        masked_image_latent = [self._encode_vae_image(img * 0, gen) for img in image]
-
-                    for i in range(len(image_latent)):
-                        # Rearrange latents and masks for patch processing
-                        num_channels_latents, height, width = image_latent[i].shape[1:]
-                        image_latent[i] = self._pack_latents(image_latent[i], 1, num_channels_latents, height, width)
-                        masked_image_latent[i] = self._pack_latents(
-                            masked_image_latent[i], 1, num_channels_latents, height, width
-                        )
-
-                        # Rearrange masks for patch processing
-                        num_channels_latents, height, width = mask[i].shape[1:]
-                        mask[i] = mask[i].view(
-                            1,
-                            num_channels_latents,
-                            height // vae_scale_factor,
-                            vae_scale_factor,
-                            width // vae_scale_factor,
-                            vae_scale_factor,
-                        )
-                        mask[i] = mask[i].permute(0, 1, 3, 5, 2, 4)
-                        mask[i] = mask[i].reshape(
-                            1,
-                            num_channels_latents * (vae_scale_factor**2),
-                            height // vae_scale_factor,
-                            width // vae_scale_factor,
-                        )
-                        mask[i] = self._pack_latents(
-                            mask[i],
-                            1,
-                            num_channels_latents * (vae_scale_factor**2),
-                            height // vae_scale_factor,
-                            width // vae_scale_factor,
-                        )
-
-                # Concatenate along batch dimension
-                image_latent = torch.cat(image_latent, dim=1)
-                masked_image_latent = torch.cat(masked_image_latent, dim=1)
-                mask = torch.cat(mask, dim=1)
-
-                return image_latent, masked_image_latent, mask, latent_image_ids
-
         # Process each batch
         masked_image_latents = []
         image_latents = []
@@ -736,8 +736,14 @@ class VisualClozePipeline(
         latent_image_ids = []
 
         for i in range(len(input_image)):
-            _image_latent, _masked_image_latent, _mask, _latent_image_ids = _prepare_single_batch(
-                input_image[i], input_mask[i], generator if isinstance(generator, torch.Generator) else generator[i]
+            _image_latent, _masked_image_latent, _mask, _latent_image_ids = self._prepare_latents(
+                input_image[i], 
+                input_mask[i], 
+                generator if isinstance(generator, torch.Generator) else generator[i], 
+                vae_scale_factor,
+                device,
+                dtype,
+                upsampling
             )
             masked_image_latents.append(_masked_image_latent)
             image_latents.append(_image_latent)
@@ -1159,9 +1165,10 @@ class VisualClozePipeline(
 
                 # Broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                latent_model_input = torch.cat((latents, masked_image_latents), dim=2)
 
                 noise_pred = self.transformer(
-                    hidden_states=torch.cat((latents, masked_image_latents), dim=2),
+                    hidden_states=latent_model_input,
                     timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
