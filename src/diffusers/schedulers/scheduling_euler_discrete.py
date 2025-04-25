@@ -584,7 +584,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-        _model_output_uncond: Optional[torch.Tensor] = None,
     ) -> Union[EulerDiscreteSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
