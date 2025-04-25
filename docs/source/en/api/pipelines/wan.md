@@ -24,7 +24,7 @@
 
 ## Generating Videos with Wan 2.1
 
-We will first need to install some addtional dependencies.
+We will first need to install some additional dependencies.
 
 ```shell
 pip install -u ftfy imageio-ffmpeg imageio
