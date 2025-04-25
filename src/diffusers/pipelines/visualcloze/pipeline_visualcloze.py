@@ -19,7 +19,6 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
-from .visualcloze_utils import VisualClozeProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
@@ -35,6 +34,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
+from .visualcloze_utils import VisualClozeProcessor
 
 
 if is_torch_xla_available():
@@ -650,7 +650,6 @@ class VisualClozePipeline(
         """
         self.vae.disable_tiling()
 
-
     def _prepare_latents(self, image, mask, gen, vae_scale_factor, device, dtype, upsampling):
         """Helper function to prepare latents for a single batch."""
         # Concatenate images and masks along width dimension
@@ -674,9 +673,7 @@ class VisualClozePipeline(
             # Rearrange latents and masks for patch processing
             num_channels_latents, height, width = image_latent[i].shape[1:]
             image_latent[i] = self._pack_latents(image_latent[i], 1, num_channels_latents, height, width)
-            masked_image_latent[i] = self._pack_latents(
-                masked_image_latent[i], 1, num_channels_latents, height, width
-            )
+            masked_image_latent[i] = self._pack_latents(masked_image_latent[i], 1, num_channels_latents, height, width)
 
             # Rearrange masks for patch processing
             num_channels_latents, height, width = mask[i].shape[1:]
@@ -710,7 +707,6 @@ class VisualClozePipeline(
 
         return image_latent, masked_image_latent, mask, latent_image_ids
 
-
     def prepare_latents(
         self,
         input_image,
@@ -737,13 +733,13 @@ class VisualClozePipeline(
 
         for i in range(len(input_image)):
             _image_latent, _masked_image_latent, _mask, _latent_image_ids = self._prepare_latents(
-                input_image[i], 
-                input_mask[i], 
-                generator if isinstance(generator, torch.Generator) else generator[i], 
+                input_image[i],
+                input_mask[i],
+                generator if isinstance(generator, torch.Generator) else generator[i],
                 vae_scale_factor,
                 device,
                 dtype,
-                upsampling
+                upsampling,
             )
             masked_image_latents.append(_masked_image_latent)
             image_latents.append(_image_latent)

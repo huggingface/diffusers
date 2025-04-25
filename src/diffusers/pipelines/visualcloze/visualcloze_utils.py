@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-from ...image_processor import VaeImageProcessor
 from typing import Dict, List, Optional, Tuple, Union
+
+import torch
 from PIL import Image
+
+from ...image_processor import VaeImageProcessor
 
 
 class VisualClozeProcessor(VaeImageProcessor):
