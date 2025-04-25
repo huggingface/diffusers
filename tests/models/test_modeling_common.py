@@ -59,9 +59,9 @@ from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     backend_empty_cache,
-    backend_synchronize,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
+    backend_synchronize,
     floats_tensor,
     get_python_version,
     is_torch_compile,
