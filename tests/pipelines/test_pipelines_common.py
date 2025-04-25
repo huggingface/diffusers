@@ -54,7 +54,6 @@ from diffusers.utils.testing_utils import (
     require_hf_hub_version_greater,
     require_torch,
     require_torch_accelerator,
-    require_torch_gpu,
     require_transformers_version_greater,
     skip_mps,
     torch_device,
