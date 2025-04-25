@@ -1162,13 +1162,6 @@ class ModularPipelineMixin:
             raise ValueError(f"Output '{output}' is not a valid output type")
 
 
-def _find_spec_by_name(specs: List[Union[ComponentSpec, ConfigSpec]], name: str) -> Union[ComponentSpec, ConfigSpec]:
-    for spec in specs:
-        if hasattr(spec, "name") and spec.name == name:
-            return spec
-    logger.warning(f"'{name}' not found in the specs")
-    return None
-
 # YiYi TODO: refactor the _fetch_class_library_tuple in pipeline_loading_utils.py to acceept class (current object)
 from .pipeline_loading_utils import LOADABLE_CLASSES
 import importlib
@@ -1200,6 +1193,19 @@ def _fetch_class_library_tuple(module_class):
     return (library, class_name)
 
 
+def simple_import_class_obj(library_name, class_name):
+    from diffusers import pipelines
+    is_pipeline_module = hasattr(pipelines, library_name)
+
+    if is_pipeline_module:
+        pipeline_module = getattr(pipelines, library_name)
+        class_obj = getattr(pipeline_module, class_name)
+    else:
+        library = importlib.import_module(library_name)
+        class_obj = getattr(library, class_name)
+
+    return class_obj
+
 class ModularLoader(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines loaders.
@@ -1210,50 +1216,89 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
 
     def register_components(self, **kwargs):
         """
-        Register components with their corresponding specs.
+        Register components with their corresponding specs. 
+        This method is called when component changed or its spec changed (in self.component_specs).
 
         Args:
             **kwargs: Keyword arguments where keys are component names and values are component objects.
         
         """
         for name, module in kwargs.items():
-            component_spec = _find_spec_by_name(self.component_specs, name)
+
+            current_module = getattr(self, name, None)
+    
+            # update config based on the updated component spec
+            component_spec = self.component_specs.get(name)
+            if component_spec is None:
+                logger.warning(f"register_components: skipping unknown component '{name}'")
+                continue
+
             library, class_name = _fetch_class_library_tuple(component_spec.type_hint)
             load_spec_dict = OrderedDict({
                 "repo": component_spec.repo,
                 "subfolder": component_spec.subfolder,
             })
 
-            # retrieve library
-            
             register_dict = {name: (library, class_name, load_spec_dict)}
 
             # save model index config
             self.register_to_config(**register_dict)
 
-            # set models
+            # set the component as attribute
+            # skip if the component is already registered with the same object
+            if current_module is module:
+                logger.info(f"register_components: {name} is already registered with same object, skipping")
+                continue
+            
+            # it module is not an instance of the expected type, still register it but with a warning
+            if module is not None and not isinstance(module, component_spec.type_hint):
+                logger.warning(f"register_components: adding {name} with type: {module.__class__.__name__}, expected: {component_spec.type_hint.__name__}")
+
+            # warn if unregister
+            if current_module is not None and module is None:
+                logger.info(
+                    f"register_components: setting '{name}' to None "
+                    f"(was {current_module.__class__.__name__})"
+                )
+            # warn if class mismatch
+            elif current_module is not None \
+                and module is not None \
+                and not isinstance(module, current_module.__class__):
+                logger.warning(
+                    f"register_components: overwriting component '{name}' "
+                    f"(type {current_module.__class__.__name__}) "
+                    f"with DIFFERENT type {module.__class__.__name__}"
+                )
+            # same type, new instance → debug
+            elif current_module is not None \
+                and module is not None \
+                and isinstance(module, current_module.__class__) \
+                and current_module != module:
+                logger.debug(
+                    f"register_components: replacing existing '{name}' "
+                    f"(same type {type(current_module).__name__}, new instance)"
+                )
+
+            # finally set models
             setattr(self, name, module)
 
 
     def __init__(self, component_specs: List[ComponentSpec], config_specs: Optional[List[ConfigSpec]]=None):
-        
-        if config_specs is not None:
-            self.config_specs = deepcopy(config_specs)
-        else:
-            self.config_specs = []
-        
-        if component_specs is None:
-            self.component_specs = []
-        else:
-            self.component_specs = deepcopy(component_specs)
+        self.component_specs = {
+            spec.name: deepcopy(spec) for spec in (component_specs or [])
+        }
+        self.config_specs = {
+            spec.name: deepcopy(spec) for spec in (config_specs  or [])
+        }
 
-        for component_spec in self.component_specs:
-            register_dict = {component_spec.name: None}
-            self.register_components(**register_dict)
+        register_components_dict = {}
+        for component_spec in self.component_specs.values():
+            register_components_dict[component_spec.name] = None
+        self.register_components(**register_components_dict)
         
         default_configs = {}
-        for config_spec in self.config_specs:
-            default_configs[config_spec.name] = config_spec.value
+        for config_spec in self.config_specs.values():
+            default_configs[config_spec.name] = config_spec.default
         self.register_to_config(**default_configs)
 
 
@@ -1311,86 +1356,187 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
 
 
     @property
-    def components(self):
-        components = {}
-        for component_spec in self.component_specs:
-            if hasattr(self, component_spec.name):
-                components[component_spec.name] = getattr(self, component_spec.name)
-        return components
+    def components(self) -> Dict[str, Any]:
+        # return only components we've actually set as attributes on self
+        return {
+            name: getattr(self, name)
+            for name in self.component_specs.keys()
+            if hasattr(self, name)
+        }
 
     def update(self, repo=None, **kwargs):
         """
-        Update components and configs specs after instance creation.
+        Update components and configs after instance creation.
         
         Args:
             repo (str, optional): Default repository to use for all components
-            **kwargs: Updates, which can be:
+            **kwargs:
+                Updates, which can be:
                 - For components:
                     - A string: Used as the repository name
                     - A tuple: (repo, subfolder) or (repo,)
-                    - A ComponentSpec: Used to replace the existing spec
-                    
-                    If the components already exist in the loader, it will load the component 
-                    with updated info and replace the existing one; otherwise, it will only 
-                    update the spec.
-                    
+                    - A ComponentSpec: Replace the existing spec
+
+                    If the component is already loaded, it will be reloaded with updated info;
+                    otherwise only the spec is updated.
+
                 - For configs:
-                    - Any value: Used to update the config value as well as the value field in the config spec
-        """
-        # Update global defaults if provided
-        if repo is not None:
-            for component_spec in self.component_specs:
-                component_spec.repo = repo
+                    - Any value: Update the config value
 
-        # Process all updates
-        register_components_dict = {}
-        for component_spec in self.component_specs:
-            if component_spec.name in kwargs:
-                # update the component spec
-                component_kwargs = kwargs.pop(component_spec.name)
-                if isinstance(component_kwargs, ComponentSpec):
-                    component_spec = component_kwargs
-                elif isinstance(component_kwargs, str):
-                    component_spec.repo = component_kwargs
-                elif isinstance(component_kwargs, tuple):
-                    component_spec.repo = component_kwargs[0]
-                    if len(component_kwargs) > 1:
-                        component_spec.subfolder = component_kwargs[1]
-                
-                if self.components[component_spec.name]:
-                    new_component = component_spec.load()
-                else:
-                    new_component = None
-                register_components_dict[component_spec.name] = new_component
+            - Additional loader options:
+                Passed through to the underlying component loading methods
+                (e.g., from_pretrained), such as torch_dtype, revision, variant, etc.
+        """   
+
+        # extract component_updates from `kwargs``:
+        # e.g. loader.update(unet=..., vae=...)` -> {"unet": ..., "vae": ...}
+        component_updates = {k: kwargs.pop(k) for k in self.component_specs.keys() if k in kwargs}
+        # extract config_updates from `kwargs``:
+        # e.g. loader.update(requires_aesthetics_score=False) -> {"requires_aesthetics_score": False}
+        config_updates = {k: kwargs.pop(k) for k in self.config_specs.keys() if k in kwargs}
         
-        self.register_components(**register_components_dict)
+        # create a dict to contain all the component specs to be updated,
+        new_components_specs = {}
 
-        register_configs_dict = {}
-        for config_spec in self.config_specs:
-            if config_spec.name in kwargs:
-                config_value = kwargs.pop(config_spec.name)
-                if isinstance(config_value, ConfigSpec):
-                    config_spec = config_value
-                else:
-                    config_spec.value = config_value
-                register_configs_dict[config_spec.name] = config_spec.value
-        self.register_to_config(**register_configs_dict)
+        # update global default repo on each component spec
+        # e.g loader.update(repo="new_repo") -> {"unet": ComponentSpec(repo="new_repo", ...), "vae": ComponentSpec(repo="new_repo", ...)}
+        if repo is not None:
+            for spec in self.component_specs.values():
+                new_spec = deepcopy(spec)
+                new_spec.repo = repo
+                new_components_specs[spec.name] = new_spec
 
+        # update component specs with component updates extracted from the `kwargs`
+        # YiYi Notes: should we automatically reload?
+        for name, new_value in component_updates.items():
+            # make a copy of the spec to avoid partial mutation
+            new_spec = deepcopy(self.component_specs[name])
+            if isinstance(new_value, ComponentSpec):
+                # e.g. loader.update(unet = ComponentSpec(type_hint=UNet2DConditionModel, ...))
+                new_spec = new_value
+            elif isinstance(new_value, str):
+                # e.g. loader.update(unet="repo/unet")
+                new_spec.repo = new_value
+            elif isinstance(new_value, (tuple, list)):
+                # e.g. loader.update(unet = ("repo/unet", "subfolder"))
+                new_spec.repo = new_value[0]
+                if len(new_value) > 1:
+                    new_spec.subfolder = new_value[1]
+            
+            # potentially override the spec if global repo is provided
+            new_components_specs[name] = new_spec
+                
+        # attempt to update the components if it's already loaded
+        components_to_register = {}
+        for name, new_component_spec in new_components_specs.items():
+            if getattr(self, name, None) is not None:
+                try:
+                    # perform atomic update only if successful load the new component
+                    # load, update components_spec and register_components
+                    new_component = new_component_spec.load(**kwargs)
+                    self.component_specs[name] = new_component_spec
+                    components_to_register[name] = new_component
+                except Exception as e:
+                    logger.warning(f"Failed to update component '{name}': {e}")
+            else:
+                # only update the spec if the component is not loaded (e.g. self.unet = None)
+                self.component_specs[name] = new_component_spec
+                components_to_register[name] = None
+        
+        self.register_components(**components_to_register)
 
-        if len(kwargs) > 0:
-            logger.warning(f"Unexpected input '{kwargs.keys()}' provided. This input will be ignored.")
+        config_to_register = {}
+        for name, new_value in config_updates.items():
+            if isinstance(new_value, ConfigSpec):
+                # e.g. requires_aesthetics_score = ConfigSpec(name="requires_aesthetics_score", default=False)
+                self.config_specs[name] = new_value
+                config_to_register[name] = new_value.default
+            else:
+                # e.g. requires_aesthetics_score = False
+                self.config_specs[name].default = new_value
+                config_to_register[name] = new_value
+        self.register_to_config(**config_to_register)
+
+    def load(self, **kwargs):
+        """
+        Load components and optionally set config values.
+        
+        This method has three modes:
+        1. `self.load()` - load all components from their specs
+        2. `self.load(unet=unet, text_encoder=text_encoder)` - use provided components directly,
+           load remaining components from specs
+        3. `self.load(...,requires_aesthetics_score=False)` - additinally set config values
+        
+        Args:
+            **kwargs: Can include:
+                - Component objects to set directly (e.g., unet=my_unet)
+                - config values to set (e.g., requires_aesthetics_score=False)
+                - additional kwargs to be passed to `from_pretrained()`, e.g. torch_dtype=torch.bfloat16
+        
+        Returns:
+            self: The loader instance with loaded components
+        """
+        config_updates = {k: kwargs.pop(k) for k in self.config_specs.keys() if k in kwargs}
+        passed_component_obj = {k: kwargs.pop(k) for k in self.component_specs.keys() if k in kwargs}
+        
+        # 1. Set any config values provided (without updating defaults in specs)
+        if config_updates:
+            self.register_to_config(**config_updates)
+        
+        # 2. Process components
+        components_to_register = {}
+        
+        # First register the components provided directly
+        for name, component in passed_component_obj.items():
+            components_to_register[name] = component
+        
+        # Then load the remaining components from specs
+        remaining_components = set(self.component_specs.keys()) - set(passed_component_obj.keys())
+        for name in remaining_components:
+            spec = self.component_specs[name]
+            try:
+                if spec.repo is not None:
+                    components_to_register[name] = spec.load(**kwargs)
+                elif spec.config is not None:
+                    components_to_register[name] = spec.create()
+            except Exception as e:
+                logger.warning(f"Failed to create component '{name}': {e}")
+            
+        # Register all components at once
+        self.register_components(**components_to_register)
 
     # YiYi TODO: should support to method
     def to(self, *args, **kwargs):
         pass
 
-    # YiYi TODO: should support save some components too! currently only modular_model_index.json is saved
+    # YiYi TODO: 
+    # 1. should support save some components too! currently only modular_model_index.json is saved
+    # 2. maybe order the json file to make it more readable: configs first, then components
     def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+
+        component_names = list(self.component_specs.keys())
+        config_names = list(self.config_specs.keys())
+        self.register_to_config(_components_names=component_names, _configs_names=config_names)
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
     
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None, **kwargs):
+        
         config_dict = cls.load_config(pretrained_model_name_or_path, **kwargs)
-        return config_dict
+        expected_component = set(config_dict.pop("_components_names"))
+        expected_config = set(config_dict.pop("_configs_names"))
+
+        component_specs = []
+        config_specs = []
+        for name, value in config_dict.items():
+            if name in expected_component and isinstance(value, (tuple, list)) and len(value) == 3:
+                library_name, class_name, load_spec_dict = value
+                type_hint = simple_import_class_obj(library_name, class_name)
+                component_specs.append(ComponentSpec(name=name, type_hint=type_hint, **load_spec_dict))
+
+            elif name in expected_config:
+                config_specs.append(ConfigSpec(name=name, default=value))
+        return cls(component_specs, config_specs=config_specs)
+
 

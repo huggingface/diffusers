@@ -79,10 +79,8 @@ class ComponentLoadSpec:
 class ConfigSpec:
     """Specification for a pipeline configuration parameter."""
     name: str
-    value: Any
+    default: Any
     description: Optional[str] = None
-    repo: Optional[Union[str, List[str]]] = None #YiYi Notes: not sure if this field is needed
-
 @dataclass
 class InputParam:
     """Specification for an input parameter."""
