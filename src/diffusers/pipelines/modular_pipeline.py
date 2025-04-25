@@ -1225,8 +1225,8 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         """
         for name, module in kwargs.items():
 
-            current_module = getattr(self, name, None)
-    
+            is_initialized = hasattr(self, name)
+
             # update config based on the updated component spec
             component_spec = self.component_specs.get(name)
             if component_spec is None:
@@ -1245,6 +1245,12 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             self.register_to_config(**register_dict)
 
             # set the component as attribute
+            # if it is not set yet, just set it and skip the warnings below
+            if not is_initialized:
+                setattr(self, name, module)
+                continue
+            
+            current_module = getattr(self, name, None)
             # skip if the component is already registered with the same object
             if current_module is module:
                 logger.info(f"register_components: {name} is already registered with same object, skipping")
