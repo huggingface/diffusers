@@ -529,7 +529,7 @@ def parse_args(input_args=None):
         type=str,
         default="lanczos",
         choices=[
-             f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
         ],
         help="The image interpolation method to use for resizing images.",
     )
