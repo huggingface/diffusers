@@ -725,7 +725,8 @@ class DreamBoothDataset(Dataset):
     It pre-processes the images.
     """
 
-    def find_nearest_bucket(self, h, w, bucket_options):
+    @staticmethod
+    def find_nearest_bucket(h, w, bucket_options):
         min_metric = float('inf')
         best_bucket = None
         best_bucket_idx = None
