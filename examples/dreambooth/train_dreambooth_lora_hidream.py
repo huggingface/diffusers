@@ -725,6 +725,18 @@ class DreamBoothDataset(Dataset):
     It pre-processes the images.
     """
 
+    def find_nearest_bucket(self, h, w, bucket_options):
+        min_metric = float('inf')
+        best_bucket = None
+        best_bucket_idx = None
+        for bucket_idx, (bucket_h, bucket_w) in enumerate(bucket_options):
+            metric = abs(h * bucket_w - w * bucket_h)
+            if metric <= min_metric:
+                min_metric = metric
+                best_bucket = (bucket_h, bucket_w)
+                best_bucket_idx = bucket_idx
+        return best_bucket_idx
+
     def __init__(
             self,
             instance_data_root,
@@ -745,7 +757,6 @@ class DreamBoothDataset(Dataset):
             # "1248 × 832 (Landscape)",
             # "832 × 1248 (Portrait)"
             # bucket_aspects = [1.0, 9/16, 16/9, 3/4, 4/3, 3/2, 2/3],
-            bucket_aspects=[1.0],
     ):
         # self.size = size
         self.center_crop = center_crop
@@ -754,8 +765,7 @@ class DreamBoothDataset(Dataset):
         self.custom_instance_prompts = None
         self.class_prompt = class_prompt
 
-        self.buckets = np.array(buckets)
-        self.bucket_aspects = np.array(bucket_aspects)
+        self.buckets = buckets
 
         # if --dataset_name is provided or a metadata jsonl file is provided in the local --instance_data directory,
         # we load the training data using load_dataset
@@ -835,7 +845,7 @@ class DreamBoothDataset(Dataset):
             print("width, height", width, height)
             aspect_ratio = width / float(height)
             # Find the closest bucket
-            bucket_idx = np.argmin(np.abs(self.bucket_aspects - aspect_ratio))
+            bucket_idx = find_nearest_bucket(height, width, self.buckets)
             target_height, target_width = self.buckets[bucket_idx]
             size = (target_height, target_width)
             print("WTF", size, type(size))
