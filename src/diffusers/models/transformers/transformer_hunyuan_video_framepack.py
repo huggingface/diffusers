@@ -98,22 +98,22 @@ class HunyuanVideoPatchEmbedForCleanLatents(nn.Module):
 
     def forward(
         self,
-        clean_latents: Optional[torch.Tensor] = None,
-        clean_latents_2x: Optional[torch.Tensor] = None,
-        clean_latents_4x: Optional[torch.Tensor] = None,
+        latents_clean: Optional[torch.Tensor] = None,
+        latents_clean_2x: Optional[torch.Tensor] = None,
+        latents_clean_4x: Optional[torch.Tensor] = None,
     ):
-        if clean_latents is not None:
-            clean_latents = self.proj(clean_latents)
-            clean_latents = clean_latents.flatten(2).transpose(1, 2)
-        if clean_latents_2x is not None:
-            clean_latents_2x = _pad_for_3d_conv(clean_latents_2x, (2, 4, 4))
-            clean_latents_2x = self.proj_2x(clean_latents_2x)
-            clean_latents_2x = clean_latents_2x.flatten(2).transpose(1, 2)
-        if clean_latents_4x is not None:
-            clean_latents_4x = _pad_for_3d_conv(clean_latents_4x, (4, 8, 8))
-            clean_latents_4x = self.proj_4x(clean_latents_4x)
-            clean_latents_4x = clean_latents_4x.flatten(2).transpose(1, 2)
-        return clean_latents, clean_latents_2x, clean_latents_4x
+        if latents_clean is not None:
+            latents_clean = self.proj(latents_clean)
+            latents_clean = latents_clean.flatten(2).transpose(1, 2)
+        if latents_clean_2x is not None:
+            latents_clean_2x = _pad_for_3d_conv(latents_clean_2x, (2, 4, 4))
+            latents_clean_2x = self.proj_2x(latents_clean_2x)
+            latents_clean_2x = latents_clean_2x.flatten(2).transpose(1, 2)
+        if latents_clean_4x is not None:
+            latents_clean_4x = _pad_for_3d_conv(latents_clean_4x, (4, 8, 8))
+            latents_clean_4x = self.proj_4x(latents_clean_4x)
+            latents_clean_4x = latents_clean_4x.flatten(2).transpose(1, 2)
+        return latents_clean, latents_clean_2x, latents_clean_4x
 
 
 class HunyuanVideoFramepackTransformer3DModel(
@@ -206,15 +206,15 @@ class HunyuanVideoFramepackTransformer3DModel(
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
         pooled_projections: torch.Tensor,
-        image_embeddings: torch.Tensor,
+        image_embeds: torch.Tensor,
         latent_indices: torch.Tensor,
         guidance: Optional[torch.Tensor] = None,
-        clean_latents: Optional[torch.Tensor] = None,
-        clean_latent_indices: Optional[torch.Tensor] = None,
-        clean_latents_2x: Optional[torch.Tensor] = None,
-        clean_latent_2x_indices: Optional[torch.Tensor] = None,
-        clean_latents_4x: Optional[torch.Tensor] = None,
-        clean_latent_4x_indices: Optional[torch.Tensor] = None,
+        latents_clean: Optional[torch.Tensor] = None,
+        indices_latents_clean: Optional[torch.Tensor] = None,
+        latents_history_2x: Optional[torch.Tensor] = None,
+        indices_latents_history_2x: Optional[torch.Tensor] = None,
+        latents_history_4x: Optional[torch.Tensor] = None,
+        indices_latents_history_4x: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ):
@@ -242,18 +242,18 @@ class HunyuanVideoFramepackTransformer3DModel(
         hidden_states, image_rotary_emb = self._pack_history_states(
             hidden_states,
             latent_indices,
-            clean_latents,
-            clean_latent_indices,
-            clean_latents_2x,
-            clean_latent_2x_indices,
-            clean_latents_4x,
-            clean_latent_4x_indices,
+            latents_clean,
+            indices_latents_clean,
+            latents_history_2x,
+            indices_latents_history_2x,
+            latents_history_4x,
+            indices_latents_history_4x,
         )
 
         temb, token_replace_emb = self.time_text_embed(timestep, pooled_projections, guidance)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)
 
-        encoder_hidden_states_image = self.image_projection(image_embeddings)
+        encoder_hidden_states_image = self.image_projection(image_embeds)
         attention_mask_image = encoder_attention_mask.new_ones((batch_size, encoder_hidden_states_image.shape[1]))
 
         # must cat before (not after) encoder_hidden_states, due to attn masking
@@ -319,12 +319,12 @@ class HunyuanVideoFramepackTransformer3DModel(
         self,
         hidden_states: torch.Tensor,
         latent_indices: torch.Tensor,
-        clean_latents: Optional[torch.Tensor] = None,
-        clean_latents_2x: Optional[torch.Tensor] = None,
-        clean_latents_4x: Optional[torch.Tensor] = None,
-        clean_latent_indices: Optional[torch.Tensor] = None,
-        clean_latent_2x_indices: Optional[torch.Tensor] = None,
-        clean_latent_4x_indices: Optional[torch.Tensor] = None,
+        latents_clean: Optional[torch.Tensor] = None,
+        latents_history_2x: Optional[torch.Tensor] = None,
+        latents_history_4x: Optional[torch.Tensor] = None,
+        indices_latents_clean: Optional[torch.Tensor] = None,
+        indices_latents_history_2x: Optional[torch.Tensor] = None,
+        indices_latents_history_4x: Optional[torch.Tensor] = None,
     ):
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         if latent_indices is None:
@@ -336,34 +336,34 @@ class HunyuanVideoFramepackTransformer3DModel(
             frame_indices=latent_indices, height=height, width=width, device=hidden_states.device
         )
 
-        clean_latents, clean_latents_2x, clean_latents_4x = self.clean_x_embedder(
-            clean_latents, clean_latents_2x, clean_latents_4x
+        latents_clean, latents_history_2x, latents_history_4x = self.clean_x_embedder(
+            latents_clean, latents_history_2x, latents_history_4x
         )
 
-        if clean_latents is not None:
-            clean_rotary_emb_1x = self.rope(
-                frame_indices=clean_latent_indices, height=height, width=width, device=clean_latents.device
+        if latents_clean is not None:
+            image_rotary_emb_clean = self.rope(
+                frame_indices=indices_latents_clean, height=height, width=width, device=latents_clean.device
             )
-            hidden_states = torch.cat([clean_latents, hidden_states], dim=1)
-            image_rotary_emb = torch.cat([clean_rotary_emb_1x, image_rotary_emb], dim=1)
+            hidden_states = torch.cat([latents_clean, hidden_states], dim=1)
+            image_rotary_emb = torch.cat([image_rotary_emb_clean, image_rotary_emb], dim=1)
 
-        if clean_latents_2x is not None and clean_latent_2x_indices is not None:
-            clean_rotary_emb_2x = self.rope(
-                frame_indices=clean_latent_2x_indices, height=height, width=width, device=clean_latents_2x.device
+        if latents_history_2x is not None and indices_latents_history_2x is not None:
+            image_rotary_emb_history_2x = self.rope(
+                frame_indices=indices_latents_history_2x, height=height, width=width, device=latents_history_2x.device
             )
-            clean_rotary_emb_2x = _pad_for_3d_conv(clean_rotary_emb_2x, (2, 2, 2))
-            clean_rotary_emb_2x = _center_down_sample_3d(clean_rotary_emb_2x, (2, 2, 2))
-            hidden_states = torch.cat([clean_latents_2x, hidden_states], dim=1)
-            image_rotary_emb = torch.cat([clean_rotary_emb_2x, image_rotary_emb], dim=1)
+            image_rotary_emb_history_2x = _pad_for_3d_conv(image_rotary_emb_history_2x, (2, 2, 2))
+            image_rotary_emb_history_2x = _center_down_sample_3d(image_rotary_emb_history_2x, (2, 2, 2))
+            hidden_states = torch.cat([latents_history_2x, hidden_states], dim=1)
+            image_rotary_emb = torch.cat([image_rotary_emb_history_2x, image_rotary_emb], dim=1)
 
-        if clean_latents_4x is not None and clean_latent_4x_indices is not None:
-            clean_rotary_emb_4x = self.rope(
-                frame_indices=clean_latent_4x_indices, height=height, width=width, device=clean_latents_4x.device
+        if latents_history_4x is not None and indices_latents_history_4x is not None:
+            image_rotary_emb_history_4x = self.rope(
+                frame_indices=indices_latents_history_4x, height=height, width=width, device=latents_history_4x.device
             )
-            clean_rotary_emb_4x = _pad_for_3d_conv(clean_rotary_emb_4x, (4, 4, 4))
-            clean_rotary_emb_4x = _center_down_sample_3d(clean_rotary_emb_4x, (4, 4, 4))
-            hidden_states = torch.cat([clean_latents_4x, hidden_states], dim=1)
-            image_rotary_emb = torch.cat([clean_rotary_emb_4x, image_rotary_emb], dim=1)
+            image_rotary_emb_history_4x = _pad_for_3d_conv(image_rotary_emb_history_4x, (4, 4, 4))
+            image_rotary_emb_history_4x = _center_down_sample_3d(image_rotary_emb_history_4x, (4, 4, 4))
+            hidden_states = torch.cat([latents_history_4x, hidden_states], dim=1)
+            image_rotary_emb = torch.cat([image_rotary_emb_history_4x, image_rotary_emb], dim=1)
 
         return hidden_states, image_rotary_emb
 
