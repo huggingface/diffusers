@@ -347,7 +347,7 @@ image = pipe(
     height=1024,
     prompt="wearing sunglasses",
     negative_prompt="",
-    true_cfg=4.0,
+    true_cfg_scale=4.0,
     generator=torch.Generator().manual_seed(4444),
     ip_adapter_image=image,
 ).images[0]

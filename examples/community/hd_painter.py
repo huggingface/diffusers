@@ -34,7 +34,7 @@ class RASGAttnProcessor:
         temb: Optional[torch.Tensor] = None,
         scale: float = 1.0,
     ) -> torch.Tensor:
-        # Same as the default AttnProcessor up untill the part where similarity matrix gets saved
+        # Same as the default AttnProcessor up until the part where similarity matrix gets saved
         downscale_factor = self.mask_resoltuion // hidden_states.shape[1]
         residual = hidden_states
 
