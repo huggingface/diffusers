@@ -352,7 +352,7 @@ class VisualClozePipeline(
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
+    # Modified from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
         self,
         layout_prompt: Union[str, List[str]],
