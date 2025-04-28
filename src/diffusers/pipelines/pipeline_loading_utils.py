@@ -341,13 +341,13 @@ def get_class_obj_and_candidates(
         pipeline_module = getattr(pipelines, library_name)
 
         class_obj = getattr(pipeline_module, class_name)
-        class_candidates = {c: class_obj for c in importable_classes.keys()}
+        class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     elif os.path.isfile(os.path.join(component_folder, library_name + ".py")):
         # load custom component
         class_obj = get_class_from_dynamic_module(
             component_folder, module_file=library_name + ".py", class_name=class_name
         )
-        class_candidates = {c: class_obj for c in importable_classes.keys()}
+        class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     else:
         # else we just import it from the library.
         library = importlib.import_module(library_name)
