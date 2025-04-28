@@ -612,7 +612,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 )
             
             prompt_embeds = image_embeds_bg
-            product_ratio = 0.65
             for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
                 prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
         else:
