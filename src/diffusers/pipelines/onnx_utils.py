@@ -202,7 +202,7 @@ class OnnxRuntimeModel:
                 model_cache_path,
                 provider=provider,
                 sess_options=sess_options,
-                provider_options=kwargs.get("provider_options"),
+                provider_options=kwargs.pop("provider_options"),
             )
         return cls(model=model, **kwargs)
 
