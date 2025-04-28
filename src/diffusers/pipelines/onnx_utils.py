@@ -182,7 +182,7 @@ class OnnxRuntimeModel:
                 Path(model_id, model_file_name).as_posix(),
                 provider=provider,
                 sess_options=sess_options,
-                provider_options=kwargs.get("provider_options"),
+                provider_options=kwargs.pop("provider_options"),
             )
             kwargs["model_save_dir"] = Path(model_id)
         # load model from hub
