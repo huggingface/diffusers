@@ -263,7 +263,6 @@ def log_validation(
                 }
             )
 
-    pipeline.to("cpu")
     del pipeline
     free_memory()
 
