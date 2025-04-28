@@ -798,11 +798,11 @@ def main():
 
     # Get the specified interpolation method from the args
     interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
-    
+
     # Raise an error if the interpolation method is invalid
     if interpolation is None:
         raise ValueError(f"Unsupported interpolation mode {args.image_interpolation_mode}.")
-    
+
     # Data preprocessing transformations
     train_transforms = transforms.Compose(
         [
