@@ -63,12 +63,12 @@ Here, the document shows simple examples for mask2image, edge-detection, and sub
 image_paths = [
     # in-context examples
     [
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/2c4e256fa512cb7e7f433f4c7f9101de_sam2_mask.jpg'),
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/2c4e256fa512cb7e7f433f4c7f9101de.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_mask.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_image.jpg'),
     ],
     # query with the target image
     [
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/9c565b1aad76b22f5bb836744a93561a_sam2_mask.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_query_mask.jpg'),
         None, # No image needed for the target image
     ],
 ]
@@ -108,16 +108,16 @@ image_result.save("visualcloze.png")
 image_paths = [
     # in-context examples
     [
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/de5a8b250bf407aa7e04913562dcba90.jpg'),
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/de5a8b250bf407aa7e04913562dcba90_hed_512.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_edgedetection_incontext-example-1_image.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_edgedetection_incontext-example-1_edge.jpg'),
     ],
     [
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/5bf755ed9dbb9b3e223e7ba35232b06e.jpg'),
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/5bf755ed9dbb9b3e223e7ba35232b06e_hed_512.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_edgedetection_incontext-example-2_image.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_edgedetection_incontext-example-2_edge.jpg'),
     ],
     # query with the target image
     [
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/53b3f413257bee9e499b823b44623b1a.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_edgedetection_query_image.jpg'),
         None, # No image needed for the target image
     ],
 ]
@@ -151,19 +151,19 @@ image_result.save("visualcloze.png")
 image_paths = [
     # in-context examples
     [
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00004-of-00022-7170_reference.jpg'),
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00004-of-00022-7170_depth-anything-v2_Large.jpg'),
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00004-of-00022-7170_target.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_subjectdriven_incontext-example-1_reference.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_subjectdriven_incontext-example-1_depth.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_subjectdriven_incontext-example-1_image.jpg'),
     ],
     [
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00013-of-00022-4696_reference.jpg'),
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00013-of-00022-4696_depth-anything-v2_Large.jpg'),
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00013-of-00022-4696_target.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_subjectdriven_incontext-example-2_reference.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_subjectdriven_incontext-example-2_depth.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_subjectdriven_incontext-example-2_image.jpg'),
     ],
     # query with the target image
     [
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00005-of-00022-4396_reference.jpg'),
-        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00005-of-00022-4396_depth-anything-v2_Large.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_subjectdriven_query_reference.jpg'),
+        load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_subjectdriven_query_depth.jpg'),
         None, # No image needed for the target image
     ],
 ]
