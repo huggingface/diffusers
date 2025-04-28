@@ -22,6 +22,7 @@ from diffusers import (
     UniDiffuserTextDecoder,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
@@ -584,17 +585,17 @@ class UniDiffuserPipelineFastTests(
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class UniDiffuserPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0, generate_latents=False):
         generator = torch.manual_seed(seed)
@@ -705,17 +706,17 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class UniDiffuserPipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0, generate_latents=False):
         generator = torch.manual_seed(seed)
