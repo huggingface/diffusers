@@ -59,6 +59,9 @@ from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_peak_memory_stats,
+    backend_synchronize,
     floats_tensor,
     get_python_version,
     is_torch_compile,
@@ -68,7 +71,6 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_accelerator,
     require_torch_accelerator_with_training,
-    require_torch_gpu,
     require_torch_multi_accelerator,
     run_test_in_subprocess,
     slow,
@@ -341,7 +343,7 @@ class ModelUtilsTest(unittest.TestCase):
 
         assert model.config.in_channels == 9
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_keep_modules_in_fp32(self):
         r"""
         A simple tests to check if the modules under `_keep_in_fp32_modules` are kept in fp32 when we load the model in fp16/bf16
@@ -1480,16 +1482,16 @@ class ModelTesterMixin:
         test_layerwise_casting(torch.float8_e5m2, torch.float32)
         test_layerwise_casting(torch.float8_e4m3fn, torch.bfloat16)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_layerwise_casting_memory(self):
         MB_TOLERANCE = 0.2
         LEAST_COMPUTE_CAPABILITY = 8.0
 
         def reset_memory_stats():
             gc.collect()
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
+            backend_synchronize(torch_device)
+            backend_empty_cache(torch_device)
+            backend_reset_peak_memory_stats(torch_device)
 
         def get_memory_usage(storage_dtype, compute_dtype):
             torch.manual_seed(0)
@@ -1502,7 +1504,7 @@ class ModelTesterMixin:
             reset_memory_stats()
             model(**inputs_dict)
             model_memory_footprint = model.get_memory_footprint()
-            peak_inference_memory_allocated_mb = torch.cuda.max_memory_allocated() / 1024**2
+            peak_inference_memory_allocated_mb = backend_max_memory_allocated(torch_device) / 1024**2
 
             return model_memory_footprint, peak_inference_memory_allocated_mb
 
@@ -1512,7 +1514,7 @@ class ModelTesterMixin:
             torch.float8_e4m3fn, torch.bfloat16
         )
 
-        compute_capability = get_torch_cuda_device_capability()
+        compute_capability = get_torch_cuda_device_capability() if torch_device == "cuda" else None
         self.assertTrue(fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint < fp32_memory_footprint)
         # NOTE: the following assertion would fail on our CI (running Tesla T4) due to bf16 using more memory than fp32.
         # On other devices, such as DGX (Ampere) and Audace (Ada), the test passes. So, we conditionally check it.
@@ -1527,7 +1529,7 @@ class ModelTesterMixin:
         )
 
     @parameterized.expand([False, True])
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_group_offloading(self, record_stream):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
@@ -1712,6 +1714,37 @@ class ModelPushToHubTester(unittest.TestCase):
 
         # Reset repo
         delete_repo(self.repo_id, token=TOKEN)
+
+
+class TorchCompileTesterMixin:
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        torch._dynamo.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        # clean up the VRAM after each test in case of CUDA runtime errors
+        super().tearDown()
+        torch._dynamo.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    @require_torch_gpu
+    @require_torch_2
+    @is_torch_compile
+    @slow
+    def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
 
 
 @slow
