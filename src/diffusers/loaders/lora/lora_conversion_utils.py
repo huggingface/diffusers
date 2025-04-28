@@ -433,7 +433,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         ait_up_keys = [k + ".lora_B.weight" for k in ait_keys]
         if not is_sparse:
             # down_weight is copied to each split
-            ait_sd.update({k: down_weight for k in ait_down_keys})
+            ait_sd.update(dict.fromkeys(ait_down_keys, down_weight))
 
             # up_weight is split to each split
             ait_sd.update({k: v for k, v in zip(ait_up_keys, torch.split(up_weight, dims, dim=0))})  # noqa: C416
@@ -923,7 +923,7 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
         ait_up_keys = [k + ".lora_B.weight" for k in ait_keys]
 
         # down_weight is copied to each split
-        ait_sd.update({k: down_weight for k in ait_down_keys})
+        ait_sd.update(dict.fromkeys(ait_down_keys, down_weight))
 
         # up_weight is split to each split
         ait_sd.update({k: v for k, v in zip(ait_up_keys, torch.split(up_weight, dims, dim=0))})  # noqa: C416

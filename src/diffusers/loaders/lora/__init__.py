@@ -11,6 +11,7 @@ if is_torch_available():
             CogVideoXLoraLoaderMixin,
             CogView4LoraLoaderMixin,
             FluxLoraLoaderMixin,
+            HiDreamImageLoraLoaderMixin,
             HunyuanVideoLoraLoaderMixin,
             LoraLoaderMixin,
             LTXVideoLoraLoaderMixin,

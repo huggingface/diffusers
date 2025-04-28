@@ -23,6 +23,7 @@ from .lora.lora_pipeline import (
     CogVideoXLoraLoaderMixin,
     CogView4LoraLoaderMixin,
     FluxLoraLoaderMixin,
+    HiDreamImageLoraLoaderMixin,
     HunyuanVideoLoraLoaderMixin,
     LTXVideoLoraLoaderMixin,
     Lumina2LoraLoaderMixin,
@@ -127,6 +128,13 @@ class WanLoraLoaderMixin(WanLoraLoaderMixin):
 
 
 class CogView4LoraLoaderMixin(CogView4LoraLoaderMixin):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `CogView4LoraLoaderMixin` from diffusers.loaders.lora_pipeline has been deprecated. Please use `from diffusers.loaders.lora.lora_pipeline import CogView4LoraLoaderMixin` instead."
+        deprecate("diffusers.loaders.lora_pipeline.CogView4LoraLoaderMixin", "0.36", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class HiDreamImageLoraLoaderMixin(HiDreamImageLoraLoaderMixin):
     def __init__(self, *args, **kwargs):
         deprecation_message = "Importing `CogView4LoraLoaderMixin` from diffusers.loaders.lora_pipeline has been deprecated. Please use `from diffusers.loaders.lora.lora_pipeline import CogView4LoraLoaderMixin` instead."
         deprecate("diffusers.loaders.lora_pipeline.CogView4LoraLoaderMixin", "0.36", deprecation_message)
