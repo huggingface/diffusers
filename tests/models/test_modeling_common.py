@@ -1714,6 +1714,37 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
 
+class TorchCompileTesterMixin:
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        torch._dynamo.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        # clean up the VRAM after each test in case of CUDA runtime errors
+        super().tearDown()
+        torch._dynamo.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    @require_torch_gpu
+    @require_torch_2
+    @is_torch_compile
+    @slow
+    def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
+
 @slow
 @require_torch_2
 @require_torch_accelerator

@@ -22,7 +22,7 @@ from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor
 from diffusers.models.embeddings import ImageProjection
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
@@ -78,7 +78,7 @@ def create_flux_ip_adapter_state_dict(model):
     return ip_state_dict
 
 
-class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
+class FluxTransformerTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
     model_class = FluxTransformer2DModel
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
