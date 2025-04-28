@@ -1731,7 +1731,7 @@ class TorchCompileTesterMixin:
         gc.collect()
         backend_empty_cache(torch_device)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     @require_torch_2
     @is_torch_compile
     @slow
