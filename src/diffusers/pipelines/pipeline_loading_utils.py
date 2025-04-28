@@ -841,7 +841,10 @@ def _fetch_class_library_tuple(module):
         library = not_compiled_module.__module__
 
     # retrieve class_name
-    class_name = not_compiled_module.__class__.__name__
+    if isinstance(not_compiled_module, type):
+        class_name = not_compiled_module.__name__
+    else:
+        class_name = not_compiled_module.__class__.__name__
 
     return (library, class_name)
 

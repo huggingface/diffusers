@@ -231,17 +231,17 @@ class AutoOffloadStrategy:
 
 
 
-from .modular_pipeline_utils import ComponentSpec, ComponentLoadSpec
+from .modular_pipeline_utils import ComponentSpec
 class ComponentsManager:
     def __init__(self):
         self.components = OrderedDict()
         self.added_time = OrderedDict()  # Store when components were added 
-        self.components_specs = OrderedDict()
+        self.load_ids = OrderedDict() # Store load_id of components (for model loaded with ComponentSpec)
         self.collections = OrderedDict() # collection_name -> set of component_names
         self.model_hooks = None
         self._auto_offload_enabled = False
 
-    def add(self, name, component, collection: Optional[str] = None, load_spec: Optional[ComponentLoadSpec] = None):
+    def add(self, name, component, collection: Optional[str] = None):
         if name in self.components:
             logger.warning(f"Overriding existing component '{name}' in ComponentsManager")
         
@@ -252,42 +252,12 @@ class ComponentsManager:
                 self.collections[collection] = set()
             self.collections[collection].add(name)
         
-        if load_spec is not None:
-            self.components_specs[name] = load_spec
+        if hasattr(component, "_diffusers_load_id"):
+            self.load_ids[name] = component._diffusers_load_id
 
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)    
 
-    # YiYi TODO: combine this with add method?
-    def add_with_spec(self, name, spec:Union[ComponentSpec, ComponentLoadSpec], collection: Optional[str] = None, force_add: bool = False, **kwargs):
-        """
-        Add a component to the manager.
-        
-        Args:
-            name: Name of the component in the ComponentsManager
-            component: The ComponentSpec to load
-            collection: Optional collection to add the component to
-            force_add: If True, always add the component even if the ComponentSpec already exists
-            **kwargs: Additional arguments to pass to the component loader
-        """
-             
-        if isinstance(spec, ComponentSpec) and spec.repo is None:
-            component = spec.create(**kwargs)
-            self.add(name, component, collection=collection)
-        elif isinstance(spec, ComponentSpec):
-            load_spec = spec.to_load_spec()
-        elif isinstance(spec, ComponentLoadSpec):
-            load_spec = spec
-        else:
-            raise ValueError(f"Invalid spec type: {type(spec)}")
-
-        for k, v in self.components_specs.items():
-            if v == load_spec and not force_add:
-                logger.warning(f"{name} is not added to ComponentsManager, because `{k}` already exists with same spec. Please use `force_add=True` to add it.")
-                return
-        
-        component = load_spec.load(**kwargs)
-        self.add(name, component, collection=collection, load_spec=load_spec)
 
     def remove(self, name):
 

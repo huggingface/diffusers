@@ -13,66 +13,197 @@
 # limitations under the License.
 
 import re
-from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+import inspect
+from dataclasses import dataclass, asdict, field, fields
+from typing import Any, Dict, List, Optional, Tuple, Type, Union, Literal
 
 from ..utils.import_utils import is_torch_available
-from ..configuration_utils import FrozenDict
+from ..configuration_utils import FrozenDict, ConfigMixin
 
 if is_torch_available():
     import torch
 
 
+# YiYi TODO:
+# 1. validate the dataclass fields
+# 2. add a validator for create_* methods, make sure they are valid inputs to pass to from_pretrained()
 @dataclass
 class ComponentSpec:
-    """Specification for a pipeline component."""
-    name: str
-    type_hint: Type # YiYi Notes: change to component_type?
+    """Specification for a pipeline component.
+    
+    A component can be created in two ways:
+    1. From scratch using __init__ with a config dict
+    2. using `from_pretrained`
+    
+    Attributes:
+        name: Name of the component
+        type_hint: Type of the component (e.g. UNet2DConditionModel)
+        description: Optional description of the component
+        config: Optional config dict for __init__ creation
+        repo: Optional repo path for from_pretrained creation
+        subfolder: Optional subfolder in repo
+        variant: Optional variant in repo
+        revision: Optional revision in repo
+        default_creation_method: Preferred creation method - "from_config" or "from_pretrained"
+    """
+    name: Optional[str] = None
+    type_hint: Optional[Type] = None
     description: Optional[str] = None
-    config: Optional[FrozenDict[str, Any]] = None  # you can specific default config to create a default component if it is a stateless class like scheduler, guider or image processor
-    repo: Optional[Union[str, List[str]]] = None
-    subfolder: Optional[str] = None
+    config: Optional[FrozenDict[str, Any]] = None
+    # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
+    repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
+    subfolder: Optional[str] = field(default=None, metadata={"loading": True})
+    variant: Optional[str] = field(default=None, metadata={"loading": True})
+    revision: Optional[str] = field(default=None, metadata={"loading": True})
+    default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
     
-    def create(self, **kwargs) -> Any:
-        """
-        Create the component based on the config and additional kwargs.
-        
-        Args:
-            **kwargs: Additional arguments to pass to the component's __init__ method
-            
-        Returns:
-            The created component
-        """
-        if self.config is not None:
-            init_kwargs = self.config
-        else:
-            init_kwargs = {}
-        return self.type_hint(**init_kwargs, **kwargs)
-    
-    def load(self, **kwargs) -> Any:
-        return self.to_load_spec().load(**kwargs)
-    
-    def to_load_spec(self) -> "ComponentLoadSpec":
-        """Convert to a ComponentLoadSpec for storage in ComponentsManager."""
-        return ComponentLoadSpec.from_component_spec(self)
-
-@dataclass
-class ComponentLoadSpec:
-    type_hint: type
-    repo: Optional[str] = None
-    subfolder: Optional[str] = None
-
-    def load(self, **kwargs) -> Any:
-        """Load the component from the repository."""
-        repo = kwargs.pop("repo", self.repo)
-        subfolder = kwargs.pop("subfolder", self.subfolder)
-
-        return self.type_hint.from_pretrained(repo, subfolder=subfolder, **kwargs)
-        
     
     @classmethod
-    def from_component_spec(cls, component_spec: ComponentSpec):
-        return cls(type_hint=component_spec.type_hint, repo=component_spec.repo, subfolder=component_spec.subfolder)
+    def from_component(cls, name: str, component: torch.nn.Module) -> Any:
+        """Create a ComponentSpec from a Component created by `create` method."""
+        
+        if not hasattr(component, "_diffusers_load_id"):
+            raise ValueError("Component is not created by `create` method")
+        
+        type_hint = component.__class__
+        
+        if component._diffusers_load_id == "null" and isinstance(component, ConfigMixin):
+            config = component.config
+        else:
+            config = None
+     
+        load_spec = cls.decode_load_id(component._diffusers_load_id)
+    
+        return cls(name=name, type_hint=type_hint, config=config, **load_spec)
+    
+    @classmethod
+    def loading_fields(cls) -> List[str]:
+        """
+        Return the names of all loading‐related fields
+        (i.e. those whose field.metadata["loading"] is True).
+        """
+        return [f.name for f in fields(cls) if f.metadata.get("loading", False)]
+    
+    
+    @property
+    def load_id(self) -> str:
+        """
+        Unique identifier for this spec's pretrained load,
+        composed of repo|subfolder|variant|revision (no empty segments).
+        """
+        parts = [getattr(self, k) for k in self.loading_fields()]
+        parts = ["null" if p is None else p for p in parts]
+        return "|".join(p for p in parts if p)
+    
+    @classmethod
+    def decode_load_id(cls, load_id: str) -> Dict[str, Optional[str]]:
+        """
+        Decode a load_id string back into a dictionary of loading fields and values.
+        
+        Args:
+            load_id: The load_id string to decode, format: "repo|subfolder|variant|revision"
+                     where None values are represented as "null"
+        
+        Returns:
+            Dict mapping loading field names to their values. e.g.
+            {
+                "repo": "path/to/repo",
+                "subfolder": "subfolder",
+                "variant": "variant",
+                "revision": "revision"
+            }
+            If a segment value is "null", it's replaced with None.
+            Returns None if load_id is "null" (indicating component not loaded from pretrained).
+        """
+        if load_id == "null":
+            return None
+            
+        # Get all loading fields in order
+        loading_fields = cls.loading_fields()
+        result = {f: None for f in loading_fields}
+        
+        # Split the load_id
+        parts = load_id.split("|")
+        
+        # Map parts to loading fields by position
+        for i, part in enumerate(parts):
+            if i < len(loading_fields):
+                # Convert "null" string back to None
+                result[loading_fields[i]] = None if part == "null" else part
+        
+        return result
+    
+    # YiYi TODO: add validator
+    def create(self, **kwargs) -> Any:
+        """Create the component using the preferred creation method."""
+          
+        # from_pretrained creation
+        if self.default_creation_method == "from_pretrained":
+            return self.create_from_pretrained(**kwargs)
+        elif self.default_creation_method == "from_config":
+            # from_config creation
+            return self.create_from_config(**kwargs)
+        else:
+            raise ValueError(f"Invalid creation method: {self.default_creation_method}")
+    
+    def create_from_config(self, config: Optional[Union[FrozenDict, Dict[str, Any]]] = None, **kwargs) -> Any:
+        """Create component using from_config with config."""
+
+        if self.type_hint is None:
+            raise ValueError(
+                f"`type_hint` is required when using from_config creation method."
+            )
+        if not (isinstance(self.type_hint, type) and issubclass(self.type_hint, ConfigMixin)):
+            raise ValueError(
+                f"cannot create {self.type_hint} using from_config "
+                "because it is not a `ConfigMixin`."
+            )
+    
+        config = config or self.config
+    
+        try:
+            component = self.type_hint.from_config(config, **kwargs)
+        except Exception as e:
+            raise ValueError(f"Error creating {self.name}[{self.type_hint.__name__}] from config: {e}")
+        
+        component._diffusers_load_id = "null"
+        self.config = component.config
+        
+        return component
+    
+    # YiYi TODO: add guard for type of model, if it is supported by from_pretrained
+    def create_from_pretrained(self, **kwargs) -> Any:
+        """Create component using from_pretrained."""
+        
+        passed_loading_kwargs = {key: kwargs.pop(key) for key in self.loading_fields() if key in kwargs}
+        load_kwargs = {key: passed_loading_kwargs.get(key, getattr(self, key)) for key in self.loading_fields()}
+        # repo is a required argument for from_pretrained, a.k.a. pretrained_model_name_or_path
+        repo = load_kwargs.pop("repo", None)
+        if repo is None:
+            raise ValueError(f"`repo` info is required when using from_pretrained creation method (you can directly set it in `repo` field of the ComponentSpec or pass it as an argument)")
+        
+        if self.type_hint is None:
+            try:
+                from diffusers import AutoModel
+                component = AutoModel.from_pretrained(repo, **load_kwargs, **kwargs)
+            except Exception as e:
+                raise ValueError(f"Error creating {self.name} without `type_hint` from pretrained: {e}")
+            self.type_hint = component.__class__
+        else:
+            try:
+                component = self.type_hint.from_pretrained(repo, **load_kwargs, **kwargs)
+            except Exception as e:
+                raise ValueError(f"Error creating {self.name}[{self.type_hint.__name__}] from pretrained: {e}")
+        
+        if repo != self.repo:
+            self.repo = repo
+        for k, v in passed_loading_kwargs.items():
+            if v is not None:
+                setattr(self, k, v)
+        component._diffusers_load_id = self.load_id
+            
+        return component
+    
 
 
 @dataclass 

@@ -26,7 +26,7 @@ import os
 
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, FrozenDict
 from ..utils import (
     is_accelerate_available,
     is_accelerate_version,
@@ -1162,37 +1162,10 @@ class ModularPipelineMixin:
             raise ValueError(f"Output '{output}' is not a valid output type")
 
 
-# YiYi TODO: refactor the _fetch_class_library_tuple in pipeline_loading_utils.py to acceept class (current object)
-from .pipeline_loading_utils import LOADABLE_CLASSES
+
+
+from .pipeline_loading_utils import _fetch_class_library_tuple
 import importlib
-def _fetch_class_library_tuple(module_class):
-    # import it here to avoid circular import
-    diffusers_module = importlib.import_module(__name__.split(".")[0])
-    pipelines = getattr(diffusers_module, "pipelines")
-
-    library = module_class.__module__.split(".")[0]
-
-    # check if the module is a pipeline module
-    module_path_items = module_class.__module__.split(".")
-    pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
-
-    path = module_class.__module__.split(".")
-    is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
-
-    # if library is not in LOADABLE_CLASSES, then it is a custom module.
-    # Or if it's a pipeline module, then the module is inside the pipeline
-    # folder so we set the library to module name.
-    if is_pipeline_module:
-        library = pipeline_dir
-    elif library not in LOADABLE_CLASSES:
-        library = module_class.__module__
-
-    # retrieve class_name
-    class_name = module_class.__name__
-
-    return (library, class_name)
-
-
 def simple_import_class_obj(library_name, class_name):
     from diffusers import pipelines
     is_pipeline_module = hasattr(pipelines, library_name)
@@ -1206,6 +1179,11 @@ def simple_import_class_obj(library_name, class_name):
 
     return class_obj
 
+
+# YiYi TODO: 
+# 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
+# 2. do we need ConfigSpec? seems pretty unnecessrary for loader, can just add and kwargs to the loader
+# 3. add validator for methods where we accpet kwargs to be passed to from_pretrained()
 class ModularLoader(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines loaders.
@@ -1217,7 +1195,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
     def register_components(self, **kwargs):
         """
         Register components with their corresponding specs. 
-        This method is called when component changed or its spec changed (in self.component_specs).
+        This method is called when component changed or __init__ is called.
 
         Args:
             **kwargs: Keyword arguments where keys are component names and values are component objects.
@@ -1225,28 +1203,40 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         """
         for name, module in kwargs.items():
 
-            is_initialized = hasattr(self, name)
-
-            # update config based on the updated component spec
-            component_spec = self.component_specs.get(name)
+            # current component spec
+            component_spec = self._component_specs.get(name)
             if component_spec is None:
                 logger.warning(f"register_components: skipping unknown component '{name}'")
                 continue
+            
+            is_registered = hasattr(self, name)
 
-            library, class_name = _fetch_class_library_tuple(component_spec.type_hint)
-            load_spec_dict = OrderedDict({
-                "repo": component_spec.repo,
-                "subfolder": component_spec.subfolder,
-            })
+            if module is not None and not hasattr(module, "_diffusers_load_id"):
+                raise ValueError(f"`ModularLoader` only supports components created from `ComponentSpec`.")
 
-            register_dict = {name: (library, class_name, load_spec_dict)}
+            # actual library and class name of the module
 
-            # save model index config
-            self.register_to_config(**register_dict)
+            if module is not None:
+                library, class_name = _fetch_class_library_tuple(module)
+                new_component_spec = ComponentSpec.from_component(name, module)
+                component_spec_dict = self._component_spec_to_dict(new_component_spec)
+            
+            else:
+                library, class_name = None, None
+                # if module is None, we do not update the spec, 
+                # but we still need to update the config to make sure it's synced with the component spec
+                # (in the case of the first time registration, we initilize the object with component spec, and then we call register_components() to register it to config)
+                new_component_spec = component_spec
+                component_spec_dict = self._component_spec_to_dict(component_spec)
+            
+            
+            register_dict = {name: (library, class_name, component_spec_dict)}
 
             # set the component as attribute
-            # if it is not set yet, just set it and skip the warnings below
-            if not is_initialized:
+            # if it is not set yet, just set it and skip the process to check and warn below
+            if not is_registered:
+                self.register_to_config(**register_dict)
+                self._component_specs[name] = new_component_spec
                 setattr(self, name, module)
                 continue
             
@@ -1257,23 +1247,14 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 continue
             
             # it module is not an instance of the expected type, still register it but with a warning
-            if module is not None and not isinstance(module, component_spec.type_hint):
-                logger.warning(f"register_components: adding {name} with type: {module.__class__.__name__}, expected: {component_spec.type_hint.__name__}")
+            if module is not None and component_spec.type_hint is not None and not isinstance(module, component_spec.type_hint):
+                logger.warning(f"register_components: adding {name} with new type: {module.__class__.__name__}, previous type: {component_spec.type_hint.__name__}")
 
             # warn if unregister
             if current_module is not None and module is None:
                 logger.info(
                     f"register_components: setting '{name}' to None "
                     f"(was {current_module.__class__.__name__})"
-                )
-            # warn if class mismatch
-            elif current_module is not None \
-                and module is not None \
-                and not isinstance(module, current_module.__class__):
-                logger.warning(
-                    f"register_components: overwriting component '{name}' "
-                    f"(type {current_module.__class__.__name__}) "
-                    f"with DIFFERENT type {module.__class__.__name__}"
                 )
             # same type, new instance → debug
             elif current_module is not None \
@@ -1285,26 +1266,34 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                     f"(same type {type(current_module).__name__}, new instance)"
                 )
 
+            # save modular_model_index.json config
+            self.register_to_config(**register_dict)
+            # update component spec
+            self._component_specs[name] = new_component_spec
             # finally set models
             setattr(self, name, module)
 
 
-    def __init__(self, component_specs: List[ComponentSpec], config_specs: Optional[List[ConfigSpec]]=None):
-        self.component_specs = {
-            spec.name: deepcopy(spec) for spec in (component_specs or [])
+    # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
+    def __init__(self, specs: List[Union[ComponentSpec, ConfigSpec]]):
+        """
+        Initialize the loader with a list of component specs and config specs.
+        """
+        self._component_specs = {
+            spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ComponentSpec)
         }
-        self.config_specs = {
-            spec.name: deepcopy(spec) for spec in (config_specs  or [])
+        self._config_specs = {
+            spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ConfigSpec)
         }
 
         register_components_dict = {}
-        for component_spec in self.component_specs.values():
-            register_components_dict[component_spec.name] = None
+        for name, component_spec in self._component_specs.items():
+            register_components_dict[name] = None
         self.register_components(**register_components_dict)
         
         default_configs = {}
-        for config_spec in self.config_specs.values():
-            default_configs[config_spec.name] = config_spec.default
+        for name, config_spec in self._config_specs.items():
+            default_configs[name] = config_spec.default
         self.register_to_config(**default_configs)
 
 
@@ -1366,145 +1355,115 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         # return only components we've actually set as attributes on self
         return {
             name: getattr(self, name)
-            for name in self.component_specs.keys()
+            for name in self._component_specs.keys()
             if hasattr(self, name)
         }
 
-    def update(self, repo=None, **kwargs):
+    def update(self, **kwargs):
         """
         Update components and configs after instance creation.
         
         Args:
-            repo (str, optional): Default repository to use for all components
-            **kwargs:
-                Updates, which can be:
-                - For components:
-                    - A string: Used as the repository name
-                    - A tuple: (repo, subfolder) or (repo,)
-                    - A ComponentSpec: Replace the existing spec
 
-                    If the component is already loaded, it will be reloaded with updated info;
-                    otherwise only the spec is updated.
-
-                - For configs:
-                    - Any value: Update the config value
-
-            - Additional loader options:
-                Passed through to the underlying component loading methods
-                (e.g., from_pretrained), such as torch_dtype, revision, variant, etc.
         """   
-
-        # extract component_updates from `kwargs``:
-        # e.g. loader.update(unet=..., vae=...)` -> {"unet": ..., "vae": ...}
-        component_updates = {k: kwargs.pop(k) for k in self.component_specs.keys() if k in kwargs}
-        # extract config_updates from `kwargs``:
-        # e.g. loader.update(requires_aesthetics_score=False) -> {"requires_aesthetics_score": False}
-        config_updates = {k: kwargs.pop(k) for k in self.config_specs.keys() if k in kwargs}
-        
-        # create a dict to contain all the component specs to be updated,
-        new_components_specs = {}
-
-        # update global default repo on each component spec
-        # e.g loader.update(repo="new_repo") -> {"unet": ComponentSpec(repo="new_repo", ...), "vae": ComponentSpec(repo="new_repo", ...)}
-        if repo is not None:
-            for spec in self.component_specs.values():
-                new_spec = deepcopy(spec)
-                new_spec.repo = repo
-                new_components_specs[spec.name] = new_spec
-
-        # update component specs with component updates extracted from the `kwargs`
-        # YiYi Notes: should we automatically reload?
-        for name, new_value in component_updates.items():
-            # make a copy of the spec to avoid partial mutation
-            new_spec = deepcopy(self.component_specs[name])
-            if isinstance(new_value, ComponentSpec):
-                # e.g. loader.update(unet = ComponentSpec(type_hint=UNet2DConditionModel, ...))
-                new_spec = new_value
-            elif isinstance(new_value, str):
-                # e.g. loader.update(unet="repo/unet")
-                new_spec.repo = new_value
-            elif isinstance(new_value, (tuple, list)):
-                # e.g. loader.update(unet = ("repo/unet", "subfolder"))
-                new_spec.repo = new_value[0]
-                if len(new_value) > 1:
-                    new_spec.subfolder = new_value[1]
-            
-            # potentially override the spec if global repo is provided
-            new_components_specs[name] = new_spec
-                
-        # attempt to update the components if it's already loaded
-        components_to_register = {}
-        for name, new_component_spec in new_components_specs.items():
-            if getattr(self, name, None) is not None:
-                try:
-                    # perform atomic update only if successful load the new component
-                    # load, update components_spec and register_components
-                    new_component = new_component_spec.load(**kwargs)
-                    self.component_specs[name] = new_component_spec
-                    components_to_register[name] = new_component
-                except Exception as e:
-                    logger.warning(f"Failed to update component '{name}': {e}")
-            else:
-                # only update the spec if the component is not loaded (e.g. self.unet = None)
-                self.component_specs[name] = new_component_spec
-                components_to_register[name] = None
-        
-        self.register_components(**components_to_register)
-
-        config_to_register = {}
-        for name, new_value in config_updates.items():
-            if isinstance(new_value, ConfigSpec):
-                # e.g. requires_aesthetics_score = ConfigSpec(name="requires_aesthetics_score", default=False)
-                self.config_specs[name] = new_value
-                config_to_register[name] = new_value.default
-            else:
-                # e.g. requires_aesthetics_score = False
-                self.config_specs[name].default = new_value
-                config_to_register[name] = new_value
-        self.register_to_config(**config_to_register)
-
-    def load(self, **kwargs):
         """
-        Load components and optionally set config values.
+        Update components and configuration values after the loader has been instantiated.
         
-        This method has three modes:
-        1. `self.load()` - load all components from their specs
-        2. `self.load(unet=unet, text_encoder=text_encoder)` - use provided components directly,
-           load remaining components from specs
-        3. `self.load(...,requires_aesthetics_score=False)` - additinally set config values
+        This method allows you to:
+        1. Replace existing components with new ones (e.g., updating the unet or text_encoder)
+        2. Update configuration values (e.g., changing requires_safety_checker flag)
         
         Args:
-            **kwargs: Can include:
-                - Component objects to set directly (e.g., unet=my_unet)
-                - config values to set (e.g., requires_aesthetics_score=False)
-                - additional kwargs to be passed to `from_pretrained()`, e.g. torch_dtype=torch.bfloat16
+            **kwargs: Component objects or configuration values to update:
+                - Component objects: Must be created using ComponentSpec (e.g., `unet=new_unet, text_encoder=new_encoder`)
+                - Configuration values: Simple values to update configuration settings (e.g., `requires_safety_checker=False`)
         
-        Returns:
-            self: The loader instance with loaded components
+        Raises:
+            ValueError: If a component wasn't created using ComponentSpec (doesn't have `_diffusers_load_id` attribute)
+            
+        Examples:
+            ```python
+            # Update multiple components at once
+            loader.update(
+                unet=new_unet_model,
+                text_encoder=new_text_encoder
+            )
+            
+            # Update configuration values
+            loader.update(
+                requires_safety_checker=False,
+                guidance_rescale=0.7
+            )
+            
+            # Update both components and configs together
+            loader.update(
+                unet=new_unet_model,
+                requires_safety_checker=False
+            )
+            ```
+        """   
+
+        # extract component_specs_updates & config_specs_updates from `specs`
+        passed_components = {k: kwargs.pop(k) for k in self._component_specs if k in kwargs}
+        passed_config_values = {k: kwargs.pop(k) for k in self._config_specs if k in kwargs}
+
+        for name, component in passed_components.items():
+            if not hasattr(component, "_diffusers_load_id"):
+                raise ValueError(f"`ModularLoader` only supports components created from `ComponentSpec`.")   
+    
+        if len(kwargs) > 0:
+            raise logger.warning(f"Unexpected keyword arguments, will be ignored: {kwargs.keys()}")
+        
+
+        self.register_components(**passed_components)
+
+
+        config_to_register = {}
+        for name, new_value in passed_config_values.items():
+
+            # e.g. requires_aesthetics_score = False
+            self._config_specs[name].default = new_value
+            config_to_register[name] = new_value
+        self.register_to_config(**config_to_register)
+
+
+    # YiYi TODO: support map for additional from_pretrained kwargs
+    def load(self, component_names: List[str], **kwargs):
         """
-        config_updates = {k: kwargs.pop(k) for k in self.config_specs.keys() if k in kwargs}
-        passed_component_obj = {k: kwargs.pop(k) for k in self.component_specs.keys() if k in kwargs}
+        Load selectedcomponents from specs.
         
-        # 1. Set any config values provided (without updating defaults in specs)
-        if config_updates:
-            self.register_to_config(**config_updates)
+        Args:
+            component_names: List of component names to load
+            **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
+             - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
+             - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
+             - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g. `repo`, `variant`, `revision`, etc.
+        """
+        if not isinstance(component_names, list):
+            component_names = [component_names]
+
+        components_to_load = set([name for name in component_names if name in self._component_specs])
+        unknown_component_names = set([name for name in component_names if name not in self._component_specs])
+        if len(unknown_component_names) > 0:
+            logger.warning(f"Unknown components will be ignored: {unknown_component_names}")
         
-        # 2. Process components
         components_to_register = {}
-        
-        # First register the components provided directly
-        for name, component in passed_component_obj.items():
-            components_to_register[name] = component
-        
-        # Then load the remaining components from specs
-        remaining_components = set(self.component_specs.keys()) - set(passed_component_obj.keys())
-        for name in remaining_components:
-            spec = self.component_specs[name]
+        for name in components_to_load:
+            spec = self._component_specs[name]
+            component_load_kwargs = {}
+            for key, value in kwargs.items():
+                if not isinstance(value, dict):
+                    # if the value is a single value, apply it to all components
+                    component_load_kwargs[key] = value
+                else:
+                    if name in value:
+                        # if it is a dict, check if the component name is in the dict
+                        component_load_kwargs[key] = value[name]
+                    elif "default" in value:
+                        # check if the default is specified
+                        component_load_kwargs[key] = value["default"]
             try:
-                if spec.repo is not None:
-                    components_to_register[name] = spec.load(**kwargs)
-                elif spec.config is not None:
-                    components_to_register[name] = spec.create()
+                components_to_register[name] = spec.create(**component_load_kwargs)
             except Exception as e:
                 logger.warning(f"Failed to create component '{name}': {e}")
             
@@ -1518,16 +1477,21 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
     # YiYi TODO: 
     # 1. should support save some components too! currently only modular_model_index.json is saved
     # 2. maybe order the json file to make it more readable: configs first, then components
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, spec_only: bool = True, **kwargs):
 
-        component_names = list(self.component_specs.keys())
-        config_names = list(self.config_specs.keys())
+        component_names = list(self._component_specs.keys())
+        config_names = list(self._config_specs.keys())
         self.register_to_config(_components_names=component_names, _configs_names=config_names)
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
+        config = dict(self.config)
+        config.pop("_components_names", None)
+        config.pop("_configs_names", None)
+        self._internal_dict = FrozenDict(config)
+
     
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None, **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], spec_only: bool = True, **kwargs):
         
         config_dict = cls.load_config(pretrained_model_name_or_path, **kwargs)
         expected_component = set(config_dict.pop("_components_names"))
@@ -1537,12 +1501,97 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         config_specs = []
         for name, value in config_dict.items():
             if name in expected_component and isinstance(value, (tuple, list)) and len(value) == 3:
-                library_name, class_name, load_spec_dict = value
-                type_hint = simple_import_class_obj(library_name, class_name)
-                component_specs.append(ComponentSpec(name=name, type_hint=type_hint, **load_spec_dict))
+                library, class_name, component_spec_dict = value
+                component_spec = cls._dict_to_component_spec(name, component_spec_dict)
+                component_specs.append(component_spec)
 
             elif name in expected_config:
                 config_specs.append(ConfigSpec(name=name, default=value))
-        return cls(component_specs, config_specs=config_specs)
+        return cls(component_specs + config_specs)
+
+    
+    @staticmethod
+    def _component_spec_to_dict(component_spec: ComponentSpec) -> Any:
+        """
+        Convert a ComponentSpec into a JSON‐serializable dict for saving in
+        `modular_model_index.json`.
+
+        This dict contains:
+          - "type_hint": Tuple[str, str]
+              The fully‐qualified module path and class name of the component.
+          - All loading fields defined by `component_spec.loading_fields()`, typically:
+              - "repo": Optional[str]
+                  The model repository (e.g., "stabilityai/stable-diffusion-xl").
+              - "subfolder": Optional[str]
+                  A subfolder within the repo where this component lives.
+              - "variant": Optional[str]
+                  An optional variant identifier for the model.
+              - "revision": Optional[str]
+                  A specific git revision (commit hash, tag, or branch).
+              - ... any other loading fields defined on the spec.
+
+        Args:
+            component_spec (ComponentSpec):
+                The spec object describing one pipeline component.
+
+        Returns:
+            Dict[str, Any]: A mapping suitable for JSON serialization.
+
+        Example:
+            >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec
+            >>> from diffusers.models.unet import UNet2DConditionModel
+            >>> spec = ComponentSpec(
+            ...     name="unet",
+            ...     type_hint=UNet2DConditionModel,
+            ...     config=None,
+            ...     repo="path/to/repo",
+            ...     subfolder="subfolder",
+            ...     variant=None,
+            ...     revision=None,
+            ...     default_creation_method="from_pretrained",
+            ... )
+            >>> ModularLoader._component_spec_to_dict(spec)
+            {
+                "type_hint": ("diffusers.models.unet", "UNet2DConditionModel"),
+                "repo": "path/to/repo",
+                "subfolder": "subfolder",
+                "variant": None,
+                "revision": None,
+            }
+        """
+        if component_spec.type_hint is not None:
+            lib_name, cls_name = _fetch_class_library_tuple(component_spec.type_hint)
+        else:
+            lib_name = None
+            cls_name = None
+        load_spec_dict = {k: getattr(component_spec, k) for k in component_spec.loading_fields()}
+        return {
+            "type_hint": (lib_name, cls_name),
+            **load_spec_dict,
+        }
+
+    @staticmethod
+    def _dict_to_component_spec(
+        name: str,
+        spec_dict: Dict[str, Any],
+    ) -> ComponentSpec:
+        """
+        Reconstruct a ComponentSpec from a dict.
+        """
+        # make a shallow copy so we can pop() safely
+        spec_dict = spec_dict.copy()
+        # pull out and resolve the stored type_hint
+        lib_name, cls_name = spec_dict.pop("type_hint")
+        if lib_name is not None and cls_name is not None:
+            type_hint = simple_import_class_obj(lib_name, cls_name)
+        else:
+            type_hint = None
+
+        # re‐assemble the ComponentSpec
+        return ComponentSpec(
+            name=name,
+            type_hint=type_hint,
+            **spec_dict,
+        )
 
 
