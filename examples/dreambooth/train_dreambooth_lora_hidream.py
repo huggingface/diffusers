@@ -748,16 +748,8 @@ class DreamBoothDataset(Dataset):
             size=1024,
             repeats=1,
             center_crop=False,
-            # buckets=[(1024,1024),(768,1360),(1360, 768),(880, 1168),(1168, 880), (1248, 832), (832, 1248)],
-            buckets=[(1024, 1024)],
-            # "1024 × 1024 (Square)",
-            # "768 × 1360 (Portrait)",
-            # "1360 × 768 (Landscape)",
-            # "880 × 1168 (Portrait)",
-            # "1168 × 880 (Landscape)",
-            # "1248 × 832 (Landscape)",
-            # "832 × 1248 (Portrait)"
-            # bucket_aspects = [1.0, 9/16, 16/9, 3/4, 4/3, 3/2, 2/3],
+            buckets=[(1024,1024),(768,1360),(1360, 768),(880, 1168),(1168, 880), (1248, 832), (832, 1248)],
+            # buckets=[(1024, 1024)],
     ):
         # self.size = size
         self.center_crop = center_crop
