@@ -77,7 +77,8 @@ class OnnxRuntimeModel:
 
         if provider_options is None:
             provider_options = []
-        else:
+        elif not isinstance(provider_options, list):
+        
             provider_options = [provider_options]
 
         return ort.InferenceSession(
