@@ -79,6 +79,33 @@ logger = get_logger(__name__)
 if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
 
+def parse_buckets_string(buckets_str):
+    """ Parses a string defining buckets into a list of (height, width) tuples. """
+    if not buckets_str:
+        raise ValueError("Bucket string cannot be empty.")
+
+    bucket_pairs = buckets_str.strip().split(';')
+    parsed_buckets = []
+    for pair_str in bucket_pairs:
+        match = re.match(r"^\s*(\d+)\s*,\s*(\d+)\s*$", pair_str)
+        if not match:
+            raise ValueError(f"Invalid bucket format: '{pair_str}'. Expected 'height,width'.")
+        try:
+            height = int(match.group(1))
+            width = int(match.group(2))
+            if height <= 0 or width <= 0:
+                raise ValueError("Bucket dimensions must be positive integers.")
+            if height % 8 != 0 or width % 8 != 0:
+                logger.warning(f"Bucket dimension ({height},{width}) not divisible by 8. This might cause issues.")
+            parsed_buckets.append((height, width))
+        except ValueError as e:
+            raise ValueError(f"Invalid integer in bucket pair '{pair_str}': {e}") from e
+
+    if not parsed_buckets:
+         raise ValueError("No valid buckets found in the provided string.")
+
+    logger.info(f"Using parsed aspect ratio buckets: {parsed_buckets}")
+    return parsed_buckets
 
 def save_model_card(
         repo_id: str,
@@ -444,6 +471,16 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--aspect_ratio_buckets",
+        type=str,
+        default=None,
+        help=(
+            "Aspect ratio buckets to use for training. Define as a string of 'h1,w1;h2,w2;...'. "
+            "e.g. '1024,1024;768,1360;1360,768;880,1168;1168,880;1248,832;832,1248'"
+            "Images will be resized and cropped to fit the nearest bucket."
+        ),
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -751,7 +788,7 @@ class DreamBoothDataset(Dataset):
             buckets=[(1024,1024),(768,1360),(1360, 768),(880, 1168),(1168, 880), (1248, 832), (832, 1248)],
             # buckets=[(1024, 1024)],
     ):
-        # self.size = size
+        # self.size = (size, size)
         self.center_crop = center_crop
 
         self.instance_prompt = instance_prompt
@@ -836,15 +873,14 @@ class DreamBoothDataset(Dataset):
 
             width, height = image.size
             print("width, height", width, height)
-            aspect_ratio = width / float(height)
             # Find the closest bucket
             bucket_idx = find_nearest_bucket(height, width, self.buckets)
             target_height, target_width = self.buckets[bucket_idx]
-            size = (target_height, target_width)
-            print("WTF", size, type(size))
+            self.size = (target_height, target_width)
+
             # based on the bucket assignment, define the transformations
-            train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-            train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
+            train_resize = transforms.Resize(self.size, interpolation=transforms.InterpolationMode.BILINEAR)
+            train_crop = transforms.CenterCrop(self.size) if center_crop else transforms.RandomCrop(self.size)
             train_flip = transforms.RandomHorizontalFlip(p=1.0)
             train_transforms = transforms.Compose(
                 [
@@ -857,7 +893,7 @@ class DreamBoothDataset(Dataset):
                 image = train_crop(image)
                 print("cropped", image.size)
             else:
-                y1, x1, h, w = train_crop.get_params(image, size)
+                y1, x1, h, w = train_crop.get_params(image, self.size)
                 image = crop(image, y1, x1, h, w)
                 print("cropped", image.size)
 
@@ -882,8 +918,8 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(self.size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(self.size) if center_crop else transforms.RandomCrop(self.size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -1361,6 +1397,11 @@ def main(args):
             safeguard_warmup=args.prodigy_safeguard_warmup,
         )
 
+    if args.aspect_ratio_buckets:
+        buckets = parse_buckets_string(args.aspect_ratio_buckets)
+    else:
+        buckets = [(args.resolution, args.resolution)]
+
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -1369,6 +1410,7 @@ def main(args):
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         class_num=args.num_class_images,
         size=args.resolution,
+        buckets=buckets,
         repeats=args.repeats,
         center_crop=args.center_crop,
     )
