@@ -57,13 +57,19 @@ EXAMPLE_DOC_STRING = """
         >>> image_paths = [
         ...     # in-context examples
         ...     [
-        ...         load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_mask.jpg'),
-        ...         load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_image.jpg'),
+        ...         load_image(
+        ...             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_mask.jpg"
+        ...         ),
+        ...         load_image(
+        ...             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_image.jpg"
+        ...         ),
         ...     ],
         ...     # query with the target image
         ...     [
-        ...         load_image('https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_query_mask.jpg'),
-        ...         None, # No image needed for the target image
+        ...         load_image(
+        ...             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_query_mask.jpg"
+        ...         ),
+        ...         None,  # No image needed for the target image
         ...     ],
         ... ]
         >>> task_prompt = "In each row, a logical task is demonstrated to achieve [IMAGE2] an aesthetically pleasing photograph based on [IMAGE1] sam 2-generated masks with rich color coding."
