@@ -207,7 +207,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         encoder_attention_mask: torch.Tensor,
         pooled_projections: torch.Tensor,
         image_embeds: torch.Tensor,
-        latent_indices: torch.Tensor,
+        indices_latents: torch.Tensor,
         guidance: Optional[torch.Tensor] = None,
         latents_clean: Optional[torch.Tensor] = None,
         indices_latents_clean: Optional[torch.Tensor] = None,
@@ -241,11 +241,11 @@ class HunyuanVideoFramepackTransformer3DModel(
 
         hidden_states, image_rotary_emb = self._pack_history_states(
             hidden_states,
-            latent_indices,
+            indices_latents,
             latents_clean,
-            indices_latents_clean,
             latents_history_2x,
             indices_latents_history_2x,
+            indices_latents_clean,
             latents_history_4x,
             indices_latents_history_4x,
         )
@@ -318,7 +318,7 @@ class HunyuanVideoFramepackTransformer3DModel(
     def _pack_history_states(
         self,
         hidden_states: torch.Tensor,
-        latent_indices: torch.Tensor,
+        indices_latents: torch.Tensor,
         latents_clean: Optional[torch.Tensor] = None,
         latents_history_2x: Optional[torch.Tensor] = None,
         latents_history_4x: Optional[torch.Tensor] = None,
@@ -327,13 +327,13 @@ class HunyuanVideoFramepackTransformer3DModel(
         indices_latents_history_4x: Optional[torch.Tensor] = None,
     ):
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        if latent_indices is None:
-            latent_indices = torch.arange(0, num_frames).unsqueeze(0).expand(batch_size, -1)
+        if indices_latents is None:
+            indices_latents = torch.arange(0, num_frames).unsqueeze(0).expand(batch_size, -1)
 
         hidden_states = self.x_embedder(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
         image_rotary_emb = self.rope(
-            frame_indices=latent_indices, height=height, width=width, device=hidden_states.device
+            frame_indices=indices_latents, height=height, width=width, device=hidden_states.device
         )
 
         latents_clean, latents_history_2x, latents_history_4x = self.clean_x_embedder(

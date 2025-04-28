@@ -1,4 +1,4 @@
-# Copyright 2024 The HunyuanVideo Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Framepack Team, The HunyuanVideo Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ from transformers import (
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import HunyuanVideoLoraLoaderMixin
-from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
+from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoFramepackTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -182,7 +182,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         self,
         text_encoder: LlamaModel,
         tokenizer: LlamaTokenizerFast,
-        transformer: HunyuanVideoTransformer3DModel,
+        transformer: HunyuanVideoFramepackTransformer3DModel,
         vae: AutoencoderKLHunyuanVideo,
         scheduler: FlowMatchEulerDiscreteScheduler,
         text_encoder_2: CLIPTextModel,
@@ -353,13 +353,14 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         return prompt_embeds, pooled_prompt_embeds, prompt_attention_mask
 
     def encode_image(
-        self, image: PipelineImageInput, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+        self, image: torch.Tensor, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ):
-        device = device or self.image_encoder.device
-        dtype = dtype or self.image_encoder.dtype
-        image = self.image_processor(images=image, return_tensors="pt").to(device=device, dtype=dtype)
+        image = (image + 1) / 2.0  # [-1, 1] -> [0, 1]
+        image = self.feature_extractor(images=image, return_tensors="pt").to(
+            device=self.image_encoder.device, dtype=self.image_encoder.dtype
+        )
         image_embeds = self.image_encoder(**image).last_hidden_state
-        return image_embeds
+        return image_embeds.to(dtype=dtype)
 
     def check_inputs(
         self,
@@ -445,12 +446,11 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-        image = image.to(device=self.vae.device, dtype=self.vae.dtype)
-        latents = self.vae.encode(image).latent_dist.sample(generator=generator)
-        latents = latents * self.vae.config.scaling_factor
-        return latents
+        if latents is None:
+            image = image.unsqueeze(2).to(device=self.vae.device, dtype=self.vae.dtype)
+            latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+            latents = latents * self.vae.config.scaling_factor
+        return latents.to(device=device, dtype=dtype)
 
     def enable_vae_slicing(self):
         r"""
@@ -703,7 +703,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
         # 4. Prepare image
         image = self.video_processor.preprocess(image, height, width)
-        image_embeds = self.encode_image(image, device=device)
+        image_embeds = self.encode_image(image, device=device).to(transformer_dtype)
 
         # 4. Prepare timesteps
         sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
@@ -715,25 +715,28 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         num_latent_sections = max(1, (num_frames + window_size - 1) // window_size)
         # Specific to the released checkpoint: https://huggingface.co/lllyasviel/FramePackI2V_HY
         # TODO: find a more generic way in future if there are more checkpoints
-        history_sizes = [1, 9, 16]
+        history_sizes = [1, 2, 16]
         history_latents = torch.zeros(
             batch_size,
             num_channels_latents,
             sum(history_sizes),
             height // self.vae_scale_factor_spatial,
             width // self.vae_scale_factor_spatial,
+            device=device,
             dtype=torch.float32,
         )
         history_video = None
 
-        image_latents = self.prepare_image_latentss(image, generator=generator, latents=image_latents)
+        image_latents = self.prepare_image_latents(
+            image, dtype=torch.float32, device=device, generator=generator, latents=image_latents
+        )
 
         latent_paddings = list(reversed(range(num_latent_sections)))
         if num_latent_sections > 4:
             latent_paddings = [3] + [2] * (num_latent_sections - 3) + [1, 0]
 
         # 6. Prepare guidance condition
-        guidance = torch.tensor([guidance_scale] * latents.shape[0], dtype=transformer_dtype, device=device) * 1000.0
+        guidance = torch.tensor([guidance_scale] * batch_size, dtype=transformer_dtype, device=device) * 1000.0
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -749,7 +752,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             (
                 indices_prefix,
                 indices_padding,
-                indices_latents_clean,
+                indices_latents,
                 indices_postfix,
                 indices_latents_history_2x,
                 indices_latents_history_4x,
@@ -757,7 +760,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             # Inverted anti-drifting sampling: Figure 2(c) in the paper
             indices_clean_latents = torch.cat([indices_prefix, indices_postfix], dim=1)
 
-            latents_prefix = image_latents.to(device=device, dtype=transformer_dtype)
+            latents_prefix = image_latents
             latents_postfix, latents_history_2x, latents_history_4x = history_latents[
                 :, :, : sum(history_sizes)
             ].split(history_sizes, dim=2)
@@ -781,23 +784,22 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                         continue
 
                     self._current_timestep = t
-                    latent_model_input = latents.to(transformer_dtype)
-                    # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                    timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                    timestep = t.expand(latents.shape[0])
 
                     noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
+                        hidden_states=latents.to(transformer_dtype),
                         timestep=timestep,
                         encoder_hidden_states=prompt_embeds,
                         encoder_attention_mask=prompt_attention_mask,
                         pooled_projections=pooled_prompt_embeds,
-                        guidance=guidance,
                         image_embeds=image_embeds,
-                        latents_clean=latents_clean,
+                        indices_latents=indices_latents,
+                        guidance=guidance,
+                        latents_clean=latents_clean.to(transformer_dtype),
                         indices_latents_clean=indices_clean_latents,
-                        latents_history_2x=latents_history_2x,
+                        latents_history_2x=latents_history_2x.to(transformer_dtype),
                         indices_latents_history_2x=indices_latents_history_2x,
-                        latents_history_4x=latents_history_4x,
+                        latents_history_4x=latents_history_4x.to(transformer_dtype),
                         indices_latents_history_4x=indices_latents_history_4x,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
@@ -805,26 +807,27 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
                     if do_true_cfg:
                         neg_noise_pred = self.transformer(
-                            hidden_states=latent_model_input,
+                            hidden_states=latents.to(transformer_dtype),
                             timestep=timestep,
                             encoder_hidden_states=negative_prompt_embeds,
                             encoder_attention_mask=negative_prompt_attention_mask,
                             pooled_projections=negative_pooled_prompt_embeds,
                             image_embeds=image_embeds,
-                            latents_clean=latents_clean,
-                            indices_latents_clean=indices_clean_latents,
-                            latents_history_2x=latents_history_2x,
-                            indices_latents_history_2x=indices_latents_history_2x,
-                            latents_history_4x=latents_history_4x,
-                            indices_latents_history_4x=indices_latents_history_4x,
+                            indices_latents=indices_latents,
                             guidance=guidance,
+                            latents_clean=latents_clean.to(transformer_dtype),
+                            indices_latents_clean=indices_clean_latents,
+                            latents_history_2x=latents_history_2x.to(transformer_dtype),
+                            indices_latents_history_2x=indices_latents_history_2x,
+                            latents_history_4x=latents_history_4x.to(transformer_dtype),
+                            indices_latents_history_4x=indices_latents_history_4x,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
                         noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                    latents = self.scheduler.step(noise_pred.float(), t, latents, return_dict=False)[0]
 
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
@@ -846,7 +849,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                     latents = torch.cat([latents_prefix, latents])
 
                 total_generated_latent_frames += latents.shape[2]
-                history_latents = torch.cat([latents.to(history_latents), history_latents], dim=2)
+                history_latents = torch.cat([latents, history_latents], dim=2)
 
                 real_history_latents = history_latents[:, :, :total_generated_latent_frames]
 
@@ -874,6 +877,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         self._current_timestep = None
 
         if not output_type == "latent":
+            history_video = history_video[:, :, :num_frames]
             video = self.video_processor.postprocess_video(history_video, output_type=output_type)
         else:
             video = history_video
