@@ -312,9 +312,9 @@ if __name__ == "__main__":
                     # These are the coordinates of the output image
                     out_coordinates = np.arange(1, out_length + 1)
 
-                    # since both scale-factor and output size can be provided simulatneously, perserving the center of the image requires shifting
-                    # the output coordinates. the deviation is because out_length doesn't necesary equal in_length*scale.
-                    # to keep the center we need to subtract half of this deivation so that we get equal margins for boths sides and center is preserved.
+                    # since both scale-factor and output size can be provided simultaneously, preserving the center of the image requires shifting
+                    # the output coordinates. the deviation is because out_length doesn't necessary equal in_length*scale.
+                    # to keep the center we need to subtract half of this deviation so that we get equal margins for both sides and center is preserved.
                     shifted_out_coordinates = out_coordinates - (out_length - in_length * scale) / 2
 
                     # These are the matching positions of the output-coordinates on the input image coordinates.
