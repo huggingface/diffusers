@@ -78,7 +78,6 @@ class OnnxRuntimeModel:
         if provider_options is None:
             provider_options = []
         elif not isinstance(provider_options, list):
-        
             provider_options = [provider_options]
 
         return ort.InferenceSession(
@@ -180,7 +179,10 @@ class OnnxRuntimeModel:
         # load model from local directory
         if os.path.isdir(model_id):
             model = OnnxRuntimeModel.load_model(
-                Path(model_id, model_file_name).as_posix(), provider=provider, sess_options=sess_options, provider_options=kwargs.get("provider_options")
+                Path(model_id, model_file_name).as_posix(),
+                provider=provider,
+                sess_options=sess_options,
+                provider_options=kwargs.get("provider_options"),
             )
             kwargs["model_save_dir"] = Path(model_id)
         # load model from hub
@@ -196,7 +198,12 @@ class OnnxRuntimeModel:
             )
             kwargs["model_save_dir"] = Path(model_cache_path).parent
             kwargs["latest_model_name"] = Path(model_cache_path).name
-            model = OnnxRuntimeModel.load_model(model_cache_path, provider=provider, sess_options=sess_options, provider_options=kwargs.get("provider_options"))
+            model = OnnxRuntimeModel.load_model(
+                model_cache_path,
+                provider=provider,
+                sess_options=sess_options,
+                provider_options=kwargs.get("provider_options"),
+            )
         return cls(model=model, **kwargs)
 
     @classmethod
