@@ -92,6 +92,8 @@ export_to_video(video, "output.mp4", fps=8)
 
 Compilation is slow the first time but subsequent calls to the pipeline are faster.
 
+The average inference time with torch.compile on a 80GB A100 is 76.27 seconds compared to 96.89 seconds for an uncompiled model.
+
 ```py
 import torch
 from diffusers import CogVideoXPipeline
@@ -170,6 +172,14 @@ export_to_video(video, "output.mp4", fps=8)
 - The image-to-video (I2V) checkpoints work with multiple resolutions. The width can vary from 768 to 1360, but the height must be 758. Both height and width must be divisible by 16.
 
 - Both T2V and I2V checkpoints work best with 81 and 161 frames. It is recommended to export the generated video at 16fps.
+
+- Refer to the table below to view memory usage when various memory-saving techniques are enabled.
+
+  | method | memory usage (enabled) | memory usage (disabled) |
+  |---|---|---|
+  | enable_model_cpu_offload | 19GB | 33GB |
+  | enable_sequential_cpu_offload | <4GB | ~33GB (very slow inference speed) |
+  | enable_tiling | 11GB (with enable_model_cpu_offload) | --- |
  
 ## CogVideoXPipeline
 
