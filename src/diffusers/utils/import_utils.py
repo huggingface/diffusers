@@ -38,7 +38,7 @@ else:
     import importlib.metadata as importlib_metadata
 try:
     package_map = importlib_metadata.packages_distributions() # load-once to avoid expensive calls
-except Exception as e:
+except Exception:
     package_map = None
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
