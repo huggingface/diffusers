@@ -56,8 +56,8 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from ...schedulers import KarrasDiffusionSchedulers
-from ...guiders import GuiderType, ClassifierFreeGuidance
+from ...schedulers import EulerDiscreteScheduler
+from ...guiders import ClassifierFreeGuidance
 from ...configuration_utils import FrozenDict
 
 import numpy as np
@@ -183,9 +183,13 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("image_encoder", CLIPVisionModelWithProjection),
-            ComponentSpec("feature_extractor", CLIPImageProcessor),
+            ComponentSpec("feature_extractor", CLIPImageProcessor, config=FrozenDict({"size": 224, "crop_size": 224}), default_creation_method="from_config"),
             ComponentSpec("unet", UNet2DConditionModel),
-            ComponentSpec("guider", GuiderType),
+            ComponentSpec(
+                "guider", 
+                ClassifierFreeGuidance, 
+                config=FrozenDict({"guidance_scale": 7.5}),
+                default_creation_method="from_config"),
         ]
 
     @property
@@ -321,7 +325,11 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             ComponentSpec("text_encoder_2", CLIPTextModelWithProjection),
             ComponentSpec("tokenizer", CLIPTokenizer),
             ComponentSpec("tokenizer_2", CLIPTokenizer),
-            ComponentSpec("guider", GuiderType),
+            ComponentSpec(
+                "guider", 
+                ClassifierFreeGuidance, 
+                config=FrozenDict({"guidance_scale": 7.5}), 
+                default_creation_method="from_config"),
         ]
 
     @property
@@ -647,7 +655,11 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 8})),
+            ComponentSpec(
+                "image_processor", 
+                VaeImageProcessor, 
+                config=FrozenDict({"vae_scale_factor": 8}), 
+                default_creation_method="from_config"),
         ]
 
     @property
@@ -742,8 +754,16 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 8})),
-            ComponentSpec("mask_processor", VaeImageProcessor, config=FrozenDict({"do_normalize": False, "vae_scale_factor": 8, "do_binarize": True, "do_convert_grayscale": True})),
+            ComponentSpec(
+                "image_processor", 
+                VaeImageProcessor, 
+                config=FrozenDict({"vae_scale_factor": 8}), 
+                default_creation_method="from_config"),
+            ComponentSpec(
+                "mask_processor", 
+                VaeImageProcessor, 
+                config=FrozenDict({"do_normalize": False, "vae_scale_factor": 8, "do_binarize": True, "do_convert_grayscale": True}),
+                default_creation_method="from_config"),
         ]
         
 
@@ -1030,7 +1050,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
+            ComponentSpec("scheduler", EulerDiscreteScheduler),
         ]
 
     @property
@@ -1153,7 +1173,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
+            ComponentSpec("scheduler", EulerDiscreteScheduler),
         ]
     
     @property
@@ -1208,7 +1228,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
+            ComponentSpec("scheduler", EulerDiscreteScheduler),
         ]
 
     @property
@@ -1462,7 +1482,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
+            ComponentSpec("scheduler", EulerDiscreteScheduler),
         ]
 
     @property
@@ -1610,7 +1630,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
+            ComponentSpec("scheduler", EulerDiscreteScheduler),
         ]
 
     @property
@@ -2064,8 +2084,12 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("guider", GuiderType, config=FrozenDict({"guidance_scale": 7.5})),
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
+            ComponentSpec(
+                "guider", 
+                ClassifierFreeGuidance, 
+                config=FrozenDict({"guidance_scale": 7.5}), 
+                default_creation_method="from_config"),
+            ComponentSpec("scheduler", EulerDiscreteScheduler),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
 
@@ -2240,7 +2264,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
-        with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
+        with self.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
 
@@ -2333,11 +2357,15 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("guider", GuiderType, config=FrozenDict({"guidance_scale": 7.5})),
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
+            ComponentSpec(
+                "guider", 
+                ClassifierFreeGuidance, 
+                config=FrozenDict({"guidance_scale": 7.5}), 
+                default_creation_method="from_config"),
+            ComponentSpec("scheduler", EulerDiscreteScheduler),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetModel),
-            ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False})),
+            ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}), default_creation_method="from_config"),
         ]
 
     @property
@@ -2636,7 +2664,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
         # (5) Denoise loop
-        with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
+        with self.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
 
@@ -2763,9 +2791,17 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         return [
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetUnionModel),
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
-            ComponentSpec("guider", GuiderType, config=FrozenDict({"guidance_scale": 7.5})),
-            ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False})),
+            ComponentSpec("scheduler", EulerDiscreteScheduler),
+            ComponentSpec(
+                "guider", 
+                ClassifierFreeGuidance, 
+                config=FrozenDict({"guidance_scale": 7.5}), 
+                default_creation_method="from_config"),
+            ComponentSpec(
+                "control_image_processor", 
+                VaeImageProcessor, 
+                config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}), 
+                default_creation_method="from_config"),
         ]
 
     @property
@@ -3052,7 +3088,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
-        with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
+        with self.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
 
@@ -3180,7 +3216,11 @@ class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 8}))
+            ComponentSpec(
+                "image_processor", 
+                VaeImageProcessor, 
+                config=FrozenDict({"vae_scale_factor": 8}), 
+                default_creation_method="from_config"),
         ]
 
     @property

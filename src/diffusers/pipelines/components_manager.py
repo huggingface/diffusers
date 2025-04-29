@@ -236,12 +236,15 @@ class ComponentsManager:
     def __init__(self):
         self.components = OrderedDict()
         self.added_time = OrderedDict()  # Store when components were added 
-        self.load_ids = OrderedDict() # Store load_id of components (for model loaded with ComponentSpec)
         self.collections = OrderedDict() # collection_name -> set of component_names
         self.model_hooks = None
         self._auto_offload_enabled = False
 
     def add(self, name, component, collection: Optional[str] = None):
+
+        if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id != "null":
+            name = f"{name}_{component._diffusers_load_id}"
+    
         if name in self.components:
             logger.warning(f"Overriding existing component '{name}' in ComponentsManager")
         
@@ -251,9 +254,6 @@ class ComponentsManager:
             if collection not in self.collections:
                 self.collections[collection] = set()
             self.collections[collection].add(name)
-        
-        if hasattr(component, "_diffusers_load_id"):
-            self.load_ids[name] = component._diffusers_load_id
 
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)    

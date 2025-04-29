@@ -58,6 +58,18 @@ class ComponentSpec:
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
     
     
+    def __hash__(self):
+        """Make ComponentSpec hashable, using load_id as the hash value."""
+        return hash((self.name, self.load_id, self.default_creation_method))
+    
+    def __eq__(self, other):
+        """Compare ComponentSpec objects based on name and load_id."""
+        if not isinstance(other, ComponentSpec):
+            return False
+        return (self.name == other.name and 
+                self.load_id == other.load_id and 
+                self.default_creation_method == other.default_creation_method)
+    
     @classmethod
     def from_component(cls, name: str, component: torch.nn.Module) -> Any:
         """Create a ComponentSpec from a Component created by `create` method."""
@@ -76,6 +88,18 @@ class ComponentSpec:
     
         return cls(name=name, type_hint=type_hint, config=config, **load_spec)
     
+    @classmethod
+    def from_load_id(cls, load_id: str, name: Optional[str] = None) -> Any:
+        """Create a ComponentSpec from a load_id string."""
+        if load_id == "null":
+            raise ValueError("Cannot create ComponentSpec from null load_id")
+        
+        # Decode the load_id into a dictionary of loading fields
+        load_fields = cls.decode_load_id(load_id)
+        
+        # Create a new ComponentSpec instance with the decoded fields
+        return cls(name=name, **load_fields)
+        
     @classmethod
     def loading_fields(cls) -> List[str]:
         """
@@ -115,12 +139,13 @@ class ComponentSpec:
             If a segment value is "null", it's replaced with None.
             Returns None if load_id is "null" (indicating component not loaded from pretrained).
         """
-        if load_id == "null":
-            return None
             
         # Get all loading fields in order
         loading_fields = cls.loading_fields()
         result = {f: None for f in loading_fields}
+
+        if load_id == "null":
+            return result
         
         # Split the load_id
         parts = load_id.split("|")
@@ -149,25 +174,29 @@ class ComponentSpec:
     def create_from_config(self, config: Optional[Union[FrozenDict, Dict[str, Any]]] = None, **kwargs) -> Any:
         """Create component using from_config with config."""
 
-        if self.type_hint is None:
+        if self.type_hint is None or not isinstance(self.type_hint, type):
             raise ValueError(
                 f"`type_hint` is required when using from_config creation method."
             )
-        if not (isinstance(self.type_hint, type) and issubclass(self.type_hint, ConfigMixin)):
-            raise ValueError(
-                f"cannot create {self.type_hint} using from_config "
-                "because it is not a `ConfigMixin`."
-            )
     
-        config = config or self.config
+        config = config or self.config or {}
     
-        try:
+        if issubclass(self.type_hint, ConfigMixin):
             component = self.type_hint.from_config(config, **kwargs)
-        except Exception as e:
-            raise ValueError(f"Error creating {self.name}[{self.type_hint.__name__}] from config: {e}")
+        else:
+            signature_params = inspect.signature(self.type_hint.__init__).parameters
+            init_kwargs = {}
+            for k, v in config.items():
+                if k in signature_params:
+                    init_kwargs[k] = v
+            for k, v in kwargs.items():
+                if k in signature_params:
+                    init_kwargs[k] = v
+            component = self.type_hint(**init_kwargs)
         
         component._diffusers_load_id = "null"
-        self.config = component.config
+        if hasattr(component, "config"):
+            self.config = component.config
         
         return component
     
@@ -455,15 +484,18 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
         component_desc = f"{component_indent}{component.name} (`{type_name}`)"
         if component.description:
             component_desc += f": {component.description}"
-        if component.default_repo:
-            if isinstance(component.default_repo, list) and len(component.default_repo) == 2:
-                repo_info = component.default_repo[0]
-                subfolder = component.default_repo[1]
-                if subfolder:
-                    repo_info += f", subfolder={subfolder}"
-            else:
-                repo_info = component.default_repo
-            component_desc += f" [{repo_info}]"
+        
+        # Get the loading fields dynamically
+        loading_field_values = []
+        for field_name in component.loading_fields():
+            field_value = getattr(component, field_name)
+            if field_value is not None:
+                loading_field_values.append(f"{field_name}={field_value}")
+        
+        # Add loading field information if available
+        if loading_field_values:
+            component_desc += f" [{', '.join(loading_field_values)}]"
+            
         formatted_components.append(component_desc)
         
         # Add an empty line after each component except the last one

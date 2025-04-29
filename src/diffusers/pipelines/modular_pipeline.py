@@ -23,6 +23,7 @@ import torch
 from tqdm.auto import tqdm
 import re
 import os
+import importlib
 
 from huggingface_hub.utils import validate_hf_hub_args
 
@@ -33,7 +34,7 @@ from ..utils import (
     logging,
     PushToHubMixin,
 )
-from .pipeline_loading_utils import _get_pipeline_class
+from .pipeline_loading_utils import _get_pipeline_class, simple_get_class_obj,_fetch_class_library_tuple
 from .modular_pipeline_utils import (
     ComponentSpec,
     ConfigSpec,
@@ -48,6 +49,7 @@ from .modular_pipeline_utils import (
     format_params,
     make_doc_string,
 )
+from .components_manager import ComponentsManager
 
 from copy import deepcopy
 if is_accelerate_available():
@@ -156,7 +158,116 @@ class BlockState:
         return f"BlockState(\n{attributes}\n)"
 
 
-class PipelineBlock:
+
+class ModularPipelineMixin:
+    """
+    Mixin for all PipelineBlocks: PipelineBlock, AutoPipelineBlocks, SequentialPipelineBlocks
+    """
+    
+
+    def setup_loader(self, modular_repo: Optional[Union[str, os.PathLike]] = None, component_manager: Optional[ComponentsManager] = None, collection: Optional[str] = None):
+        """
+        create a mouldar loader, optionally accept modular_repo to load from hub.
+        """
+
+        # Import components loader (it is model-specific class)
+        loader_class_name = MODULAR_LOADER_MAPPING[self.model_name]
+        diffusers_module = importlib.import_module(self.__module__.split(".")[0])
+        loader_class = getattr(diffusers_module, loader_class_name)
+        
+        # Create deep copies to avoid modifying the original specs
+        component_specs = deepcopy(self.expected_components)
+        config_specs = deepcopy(self.expected_configs)
+        # Create the loader with the updated specs
+        specs = component_specs + config_specs
+        
+        self.loader = loader_class(specs, modular_repo=modular_repo, component_manager=component_manager, collection=collection)
+
+
+    @property
+    def default_call_parameters(self) -> Dict[str, Any]:
+        params = {}
+        for input_param in self.inputs:
+            params[input_param.name] = input_param.default
+        return params
+
+    def run(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
+        """
+        Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
+        """
+        if state is None:
+            state = PipelineState()
+
+        if not hasattr(self, "loader"):
+            raise ValueError("Loader is not set, please call `setup_loader()` first.")
+
+        # Make a copy of the input kwargs
+        input_params = kwargs.copy()
+
+        default_params = self.default_call_parameters
+
+        # Add inputs to state, using defaults if not provided in the kwargs or the state
+        # if same input already in the state, will override it if provided in the kwargs
+
+        intermediates_inputs = [inp.name for inp in self.intermediates_inputs]
+        for name, default in default_params.items():
+            if name in input_params:
+                if name not in intermediates_inputs:
+                    state.add_input(name, input_params.pop(name))
+                else:
+                    state.add_input(name, input_params[name])
+            elif name not in state.inputs:
+                state.add_input(name, default)
+
+        for name in intermediates_inputs:
+            if name in input_params:
+                state.add_intermediate(name, input_params.pop(name))
+
+        # Warn about unexpected inputs
+        if len(input_params) > 0:
+            logger.warning(f"Unexpected input '{input_params.keys()}' provided. This input will be ignored.")
+        # Run the pipeline
+        with torch.no_grad():
+            try:
+                pipeline, state = self(self.loader, state)
+            except Exception:
+                error_msg = f"Error in block: ({self.__class__.__name__}):\n"
+                logger.error(error_msg)
+                raise
+
+        if output is None:
+            return state
+
+
+        elif isinstance(output, str):
+            return state.get_intermediate(output)
+
+        elif isinstance(output, (list, tuple)):
+            return state.get_intermediates(output)
+        else:
+            raise ValueError(f"Output '{output}' is not a valid output type")
+
+    @torch.compiler.disable
+    def progress_bar(self, iterable=None, total=None):
+        if not hasattr(self, "_progress_bar_config"):
+            self._progress_bar_config = {}
+        elif not isinstance(self._progress_bar_config, dict):
+            raise ValueError(
+                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
+            )
+
+        if iterable is not None:
+            return tqdm(iterable, **self._progress_bar_config)
+        elif total is not None:
+            return tqdm(total=total, **self._progress_bar_config)
+        else:
+            raise ValueError("Either `total` or `iterable` has to be defined.")
+
+    def set_progress_bar_config(self, **kwargs):
+        self._progress_bar_config = kwargs
+
+
+class PipelineBlock(ModularPipelineMixin):
     
     model_name = None
     
@@ -356,7 +467,7 @@ def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) ->
     return list(combined_dict.values())
 
 
-class AutoPipelineBlocks:
+class AutoPipelineBlocks(ModularPipelineMixin):
     """
     A class that automatically selects a block to run based on the inputs.
 
@@ -583,18 +694,6 @@ class AutoPipelineBlocks:
         expected_configs = getattr(self, "expected_configs", [])
         configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
 
-        # Inputs and outputs section - moved up
-        inputs_str = format_inputs_short(self.inputs)
-        inputs_str = "  Inputs:\n    " + inputs_str
-        
-        outputs = [out.name for out in self.outputs]
-        intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
-        intermediates_str = (
-            "  Intermediates:\n"
-            f"{intermediates_str}\n" 
-            f"    - final outputs: {', '.join(outputs)}"
-        )
-
         # Blocks section - moved to the end with simplified format
         blocks_str = "  Blocks:\n"
         for i, (name, block) in enumerate(self.blocks.items()):
@@ -624,11 +723,9 @@ class AutoPipelineBlocks:
 
         return (
             f"{header}\n"
-            f"{desc}"
-            f"{components_str}\n"
-            f"{configs_str}\n"
-            f"{inputs_str}\n"
-            f"{intermediates_str}\n"
+            f"{desc}\n\n"
+            f"{components_str}\n\n"
+            f"{configs_str}\n\n"
             f"{blocks_str}"
             f")"
         )
@@ -646,7 +743,7 @@ class AutoPipelineBlocks:
             expected_configs=self.expected_configs
         )
 
-class SequentialPipelineBlocks:
+class SequentialPipelineBlocks(ModularPipelineMixin):
     """
     A class that combines multiple pipeline block classes into one. When called, it will call each block in sequence.
     """
@@ -919,25 +1016,13 @@ class SequentialPipelineBlocks:
             desc.extend(f"      {line}" for line in desc_lines[1:])
         desc = '\n'.join(desc) + '\n'
 
-        # Components section - use format_components with add_empty_lines=False
+        # Components section - focus only on expected components
         expected_components = getattr(self, "expected_components", [])
         components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
         
         # Configs section - use format_configs with add_empty_lines=False
         expected_configs = getattr(self, "expected_configs", [])
         configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
-
-        # Inputs and outputs section - moved up
-        inputs_str = format_inputs_short(self.inputs)
-        inputs_str = "  Inputs:\n    " + inputs_str
-        
-        outputs = [out.name for out in self.outputs]
-        intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
-        intermediates_str = (
-            "  Intermediates:\n"
-            f"{intermediates_str}\n" 
-            f"    - final outputs: {', '.join(outputs)}"
-        )
 
         # Blocks section - moved to the end with simplified format
         blocks_str = "  Blocks:\n"
@@ -968,11 +1053,9 @@ class SequentialPipelineBlocks:
 
         return (
             f"{header}\n"
-            f"{desc}"
-            f"{components_str}\n"
-            f"{configs_str}\n"
-            f"{inputs_str}\n"
-            f"{intermediates_str}\n"
+            f"{desc}\n\n"
+            f"{components_str}\n\n"
+            f"{configs_str}\n\n"
             f"{blocks_str}"
             f")"
         )
@@ -990,194 +1073,6 @@ class SequentialPipelineBlocks:
             expected_configs=self.expected_configs
         )
 
-
-
-class ModularPipelineMixin:
-    """
-    Mixin for all PipelineBlocks: PipelineBlock, AutoPipelineBlocks, SequentialPipelineBlocks
-    """
-    
-    # def register_loader(self, global_components_manager: ComponentsManager, label: Optional[str] = None):
-    #     self._global_components_manager = global_components_manager
-    #     self._label = label
-    
-    #YiYi TODO: add validation for kwargs?
-    def setup_loader(self, **kwargs):
-        """
-        Set up the components loader with repository information.
-        
-        Args:
-            **kwargs: Configuration for component loading.
-                - repo: Default repository to use for all components
-                - For individual components, pass a tuple of (repo, subfolder)
-                  e.g., text_encoder=("repo_name", "text_encoder")
-        
-        Examples:
-            # Set repo for all components (subfolder will be component name)
-            setup_loader(repo="stabilityai/stable-diffusion-xl-base-1.0")
-            
-            # Set specific repo/subfolder for individual components
-            setup_loader(
-                unet=("stabilityai/stable-diffusion-xl-base-1.0", "unet"),
-                text_encoder=("stabilityai/stable-diffusion-xl-base-1.0", "text_encoder")
-            )
-            
-            # Set default repo and override for specific components
-            setup_loader(
-                repo="stabilityai/stable-diffusion-xl-base-1.0",
-                unet=(""stabilityai/stable-diffusion-xl-refiner-1.0", "unet")
-            )
-        """
-
-        # Create deep copies to avoid modifying the original specs
-        component_specs = deepcopy(self.expected_components)
-        config_specs = deepcopy(self.expected_configs)
-
-        expected_component_names = set([c.name for c in component_specs])
-        expected_config_names = set([c.name for c in config_specs])
-        
-        # Check if a default repo is provided
-        repo = kwargs.pop("repo", None)
-        revision = kwargs.pop("revision", None)
-        variant = kwargs.pop("variant", None)
-
-        passed_component_kwargs = {k: kwargs.pop(k) for k in expected_component_names if k in kwargs}
-        passed_config_kwargs = {k: kwargs.pop(k) for k in expected_config_names if k in kwargs}
-        if len(kwargs) > 0:
-            logger.warning(f"Unused keyword arguments: {kwargs.keys()}. This input will be ignored.")
-        
-        for name, value in passed_component_kwargs.items():
-            if not isinstance(value, (tuple, list, str)):
-                raise ValueError(f"Invalid value for component '{name}': {value}. Expected a string, tuple or list")
-            elif isinstance(value, (tuple, list)) and len(value) > 2:
-                raise ValueError(f"Invalid value for component '{name}': {value}. Expected a tuple or list of length 1 or 2.")
-        
-        for name, value in passed_config_kwargs.items():
-            if not isinstance(value, str):
-                raise ValueError(f"Invalid value for config '{name}': {value}. Expected a string")
-
-        # First apply default repo to all components if provided
-        if repo is not None:
-            for component_spec in component_specs:
-                # components defined with a config are classes like image_processor or guider, 
-                # skip setting loading related attributes for them, they should be initialized with the default config
-                if component_spec.config is None:
-                    component_spec.repo = repo
-                
-                    # YiYi TODO: should also accept `revision` and `variant` as a dict here so user can set different values for different components
-                    if revision is not None:
-                        component_spec.revision = revision
-                    if variant is not None:
-                        component_spec.variant = variant
-            for config_spec in config_specs:
-                config_spec.repo = repo
-        
-        # apply component-specific overrides
-        for name, value in passed_component_kwargs.items():
-            if not isinstance(value, (tuple, list)):
-                value = (value,)
-            # Find the matching component spec
-            for component_spec in component_specs:
-                if component_spec.name == name:
-                    # Handle tuple of (repo, subfolder)
-                    component_spec.repo = value[0]
-                    if len(value) > 1:
-                        component_spec.subfolder = value[1]
-                    break
-        
-        # apply config overrides
-        for name, value in passed_config_kwargs.items():
-            for config_spec in config_specs:
-                if config_spec.name == name:
-                    config_spec.repo = value
-                    break
-
-        # Import components loader (it is model-specific class)
-        loader_class_name = MODULAR_LOADER_MAPPING[self.model_name]
-        diffusers_module = importlib.import_module(self.__module__.split(".")[0])
-        loader_class = getattr(diffusers_module, loader_class_name)
-        
-        # Create the loader with the updated specs
-        self.loader = loader_class(component_specs, config_specs)
-
-
-    @property
-    def default_call_parameters(self) -> Dict[str, Any]:
-        params = {}
-        for input_param in self.inputs:
-            params[input_param.name] = input_param.default
-        return params
-
-    def run(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
-        """
-        Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
-        """
-        if state is None:
-            state = PipelineState()
-
-        # Make a copy of the input kwargs
-        input_params = kwargs.copy()
-
-        default_params = self.default_call_parameters
-
-        # Add inputs to state, using defaults if not provided in the kwargs or the state
-        # if same input already in the state, will override it if provided in the kwargs
-
-        intermediates_inputs = [inp.name for inp in self.intermediates_inputs]
-        for name, default in default_params.items():
-            if name in input_params:
-                if name not in intermediates_inputs:
-                    state.add_input(name, input_params.pop(name))
-                else:
-                    state.add_input(name, input_params[name])
-            elif name not in state.inputs:
-                state.add_input(name, default)
-
-        for name in intermediates_inputs:
-            if name in input_params:
-                state.add_intermediate(name, input_params.pop(name))
-
-        # Warn about unexpected inputs
-        if len(input_params) > 0:
-            logger.warning(f"Unexpected input '{input_params.keys()}' provided. This input will be ignored.")
-        # Run the pipeline
-        with torch.no_grad():
-            try:
-                pipeline, state = self(self, state)
-            except Exception:
-                error_msg = f"Error in block: ({self.__class__.__name__}):\n"
-                logger.error(error_msg)
-                raise
-
-        if output is None:
-            return state
-
-
-        elif isinstance(output, str):
-            return state.get_intermediate(output)
-
-        elif isinstance(output, (list, tuple)):
-            return state.get_intermediates(output)
-        else:
-            raise ValueError(f"Output '{output}' is not a valid output type")
-
-
-
-
-from .pipeline_loading_utils import _fetch_class_library_tuple
-import importlib
-def simple_import_class_obj(library_name, class_name):
-    from diffusers import pipelines
-    is_pipeline_module = hasattr(pipelines, library_name)
-
-    if is_pipeline_module:
-        pipeline_module = getattr(pipelines, library_name)
-        class_obj = getattr(pipeline_module, class_name)
-    else:
-        library = importlib.import_module(library_name)
-        class_obj = getattr(library, class_name)
-
-    return class_obj
 
 
 # YiYi TODO: 
@@ -1228,9 +1123,12 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 # (in the case of the first time registration, we initilize the object with component spec, and then we call register_components() to register it to config)
                 new_component_spec = component_spec
                 component_spec_dict = self._component_spec_to_dict(component_spec)
-            
-            
-            register_dict = {name: (library, class_name, component_spec_dict)}
+
+            # do not register if component is not to be loaded from pretrained
+            if new_component_spec.default_creation_method == "from_pretrained":
+                register_dict = {name: (library, class_name, component_spec_dict)}
+            else:
+                register_dict = {}
 
             # set the component as attribute
             # if it is not set yet, just set it and skip the process to check and warn below
@@ -1238,6 +1136,8 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 self.register_to_config(**register_dict)
                 self._component_specs[name] = new_component_spec
                 setattr(self, name, module)
+                if module is not None and self._component_manager is not None:
+                    self._component_manager.add(name, module, self._collection)
                 continue
             
             current_module = getattr(self, name, None)
@@ -1272,13 +1172,18 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             self._component_specs[name] = new_component_spec
             # finally set models
             setattr(self, name, module)
+            if module is not None and self._component_manager is not None:
+                self._component_manager.add(name, module, self._collection)
 
 
+    
     # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
-    def __init__(self, specs: List[Union[ComponentSpec, ConfigSpec]]):
+    def __init__(self, specs: List[Union[ComponentSpec, ConfigSpec]], modular_repo: Optional[str] = None, component_manager: Optional[ComponentsManager] = None, collection: Optional[str] = None, **kwargs):
         """
         Initialize the loader with a list of component specs and config specs.
         """
+        self._component_manager = component_manager
+        self._collection = collection
         self._component_specs = {
             spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ComponentSpec)
         }
@@ -1286,6 +1191,19 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ConfigSpec)
         }
 
+        # update component_specs and config_specs from modular_repo
+        if modular_repo is not None:
+            config_dict = self.load_config(modular_repo, **kwargs)
+
+            for name, value in config_dict.items():
+                if name in self._component_specs and self._component_specs[name].default_creation_method == "from_pretrained" and isinstance(value, (tuple, list)) and len(value) == 3:
+                    library, class_name, component_spec_dict = value
+                    component_spec = self._dict_to_component_spec(name, component_spec_dict)
+                    self._component_specs[name] = component_spec
+
+                elif name in self._config_specs:
+                    self._config_specs[name].default = value
+        
         register_components_dict = {}
         for name, component_spec in self._component_specs.items():
             register_components_dict[name] = None
@@ -1320,7 +1238,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         Accelerate's module hooks.
         """
         for name, model in self.components.items():
-            if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:
+            if not isinstance(model, torch.nn.Module):
                 continue
 
             if not hasattr(model, "_hf_hook"):
@@ -1333,8 +1251,21 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 ):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
+    
+    @property
+    def device(self) -> torch.device:
+        r"""
+        Returns:
+            `torch.device`: The torch device on which the pipeline is located.
+        """
 
-      
+        modules = [m for m in self.components.values() if isinstance(m, torch.nn.Module)]
+
+        for module in modules:
+            return module.device
+
+        return torch.device("cpu")
+
     @property
     def dtype(self) -> torch.dtype:
         r"""
@@ -1428,7 +1359,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
 
 
     # YiYi TODO: support map for additional from_pretrained kwargs
-    def load(self, component_names: List[str], **kwargs):
+    def load(self, component_names: Optional[List[str]] = None, **kwargs):
         """
         Load selectedcomponents from specs.
         
@@ -1439,7 +1370,9 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
              - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g. `repo`, `variant`, `revision`, etc.
         """
-        if not isinstance(component_names, list):
+        if component_names is None:
+            component_names = list(self._component_specs.keys())
+        elif not isinstance(component_names, list):
             component_names = [component_names]
 
         components_to_load = set([name for name in component_names if name in self._component_specs])
@@ -1507,6 +1440,14 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
 
             elif name in expected_config:
                 config_specs.append(ConfigSpec(name=name, default=value))
+        
+        for name in expected_component:
+            for spec in component_specs:
+                if spec.name == name:
+                    break
+            else:
+                # append a empty component spec for these not in modular_model_index
+                component_specs.append(ComponentSpec(name=name, default_creation_method="from_config"))
         return cls(component_specs + config_specs)
 
     
@@ -1583,7 +1524,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         # pull out and resolve the stored type_hint
         lib_name, cls_name = spec_dict.pop("type_hint")
         if lib_name is not None and cls_name is not None:
-            type_hint = simple_import_class_obj(lib_name, cls_name)
+            type_hint = simple_get_class_obj(lib_name, cls_name)
         else:
             type_hint = None
 
@@ -1593,5 +1534,3 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             type_hint=type_hint,
             **spec_dict,
         )
-
-

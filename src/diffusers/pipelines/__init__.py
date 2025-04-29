@@ -329,7 +329,7 @@ else:
             "StableDiffusionXLInpaintPipeline",
             "StableDiffusionXLInstructPix2PixPipeline",
             "StableDiffusionXLPipeline",
-            "StableDiffusionXLModularPipeline",
+            "StableDiffusionXLModularLoader",
             "StableDiffusionXLAutoPipeline",
         ]
     )
@@ -693,7 +693,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,
             StableDiffusionXLInstructPix2PixPipeline,
-            StableDiffusionXLModularPipeline,
+            StableDiffusionXLModularLoader,
             StableDiffusionXLPipeline,
             StableDiffusionXLAutoPipeline,
         )
