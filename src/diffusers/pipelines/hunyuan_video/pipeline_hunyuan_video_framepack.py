@@ -539,6 +539,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     def __call__(
         self,
         image: PipelineImageInput,
+        last_image: Optional[PipelineImageInput] = None,
         prompt: Union[str, List[str]] = None,
         prompt_2: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
@@ -554,6 +555,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         image_latents: Optional[torch.Tensor] = None,
+        last_image_latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         pooled_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -574,6 +576,11 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         The call function to the pipeline for generation.
 
         Args:
+            image (`PIL.Image.Image` or `np.ndarray` or `torch.Tensor`):
+                The image to be used as the starting point for the video generation.
+            last_image (`PIL.Image.Image` or `np.ndarray` or `torch.Tensor`, *optional*):
+                The optional last image to be used as the ending point for the video generation. This is useful for
+                generating transitions between two images.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -616,7 +623,9 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             image_latents (`torch.Tensor`, *optional*):
-                Pre-encoded image latents.
+                Pre-encoded image latents. If not provided, the image will be encoded using the VAE.
+            last_image_latents (`torch.Tensor`, *optional*):
+                Pre-encoded last image latents. If not provided, the last image will be encoded using the VAE.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
@@ -734,6 +743,12 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         # 4. Prepare image
         image = self.video_processor.preprocess(image, height, width)
         image_embeds = self.encode_image(image, device=device).to(transformer_dtype)
+        if last_image is not None:
+            # Credits: https://github.com/lllyasviel/FramePack/pull/167
+            # Users can modify the weighting strategy applied here
+            last_image = self.video_processor.preprocess(last_image, height, width)
+            last_image_embeds = self.encode_image(last_image, device=device).to(transformer_dtype)
+            last_image_embeds = (image_embeds + last_image_embeds) / 2
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
@@ -757,6 +772,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         image_latents = self.prepare_image_latents(
             image, dtype=torch.float32, device=device, generator=generator, latents=image_latents
         )
+        if last_image is not None:
+            last_image_latents = self.prepare_image_latents(
+                last_image, dtype=torch.float32, device=device, generator=generator
+            )
 
         latent_paddings = list(reversed(range(num_latent_sections)))
         if num_latent_sections > 4:
@@ -767,7 +786,8 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
         # 7. Denoising loop
         for k in range(num_latent_sections):
-            is_last_section = latent_paddings[k] == 0
+            is_first_section = k == 0
+            is_last_section = k == num_latent_sections - 1
             latent_padding_size = latent_paddings[k] * latent_window_size
 
             indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, *history_sizes]))
@@ -786,6 +806,8 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             latents_postfix, latents_history_2x, latents_history_4x = history_latents[
                 :, :, : sum(history_sizes)
             ].split(history_sizes, dim=2)
+            if last_image is not None and is_first_section:
+                latents_postfix = last_image_latents
             latents_clean = torch.cat([latents_prefix, latents_postfix], dim=2)
 
             latents = self.prepare_latents(
