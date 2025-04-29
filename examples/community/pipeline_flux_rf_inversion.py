@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Black Forest Labs and The HuggingFace Team. All rights reserved.
 # modeled after RF Inversion: https://rf-inversion.github.io/, authored by Litu Rout, Yujia Chen, Nataniel Ruiz,
 # Constantine Caramanis, Sanjay Shakkottai and Wen-Sheng Chu.
 #
