@@ -17,10 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import (
-    DiffusionPipeline,
-    QuantoConfig,
-)
+from diffusers import DiffusionPipeline, QuantoConfig
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils.testing_utils import (
     is_transformers_available,
