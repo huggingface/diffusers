@@ -53,25 +53,41 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import HunyuanVideoFramepackPipeline, HunyuanVideoFramepackTransformer3DModel
+        >>> from diffusers.utils import export_to_video, load_image
+        >>> from transformers import SiglipImageProcessor, SiglipVisionModel
 
-        >>> model_id = "hunyuanvideo-community/HunyuanVideo"
-        >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        >>> transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
+        ...     "lllyasviel/FramePackI2V_HY", torch_dtype=torch.bfloat16
         ... )
-        >>> pipe = HunyuanVideoPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.float16)
+        >>> feature_extractor = SiglipImageProcessor.from_pretrained(
+        ...     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
+        ... )
+        >>> image_encoder = SiglipVisionModel.from_pretrained(
+        ...     "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
+        ... )
+        >>> pipe = HunyuanVideoFramepackPipeline.from_pretrained(
+        ...     "hunyuanvideo-community/HunyuanVideo",
+        ...     transformer=transformer,
+        ...     feature_extractor=feature_extractor,
+        ...     image_encoder=image_encoder,
+        ...     torch_dtype=torch.float16,
+        ... )
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 
+        >>> image = load_image("inputs/penguin.png")
         >>> output = pipe(
-        ...     prompt="A cat walks on the grass, realistic",
-        ...     height=320,
-        ...     width=512,
-        ...     num_frames=61,
+        ...     image=image,
+        ...     prompt="A penguin dancing in the snow",
+        ...     height=832,
+        ...     width=480,
+        ...     num_frames=91,
         ...     num_inference_steps=30,
+        ...     guidance_scale=9.0,
+        ...     generator=torch.Generator().manual_seed(0),
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=15)
+        >>> export_to_video(output, "output.mp4", fps=30)
         ```
 """
 
@@ -882,8 +898,8 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
                 if history_video is None:
                     if not output_type == "latent":
-                        current_video = real_history_latents.to(vae_dtype) / self.vae.config.scaling_factor
-                        history_video = self.vae.decode(current_video, return_dict=False)[0]
+                        current_latents = real_history_latents.to(vae_dtype) / self.vae.config.scaling_factor
+                        history_video = self.vae.decode(current_latents, return_dict=False)[0]
                     else:
                         history_video = [real_history_latents]
                 else:
@@ -892,11 +908,11 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                             (latent_window_size * 2 + 1) if is_last_section else (latent_window_size * 2)
                         )
                         overlapped_frames = (latent_window_size - 1) * self.vae_scale_factor_temporal + 1
-                        current_video = (
+                        current_latents = (
                             real_history_latents[:, :, :section_latent_frames].to(vae_dtype)
                             / self.vae.config.scaling_factor
                         )
-                        current_video = self.vae.decode(current_video, return_dict=False)[0]
+                        current_video = self.vae.decode(current_latents, return_dict=False)[0]
                         history_video = self._soft_append(current_video, history_video, overlapped_frames)
                     else:
                         history_video.append(real_history_latents)
