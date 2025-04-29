@@ -705,14 +705,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         image = self.video_processor.preprocess(image, height, width)
         image_embeds = self.encode_image(image, device=device).to(transformer_dtype)
 
-        # 4. Prepare timesteps
-        sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
-
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
-        window_size = (latent_window_size - 1) * self.vae_scale_factor_temporal + 1
-        num_latent_sections = max(1, (num_frames + window_size - 1) // window_size)
+        window_num_frames = (latent_window_size - 1) * self.vae_scale_factor_temporal + 1
+        num_latent_sections = max(1, (num_frames + window_num_frames - 1) // window_num_frames)
         # Specific to the released checkpoint: https://huggingface.co/lllyasviel/FramePackI2V_HY
         # TODO: find a more generic way in future if there are more checkpoints
         history_sizes = [1, 2, 16]
@@ -739,10 +735,15 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         guidance = torch.tensor([guidance_scale] * batch_size, dtype=transformer_dtype, device=device) * 1000.0
 
         # 7. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        self._num_timesteps = len(timesteps)
+        sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
 
         for i in range(num_latent_sections):
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler, num_inference_steps, device, sigmas=sigmas
+            )
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            self._num_timesteps = len(timesteps)
+
             current_latent_padding = latent_paddings[i]
             is_last_section = current_latent_padding == 0
             latent_padding_size = current_latent_padding * latent_window_size
@@ -771,7 +772,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 num_channels_latents,
                 height,
                 width,
-                num_frames,
+                window_num_frames,
                 dtype=torch.float32,
                 device=device,
                 generator=generator,
@@ -877,7 +878,11 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         self._current_timestep = None
 
         if not output_type == "latent":
-            history_video = history_video[:, :, :num_frames]
+            generated_frames = history_video.size(2)
+            generated_frames = (
+                generated_frames - 1
+            ) // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+            history_video = history_video[:, :, :generated_frames]
             video = self.video_processor.postprocess_video(history_video, output_type=output_type)
         else:
             video = history_video
