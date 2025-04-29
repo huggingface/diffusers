@@ -5473,8 +5473,8 @@ edited_image = pipe(
 edited_image.save("edited_image.png")
 ````
 ### Result
-![Original image](https://huggingface.co/CaptainZZZ/sd3-instructpix2pix/blob/main/mountain.png)
-![Edited image](https://huggingface.co/CaptainZZZ/sd3-instructpix2pix/blob/main/edited.png)
+![Original image](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/StableDiffusion3InstructPix2Pix/mountain.png)
+![Edited image](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/StableDiffusion3InstructPix2Pix/edited.png)
 
 ### Note
 This model is trained on 512x512, so input size is better on 512x512.
