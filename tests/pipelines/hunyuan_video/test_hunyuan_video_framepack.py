@@ -174,9 +174,7 @@ class HunyuanVideoFramepackPipelineFastTests(
         feature_extractor = SiglipImageProcessor.from_pretrained(
             "hf-internal-testing/tiny-random-SiglipVisionModel", size={"height": 30, "width": 30}
         )
-        image_encoder = SiglipVisionModel.from_pretrained(
-            "hf-internal-testing/tiny-random-SiglipVisionModel", torch_dtype=torch.float16
-        )
+        image_encoder = SiglipVisionModel.from_pretrained("hf-internal-testing/tiny-random-SiglipVisionModel")
 
         components = {
             "transformer": transformer,
