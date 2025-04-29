@@ -332,7 +332,7 @@ def maybe_raise_or_warn(
 
 
 def get_class_obj_and_candidates(
-    library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
+    library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name, cache_dir
 ):
     """Simple helper method to retrieve class object of module as well as potential parent class objects"""
     component_folder = os.path.join(cache_dir, component_name)
