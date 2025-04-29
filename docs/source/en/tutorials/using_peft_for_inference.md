@@ -137,6 +137,8 @@ pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=T
 pipeline("A bowl of ramen shaped like a cute kawaii bear").images[0]
 ```
 
+Refer to the [hotswapping](#hotswapping) section to learn how to avoid recompilation when working with compiled models and multiple LoRAs.
+
 ## Weight scale
 
 The `scale` parameter is used to control how much of a LoRA to apply. A value of `0` is equivalent to only using the base model weights and a value of `1` is equivalent to fully using the LoRA.

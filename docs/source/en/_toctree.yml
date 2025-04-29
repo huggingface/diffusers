@@ -48,6 +48,7 @@
   - local: using-diffusers/textual_inversion_inference
     title: Textual inversion
   title: Adapters
+  isExpanded: false
 - sections:
   - local: using-diffusers/unconditional_image_generation
     title: Unconditional image generation
