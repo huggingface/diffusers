@@ -167,6 +167,9 @@ class Lumina2Pipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
         tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._attention_kwargs=None
+        self._num_timesteps=0
 
         self.register_modules(
             vae=vae,

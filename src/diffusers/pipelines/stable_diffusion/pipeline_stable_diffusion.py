@@ -210,6 +210,11 @@ class StableDiffusionPipeline(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._guidance_rescale=0.0
+        self._cross_attention_kwargs=None
+        self._num_timesteps=0
+        self._interrupt=False
 
         if scheduler is not None and getattr(scheduler.config, "steps_offset", 1) != 1:
             deprecation_message = (
@@ -944,7 +949,6 @@ class StableDiffusionPipeline(
         self._guidance_rescale = guidance_rescale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

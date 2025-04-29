@@ -227,6 +227,10 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         feature_extractor: Optional[SiglipImageProcessor] = None,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._joint_attention_kwargs=None
+        self._num_timesteps=0
+        self._interrupt=False
 
         self.register_modules(
             vae=vae,
@@ -1059,7 +1063,6 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._joint_attention_kwargs = joint_attention_kwargs
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

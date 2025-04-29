@@ -288,6 +288,7 @@ class StableDiffusionXLAdapterPipeline(
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
+        self._guidance_scale=1.0
 
         self.register_modules(
             vae=vae,

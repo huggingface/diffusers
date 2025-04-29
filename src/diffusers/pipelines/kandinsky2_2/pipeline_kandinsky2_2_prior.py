@@ -127,6 +127,8 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         image_processor: CLIPImageProcessor,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._num_timesteps=0
 
         self.register_modules(
             prior=prior,

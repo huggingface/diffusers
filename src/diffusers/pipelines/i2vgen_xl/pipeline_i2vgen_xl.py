@@ -132,6 +132,7 @@ class I2VGenXLPipeline(
         scheduler: DDIMScheduler,
     ):
         super().__init__()
+        self._guidance_scale=1.0
 
         self.register_modules(
             vae=vae,

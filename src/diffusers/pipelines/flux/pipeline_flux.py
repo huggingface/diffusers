@@ -193,6 +193,11 @@ class FluxPipeline(
         feature_extractor: CLIPImageProcessor = None,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._joint_attention_kwargs=None
+        self._num_timesteps=0
+        self._current_timestep=None
+        self._interrupt=False
 
         self.register_modules(
             vae=vae,
@@ -775,8 +780,6 @@ class FluxPipeline(
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
-        self._current_timestep = None
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

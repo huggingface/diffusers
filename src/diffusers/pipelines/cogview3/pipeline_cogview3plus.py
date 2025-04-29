@@ -156,6 +156,9 @@ class CogView3PlusPipeline(DiffusionPipeline):
         scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._num_timesteps=0
+        self._interrupt=False
 
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
@@ -534,7 +537,6 @@ class CogView3PlusPipeline(DiffusionPipeline):
             negative_prompt_embeds,
         )
         self._guidance_scale = guidance_scale
-        self._interrupt = False
 
         # 2. Default call parameters
         if prompt is not None and isinstance(prompt, str):
