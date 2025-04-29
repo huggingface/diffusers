@@ -280,14 +280,14 @@ class HunyuanVideoFramepackTransformer3DModel(
         effective_condition_sequence_length = encoder_attention_mask.sum(dim=1, dtype=torch.int)  # [B,]
         effective_sequence_length = latent_sequence_length + effective_condition_sequence_length
 
-        # if batch_size == 1:
-        #     encoder_hidden_states = encoder_hidden_states[:, : effective_condition_sequence_length[0]]
-        #     attention_mask = None
-        # else:
-        for i in range(batch_size):
-            attention_mask[i, : effective_sequence_length[i]] = True
-        # [B, 1, 1, N], for broadcasting across attention heads
-        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
+        if batch_size == 1:
+            encoder_hidden_states = encoder_hidden_states[:, : effective_condition_sequence_length[0]]
+            attention_mask = None
+        else:
+            for i in range(batch_size):
+                attention_mask[i, : effective_sequence_length[i]] = True
+            # [B, 1, 1, N], for broadcasting across attention heads
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.transformer_blocks:
@@ -311,7 +311,6 @@ class HunyuanVideoFramepackTransformer3DModel(
                     hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
                 )
 
-        # 5. Output projection
         hidden_states = hidden_states[:, -original_context_length:]
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
