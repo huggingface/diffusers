@@ -699,7 +699,7 @@ class QuantoConfig(QuantizationConfigMixin):
     Args:
         weights_dtype (`str`, *optional*, defaults to `"int8"`):
             The target dtype for the weights after quantization. Supported values are ("float8","int8","int4","int2")
-        modules_to_not_convert (`list`, *optional*, default to `None`):
+       modules_to_not_convert (`list`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision (e.g. Whisper encoder, Llava encoder, Mixtral gate layers).
     """

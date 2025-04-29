@@ -119,7 +119,6 @@ _deps = [
     "peft>=0.6.0",
     "protobuf>=3.20.3,<4",
     "pytest",
-    "pulp",
     "pytest-timeout",
     "pytest-xdist",
     "python>=3.8.0",
@@ -129,12 +128,11 @@ _deps = [
     "GitPython<3.1.19",
     "scipy",
     "onnx",
-    "torchprofile>=0.0.4",
     "optimum_quanto>=0.2.6",
     "gguf>=0.10.0",
     "torchao>=0.7.0",
     "bitsandbytes>=0.43.3",
-    "nvidia_modelopt>=0.27.0",
+    "nvidia_modelopt[torch, hf]>=0.27.0",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
@@ -247,7 +245,7 @@ extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
 extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
-extras["nvidia_modelopt"] = deps_list("nvidia_modelopt", "onnx", "pulp", "torchprofile", "accelerate")
+extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[torch, hf]")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
