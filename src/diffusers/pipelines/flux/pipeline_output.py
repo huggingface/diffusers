@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Union
 
-import numpy as np
 import PIL.Image
+import numpy as np
 import torch
 
 from ...utils import BaseOutput
@@ -28,10 +28,9 @@ class FluxPriorReduxPipelineOutput(BaseOutput):
     Output class for Flux Prior Redux pipelines.
 
     Args:
-        images (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
-            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+        prompt_embeds (`torch.FloatTensor`)
+        pooled_prompt_embeds (`torch.FloatTensor`)
     """
 
-    prompt_embeds: torch.Tensor
-    pooled_prompt_embeds: torch.Tensor
+    prompt_embeds: torch.FloatTensor
+    pooled_prompt_embeds: torch.FloatTensor
