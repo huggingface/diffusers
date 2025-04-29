@@ -39,13 +39,13 @@ class PipelineQuantizationConfig:
         self,
         quant_backend: str = None,
         quant_kwargs: Dict[str, Union[str, float, int, dict]] = None,
-        modules_to_quantize: Optional[List[str]] = None,
+        components_to_quantize: Optional[List[str]] = None,
         quant_mapping: Dict[str, Union[DiffQuantConfigMixin, "TransformersQuantConfigMixin"]] = None,
     ):
         self.quant_backend = quant_backend
         # Initialize kwargs to be {} to set to the defaults.
         self.quant_kwargs = quant_kwargs or {}
-        self.modules_to_quantize = modules_to_quantize
+        self.components_to_quantize = components_to_quantize
         self.quant_mapping = quant_mapping
 
         self.post_init()
@@ -91,7 +91,8 @@ class PipelineQuantizationConfig:
         if init_kwargs_transformers != init_kwargs_diffusers:
             raise ValueError(
                 "The signatures of the __init__ methods of the quantization config classes in `diffusers` and `transformers` don't match. "
-                f"Please provide a `quant_mapping` instead, in the {self.__class__.__name__} class."
+                f"Please provide a `quant_mapping` instead, in the {self.__class__.__name__} class. Refer to the docs to learn more about how "
+                "this mapping would look like: TODO."
             )
 
     def _validate_quant_mapping_args(self):
@@ -100,6 +101,8 @@ class PipelineQuantizationConfig:
 
         available_transformers = list(transformers_map.values()) if transformers_map else None
         available_diffusers = list(diffusers_map.values())
+        print(f"{quant_mapping=}")
+        print(f"{available_diffusers=}")
 
         for module_name, config in quant_mapping.items():
             if any(isinstance(config, cfg) for cfg in available_diffusers):
@@ -141,7 +144,7 @@ class PipelineQuantizationConfig:
         quant_config_mapping_transformers, quant_config_mapping_diffusers = self._get_quant_config_list()
 
         quant_mapping = self.quant_mapping
-        modules_to_quantize = self.modules_to_quantize
+        components_to_quantize = self.components_to_quantize
 
         # Granular case
         if self.is_granular and module_name in quant_mapping:
@@ -153,10 +156,10 @@ class PipelineQuantizationConfig:
         else:
             should_quantize = False
             # Only quantize the modules requested for.
-            if modules_to_quantize and module_name in modules_to_quantize:
+            if components_to_quantize and module_name in components_to_quantize:
                 should_quantize = True
-            # No specification for `modules_to_quantize` means all modules should be quantized.
-            elif not self.is_granular and not modules_to_quantize:
+            # No specification for `components_to_quantize` means all modules should be quantized.
+            elif not self.is_granular and not components_to_quantize:
                 should_quantize = True
 
             if should_quantize:
