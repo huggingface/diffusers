@@ -26,6 +26,7 @@ _import_structure = {}
 
 if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
+    _import_structure["attention_dispatch"] = ["AttentionProvider", "attention_provider"]
     _import_structure["auto_model"] = ["AutoModel"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
@@ -106,6 +107,7 @@ if is_flax_available():
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
         from .adapter import MultiAdapter, T2IAdapter
+        from .attention_dispatch import AttentionProvider, attention_provider
         from .auto_model import AutoModel
         from .autoencoders import (
             AsymmetricAutoencoderKL,
