@@ -125,6 +125,9 @@ pipeline(["An astronaut riding a horse on Mars"]*32).images[0]
 print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 ```
 
+> [!WARNING]
+> [`AutoencoderKLWan`] and [`AsymmetricAutoencoderKL`] don't support slicing.
+
 ## VAE tiling
 
 VAE tiling saves memory by dividing an image into smaller overlapping tiles instead of processing the entire image at once. This also reduces peak memory usage because the GPU is only processing a tile at a time. Unlike sliced VAE, tiled VAE maintains some context between tiles because they overlap which can generate more coherent images.
@@ -146,6 +149,9 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 pipeline(prompt, image=init_image, strength=0.5).images[0]
 print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 ```
+
+> [!WARNING]
+> [`AutoencoderKLWan`] and [`AsymmetricAutoencoderKL`] don't support tiling.
 
 ## CPU offloading
 
