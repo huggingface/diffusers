@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -87,6 +88,20 @@ DEFAULT_PROMPT_TEMPLATE = {
     ),
     "crop_start": 95,
 }
+
+
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
+def calculate_shift(
+    image_seq_len,
+    base_seq_len: int = 256,
+    max_seq_len: int = 4096,
+    base_shift: float = 0.5,
+    max_shift: float = 1.15,
+):
+    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    b = base_shift - m * base_seq_len
+    mu = image_seq_len * m + b
+    return mu
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -356,11 +371,11 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         self, image: torch.Tensor, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ):
         image = (image + 1) / 2.0  # [-1, 1] -> [0, 1]
-        image = self.feature_extractor(images=image, return_tensors="pt").to(
+        image = self.feature_extractor(images=image, return_tensors="pt", do_rescale=False).to(
             device=self.image_encoder.device, dtype=self.image_encoder.dtype
         )
         image_embeds = self.image_encoder(**image).last_hidden_state
-        return image_embeds.to(dtype=dtype)
+        return image_embeds.to(device=device, dtype=dtype)
 
     def check_inputs(
         self,
@@ -722,6 +737,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             dtype=torch.float32,
         )
         history_video = None
+        total_generated_latent_frames = 0
 
         image_latents = self.prepare_image_latents(
             image, dtype=torch.float32, device=device, generator=generator, latents=image_latents
@@ -735,19 +751,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         guidance = torch.tensor([guidance_scale] * batch_size, dtype=transformer_dtype, device=device) * 1000.0
 
         # 7. Denoising loop
-        sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
-
         for i in range(num_latent_sections):
-            timesteps, num_inference_steps = retrieve_timesteps(
-                self.scheduler, num_inference_steps, device, sigmas=sigmas
-            )
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            self._num_timesteps = len(timesteps)
-
             current_latent_padding = latent_paddings[i]
             is_last_section = current_latent_padding == 0
             latent_padding_size = current_latent_padding * latent_window_size
-            total_generated_latent_frames = 0
 
             indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, *history_sizes])).unsqueeze(0)
             (
@@ -778,6 +785,25 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 generator=generator,
                 latents=latents,
             )
+
+            sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
+            image_seq_len = (
+                latents.shape[1] * latents.shape[2] * latents.shape[3] / self.transformer.config.patch_size**2
+            )
+            exp_max = 7.0
+            mu = calculate_shift(
+                image_seq_len,
+                self.scheduler.config.get("base_image_seq_len", 256),
+                self.scheduler.config.get("max_image_seq_len", 4096),
+                self.scheduler.config.get("base_shift", 0.5),
+                self.scheduler.config.get("max_shift", 1.15),
+            )
+            mu = min(mu, math.log(exp_max))
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu
+            )
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            self._num_timesteps = len(timesteps)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
@@ -847,7 +873,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                         xm.mark_step()
 
                 if is_last_section:
-                    latents = torch.cat([latents_prefix, latents])
+                    latents = torch.cat([image_latents, latents], dim=2)
 
                 total_generated_latent_frames += latents.shape[2]
                 history_latents = torch.cat([latents, history_latents], dim=2)
@@ -857,11 +883,11 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 if history_video is None:
                     if not output_type == "latent":
                         current_video = real_history_latents.to(vae_dtype) / self.vae.config.scaling_factor
-                        current_video = self.vae.decode(current_video, return_dict=False)[0]
+                        history_video = self.vae.decode(current_video, return_dict=False)[0]
                     else:
                         history_video = [real_history_latents]
                 else:
-                    if not output_type == "latents":
+                    if not output_type == "latent":
                         section_latent_frames = (
                             (latent_window_size * 2 + 1) if is_last_section else (latent_window_size * 2)
                         )
@@ -871,7 +897,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                             / self.vae.config.scaling_factor
                         )
                         current_video = self.vae.decode(current_video, return_dict=False)[0]
-                        current_video = self._soft_append(current_video, history_video, overlapped_frames)
+                        history_video = self._soft_append(current_video, history_video, overlapped_frames)
                     else:
                         history_video.append(real_history_latents)
 
@@ -895,15 +921,15 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
         return HunyuanVideoFramepackPipelineOutput(frames=video)
 
-    def _soft_append(current: torch.Tensor, history: torch.Tensor, overlap: int = 0):
+    def _soft_append(self, history: torch.Tensor, current: torch.Tensor, overlap: int = 0):
         if overlap <= 0:
-            return torch.cat([current, history], dim=2)
+            return torch.cat([history, current], dim=2)
 
-        assert current.shape[2] >= overlap, f"Current length ({current.shape[2]}) must be >= overlap ({overlap})"
-        assert history.shape[2] >= overlap, f"History length ({history.shape[2]}) must be >= overlap ({overlap})"
+        assert history.shape[2] >= overlap, f"Current length ({history.shape[2]}) must be >= overlap ({overlap})"
+        assert current.shape[2] >= overlap, f"History length ({current.shape[2]}) must be >= overlap ({overlap})"
 
-        weights = torch.linspace(1, 0, overlap, dtype=current.dtype, device=current.device).view(1, 1, -1, 1, 1)
-        blended = weights * current[:, :, -overlap:] + (1 - weights) * history[:, :, :overlap]
-        output = torch.cat([current[:, :, :-overlap], blended, history[:, :, overlap:]], dim=2)
+        weights = torch.linspace(1, 0, overlap, dtype=history.dtype, device=history.device).view(1, 1, -1, 1, 1)
+        blended = weights * history[:, :, -overlap:] + (1 - weights) * current[:, :, :overlap]
+        output = torch.cat([history[:, :, :-overlap], blended, current[:, :, overlap:]], dim=2)
 
-        return output.to(current)
+        return output.to(history)
