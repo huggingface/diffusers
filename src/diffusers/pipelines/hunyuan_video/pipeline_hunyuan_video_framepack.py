@@ -51,6 +51,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
+        ##### Image-to-Video
+
         ```python
         >>> import torch
         >>> from diffusers import HunyuanVideoFramepackPipeline, HunyuanVideoFramepackTransformer3DModel
@@ -82,6 +84,53 @@ EXAMPLE_DOC_STRING = """
         ...     prompt="A penguin dancing in the snow",
         ...     height=832,
         ...     width=480,
+        ...     num_frames=91,
+        ...     num_inference_steps=30,
+        ...     guidance_scale=9.0,
+        ...     generator=torch.Generator().manual_seed(0),
+        ... ).frames[0]
+        >>> export_to_video(output, "output.mp4", fps=30)
+        ```
+
+        ##### First and Last Image-to-Video
+
+        ```python
+        >>> import torch
+        >>> from diffusers import HunyuanVideoFramepackPipeline, HunyuanVideoFramepackTransformer3DModel
+        >>> from diffusers.utils import export_to_video, load_image
+        >>> from transformers import SiglipImageProcessor, SiglipVisionModel
+
+        >>> transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
+        ...     "lllyasviel/FramePackI2V_HY", torch_dtype=torch.bfloat16
+        ... )
+        >>> feature_extractor = SiglipImageProcessor.from_pretrained(
+        ...     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
+        ... )
+        >>> image_encoder = SiglipVisionModel.from_pretrained(
+        ...     "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
+        ... )
+        >>> pipe = HunyuanVideoFramepackPipeline.from_pretrained(
+        ...     "hunyuanvideo-community/HunyuanVideo",
+        ...     transformer=transformer,
+        ...     feature_extractor=feature_extractor,
+        ...     image_encoder=image_encoder,
+        ...     torch_dtype=torch.float16,
+        ... )
+        >>> pipe.to("cuda")
+
+        >>> prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+        >>> first_image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png"
+        ... )
+        >>> last_image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png"
+        ... )
+        >>> output = pipe(
+        ...     image=first_image,
+        ...     last_image=last_image,
+        ...     prompt=prompt,
+        ...     height=512,
+        ...     width=512,
         ...     num_frames=91,
         ...     num_inference_steps=30,
         ...     guidance_scale=9.0,
