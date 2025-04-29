@@ -78,7 +78,9 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 
-        >>> image = load_image("inputs/penguin.png")
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/penguin.png"
+        ... )
         >>> output = pipe(
         ...     image=image,
         ...     prompt="A penguin dancing in the snow",
