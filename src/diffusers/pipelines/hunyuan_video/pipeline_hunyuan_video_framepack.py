@@ -206,7 +206,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
@@ -386,12 +386,13 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     def encode_image(
         self, image: torch.Tensor, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ):
+        device = device or self._execution_device
         image = (image + 1) / 2.0  # [-1, 1] -> [0, 1]
         image = self.feature_extractor(images=image, return_tensors="pt", do_rescale=False).to(
-            device=self.image_encoder.device, dtype=self.image_encoder.dtype
+            device=device, dtype=self.image_encoder.dtype
         )
         image_embeds = self.image_encoder(**image).last_hidden_state
-        return image_embeds.to(device=device, dtype=dtype)
+        return image_embeds.to(dtype=dtype)
 
     def check_inputs(
         self,
@@ -477,8 +478,9 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        device = device or self._execution_device
         if latents is None:
-            image = image.unsqueeze(2).to(device=self.vae.device, dtype=self.vae.dtype)
+            image = image.unsqueeze(2).to(device=device, dtype=self.vae.dtype)
             latents = self.vae.encode(image).latent_dist.sample(generator=generator)
             latents = latents * self.vae.config.scaling_factor
         return latents.to(device=device, dtype=dtype)
