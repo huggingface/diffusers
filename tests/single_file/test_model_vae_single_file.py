@@ -18,9 +18,7 @@ import unittest
 
 import torch
 
-from diffusers import (
-    AutoencoderKL,
-)
+from diffusers import AutoencoderKL
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,

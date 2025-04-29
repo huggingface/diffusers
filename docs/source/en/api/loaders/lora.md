@@ -39,58 +39,66 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 ## StableDiffusionLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.StableDiffusionLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.StableDiffusionLoraLoaderMixin
 
 ## StableDiffusionXLLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.StableDiffusionXLLoraLoaderMixin
 
 ## SD3LoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.SD3LoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.SD3LoraLoaderMixin
 
 ## FluxLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.FluxLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.FluxLoraLoaderMixin
 
 ## CogVideoXLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.CogVideoXLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.CogVideoXLoraLoaderMixin
 
 ## Mochi1LoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.Mochi1LoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.Mochi1LoraLoaderMixin
 ## AuraFlowLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.AuraFlowLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.AuraFlowLoraLoaderMixin
 
 ## LTXVideoLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.LTXVideoLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.LTXVideoLoraLoaderMixin
 
 ## SanaLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.SanaLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.SanaLoraLoaderMixin
 
 ## HunyuanVideoLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.HunyuanVideoLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.HunyuanVideoLoraLoaderMixin
 
 ## Lumina2LoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.Lumina2LoraLoaderMixin
-
-## CogView4LoraLoaderMixin
-
-[[autodoc]] loaders.lora_pipeline.CogView4LoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.Lumina2LoraLoaderMixin
 
 ## WanLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.WanLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.WanLoraLoaderMixin
+
+## CogView4LoraLoaderMixin
+
+[[autodoc]] loaders.lora.lora_pipeline.CogView4LoraLoaderMixin
+
+## CogView4LoraLoaderMixin
+
+[[autodoc]] loaders.lora.lora_pipeline.CogView4LoraLoaderMixin
+
+## WanLoraLoaderMixin
+
+[[autodoc]] loaders.lora.lora_pipeline.WanLoraLoaderMixin
 
 ## AmusedLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.AmusedLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.AmusedLoraLoaderMixin
 
 ## HiDreamImageLoraLoaderMixin
 
@@ -98,4 +106,4 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 ## LoraBaseMixin
 
-[[autodoc]] loaders.lora_base.LoraBaseMixin
+[[autodoc]] loaders.lora.lora_base.LoraBaseMixin

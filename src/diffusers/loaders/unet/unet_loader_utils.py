@@ -14,12 +14,12 @@
 import copy
 from typing import TYPE_CHECKING, Dict, List, Union
 
-from ..utils import logging
+from ...utils import logging
 
 
 if TYPE_CHECKING:
     # import here to avoid circular imports
-    from ..models import UNet2DConditionModel
+    from ...models import UNet2DConditionModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

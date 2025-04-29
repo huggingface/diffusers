@@ -1017,7 +1017,7 @@ class PeftLoraLoaderMixinTests:
         )
 
         scale_with_wrong_components = {"foo": 0.0, "bar": 0.0, "tik": 0.0}
-        logger = logging.get_logger("diffusers.loaders.lora_base")
+        logger = logging.get_logger("diffusers.loaders.lora.lora_base")
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
             pipe.set_adapters(adapter_name, adapter_weights=scale_with_wrong_components)
@@ -1824,7 +1824,7 @@ class PeftLoraLoaderMixinTests:
                 elif lora_module == "text_encoder_2":
                     prefix = "text_encoder_2"
 
-                logger = logging.get_logger("diffusers.loaders.lora_base")
+                logger = logging.get_logger("diffusers.loaders.lora.lora_base")
                 logger.setLevel(logging.WARNING)
 
                 with CaptureLogger(logger) as cap_logger:
@@ -1925,7 +1925,7 @@ class PeftLoraLoaderMixinTests:
 
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.loaders.lora.lora_pipeline")
         logger.setLevel(logging.INFO)
 
         original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]

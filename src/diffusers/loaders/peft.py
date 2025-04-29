@@ -35,8 +35,8 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
-from .unet_loader_utils import _maybe_expand_lora_scales
+from .lora.lora_base import _fetch_state_dict, _func_optionally_disable_offloading
+from .unet.unet_loader_utils import _maybe_expand_lora_scales
 
 
 logger = logging.get_logger(__name__)
@@ -99,7 +99,7 @@ class PeftAdapterMixin:
     _prepare_lora_hotswap_kwargs: Optional[dict] = None
 
     @classmethod
-    # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
+    # Copied from diffusers.loaders.lora.lora_base.LoraBaseMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
         """
         Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
