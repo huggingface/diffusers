@@ -96,23 +96,29 @@ class PipelineQuantizationConfig:
 
     def _validate_quant_mapping_args(self):
         quant_mapping = self.quant_mapping
-        quant_config_mapping_transformers, quant_config_mapping_diffusers = self._get_quant_config_list()
+        transformers_map, diffusers_map = self._get_quant_config_list()
 
-        available_configs_transformers = (
-            list(quant_config_mapping_transformers.values()) if quant_config_mapping_transformers else None
-        )
-        available_configs_diffusers = list(quant_config_mapping_diffusers.values())
+        available_transformers = list(transformers_map.values()) if transformers_map else None
+        available_diffusers = list(diffusers_map.values())
 
         for module_name, config in quant_mapping.items():
-            msg = ""
-            if not (any(isinstance(config, available) for available in available_configs_diffusers)):
-                msg = f"Provided config for {module_name=} could not be found. Available ones for `diffusers` are: {available_configs_diffusers}.)"
-            elif available_configs_transformers is not None and not (
-                any(isinstance(config, available) for available in available_configs_transformers)
-            ):
-                msg = f"Provided config for {module_name=} could not be found. Available ones for `transformers` are: {available_configs_transformers}.)"
-            if msg:
-                raise ValueError(msg)
+            if any(isinstance(config, cfg) for cfg in available_diffusers):
+                continue
+
+            if available_transformers and any(isinstance(config, cfg) for cfg in available_transformers):
+                continue
+
+            if available_transformers:
+                raise ValueError(
+                    f"Provided config for module_name={module_name} could not be found. "
+                    f"Available diffusers configs: {available_diffusers}; "
+                    f"Available transformers configs: {available_transformers}."
+                )
+            else:
+                raise ValueError(
+                    f"Provided config for module_name={module_name} could not be found. "
+                    f"Available diffusers configs: {available_diffusers}."
+                )
 
     def _check_backend_availability(self, quant_backend: str):
         quant_config_mapping_transformers, quant_config_mapping_diffusers = self._get_quant_config_list()
