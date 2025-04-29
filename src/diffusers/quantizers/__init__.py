@@ -101,8 +101,6 @@ class PipelineQuantizationConfig:
 
         available_transformers = list(transformers_map.values()) if transformers_map else None
         available_diffusers = list(diffusers_map.values())
-        print(f"{quant_mapping=}")
-        print(f"{available_diffusers=}")
 
         for module_name, config in quant_mapping.items():
             if any(isinstance(config, cfg) for cfg in available_diffusers):
