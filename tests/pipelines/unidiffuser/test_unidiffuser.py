@@ -578,7 +578,7 @@ class UniDiffuserPipelineFastTests(
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     @unittest.skip(
-        "Test not supported becauseit has a bunch of direct configs at init and also, this pipeline isn't used that much now."
+        "Test not supported because it has a bunch of direct configs at init and also, this pipeline isn't used that much now."
     )
     def test_encode_prompt_works_in_isolation():
         pass
