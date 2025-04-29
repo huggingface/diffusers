@@ -446,7 +446,6 @@ else:
             "StableDiffusion3ControlNetPipeline",
             "StableDiffusion3Img2ImgPipeline",
             "StableDiffusion3InpaintPipeline",
-            "StableDiffusion3InstructPix2PixPipeline"
             "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusion3PAGPipeline",
@@ -1021,7 +1020,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusion3ControlNetPipeline,
             StableDiffusion3Img2ImgPipeline,
             StableDiffusion3InpaintPipeline,
-            StableDiffusion3InstructPix2PixPipeline,
             StableDiffusion3PAGImg2ImgPipeline,
             StableDiffusion3PAGPipeline,
             StableDiffusion3Pipeline,
