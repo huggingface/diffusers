@@ -97,11 +97,11 @@ class FramepackClipVisionProjection(nn.Module):
 
 
 class HunyuanVideoHistoryPatchEmbed(nn.Module):
-    def __init__(self, inner_dim: int):
+    def __init__(self, in_channels: int, inner_dim: int):
         super().__init__()
-        self.proj = nn.Conv3d(16, inner_dim, kernel_size=(1, 2, 2), stride=(1, 2, 2))
-        self.proj_2x = nn.Conv3d(16, inner_dim, kernel_size=(2, 4, 4), stride=(2, 4, 4))
-        self.proj_4x = nn.Conv3d(16, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
+        self.proj = nn.Conv3d(in_channels, inner_dim, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+        self.proj_2x = nn.Conv3d(in_channels, inner_dim, kernel_size=(2, 4, 4), stride=(2, 4, 4))
+        self.proj_4x = nn.Conv3d(in_channels, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
 
     def forward(
         self,
@@ -131,7 +131,7 @@ class HunyuanVideoFramepackTransformer3DModel(
     _no_split_modules = [
         "HunyuanVideoTransformerBlock",
         "HunyuanVideoSingleTransformerBlock",
-        "HunyuanVideoPatchEmbedForCleanLatents",  # TODO
+        "HunyuanVideoHistoryPatchEmbed",
         "HunyuanVideoTokenRefiner",
     ]
 
@@ -205,7 +205,7 @@ class HunyuanVideoFramepackTransformer3DModel(
 
         self.clean_x_embedder = None
         if has_clean_x_embedder:
-            self.clean_x_embedder = HunyuanVideoHistoryPatchEmbed(inner_dim)
+            self.clean_x_embedder = HunyuanVideoHistoryPatchEmbed(in_channels, inner_dim)
 
         self.use_gradient_checkpointing = False
 
