@@ -768,7 +768,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             is_last_section = latent_paddings[k] == 0
             latent_padding_size = latent_paddings[k] * latent_window_size
 
-            indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, *history_sizes])).unsqueeze(0)
+            indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, *history_sizes]))
             (
                 indices_prefix,
                 indices_padding,
@@ -776,9 +776,9 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 indices_postfix,
                 indices_latents_history_2x,
                 indices_latents_history_4x,
-            ) = indices.split([1, latent_padding_size, latent_window_size, *history_sizes], dim=1)
+            ) = indices.split([1, latent_padding_size, latent_window_size, *history_sizes], dim=0)
             # Inverted anti-drifting sampling: Figure 2(c) in the paper
-            indices_clean_latents = torch.cat([indices_prefix, indices_postfix], dim=1)
+            indices_clean_latents = torch.cat([indices_prefix, indices_postfix], dim=0)
 
             latents_prefix = image_latents
             latents_postfix, latents_history_2x, latents_history_4x = history_latents[
@@ -883,7 +883,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
                     if XLA_AVAILABLE:
                         xm.mark_step()
-                
+
                 if is_last_section:
                     latents = torch.cat([image_latents, latents], dim=2)
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -22,6 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, get_logger, scale_lora_layers, unscale_lora_layers
 from ..cache_utils import CacheMixin
+from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous
@@ -37,92 +38,49 @@ from .transformer_hunyuan_video import (
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# class HunyuanVideoFramepackRotaryPosEmbed(nn.Module):
-#     def __init__(self, patch_size: int, patch_size_t: int, rope_dim: List[int], theta: float = 256.0) -> None:
-#         super().__init__()
-
-#         self.patch_size = patch_size
-#         self.patch_size_t = patch_size_t
-#         self.rope_dim = rope_dim
-#         self.theta = theta
-
-#     def forward(self, frame_indices: torch.Tensor, height: int, width: int, device: torch.device):
-#         frame_indices = frame_indices.unbind(0)
-#         # This is from the original code.  We don't call _forward for each batch index because we know that
-#         # each batch has the same frame indices. However, it may be possible that the frame indices don't
-#         # always be the same for every item in a batch (such as in training). We cannot use the original
-#         # implementation because our `apply_rotary_emb` function broadcasts across the batch dim.
-#         # freqs = [self._forward(f, height, width, device) for f in frame_indices]
-#         # freqs_cos, freqs_sin = zip(*freqs)
-#         # freqs_cos = torch.stack(freqs_cos, dim=0)  # [B, W * H * T, D / 2]
-#         # freqs_sin = torch.stack(freqs_sin, dim=0)  # [B, W * H * T, D / 2]
-#         # return freqs_cos, freqs_sin
-#         return self._forward(frame_indices[0], height, width, device)
-
-#     def _forward(self, frame_indices, height, width, device):
-#         height = height // self.patch_size
-#         width = width // self.patch_size
-#         grid = torch.meshgrid(
-#             frame_indices.to(device=device, dtype=torch.float32),
-#             torch.arange(0, height, device=device, dtype=torch.float32),
-#             torch.arange(0, width, device=device, dtype=torch.float32),
-#             indexing="ij",
-#         )  # 3 * [W, H, T]
-#         grid = torch.stack(grid, dim=0)  # [3, W, H, T]
-
-#         freqs = []
-#         for i in range(3):
-#             freq = get_1d_rotary_pos_embed(self.rope_dim[i], grid[i].reshape(-1), self.theta, use_real=True)
-#             freqs.append(freq)
-
-#         freqs_cos = torch.cat([f[0] for f in freqs], dim=1)  # (W * H * T, D / 2)
-#         freqs_sin = torch.cat([f[1] for f in freqs], dim=1)  # (W * H * T, D / 2)
-
-#         return freqs_cos, freqs_sin
-
-
-class HunyuanVideoRotaryPosEmbed(nn.Module):
-    def __init__(self, rope_dim, theta):
+class HunyuanVideoFramepackRotaryPosEmbed(nn.Module):
+    def __init__(self, patch_size: int, patch_size_t: int, rope_dim: List[int], theta: float = 256.0) -> None:
         super().__init__()
-        self.DT, self.DY, self.DX = rope_dim
+
+        self.patch_size = patch_size
+        self.patch_size_t = patch_size_t
+        self.rope_dim = rope_dim
         self.theta = theta
 
-    @torch.no_grad()
-    def get_frequency(self, dim, pos):
-        T, H, W = pos.shape
-        freqs = 1.0 / (
-            self.theta ** (torch.arange(0, dim, 2, dtype=torch.float32, device=pos.device)[: (dim // 2)] / dim)
-        )
-        freqs = torch.outer(freqs, pos.reshape(-1)).unflatten(-1, (T, H, W)).repeat_interleave(2, dim=0)
-        return freqs.cos(), freqs.sin()
+    def forward(self, frame_indices: torch.Tensor, height: int, width: int, device: torch.device):
+        # This is from the original code.  We don't call _forward for each batch index because we know that
+        # each batch has the same frame indices. However, it may be possible that the frame indices don't
+        # always be the same for every item in a batch (such as in training). We cannot use the original
+        # implementation because our `apply_rotary_emb` function broadcasts across the batch dim, so we'd
+        # need to first implement another attention processor or modify the existing one with different apply_rotary_emb
+        # frame_indices = frame_indices.unbind(0)
+        # freqs = [self._forward(f, height, width, device) for f in frame_indices]
+        # freqs_cos, freqs_sin = zip(*freqs)
+        # freqs_cos = torch.stack(freqs_cos, dim=0)  # [B, W * H * T, D / 2]
+        # freqs_sin = torch.stack(freqs_sin, dim=0)  # [B, W * H * T, D / 2]
+        # return freqs_cos, freqs_sin
+        return self._forward(frame_indices, height, width, device)
 
-    @torch.no_grad()
-    def forward_inner(self, frame_indices, height, width, device):
-        # TODO(aryan)
-        height = height // 2
-        width = width // 2
-        GT, GY, GX = torch.meshgrid(
+    def _forward(self, frame_indices, height, width, device):
+        height = height // self.patch_size
+        width = width // self.patch_size
+        grid = torch.meshgrid(
             frame_indices.to(device=device, dtype=torch.float32),
             torch.arange(0, height, device=device, dtype=torch.float32),
             torch.arange(0, width, device=device, dtype=torch.float32),
             indexing="ij",
-        )
+        )  # 3 * [W, H, T]
+        grid = torch.stack(grid, dim=0)  # [3, W, H, T]
 
-        FCT, FST = self.get_frequency(self.DT, GT)
-        FCY, FSY = self.get_frequency(self.DY, GY)
-        FCX, FSX = self.get_frequency(self.DX, GX)
+        freqs = []
+        for i in range(3):
+            freq = get_1d_rotary_pos_embed(self.rope_dim[i], grid[i].reshape(-1), self.theta, use_real=True)
+            freqs.append(freq)
 
-        result = torch.cat([FCT, FCY, FCX, FST, FSY, FSX], dim=0)
+        freqs_cos = torch.cat([f[0] for f in freqs], dim=1)  # (W * H * T, D / 2)
+        freqs_sin = torch.cat([f[1] for f in freqs], dim=1)  # (W * H * T, D / 2)
 
-        return result.to(device)
-
-    @torch.no_grad()
-    def forward(self, frame_indices, height, width, device):
-        return self.forward_inner(frame_indices[0], height, width, device).unsqueeze(0)
-        # frame_indices = frame_indices.unbind(0)
-        # results = [self.forward_inner(f, height, width, device) for f in frame_indices]
-        # results = torch.stack(results, dim=0)
-        # return results
+        return freqs_cos, freqs_sin
 
 
 class FramepackClipVisionProjection(nn.Module):
@@ -216,8 +174,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         )
 
         # 2. RoPE
-        # self.rope = HunyuanVideoFramepackRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
-        self.rope = HunyuanVideoRotaryPosEmbed(rope_axes_dim, rope_theta)
+        self.rope = HunyuanVideoFramepackRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
 
         # 3. Dual stream transformer blocks
         self.transformer_blocks = nn.ModuleList(
@@ -320,18 +277,17 @@ class HunyuanVideoFramepackTransformer3DModel(
         attention_mask = torch.zeros(
             batch_size, sequence_length, device=hidden_states.device, dtype=torch.bool
         )  # [B, N]
-
         effective_condition_sequence_length = encoder_attention_mask.sum(dim=1, dtype=torch.int)  # [B,]
         effective_sequence_length = latent_sequence_length + effective_condition_sequence_length
 
-        if batch_size == 1:
-            encoder_hidden_states = encoder_hidden_states[:, : effective_condition_sequence_length[0]]
-            attention_mask = None
-        else:
-            for i in range(batch_size):
-                attention_mask[i, : effective_sequence_length[i]] = True
-            # [B, 1, 1, N], for broadcasting across attention heads
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
+        # if batch_size == 1:
+        #     encoder_hidden_states = encoder_hidden_states[:, : effective_condition_sequence_length[0]]
+        #     attention_mask = None
+        # else:
+        for i in range(batch_size):
+            attention_mask[i, : effective_sequence_length[i]] = True
+        # [B, 1, 1, N], for broadcasting across attention heads
+        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.transformer_blocks:
@@ -393,7 +349,8 @@ class HunyuanVideoFramepackTransformer3DModel(
         image_rotary_emb = self.rope(
             frame_indices=indices_latents, height=height, width=width, device=hidden_states.device
         )
-        image_rotary_emb = image_rotary_emb.flatten(2).transpose(1, 2)
+        image_rotary_emb = list(image_rotary_emb)  # convert tuple to list for in-place modification
+        pph, ppw = height // self.config.patch_size, width // self.config.patch_size
 
         latents_clean, latents_history_2x, latents_history_4x = self.clean_x_embedder(
             latents_clean, latents_history_2x, latents_history_4x
@@ -405,8 +362,8 @@ class HunyuanVideoFramepackTransformer3DModel(
             image_rotary_emb_clean = self.rope(
                 frame_indices=indices_latents_clean, height=height, width=width, device=latents_clean.device
             )
-            image_rotary_emb_clean = image_rotary_emb_clean.flatten(2).transpose(1, 2)
-            image_rotary_emb = torch.cat([image_rotary_emb_clean, image_rotary_emb], dim=1)
+            image_rotary_emb[0] = torch.cat([image_rotary_emb_clean[0], image_rotary_emb[0]], dim=0)
+            image_rotary_emb[1] = torch.cat([image_rotary_emb_clean[1], image_rotary_emb[1]], dim=0)
 
         if latents_history_2x is not None and indices_latents_history_2x is not None:
             hidden_states = torch.cat([latents_history_2x, hidden_states], dim=1)
@@ -414,10 +371,11 @@ class HunyuanVideoFramepackTransformer3DModel(
             image_rotary_emb_history_2x = self.rope(
                 frame_indices=indices_latents_history_2x, height=height, width=width, device=latents_history_2x.device
             )
-            image_rotary_emb_history_2x = _pad_for_3d_conv(image_rotary_emb_history_2x, (2, 2, 2))
-            image_rotary_emb_history_2x = _center_down_sample_3d(image_rotary_emb_history_2x, (2, 2, 2))
-            image_rotary_emb_history_2x = image_rotary_emb_history_2x.flatten(2).transpose(1, 2)
-            image_rotary_emb = torch.cat([image_rotary_emb_history_2x, image_rotary_emb], dim=1)
+            image_rotary_emb_history_2x = self._pad_rotary_emb(
+                image_rotary_emb_history_2x, indices_latents_history_2x.size(0), pph, ppw, (2, 2, 2)
+            )
+            image_rotary_emb[0] = torch.cat([image_rotary_emb_history_2x[0], image_rotary_emb[0]], dim=0)
+            image_rotary_emb[1] = torch.cat([image_rotary_emb_history_2x[1], image_rotary_emb[1]], dim=0)
 
         if latents_history_4x is not None and indices_latents_history_4x is not None:
             hidden_states = torch.cat([latents_history_4x, hidden_states], dim=1)
@@ -425,73 +383,13 @@ class HunyuanVideoFramepackTransformer3DModel(
             image_rotary_emb_history_4x = self.rope(
                 frame_indices=indices_latents_history_4x, height=height, width=width, device=latents_history_4x.device
             )
-            image_rotary_emb_history_4x = _pad_for_3d_conv(image_rotary_emb_history_4x, (4, 4, 4))
-            image_rotary_emb_history_4x = _center_down_sample_3d(image_rotary_emb_history_4x, (4, 4, 4))
-            image_rotary_emb_history_4x = image_rotary_emb_history_4x.flatten(2).transpose(1, 2)
-            image_rotary_emb = torch.cat([image_rotary_emb_history_4x, image_rotary_emb], dim=1)
+            image_rotary_emb_history_4x = self._pad_rotary_emb(
+                image_rotary_emb_history_4x, indices_latents_history_4x.size(0), pph, ppw, (4, 4, 4)
+            )
+            image_rotary_emb[0] = torch.cat([image_rotary_emb_history_4x[0], image_rotary_emb[0]], dim=0)
+            image_rotary_emb[1] = torch.cat([image_rotary_emb_history_4x[1], image_rotary_emb[1]], dim=0)
 
-        return hidden_states, image_rotary_emb.squeeze(0).chunk(2, dim=-1)
-
-    # def _pack_history_states(
-    #     self,
-    #     hidden_states: torch.Tensor,
-    #     indices_latents: torch.Tensor,
-    #     latents_clean: Optional[torch.Tensor] = None,
-    #     latents_history_2x: Optional[torch.Tensor] = None,
-    #     latents_history_4x: Optional[torch.Tensor] = None,
-    #     indices_latents_clean: Optional[torch.Tensor] = None,
-    #     indices_latents_history_2x: Optional[torch.Tensor] = None,
-    #     indices_latents_history_4x: Optional[torch.Tensor] = None,
-    # ):
-    #     batch_size, num_channels, num_frames, height, width = hidden_states.shape
-    #     if indices_latents is None:
-    #         indices_latents = torch.arange(0, num_frames).unsqueeze(0).expand(batch_size, -1)
-
-    #     hidden_states = self.x_embedder(hidden_states)
-    #     image_rotary_emb = self.rope(
-    #         frame_indices=indices_latents, height=height, width=width, device=hidden_states.device
-    #     )
-    #     image_rotary_emb = list(image_rotary_emb)  # convert tuple to list for in-place modification
-    #     pph, ppw = height // self.config.patch_size, width // self.config.patch_size
-
-    #     latents_clean, latents_history_2x, latents_history_4x = self.clean_x_embedder(
-    #         latents_clean, latents_history_2x, latents_history_4x
-    #     )
-
-    #     if latents_clean is not None:
-    #         hidden_states = torch.cat([latents_clean, hidden_states], dim=1)
-
-    #         image_rotary_emb_clean = self.rope(
-    #             frame_indices=indices_latents_clean, height=height, width=width, device=latents_clean.device
-    #         )
-    #         image_rotary_emb[0] = torch.cat([image_rotary_emb_clean[0], image_rotary_emb[0]], dim=0)
-    #         image_rotary_emb[1] = torch.cat([image_rotary_emb_clean[1], image_rotary_emb[1]], dim=0)
-
-    #     if latents_history_2x is not None and indices_latents_history_2x is not None:
-    #         hidden_states = torch.cat([latents_history_2x, hidden_states], dim=1)
-
-    #         image_rotary_emb_history_2x = self.rope(
-    #             frame_indices=indices_latents_history_2x, height=height, width=width, device=latents_history_2x.device
-    #         )
-    #         image_rotary_emb_history_2x = self._pad_rotary_emb(
-    #             image_rotary_emb_history_2x, indices_latents_history_2x.size(1), pph, ppw, (2, 2, 2)
-    #         )
-    #         image_rotary_emb[0] = torch.cat([image_rotary_emb_history_2x[0], image_rotary_emb[0]], dim=0)
-    #         image_rotary_emb[1] = torch.cat([image_rotary_emb_history_2x[1], image_rotary_emb[1]], dim=0)
-
-    #     if latents_history_4x is not None and indices_latents_history_4x is not None:
-    #         hidden_states = torch.cat([latents_history_4x, hidden_states], dim=1)
-
-    #         image_rotary_emb_history_4x = self.rope(
-    #             frame_indices=indices_latents_history_4x, height=height, width=width, device=latents_history_4x.device
-    #         )
-    #         image_rotary_emb_history_4x = self._pad_rotary_emb(
-    #             image_rotary_emb_history_4x, indices_latents_history_4x.size(1), pph, ppw, (4, 4, 4)
-    #         )
-    #         image_rotary_emb[0] = torch.cat([image_rotary_emb_history_4x[0], image_rotary_emb[0]], dim=0)
-    #         image_rotary_emb[1] = torch.cat([image_rotary_emb_history_4x[1], image_rotary_emb[1]], dim=0)
-
-    #     return hidden_states, image_rotary_emb
+        return hidden_states, image_rotary_emb
 
     def _pad_rotary_emb(
         self,
