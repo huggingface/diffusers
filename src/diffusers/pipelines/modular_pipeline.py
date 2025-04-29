@@ -1101,7 +1101,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             # current component spec
             component_spec = self._component_specs.get(name)
             if component_spec is None:
-                logger.warning(f"register_components: skipping unknown component '{name}'")
+                logger.warning(f"ModularLoader.register_components: skipping unknown component '{name}'")
                 continue
             
             is_registered = hasattr(self, name)
@@ -1143,17 +1143,17 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             current_module = getattr(self, name, None)
             # skip if the component is already registered with the same object
             if current_module is module:
-                logger.info(f"register_components: {name} is already registered with same object, skipping")
+                logger.info(f"ModularLoader.register_components: {name} is already registered with same object, skipping")
                 continue
             
             # it module is not an instance of the expected type, still register it but with a warning
             if module is not None and component_spec.type_hint is not None and not isinstance(module, component_spec.type_hint):
-                logger.warning(f"register_components: adding {name} with new type: {module.__class__.__name__}, previous type: {component_spec.type_hint.__name__}")
+                logger.warning(f"ModularLoader.register_components: adding {name} with new type: {module.__class__.__name__}, previous type: {component_spec.type_hint.__name__}")
 
             # warn if unregister
             if current_module is not None and module is None:
                 logger.info(
-                    f"register_components: setting '{name}' to None "
+                    f"ModularLoader.register_components: setting '{name}' to None "
                     f"(was {current_module.__class__.__name__})"
                 )
             # same type, new instance → debug
@@ -1162,7 +1162,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 and isinstance(module, current_module.__class__) \
                 and current_module != module:
                 logger.debug(
-                    f"register_components: replacing existing '{name}' "
+                    f"ModularLoader.register_components: replacing existing '{name}' "
                     f"(same type {type(current_module).__name__}, new instance)"
                 )
 
@@ -1343,7 +1343,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 raise ValueError(f"`ModularLoader` only supports components created from `ComponentSpec`.")   
     
         if len(kwargs) > 0:
-            raise logger.warning(f"Unexpected keyword arguments, will be ignored: {kwargs.keys()}")
+            logger.warning(f"Unexpected keyword arguments, will be ignored: {kwargs.keys()}")
         
 
         self.register_components(**passed_components)
