@@ -4,9 +4,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from ...models.controlnets.controlnet import ControlNetModel, ControlNetOutput
-from ...models.modeling_utils import ModelMixin
 from ...utils import logging
+from ..controlnets.controlnet import ControlNetModel, ControlNetOutput
+from ..modeling_utils import ModelMixin
 
 
 logger = logging.get_logger(__name__)

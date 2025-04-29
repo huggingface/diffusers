@@ -54,7 +54,7 @@ from diffusers.utils.testing_utils import (
     require_accelerator,
     require_hf_hub_version_greater,
     require_torch,
-    require_torch_gpu,
+    require_torch_accelerator,
     require_transformers_version_greater,
     skip_mps,
     torch_device,
@@ -1112,12 +1112,14 @@ class PipelineTesterMixin:
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
+        torch._dynamo.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
+        torch._dynamo.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -2211,7 +2213,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         _ = pipe(**inputs)[0]
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_group_offloading_inference(self):
         if not self.test_group_offloading:
             return
