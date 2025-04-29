@@ -23,8 +23,8 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention_processor import (
     Attention,
-    AttentionProcessor,
     AttentionModuleMixin,
+    AttentionProcessor,
     SanaLinearAttnProcessor2_0,
 )
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
@@ -45,7 +45,7 @@ class SanaAttention(nn.Module, AttentionModuleMixin):
     """
     # Set Sana-specific processor classes
     default_processor_class = SanaLinearAttnProcessor2_0
-    
+
     def __init__(
         self,
         in_channels: int,
@@ -59,13 +59,13 @@ class SanaAttention(nn.Module, AttentionModuleMixin):
         residual_connection: bool = False,
     ):
         super().__init__()
-        
+
         # Core parameters
         self.eps = eps
         self.attention_head_dim = attention_head_dim
         self.norm_type = norm_type
         self.residual_connection = residual_connection
-        
+
         # Calculate dimensions
         num_attention_heads = (
             int(in_channels // attention_head_dim * mult) if num_attention_heads is None else num_attention_heads
@@ -73,23 +73,23 @@ class SanaAttention(nn.Module, AttentionModuleMixin):
         inner_dim = num_attention_heads * attention_head_dim
         self.inner_dim = inner_dim
         self.heads = num_attention_heads
-        
+
         # Query, key, value projections
         self.to_q = nn.Linear(in_channels, inner_dim, bias=False)
         self.to_k = nn.Linear(in_channels, inner_dim, bias=False)
         self.to_v = nn.Linear(in_channels, inner_dim, bias=False)
-        
+
         # Multi-scale attention
         self.to_qkv_multiscale = nn.ModuleList()
         for kernel_size in kernel_sizes:
             self.to_qkv_multiscale.append(
                 SanaMultiscaleAttentionProjection(inner_dim, num_attention_heads, kernel_size)
             )
-        
+
         # Output layers
         self.nonlinearity = nn.ReLU()
         self.to_out = nn.Linear(inner_dim * (1 + len(kernel_sizes)), out_channels, bias=False)
-        
+
         # Get normalization based on type
         if norm_type == "batch_norm":
             self.norm_out = nn.BatchNorm1d(out_channels)
@@ -101,14 +101,14 @@ class SanaAttention(nn.Module, AttentionModuleMixin):
             self.norm_out = nn.InstanceNorm1d(out_channels)
         else:
             self.norm_out = nn.Identity()
-        
+
         # Set processor
         self.processor = self.default_processor_class()
 
 
 class SanaMultiscaleAttentionProjection(nn.Module):
     """Projection layer for Sana multi-scale attention."""
-    
+
     def __init__(
         self,
         in_channels: int,
@@ -116,7 +116,7 @@ class SanaMultiscaleAttentionProjection(nn.Module):
         kernel_size: int,
     ) -> None:
         super().__init__()
-        
+
         channels = 3 * in_channels
         self.proj_in = nn.Conv2d(
             channels,
@@ -127,7 +127,7 @@ class SanaMultiscaleAttentionProjection(nn.Module):
             bias=False,
         )
         self.proj_out = nn.Conv2d(channels, channels, 1, 1, 0, groups=3 * num_attention_heads, bias=False)
-    
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.proj_in(hidden_states)
         hidden_states = self.proj_out(hidden_states)

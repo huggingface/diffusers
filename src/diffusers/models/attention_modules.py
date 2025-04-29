@@ -15,21 +15,17 @@ import inspect
 from typing import Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from ..utils import logging
 from ..utils.torch_utils import maybe_allow_in_graph
 from .attention_processor import (
     AttentionModuleMixin,
-    AttnProcessorSDPA,
-    FluxAttnProcessorSDPA,
-    FusedFluxAttnProcessorSDPA,
-    JointAttnProcessorSDPA,
     FusedJointAttnProcessorSDPA,
+    JointAttnProcessorSDPA,
     SanaLinearAttnProcessorSDPA,
 )
-from .normalization import RMSNorm, get_normalization
+from .normalization import get_normalization
 
 
 logger = logging.get_logger(__name__)

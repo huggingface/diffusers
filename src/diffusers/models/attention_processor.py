@@ -56,8 +56,13 @@ class AttentionModuleMixin:
 
     # Default processor classes to be overridden by subclasses
     default_processor_cls = None
-    fused_processor_cls = None
-    _available_processors = None
+    _available_processors = []
+
+    def _get_compatible_processor(self, backend):
+        for processor_cls in self._available_processors:
+            if backend in processor_cls.compatible_backends:
+                processor = processor_cls()
+                return processor
 
     def set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
         """
@@ -66,18 +71,11 @@ class AttentionModuleMixin:
         Args:
             use_npu_flash_attention (`bool`): Whether to use NPU flash attention or not.
         """
+        processor = self.default_processor_cls()
+
         if use_npu_flash_attention:
-            processor = AttnProcessorNPU()
-        else:
-            # set attention processor
-            # We use the AttnProcessorSDPA by default when torch 2.x is used which uses
-            # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
-            # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
-            processor = (
-                AttnProcessorSDPA()
-                if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
-                else AttnProcessor()
-            )
+            processor = self._get_compatible_processor("npu")
+
         self.set_processor(processor)
 
     def set_use_xla_flash_attention(
@@ -97,24 +95,17 @@ class AttentionModuleMixin:
             is_flux (`bool`, *optional*, defaults to `False`):
                 Whether the model is a Flux model.
         """
+        processor = self.default_processor_cls()
         if use_xla_flash_attention:
-            if not is_torch_xla_available:
+            if not is_torch_xla_available():
                 raise "torch_xla is not available"
             elif is_torch_xla_version("<", "2.3"):
                 raise "flash attention pallas kernel is supported from torch_xla version 2.3"
             elif is_spmd() and is_torch_xla_version("<", "2.4"):
                 raise "flash attention pallas kernel using SPMD is supported from torch_xla version 2.4"
             else:
-                if is_flux:
-                    processor = XLAFluxFlashAttnProcessorSDPA(partition_spec)
-                else:
-                    processor = XLAFlashAttnProcessorSDPA(partition_spec)
-        else:
-            processor = (
-                AttnProcessorSDPA()
-                if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
-                else AttnProcessor()
-            )
+                processor = self._get_compatible_processor("xla")
+
         self.set_processor(processor)
 
     @torch.no_grad()
@@ -179,11 +170,7 @@ class AttentionModuleMixin:
                 self.to_added_qkv.bias.copy_(concatenated_bias)
 
         self.fused_projections = fuse
-
-        # Update processor based on fusion state
-        processor_class = self.fused_processor_class if fuse else self.default_processor_class
-        if processor_class is not None:
-            self.set_processor(processor_class())
+        self.processor.is_fused = fuse
 
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
@@ -557,8 +544,9 @@ class AttentionModuleMixin:
 @maybe_allow_in_graph
 class Attention(nn.Module, AttentionModuleMixin):
     # Set default and fused processor classes
-    default_processor_class = AttnProcessorSDPA
-    fused_processor_class = None  # Will be set appropriately in the future
+    default_processor_class = None
+    _available_processors = []
+
     r"""
     A cross attention layer.
 
@@ -958,7 +946,10 @@ class SanaMultiscaleLinearAttention(nn.Module):
         return self.processor(self, hidden_states)
 
 
-class MochiAttention(nn.Module):
+class MochiAttention(nn.Module, AttentionModuleMixin):
+    default_processor_cls = MochiAttnProcessorSDPA
+    _available_processors = [MochiAttnProcessorSDPA]
+
     def __init__(
         self,
         query_dim: int,
@@ -1006,7 +997,8 @@ class MochiAttention(nn.Module):
         if not self.context_pre_only:
             self.to_add_out = nn.Linear(self.inner_dim, self.out_context_dim, bias=out_bias)
 
-        self.processor = processor
+        processor = processor if processor is not None else self.default_processor_cls()
+        self.set_processor(processor)
 
     def forward(
         self,

@@ -21,10 +21,9 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, SD3Transformer2
 from ...models.attention import FeedForward, JointTransformerBlock
 from ...models.attention_processor import (
     Attention,
-    AttentionProcessor,
     AttentionModuleMixin,
+    AttentionProcessor,
     FusedJointAttnProcessor2_0,
-    JointAttnProcessor2_0,
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero
@@ -39,11 +38,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class JointAttnProcessor:
     """Attention processor used for processing joint attention."""
-    
+
     def __init__(self):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             raise ImportError("JointAttnProcessor requires PyTorch 2.0, please upgrade PyTorch.")
-    
+
     def __call__(
         self,
         attn,
@@ -54,10 +53,10 @@ class JointAttnProcessor:
         **kwargs,
     ) -> torch.FloatTensor:
         batch_size, sequence_length, _ = hidden_states.shape
-        
+
         # Project query from hidden states
         query = attn.to_q(hidden_states)
-        
+
         if encoder_hidden_states is None:
             # Self-attention: Use hidden_states for key and value
             key = attn.to_k(hidden_states)
@@ -66,77 +65,77 @@ class JointAttnProcessor:
             # Cross-attention: Use encoder_hidden_states for key and value
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
-            
+
             # Handle additional context for joint attention
             if hasattr(attn, "added_kv_proj_dim") and attn.added_kv_proj_dim is not None:
                 context_key = attn.add_k_proj(encoder_hidden_states)
                 context_value = attn.add_v_proj(encoder_hidden_states)
                 context_query = attn.add_q_proj(encoder_hidden_states)
-                
+
                 # Joint query, key, value with context
                 inner_dim = key.shape[-1]
                 head_dim = inner_dim // attn.heads
-                
+
                 # Reshape for multi-head attention
                 query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                
+
                 context_query = context_query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 context_key = context_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 context_value = context_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                
+
                 # Concatenate for joint attention
                 query = torch.cat([context_query, query], dim=2)
                 key = torch.cat([context_key, key], dim=2)
                 value = torch.cat([context_value, value], dim=2)
-                
+
                 # Apply joint attention
                 hidden_states = torch.nn.functional.scaled_dot_product_attention(
                     query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
                 )
-                
+
                 # Reshape back to original dimensions
                 hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                
+
                 # Split context and hidden states
                 context_len = encoder_hidden_states.shape[1]
                 encoder_hidden_states, hidden_states = (
                     hidden_states[:, :context_len],
                     hidden_states[:, context_len:],
                 )
-                
+
                 # Apply output projections
                 hidden_states = attn.to_out[0](hidden_states)
                 hidden_states = attn.to_out[1](hidden_states)
-                
+
                 if not attn.context_pre_only and hasattr(attn, "to_add_out") and attn.to_add_out is not None:
                     encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
                     return hidden_states, encoder_hidden_states
-                
+
                 return hidden_states
-        
+
         # Handle standard attention
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
-        
+
         # Reshape for multi-head attention
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        
+
         # Apply attention
         hidden_states = torch.nn.functional.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
-        
+
         # Reshape output
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        
+
         # Apply output projection
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
-        
+
         return hidden_states
 
 
@@ -148,7 +147,7 @@ class SD3Attention(nn.Module, AttentionModuleMixin):
     Features joint attention mechanisms and custom handling of
     context projections.
     """
-    
+
     def __init__(
         self,
         query_dim: int,
@@ -163,7 +162,7 @@ class SD3Attention(nn.Module, AttentionModuleMixin):
         eps: float = 1e-6,
     ):
         super().__init__()
-        
+
         # Core parameters
         self.inner_dim = dim_head * heads
         self.query_dim = query_dim
@@ -173,19 +172,19 @@ class SD3Attention(nn.Module, AttentionModuleMixin):
         self.use_bias = bias
         self.context_pre_only = context_pre_only
         self.eps = eps
-        
+
         # Set output dimension
         out_dim = out_dim if out_dim is not None else query_dim
-        
+
         # Set cross-attention parameters
         self.is_cross_attention = cross_attention_dim is not None
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
-        
+
         # Linear projections for self-attention
         self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
         self.to_k = nn.Linear(query_dim, self.inner_dim, bias=bias)
         self.to_v = nn.Linear(query_dim, self.inner_dim, bias=bias)
-        
+
         # Optional added key/value projections for joint attention
         self.added_kv_proj_dim = added_kv_proj_dim
         if added_kv_proj_dim is not None:
@@ -193,22 +192,22 @@ class SD3Attention(nn.Module, AttentionModuleMixin):
             self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=bias)
             self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=bias)
             self.added_proj_bias = bias
-            
+
             # Output projection for context
             if not context_pre_only:
                 self.to_add_out = nn.Linear(self.inner_dim, out_dim, bias=bias)
             else:
                 self.to_add_out = None
-        
+
         # Output projection and dropout
         self.to_out = nn.ModuleList([
             nn.Linear(self.inner_dim, out_dim, bias=bias),
             nn.Dropout(dropout)
         ])
-        
+
         # Set processor
         self.processor = JointAttnProcessor()
-    
+
     def forward(
         self,
         hidden_states: torch.Tensor,
