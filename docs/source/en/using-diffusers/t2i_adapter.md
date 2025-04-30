@@ -151,7 +151,7 @@ pipeline(
     <figcaption style="text-align: center;">depth map</figcaption>
   </figure>
   <figure> 
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/t2i-multi-rabbbit.png" width="300" alt="Generated image (ControlNet + prompt)"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/t2i-multi-rabbit.png" width="300" alt="Generated image (ControlNet + prompt)"/>
     <figcaption style="text-align: center;">generated image</figcaption>
   </figure>
 </div>
