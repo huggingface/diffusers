@@ -135,16 +135,22 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
         
-        # Get the interpolation mode from string
         try:
-            interpolation_mode = getattr(transforms.InterpolationMode, args.interpolation_type.upper())
+            interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper())
         except (AttributeError, KeyError):
-            interpolation_mode = transforms.InterpolationMode.LANCZOS
-        
-        validation_image = validation_image.resize(
-            (args.resolution, args.resolution), 
-            resample=Image.Resampling.LANCZOS if interpolation_mode == transforms.InterpolationMode.LANCZOS else Image.Resampling.BILINEAR
-        )
+            supported_interpolation_modes = [
+                f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+            ]
+            raise ValueError(
+                f"Interpolation mode {args.image_interpolation_mode} is not supported. "
+                f"Please select one of the following: {', '.join(supported_interpolation_modes)}"
+            )
+            
+        transform = transforms.Compose([
+            transforms.Resize(args.resolution, interpolation=interpolation),
+            transforms.CenterCrop(args.resolution),
+        ])
+        validation_image = transform(validation_image)
 
         images = []
 
@@ -598,14 +604,13 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--interpolation_type",
+        "--image_interpolation_mode",
         type=str,
         default="lanczos",
-        help=(
-            "The interpolation method to use for resizing images. Choose between 'bilinear', 'bicubic', 'lanczos', "
-            "'nearest', 'nearest-exact', 'area', etc. See https://pytorch.org/vision/stable/transforms.html for all "
-            "options. Default is 'lanczos'."
-        ),
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
     )
 
     if input_args is not None:
@@ -752,14 +757,16 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
 
 
 def prepare_train_dataset(dataset, accelerator):
-    # Get the interpolation mode from string
     try:
-        interpolation_mode = getattr(transforms.InterpolationMode, args.interpolation_type.upper())
+        interpolation_mode = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper())
     except (AttributeError, KeyError):
-        logger.warning(
-            f"Interpolation mode {args.interpolation_type} not found. Falling back to LANCZOS."
+        supported_interpolation_modes = [
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ]
+        raise ValueError(
+            f"Interpolation mode {args.image_interpolation_mode} is not supported. "
+            f"Please select one of the following: {', '.join(supported_interpolation_modes)}"
         )
-        interpolation_mode = transforms.InterpolationMode.LANCZOS
     
     image_transforms = transforms.Compose(
         [
