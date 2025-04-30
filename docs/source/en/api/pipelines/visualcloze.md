@@ -198,3 +198,15 @@ image_result.save("visualcloze.png")
 [[autodoc]] VisualClozePipeline
   - all
   - __call__
+
+## VisualClozeGenerationPipeline
+
+[[autodoc]] VisualClozeGenerationPipeline
+  - all
+  - __call__
+
+## VisualClozeUpsamplingPipeline
+
+[[autodoc]] VisualClozeUpsamplingPipeline
+  - all
+  - __call__
