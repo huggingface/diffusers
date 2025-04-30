@@ -873,7 +873,7 @@ def main(args):
     interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
     if interpolation is None:
             raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
-    train_resize = transforms.Resize(args.resolution,, interpolation=interpolation)
+    train_resize = transforms.Resize(args.resolution, interpolation=interpolation)
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
     train_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
