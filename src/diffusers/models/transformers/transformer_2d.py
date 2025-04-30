@@ -19,11 +19,12 @@ from torch import nn
 
 from ...configuration_utils import LegacyConfigMixin, register_to_config
 from ...utils import deprecate, logging
-from .modeling_common BasicTransformerBlock
+from ..attention import AttentionMixin
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import LegacyModelMixin
 from ..normalization import AdaLayerNormSingle
+from .modeling_common import BasicTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -36,7 +37,7 @@ class Transformer2DModelOutput(Transformer2DModelOutput):
         super().__init__(*args, **kwargs)
 
 
-class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
+class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin, AttentionMixin):
     """
     A 2D Transformer model for image-like data.
 

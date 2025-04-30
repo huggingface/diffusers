@@ -21,7 +21,8 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils.accelerate_utils import apply_forward_hook
-from ..attention_processor import Attention, SpatialNorm
+from ..attention import Attention
+from ..attention_processor import SpatialNorm
 from ..autoencoders.vae import DecoderOutput, DiagonalGaussianDistribution
 from ..downsampling import Downsample2D
 from ..modeling_outputs import AutoencoderKLOutput

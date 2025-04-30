@@ -21,7 +21,8 @@ from torch import nn
 from ...utils import deprecate, logging
 from ...utils.torch_utils import apply_freeu
 from ..activations import get_activation
-from ..attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
+from ..attention import Attention
+from ..attention_processor import AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from ..normalization import AdaGroupNorm
 from ..resnet import (
     Downsample2D,

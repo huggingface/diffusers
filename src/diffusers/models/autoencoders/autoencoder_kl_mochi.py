@@ -23,7 +23,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..attention_processor import Attention, MochiVaeAttnProcessor2_0
+from ..attention import Attention
+from ..attention_processor import MochiVaeAttnProcessor2_0
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .autoencoder_kl_cogvideox import CogVideoXCausalConv3d

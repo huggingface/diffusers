@@ -62,6 +62,98 @@ class ResBlock(nn.Module):
         return hidden_states + residual
 
 
+class SanaMultiscaleAttentionProjection(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        num_attention_heads: int,
+        kernel_size: int,
+    ) -> None:
+        super().__init__()
+
+        channels = 3 * in_channels
+        self.proj_in = nn.Conv2d(
+            channels,
+            channels,
+            kernel_size,
+            padding=kernel_size // 2,
+            groups=channels,
+            bias=False,
+        )
+        self.proj_out = nn.Conv2d(channels, channels, 1, 1, 0, groups=3 * num_attention_heads, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+        return hidden_states
+
+
+class SanaMultiscaleLinearAttention(nn.Module):
+    r"""Lightweight multi-scale linear attention"""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_attention_heads: Optional[int] = None,
+        attention_head_dim: int = 8,
+        mult: float = 1.0,
+        norm_type: str = "batch_norm",
+        kernel_sizes: Tuple[int, ...] = (5,),
+        eps: float = 1e-15,
+        residual_connection: bool = False,
+    ):
+        super().__init__()
+
+        # To prevent circular import
+        from ..normalization import get_normalization
+
+        self.eps = eps
+        self.attention_head_dim = attention_head_dim
+        self.norm_type = norm_type
+        self.residual_connection = residual_connection
+
+        num_attention_heads = (
+            int(in_channels // attention_head_dim * mult) if num_attention_heads is None else num_attention_heads
+        )
+        inner_dim = num_attention_heads * attention_head_dim
+
+        self.to_q = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_k = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_v = nn.Linear(in_channels, inner_dim, bias=False)
+
+        self.to_qkv_multiscale = nn.ModuleList()
+        for kernel_size in kernel_sizes:
+            self.to_qkv_multiscale.append(
+                SanaMultiscaleAttentionProjection(inner_dim, num_attention_heads, kernel_size)
+            )
+
+        self.nonlinearity = nn.ReLU()
+        self.to_out = nn.Linear(inner_dim * (1 + len(kernel_sizes)), out_channels, bias=False)
+        self.norm_out = get_normalization(norm_type, num_features=out_channels)
+
+        self.processor = SanaMultiscaleAttnProcessorSDPA()
+
+    def apply_linear_attention(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1)  # Adds padding
+        scores = torch.matmul(value, key.transpose(-1, -2))
+        hidden_states = torch.matmul(scores, query)
+
+        hidden_states = hidden_states.to(dtype=torch.float32)
+        hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
+        return hidden_states
+
+    def apply_quadratic_attention(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+        scores = torch.matmul(key.transpose(-1, -2), query)
+        scores = scores.to(dtype=torch.float32)
+        scores = scores / (torch.sum(scores, dim=2, keepdim=True) + self.eps)
+        hidden_states = torch.matmul(value, scores.to(value.dtype))
+        return hidden_states
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.processor(self, hidden_states)
+
+
 class EfficientViTBlock(nn.Module):
     def __init__(
         self,

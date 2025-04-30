@@ -23,7 +23,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
-from ..attention_processor import Attention
+from ..attention import Attention
 from ..modeling_utils import ModelMixin
 
 

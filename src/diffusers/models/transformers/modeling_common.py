@@ -17,12 +17,12 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import deprecate, logging
-from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
-from .attention_processor import Attention, JointAttnProcessor2_0
-from .embeddings import SinusoidalPositionalEmbedding
-from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX
+from ...utils import deprecate, logging
+from ...utils.torch_utils import maybe_allow_in_graph
+from ..activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
+from ..attention_processor import Attention, JointAttnProcessor2_0
+from ..embeddings import SinusoidalPositionalEmbedding
+from ..normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX
 
 
 logger = logging.get_logger(__name__)

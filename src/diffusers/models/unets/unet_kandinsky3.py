@@ -21,7 +21,8 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
-from ..attention_processor import Attention, AttentionProcessor, AttnProcessor
+from ..attention import Attention
+from ..attention_processor import AttentionProcessor, AttnProcessor
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 

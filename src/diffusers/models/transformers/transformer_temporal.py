@@ -19,10 +19,11 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
-from .modeling_common BasicTransformerBlock, TemporalBasicTransformerBlock
+from ..attention import AttentionMixin
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..resnet import AlphaBlender
+from .modeling_common import BasicTransformerBlock, TemporalBasicTransformerBlock
 
 
 @dataclass
@@ -38,7 +39,7 @@ class TransformerTemporalModelOutput(BaseOutput):
     sample: torch.Tensor
 
 
-class TransformerTemporalModel(ModelMixin, ConfigMixin):
+class TransformerTemporalModel(ModelMixin, ConfigMixin, AttentionMixin):
     """
     A Transformer model for video-like data.
 
@@ -202,7 +203,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         return TransformerTemporalModelOutput(sample=output)
 
 
-class TransformerSpatioTemporalModel(nn.Module):
+class TransformerSpatioTemporalModel(nn.Module, AttentionMixin):
     """
     A Transformer model for video-like data.
 

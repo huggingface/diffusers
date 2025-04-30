@@ -19,15 +19,16 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.embeddings import PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
-from .modeling_common BasicTransformerBlock
+from ..attention import AttentionMixin
 from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+from .modeling_common import BasicTransformerBlock
 
 
-class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
+class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin, AttentionMixin):
     _supports_gradient_checkpointing = True
 
     """

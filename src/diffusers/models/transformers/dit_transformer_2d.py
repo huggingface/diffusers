@@ -19,16 +19,17 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
-from .modeling_common BasicTransformerBlock
+from ..attention import AttentionMixin
 from ..embeddings import PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from .modeling_common import BasicTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class DiTTransformer2DModel(ModelMixin, ConfigMixin):
+class DiTTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
     A 2D Transformer model as introduced in DiT (https://arxiv.org/abs/2212.09748).
 
