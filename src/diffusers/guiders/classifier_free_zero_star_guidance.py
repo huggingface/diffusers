@@ -13,11 +13,14 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Union, Tuple, List
+from typing import Optional, List, TYPE_CHECKING
 
 import torch
 
-from .guider_utils import BaseGuidance, rescale_noise_cfg, _default_prepare_inputs
+from .guider_utils import BaseGuidance, rescale_noise_cfg
+
+if TYPE_CHECKING:
+    from ..pipelines.modular_pipeline import BlockState
 
 
 class ClassifierFreeZeroStarGuidance(BaseGuidance):
@@ -70,15 +73,13 @@ class ClassifierFreeZeroStarGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
     
-    def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
-        return _default_prepare_inputs(denoiser, self.num_conditions, *args)
-
-    def prepare_outputs(self, denoiser: torch.nn.Module, pred: torch.Tensor) -> None:
-        self._num_outputs_prepared += 1
-        if self._num_outputs_prepared > self.num_conditions:
-            raise ValueError(f"Expected {self.num_conditions} outputs, but prepare_outputs called more times.")
-        key = self._input_predictions[self._num_outputs_prepared - 1]
-        self._preds[key] = pred
+    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
+        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
+        data_batches = []
+        for i in range(self.num_conditions):
+            data_batch = self._prepare_batch(self._input_fields, data, tuple_indices[i], self._input_predictions[i])
+            data_batches.append(data_batch)
+        return data_batches
 
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
         pred = None
@@ -100,11 +101,11 @@ class ClassifierFreeZeroStarGuidance(BaseGuidance):
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
-        return pred
+        return pred, {}
     
     @property
     def is_conditional(self) -> bool:
-        return self._num_outputs_prepared == 0
+        return self._count_prepared == 1
 
     @property
     def num_conditions(self) -> int:

@@ -134,7 +134,6 @@ else:
         [
             "AdaptiveProjectedGuidance",
             "AutoGuidance",
-            "CFGPlusPlusGuidance",
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
             "SkipLayerGuidance",
@@ -730,7 +729,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .guiders import (
             AdaptiveProjectedGuidance,
             AutoGuidance,
-            CFGPlusPlusGuidance,
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
             SkipLayerGuidance,

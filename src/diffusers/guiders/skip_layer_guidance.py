@@ -13,13 +13,16 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union, TYPE_CHECKING
 
 import torch
 
 from ..hooks import HookRegistry, LayerSkipConfig
 from ..hooks.layer_skip import _apply_layer_skip_hook
 from .guider_utils import BaseGuidance, rescale_noise_cfg
+
+if TYPE_CHECKING:
+    from ..pipelines.modular_pipeline import BlockState
 
 
 class SkipLayerGuidance(BaseGuidance):
@@ -141,51 +144,33 @@ class SkipLayerGuidance(BaseGuidance):
         self._skip_layer_hook_names = [f"SkipLayerGuidance_{i}" for i in range(len(self.skip_layer_config))]
 
     def prepare_models(self, denoiser: torch.nn.Module) -> None:
-        if self._is_slg_enabled() and self.is_conditional and self._num_outputs_prepared > 0:
+        self._count_prepared += 1
+        if self._is_slg_enabled() and self.is_conditional and self._count_prepared > 1:
             for name, config in zip(self._skip_layer_hook_names, self.skip_layer_config):
                 _apply_layer_skip_hook(denoiser, config, name=name)
     
-    def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
-        num_conditions = self.num_conditions
-        list_of_inputs = []
-        for arg in args:
-            if arg is None or isinstance(arg, torch.Tensor):
-                list_of_inputs.append([arg] * num_conditions)
-            elif isinstance(arg, (tuple, list)):
-                if len(arg) != 2:
-                    raise ValueError(
-                        f"Expected a tuple or list of length 2, but got {len(arg)} for argument {arg}. Please provide a tuple/list of length 2 "
-                        f"with the first element being the conditional input and the second element being the unconditional input or None."
-                    )
-                if arg[1] is None:
-                    # Only conditioning inputs for all batches
-                    list_of_inputs.append([arg[0]] * num_conditions)
-                else:
-                    list_of_inputs.append([arg[0], arg[1], arg[0]])
-            else:
-                raise ValueError(
-                    f"Expected a tensor, tuple, or list, but got {type(arg)} for argument {arg}. Please provide a tensor, tuple, or list."
-                )
-        return tuple(list_of_inputs)
-
-    def prepare_outputs(self, denoiser: torch.nn.Module, pred: torch.Tensor) -> None:
-        self._num_outputs_prepared += 1
-        if self._num_outputs_prepared > self.num_conditions:
-            raise ValueError(f"Expected {self.num_conditions} outputs, but prepare_outputs called more times.")
-        key = self._input_predictions[self._num_outputs_prepared - 1]
-        if not self._is_cfg_enabled() and self._is_slg_enabled():
-            # If we're predicting pred_cond and pred_cond_skip only, we need to set the key to pred_cond_skip
-            # to avoid writing into pred_uncond which is not used
-            if self._num_outputs_prepared == 2:
-                key = "pred_cond_skip"
-        self._preds[key] = pred
-
-        if key == "pred_cond_skip":
-            # If we are in SLG mode, we need to remove the hooks after inference
+    def cleanup_models(self, denoiser: torch.nn.Module) -> None:
+        if self._is_slg_enabled() and self.is_conditional and self._count_prepared > 1:
             registry = HookRegistry.check_if_exists_or_initialize(denoiser)
             # Remove the hooks after inference
             for hook_name in self._skip_layer_hook_names:
                 registry.remove_hook(hook_name, recurse=True)
+    
+    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
+        if self.num_conditions == 1:
+            tuple_indices = [0]
+            input_predictions = ["pred_cond"]
+        elif self.num_conditions == 2:
+            tuple_indices = [0, 1]
+            input_predictions = ["pred_cond", "pred_uncond"] if self._is_cfg_enabled() else ["pred_cond", "pred_cond_skip"]
+        else:
+            tuple_indices = [0, 1, 0]
+            input_predictions = ["pred_cond", "pred_uncond", "pred_cond_skip"]
+        data_batches = []
+        for i in range(self.num_conditions):
+            data_batch = self._prepare_batch(self._input_fields, data, tuple_indices[i], input_predictions[i])
+            data_batches.append(data_batch)
+        return data_batches
 
     def forward(
         self,
@@ -214,11 +199,11 @@ class SkipLayerGuidance(BaseGuidance):
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
-        return pred
+        return pred, {}
     
     @property
     def is_conditional(self) -> bool:
-        return self._num_outputs_prepared == 0 or self._num_outputs_prepared == 2
+        return self._count_prepared == 1 or self._count_prepared == 3
 
     @property
     def num_conditions(self) -> int:

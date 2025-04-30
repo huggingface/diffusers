@@ -13,13 +13,16 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union, TYPE_CHECKING
 
 import torch
 
 from ..hooks import HookRegistry, LayerSkipConfig
 from ..hooks.layer_skip import _apply_layer_skip_hook
-from .guider_utils import BaseGuidance, rescale_noise_cfg, _default_prepare_inputs
+from .guider_utils import BaseGuidance, rescale_noise_cfg
+
+if TYPE_CHECKING:
+    from ..pipelines.modular_pipeline import BlockState
 
 
 class AutoGuidance(BaseGuidance):
@@ -106,26 +109,24 @@ class AutoGuidance(BaseGuidance):
         self._auto_guidance_hook_names = [f"AutoGuidance_{i}" for i in range(len(self.auto_guidance_config))]
 
     def prepare_models(self, denoiser: torch.nn.Module) -> None:
+        self._count_prepared += 1
         if self._is_ag_enabled() and self.is_unconditional:
             for name, config in zip(self._auto_guidance_hook_names, self.auto_guidance_config):
                 _apply_layer_skip_hook(denoiser, config, name=name)
     
-    def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
-        return _default_prepare_inputs(denoiser, self.num_conditions, *args)
-
-    def prepare_outputs(self, denoiser: torch.nn.Module, pred: torch.Tensor) -> None:
-        self._num_outputs_prepared += 1
-        if self._num_outputs_prepared > self.num_conditions:
-            raise ValueError(f"Expected {self.num_conditions} outputs, but prepare_outputs called more times.")
-        key = self._input_predictions[self._num_outputs_prepared - 1]
-        self._preds[key] = pred
-
-        if key == "pred_uncond":
-            # If we are in AutoGuidance unconditional inference mode, we need to remove the hooks after inference
-            registry = HookRegistry.check_if_exists_or_initialize(denoiser)
-            # Remove the hooks after inference
-            for hook_name in self._auto_guidance_hook_names:
-                registry.remove_hook(hook_name, recurse=True)
+    def cleanup_models(self, denoiser: torch.nn.Module) -> None:
+        if self._is_ag_enabled() and self.is_unconditional:
+            for name in self._auto_guidance_hook_names:
+                registry = HookRegistry.check_if_exists_or_initialize(denoiser)
+                registry.remove_hook(name, recurse=True)
+    
+    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
+        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
+        data_batches = []
+        for i in range(self.num_conditions):
+            data_batch = self._prepare_batch(self._input_fields, data, tuple_indices[i], self._input_predictions[i])
+            data_batches.append(data_batch)
+        return data_batches
 
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
         pred = None
@@ -139,12 +140,12 @@ class AutoGuidance(BaseGuidance):
 
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
-
-        return pred
+        
+        return pred, {}
     
     @property
     def is_conditional(self) -> bool:
-        return self._num_outputs_prepared == 0
+        return self._count_prepared == 1
 
     @property
     def num_conditions(self) -> int:

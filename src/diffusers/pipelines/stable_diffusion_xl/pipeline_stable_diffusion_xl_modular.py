@@ -59,6 +59,8 @@ from transformers import (
 from ...schedulers import EulerDiscreteScheduler
 from ...guiders import ClassifierFreeGuidance
 from ...configuration_utils import FrozenDict
+from ...schedulers import KarrasDiffusionSchedulers
+from ...guiders import GuiderType, ClassifierFreeGuidance
 
 import numpy as np
 
@@ -190,6 +192,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
                 ClassifierFreeGuidance, 
                 config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config"),
+            ComponentSpec("guider", GuiderType),
         ]
 
     @property
@@ -238,10 +241,10 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
     
     # modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, components, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
+        self, components, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, prepare_unconditional_embeds
     ):
         image_embeds = []
-        if do_classifier_free_guidance:
+        if prepare_unconditional_embeds:
             negative_image_embeds = []
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -261,11 +264,11 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
                 )
 
                 image_embeds.append(single_image_embeds[None, :])
-                if do_classifier_free_guidance:
+                if prepare_unconditional_embeds:
                     negative_image_embeds.append(single_negative_image_embeds[None, :])
         else:
             for single_image_embeds in ip_adapter_image_embeds:
-                if do_classifier_free_guidance:
+                if prepare_unconditional_embeds:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
                     negative_image_embeds.append(single_negative_image_embeds)
                 image_embeds.append(single_image_embeds)
@@ -273,7 +276,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
         ip_adapter_image_embeds = []
         for i, single_image_embeds in enumerate(image_embeds):
             single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
-            if do_classifier_free_guidance:
+            if prepare_unconditional_embeds:
                 single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
                 single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
 
@@ -286,7 +289,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         data = self.get_block_state(state)
 
-        data.do_classifier_free_guidance = pipeline.guider.num_conditions > 1
+        data.prepare_unconditional_embeds = pipeline.guider.num_conditions > 1
         data.device = pipeline._execution_device
 
         data.ip_adapter_embeds = self.prepare_ip_adapter_image_embeds(
@@ -295,9 +298,9 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
             ip_adapter_image_embeds=None,
             device=data.device,
             num_images_per_prompt=1,
-            do_classifier_free_guidance=data.do_classifier_free_guidance,
+            prepare_unconditional_embeds=data.prepare_unconditional_embeds,
         )
-        if data.do_classifier_free_guidance:
+        if data.prepare_unconditional_embeds:
             data.negative_ip_adapter_embeds = []
             for i, image_embeds in enumerate(data.ip_adapter_embeds):
                 negative_image_embeds, image_embeds = image_embeds.chunk(2)
@@ -330,6 +333,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
                 ClassifierFreeGuidance, 
                 config=FrozenDict({"guidance_scale": 7.5}), 
                 default_creation_method="from_config"),
+            ComponentSpec("guider", GuiderType),
         ]
 
     @property
@@ -364,7 +368,6 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         elif data.prompt_2 is not None and (not isinstance(data.prompt_2, str) and not isinstance(data.prompt_2, list)):
             raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(data.prompt_2)}")
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt with self -> components
     def encode_prompt(
         self,
         components,
@@ -372,7 +375,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         prompt_2: Optional[str] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
-        do_classifier_free_guidance: bool = True,
+        prepare_unconditional_embeds: bool = True,
         negative_prompt: Optional[str] = None,
         negative_prompt_2: Optional[str] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -395,8 +398,8 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
                 torch device
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
-            do_classifier_free_guidance (`bool`):
-                whether to use classifier free guidance or not
+            prepare_unconditional_embeds (`bool`):
+                whether to use prepare unconditional embeddings or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
@@ -504,10 +507,10 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
 
         # get unconditional embeddings for classifier free guidance
         zero_out_negative_prompt = negative_prompt is None and components.config.force_zeros_for_empty_prompt
-        if do_classifier_free_guidance and negative_prompt_embeds is None and zero_out_negative_prompt:
+        if prepare_unconditional_embeds and negative_prompt_embeds is None and zero_out_negative_prompt:
             negative_prompt_embeds = torch.zeros_like(prompt_embeds)
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
-        elif do_classifier_free_guidance and negative_prompt_embeds is None:
+        elif prepare_unconditional_embeds and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
             negative_prompt_2 = negative_prompt_2 or negative_prompt
 
@@ -568,7 +571,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
-        if do_classifier_free_guidance:
+        if prepare_unconditional_embeds:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
@@ -583,7 +586,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
             bs_embed * num_images_per_prompt, -1
         )
-        if do_classifier_free_guidance:
+        if prepare_unconditional_embeds:
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
                 bs_embed * num_images_per_prompt, -1
             )
@@ -607,7 +610,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         data = self.get_block_state(state)
         self.check_inputs(pipeline, data)
 
-        data.do_classifier_free_guidance = pipeline.guider.num_conditions > 1
+        data.prepare_unconditional_embeds = pipeline.guider.num_conditions > 1
         data.device = pipeline._execution_device
 
         # Encode input prompt
@@ -625,7 +628,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             data.prompt_2,
             data.device,
             1,
-            data.do_classifier_free_guidance,
+            data.prepare_unconditional_embeds,
             data.negative_prompt,
             data.negative_prompt_2,
             prompt_embeds=None,
@@ -2090,6 +2093,8 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
                 config=FrozenDict({"guidance_scale": 7.5}), 
                 default_creation_method="from_config"),
             ComponentSpec("scheduler", EulerDiscreteScheduler),
+            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
+            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
 
@@ -2256,72 +2261,57 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
         data.num_channels_unet = pipeline.unet.config.in_channels
         data.disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
         if data.disable_guidance:
-            pipeline.guider._force_disable()
+            pipeline.guider.disable()
         else:
-            pipeline.guider._force_enable()
+            pipeline.guider.enable()
 
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
-        with self.progress_bar(total=data.num_inference_steps) as progress_bar:
+        pipeline.guider.set_input_fields(
+            prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
+            add_time_ids=("add_time_ids", "negative_add_time_ids"),
+            pooled_prompt_embeds=("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
+            ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
+        )
+
+        with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                guider_data = pipeline.guider.prepare_inputs(data)
 
-                (
-                    latents,
-                    prompt_embeds,
-                    add_time_ids,
-                    pooled_prompt_embeds,
-                    mask,
-                    masked_image_latents,
-                    ip_adapter_embeds,
-                ) = pipeline.guider.prepare_inputs(
-                    pipeline.unet,
-                    data.latents,
-                    (data.prompt_embeds, data.negative_prompt_embeds),
-                    (data.add_time_ids, data.negative_add_time_ids),
-                    (data.pooled_prompt_embeds, data.negative_pooled_prompt_embeds),
-                    data.mask,
-                    data.masked_image_latents,
-                    (data.ip_adapter_embeds, data.negative_ip_adapter_embeds),
-                )
-
-                for batch_index, (
-                    latents_i, prompt_embeds_i, add_time_ids_i, pooled_prompt_embeds_i, mask_i, masked_image_latents_i, ip_adapter_embeds_i,
-                ) in enumerate(zip(
-                    latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
-                )):
+                data.scaled_latents = pipeline.scheduler.scale_model_input(data.latents, t)
+                
+                # Prepare for inpainting
+                if data.num_channels_unet == 9:
+                    data.scaled_latents = torch.cat([data.scaled_latents, data.mask, data.masked_image_latents], dim=1)
+                
+                for batch in guider_data:
                     pipeline.guider.prepare_models(pipeline.unet)
-                    latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
-                    
-                    # Prepare for inpainting
-                    if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
                     
                     # Prepare additional conditionings
-                    data.added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
-                    if ip_adapter_embeds_i is not None:
-                        data.added_cond_kwargs["image_embeds"] = ip_adapter_embeds_i
-
+                    if batch.ip_adapter_embeds is not None:
+                        batch.added_cond_kwargs["image_embeds"] = batch.ip_adapter_embeds
+                    
                     # Predict the noise residual
-                    data.noise_pred = pipeline.unet(
-                        latents_i,
+                    batch.noise_pred = pipeline.unet(
+                        data.scaled_latents,
                         t,
-                        encoder_hidden_states=prompt_embeds_i,
+                        encoder_hidden_states=batch.prompt_embeds,
                         timestep_cond=data.timestep_cond,
                         cross_attention_kwargs=data.cross_attention_kwargs,
-                        added_cond_kwargs=data.added_cond_kwargs,
+                        added_cond_kwargs=batch.added_cond_kwargs,
                         return_dict=False,
                     )[0]
-                    data.noise_pred = pipeline.guider.prepare_outputs(pipeline.unet, data.noise_pred)
+                    pipeline.guider.cleanup_models(pipeline.unet)
 
                 # Perform guidance
-                outputs, scheduler_step_kwargs = pipeline.guider.outputs
-                data.noise_pred = pipeline.guider(**outputs)
+                data.noise_pred, scheduler_step_kwargs = pipeline.guider(guider_data)
                 
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
@@ -2363,9 +2353,12 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                 config=FrozenDict({"guidance_scale": 7.5}), 
                 default_creation_method="from_config"),
             ComponentSpec("scheduler", EulerDiscreteScheduler),
+            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
+            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetModel),
             ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}), default_creation_method="from_config"),
+            ComponentSpec("control_image_processor", VaeImageProcessor, obj=VaeImageProcessor(do_convert_rgb=True, do_normalize=False)),
         ]
 
     @property
@@ -2655,37 +2648,28 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         # (2) Prepare conditional inputs for unet using the guider
         data.disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
         if data.disable_guidance:
-            pipeline.guider._force_disable()
+            pipeline.guider.disable()
         else:
-            pipeline.guider._force_enable()
+            pipeline.guider.enable()
 
         # (4) Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
+        pipeline.guider.set_input_fields(
+            prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
+            add_time_ids=("add_time_ids", "negative_add_time_ids"),
+            pooled_prompt_embeds=("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
+            ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
+        )
+
         # (5) Denoise loop
         with self.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                guider_data = pipeline.guider.prepare_inputs(data)
 
-                (
-                    latents,
-                    prompt_embeds,
-                    add_time_ids,
-                    pooled_prompt_embeds,
-                    mask,
-                    masked_image_latents,
-                    ip_adapter_embeds,
-                ) = pipeline.guider.prepare_inputs(
-                    pipeline.unet,
-                    data.latents,
-                    (data.prompt_embeds, data.negative_prompt_embeds),
-                    (data.add_time_ids, data.negative_add_time_ids),
-                    (data.pooled_prompt_embeds, data.negative_pooled_prompt_embeds),
-                    data.mask,
-                    data.masked_image_latents,
-                    (data.ip_adapter_embeds, data.negative_ip_adapter_embeds),
-                )
+                data.scaled_latents = pipeline.scheduler.scale_model_input(data.latents, t)
 
                 if isinstance(data.controlnet_keep[i], list):
                     data.cond_scale = [c * s for c, s in zip(data.controlnet_conditioning_scale, data.controlnet_keep[i])]
@@ -2694,67 +2678,63 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                     if isinstance(data.controlnet_cond_scale, list):
                         data.controlnet_cond_scale = data.controlnet_cond_scale[0]
                     data.cond_scale = data.controlnet_cond_scale * data.controlnet_keep[i]
-
-                for batch_index, (
-                    latents_i, prompt_embeds_i, add_time_ids_i, pooled_prompt_embeds_i, mask_i, masked_image_latents_i, ip_adapter_embeds_i
-                ) in enumerate(zip(
-                    latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
-                )):
+                
+                for batch in guider_data:
                     pipeline.guider.prepare_models(pipeline.unet)
-                    latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
-                    
-                    # Prepare for inpainting
-                    if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
                     
                     # Prepare additional conditionings
-                    data.added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
-                    if ip_adapter_embeds_i is not None:
-                        data.added_cond_kwargs["image_embeds"] = ip_adapter_embeds_i
+                    if batch.ip_adapter_embeds is not None:
+                        batch.added_cond_kwargs["image_embeds"] = batch.ip_adapter_embeds
                     
                     # Prepare controlnet additional conditionings
-                    data.controlnet_added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.controlnet_added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
 
+                    # Will always be run atleast once with every guider
                     if pipeline.guider.is_conditional or not data.guess_mode:
                         data.down_block_res_samples, data.mid_block_res_sample = pipeline.controlnet(
-                            latents_i,
+                            data.scaled_latents,
                             t,
-                            encoder_hidden_states=prompt_embeds_i,
+                            encoder_hidden_states=batch.prompt_embeds,
                             controlnet_cond=data.control_image,
                             conditioning_scale=data.cond_scale,
                             guess_mode=data.guess_mode,
-                            added_cond_kwargs=data.controlnet_added_cond_kwargs,
+                            added_cond_kwargs=batch.controlnet_added_cond_kwargs,
                             return_dict=False,
                         )
-                    elif pipeline.guider.is_unconditional and data.guess_mode:
-                        data.down_block_res_samples = [torch.zeros_like(d) for d in data.down_block_res_samples]
-                        data.mid_block_res_sample = torch.zeros_like(data.mid_block_res_sample)
-
+                    
+                    batch.down_block_res_samples = data.down_block_res_samples
+                    batch.mid_block_res_sample = data.mid_block_res_sample
+                    
+                    if pipeline.guider.is_unconditional and data.guess_mode:
+                        batch.down_block_res_samples = [torch.zeros_like(d) for d in data.down_block_res_samples]
+                        batch.mid_block_res_sample = torch.zeros_like(data.mid_block_res_sample)
+                    
+                    # Prepare for inpainting
                     if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
+                        data.scaled_latents = torch.cat([data.scaled_latents, data.mask, data.masked_image_latents], dim=1)
 
-                    data.noise_pred = pipeline.unet(
-                        latents_i,
+                    batch.noise_pred = pipeline.unet(
+                        data.scaled_latents,
                         t,
-                        encoder_hidden_states=prompt_embeds_i,
+                        encoder_hidden_states=batch.prompt_embeds,
                         timestep_cond=data.timestep_cond,
                         cross_attention_kwargs=data.cross_attention_kwargs,
-                        added_cond_kwargs=data.added_cond_kwargs,
-                        down_block_additional_residuals=data.down_block_res_samples,
-                        mid_block_additional_residual=data.mid_block_res_sample,
+                        added_cond_kwargs=batch.added_cond_kwargs,
+                        down_block_additional_residuals=batch.down_block_res_samples,
+                        mid_block_additional_residual=batch.mid_block_res_sample,
                         return_dict=False,
                     )[0]
-                    data.noise_pred = pipeline.guider.prepare_outputs(pipeline.unet, data.noise_pred)
+                    pipeline.guider.cleanup_models(pipeline.unet)
                 
                 # Perform guidance
-                outputs, scheduler_step_kwargs = pipeline.guider.outputs
-                data.noise_pred = pipeline.guider(**outputs)
+                data.noise_pred, scheduler_step_kwargs = pipeline.guider(guider_data)
 
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
@@ -2802,6 +2782,9 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
                 VaeImageProcessor, 
                 config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}), 
                 default_creation_method="from_config"),
+            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
+            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
+            ComponentSpec("control_image_processor", VaeImageProcessor, obj=VaeImageProcessor(do_convert_rgb=True, do_normalize=False)),
         ]
 
     @property
@@ -3076,9 +3059,9 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         # adding default guider arguments: disable_guidance, guidance_scale, guidance_rescale
         data.disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
         if data.disable_guidance:
-            pipeline.guider._force_disable()
+            pipeline.guider.disable()
         else:
-            pipeline.guider._force_enable()
+            pipeline.guider.enable()
 
         data.control_type = data.control_type.reshape(1, -1).to(data.device, dtype=data.prompt_embeds.dtype)
         repeat_by = data.batch_size * data.num_images_per_prompt // data.control_type.shape[0]
@@ -3088,28 +3071,19 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
-        with self.progress_bar(total=data.num_inference_steps) as progress_bar:
+        pipeline.guider.set_input_fields(
+            prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
+            add_time_ids=("add_time_ids", "negative_add_time_ids"),
+            pooled_prompt_embeds=("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
+            ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
+        )
+
+        with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                guider_data = pipeline.guider.prepare_inputs(data)
 
-                (
-                    latents,
-                    prompt_embeds,
-                    add_time_ids,
-                    pooled_prompt_embeds,
-                    mask,
-                    masked_image_latents,
-                    ip_adapter_embeds,
-                ) = pipeline.guider.prepare_inputs(
-                    pipeline.unet,
-                    data.latents,
-                    (data.prompt_embeds, data.negative_prompt_embeds),
-                    (data.add_time_ids, data.negative_add_time_ids),
-                    (data.pooled_prompt_embeds, data.negative_pooled_prompt_embeds),
-                    data.mask,
-                    data.masked_image_latents,
-                    (data.ip_adapter_embeds, data.negative_ip_adapter_embeds),
-                )
+                data.scaled_latents = pipeline.scheduler.scale_model_input(data.latents, t)
 
                 if isinstance(data.controlnet_keep[i], list):
                     data.cond_scale = [c * s for c, s in zip(data.controlnet_conditioning_scale, data.controlnet_keep[i])]
@@ -3118,69 +3092,64 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
                     if isinstance(data.controlnet_cond_scale, list):
                         data.controlnet_cond_scale = data.controlnet_cond_scale[0]
                     data.cond_scale = data.controlnet_cond_scale * data.controlnet_keep[i]
-
-                for batch_index, (
-                    latents_i, prompt_embeds_i, add_time_ids_i, pooled_prompt_embeds_i, mask_i, masked_image_latents_i, ip_adapter_embeds_i
-                ) in enumerate(zip(
-                    latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
-                )):
+                
+                for batch in guider_data:
                     pipeline.guider.prepare_models(pipeline.unet)
-                    latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
-                    
-                    # Prepare for inpainting
-                    if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
                     
                     # Prepare additional conditionings
-                    data.added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
-                    if ip_adapter_embeds_i is not None:
-                        data.added_cond_kwargs["image_embeds"] = ip_adapter_embeds_i
+                    if batch.ip_adapter_embeds is not None:
+                        batch.added_cond_kwargs["image_embeds"] = batch.ip_adapter_embeds
                     
                     # Prepare controlnet additional conditionings
-                    data.controlnet_added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.controlnet_added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
-                
+
+                    # Will always be run atleast once with every guider
                     if pipeline.guider.is_conditional or not data.guess_mode:
                         data.down_block_res_samples, data.mid_block_res_sample = pipeline.controlnet(
-                            latents_i,
+                            data.scaled_latents,
                             t,
-                            encoder_hidden_states=prompt_embeds_i,
+                            encoder_hidden_states=batch.prompt_embeds,
                             controlnet_cond=data.control_image,
                             control_type=data.control_type,
                             control_type_idx=data.control_mode,
                             conditioning_scale=data.cond_scale,
                             guess_mode=data.guess_mode,
-                            added_cond_kwargs=data.controlnet_added_cond_kwargs,
+                            added_cond_kwargs=batch.controlnet_added_cond_kwargs,
                             return_dict=False,
                         )
-                    elif pipeline.guider.is_unconditional and data.guess_mode:
-                        data.down_block_res_samples = [torch.zeros_like(d) for d in data.down_block_res_samples]
-                        data.mid_block_res_sample = torch.zeros_like(data.mid_block_res_sample)
+                    
+                    batch.down_block_res_samples = data.down_block_res_samples
+                    batch.mid_block_res_sample = data.mid_block_res_sample
+                    
+                    if pipeline.guider.is_unconditional and data.guess_mode:
+                        batch.down_block_res_samples = [torch.zeros_like(d) for d in data.down_block_res_samples]
+                        batch.mid_block_res_sample = torch.zeros_like(data.mid_block_res_sample)
 
                     if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
+                        data.scaled_latents = torch.cat([data.scaled_latents, data.mask, data.masked_image_latents], dim=1)
 
-                    data.noise_pred = pipeline.unet(
-                        latents_i,
+                    batch.noise_pred = pipeline.unet(
+                        data.scaled_latents,
                         t,
-                        encoder_hidden_states=prompt_embeds_i,
+                        encoder_hidden_states=batch.prompt_embeds,
                         timestep_cond=data.timestep_cond,
                         cross_attention_kwargs=data.cross_attention_kwargs,
-                        added_cond_kwargs=data.added_cond_kwargs,
-                        down_block_additional_residuals=data.down_block_res_samples,
-                        mid_block_additional_residual=data.mid_block_res_sample,
+                        added_cond_kwargs=batch.added_cond_kwargs,
+                        down_block_additional_residuals=batch.down_block_res_samples,
+                        mid_block_additional_residual=batch.mid_block_res_sample,
                         return_dict=False,
                     )[0]
-                    data.noise_pred = pipeline.guider.prepare_outputs(pipeline.unet, data.noise_pred)
+                    pipeline.guider.cleanup_models(pipeline.unet)
                 
                 # Perform guidance
-                outputs, scheduler_step_kwargs = pipeline.guider.outputs
-                data.noise_pred = pipeline.guider(**outputs)
+                data.noise_pred, scheduler_step_kwargs = pipeline.guider(guider_data)
 
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
