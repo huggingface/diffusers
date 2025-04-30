@@ -512,7 +512,10 @@ def _apply_group_offloading_block_level(
             the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
     if stream is not None and num_blocks_per_group != 1:
-        raise ValueError(f"Using streams is only supported for num_blocks_per_group=1. Got {num_blocks_per_group=}.")
+        logger.warning(
+            f"Using streams is only supported for num_blocks_per_group=1. Got {num_blocks_per_group=}. Setting it to 1."
+        )
+        num_blocks_per_group = 1
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
