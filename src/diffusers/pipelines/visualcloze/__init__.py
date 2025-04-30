@@ -22,7 +22,9 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_visualcloze"] = ["VisualClozePipeline", "VisualClozeGenerationPipeline"]
+    _import_structure["pipeline_visualcloze_combined"] = ["VisualClozePipeline"]
+    _import_structure["pipeline_visualcloze_generation"] = ["VisualClozeGenerationPipeline"]
+    _import_structure["pipeline_visualcloze_upsampling"] = ["VisualClozeUpsamplingPipeline"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -33,7 +35,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_visualcloze import VisualClozePipeline, VisualClozeGenerationPipeline
+        from .pipeline_visualcloze_combined import VisualClozePipeline
+        from .pipeline_visualcloze_generation import VisualClozeGenerationPipeline
+        from .pipeline_visualcloze_upsampling import VisualClozeUpsamplingPipeline
 
 
 else:
