@@ -17,8 +17,14 @@ import unittest
 import torch
 
 from diffusers import HunyuanVideoTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, require_torch_2, is_torch_compile, slow
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    is_torch_compile,
+    require_torch_2,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..test_modeling_common import ModelTesterMixin
 
@@ -89,15 +95,11 @@ class HunyuanVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-    
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"HunyuanVideoTransformer3DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     @require_torch_gpu
     @require_torch_2
     @is_torch_compile
-    @slow    
+    @slow
     def test_torch_compile_recompilation_and_graph_break(self):
         torch._dynamo.reset()
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -191,7 +193,7 @@ class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, unittest.T
         with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
-            
+
 
 class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
@@ -257,7 +259,7 @@ class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.Test
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-        
+
     @require_torch_gpu
     @require_torch_2
     @is_torch_compile
@@ -336,7 +338,7 @@ class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(ModelTesterMixin, u
 
     def test_output(self):
         super().test_output(expected_output_shape=(1, *self.output_shape))
-    
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
