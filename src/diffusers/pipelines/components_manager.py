@@ -315,8 +315,8 @@ class ComponentsManager:
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)
 
-    # YiYi TODO: looking into improving the search pattern and refactor the code
-    def get(self, names: Union[str, List[str]] = None, collection: Optional[str] = None, load_id: Optional[str] = None):
+    def get(self, names: Union[str, List[str]] = None, collection: Optional[str] = None, load_id: Optional[str] = None,
+             as_name_component_tuples: bool = False):
         """
         Select components by name with simple pattern matching.
         
@@ -332,16 +332,20 @@ class ComponentsManager:
                 - "refiner|vae|unet" : anything with base name exactly matching "refiner", "vae", or "unet"
                 - "!refiner|vae|unet" : anything with base name NOT exactly matching "refiner", "vae", or "unet"
                 - "unet*|vae*" : anything with base name starting with "unet" OR starting with "vae"
+            collection: Optional collection to filter by
+            load_id: Optional load_id to filter by
+            as_name_component_tuples: If True, returns a list of (name, component) tuples using base names
+                                     instead of a dictionary with component IDs as keys
         
         Returns:
-            Single component if names is str and matches one component,
-            dict of components if names matches multiple components or is a list
+            Dictionary mapping component IDs to components, 
+            or list of (base_name, component) tuples if as_name_component_tuples=True
         """
         
         if collection:
             if collection not in self.collections:
                 logger.warning(f"Collection '{collection}' not found in ComponentsManager")
-                return {}
+                return [] if as_name_component_tuples else {}
             components = self._get_by_collection(collection)
         else:
             components = self.components
@@ -349,9 +353,6 @@ class ComponentsManager:
         if load_id:
             components = self._get_by_load_id(load_id)
 
-        if names is None:
-            return components
-        
         # Helper to extract base name from component_id
         def get_base_name(component_id):
             parts = component_id.split('_')
@@ -360,6 +361,12 @@ class ComponentsManager:
                 return '_'.join(parts[:-1])
             return component_id
             
+        if names is None:
+            if as_name_component_tuples:
+                return [(get_base_name(comp_id), comp) for comp_id, comp in components.items()]
+            else:
+                return components
+        
         # Create mapping from component_id to base_name for all components
         base_names = {comp_id: get_base_name(comp_id) for comp_id in components.keys()}
         
@@ -433,10 +440,6 @@ class ComponentsManager:
                     logger.info(f"Getting all components except those with base name '{names}': {list(matches.keys())}")
                 else:
                     logger.info(f"Getting components with base name '{names}': {list(matches.keys())}")
-                    
-                    # If there's exactly one match and it's not a NOT pattern, return the component directly
-                    if len(matches) == 1 and not is_not_pattern:
-                        return next(iter(matches.values()))
             
             # Prefix match (ends with *)
             elif names.endswith('*'):
@@ -478,17 +481,22 @@ class ComponentsManager:
             
             if not matches:
                 raise ValueError(f"No components found matching pattern '{names}'")
-            return matches if len(matches) > 1 else next(iter(matches.values()))
+            
+            if as_name_component_tuples:
+                return [(base_names[comp_id], comp) for comp_id, comp in matches.items()]
+            else:
+                return matches
         
         elif isinstance(names, list):
             results = {}
             for name in names:
-                result = self.get(name, collection)
-                if isinstance(result, dict):
-                    results.update(result)
-                else:
-                    results[name] = result
-            return results
+                result = self.get(name, collection, load_id, as_name_component_tuples=False)
+                results.update(result)
+                
+            if as_name_component_tuples:
+                return [(base_names[comp_id], comp) for comp_id, comp in results.items()]
+            else:
+                return results
         
         else:
             raise ValueError(f"Invalid type for names: {type(names)}")
@@ -766,6 +774,31 @@ class ComponentsManager:
                         f"1. remove the existing component with remove('{component_name}')\n"
                         f"2. Use a different prefix: add_from_pretrained(..., prefix='{prefix}_2')"
                     )
+
+    def get_one(self, name: Optional[str] = None, collection: Optional[str] = None, load_id: Optional[str] = None) -> Any:
+        """
+        Get a single component by name. Raises an error if multiple components match or none are found.
+        
+        Args:
+            name: Component name or pattern
+            collection: Optional collection to filter by
+            load_id: Optional load_id to filter by
+            
+        Returns:
+            A single component
+            
+        Raises:
+            ValueError: If no components match or multiple components match
+        """
+        results = self.get(name, collection, load_id)
+        
+        if not results:
+            raise ValueError(f"No components found matching '{name}'")
+            
+        if len(results) > 1:
+            raise ValueError(f"Multiple components found matching '{name}': {list(results.keys())}")
+            
+        return next(iter(results.values()))
 
 def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
     """Summarizes a dictionary by finding common prefixes that share the same value.
