@@ -395,6 +395,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         iterations: Optional[int] = 10, # controlnet inpainting
+        mask_value: Optional[int] = 255, # controlnet inpainting
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
         return_dict: bool = True,
@@ -543,7 +544,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 
                 composed_image_all += img_array * image_mask_all[index]
                 if is_product.lower() == "true":
-                    masked_bg += 255*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
+                    masked_bg += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
 
             composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
             composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
