@@ -30,7 +30,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..flux.pipeline_flux import calculate_shift, retrieve_latents, retrieve_timesteps
+from ..flux.pipeline_flux_fill import calculate_shift, retrieve_latents, retrieve_timesteps
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
 from .visualcloze_utils import VisualClozeProcessor
@@ -859,15 +859,20 @@ class VisualClozeGenerationPipeline(
                 cur_latent = self._unpack_latents(latents[b].unsqueeze(0), cur_image_size, self.vae_scale_factor)[-1]
                 cur_latent = (cur_latent / self.vae.config.scaling_factor) + self.vae.config.shift_factor
                 cur_image = self.vae.decode(cur_latent, return_dict=False)[0]
-                cur_image = self.image_processor.postprocess(cur_image)[0]
+                cur_image = self.image_processor.postprocess(cur_image, output_type=output_type)[0]
 
                 start = 0
                 cropped = []
                 for i, size in enumerate(cur_image_size[-1]):
                     if cur_target_position[i]:
-                        cropped.append(cur_image.crop((start, 0, start + size[1], size[0])))
+                        if output_type == "pil":
+                            cropped.append(cur_image.crop((start, 0, start + size[1], size[0])))
+                        else:
+                            cropped.append(cur_image[0:size[0], start:start + size[1]])
                     start += size[1]
                 image.append(cropped)
+            if output_type != "pil":
+                image = np.concatenate([arr[None] for sub_image in image for arr in sub_image], axis=0)
 
         # Offload all models
         self.maybe_free_model_hooks()

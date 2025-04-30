@@ -24,7 +24,7 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class VisualClozeGenerationPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = VisualClozeGenerationPipeline
     params = frozenset(
         [
@@ -136,7 +136,7 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "max_sequence_length": 48,
+            "max_sequence_length": 77,
             "output_type": "np",
         }
         return inputs
@@ -148,7 +148,7 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         output_same_prompt = pipe(**inputs).images[0]
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["content_prompt"] = "A different landscape with forests and rivers"
+        inputs["task_prompt"] = "A different task to perform."
         output_different_prompts = pipe(**inputs).images[0]
 
         max_diff = np.abs(output_same_prompt - output_different_prompts).max()

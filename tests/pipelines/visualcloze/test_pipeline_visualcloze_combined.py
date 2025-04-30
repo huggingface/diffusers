@@ -136,7 +136,7 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "guidance_scale": 5.0,
             "upsampling_height": 32,
             "upsampling_width": 32,
-            "max_sequence_length": 48,
+            "max_sequence_length": 77,
             "output_type": "np",
             "upsampling_strength": 0.4,
         }
@@ -149,7 +149,7 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         output_same_prompt = pipe(**inputs).images[0]
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["content_prompt"] = "A different landscape with forests and rivers"
+        inputs["task_prompt"] = "A different task to perform."
         output_different_prompts = pipe(**inputs).images[0]
 
         max_diff = np.abs(output_same_prompt - output_different_prompts).max()
@@ -163,11 +163,11 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
         height_width_pairs = [(32, 32), (72, 57)]
         for height, width in height_width_pairs:
-            expected_height = height - height % (pipe.vae_scale_factor * 2)
-            expected_width = width - width % (pipe.vae_scale_factor * 2)
+            expected_height = height - height % (pipe.generation_pipe.vae_scale_factor * 2)
+            expected_width = width - width % (pipe.generation_pipe.vae_scale_factor * 2)
 
             inputs.update({"upsampling_height": height, "upsampling_width": width})
-            image = pipe(**inputs).images[0][0]
+            image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
 

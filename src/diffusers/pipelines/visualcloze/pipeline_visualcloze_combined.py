@@ -361,8 +361,6 @@ class VisualClozePipeline(
             images.
         """
 
-        print("generation_pipe")
-
         generation_output = self.generation_pipe(
             task_prompt=task_prompt,
             content_prompt=content_prompt,
@@ -379,7 +377,16 @@ class VisualClozePipeline(
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
+            output_type=output_type if upsampling_strength == 0 else 'pil'
         )
+        if upsampling_strength == 0:
+            # Offload all models
+            self.maybe_free_model_hooks()
+
+            if not return_dict:
+                return (generation_output,)
+
+            return FluxPipelineOutput(images=generation_output)
 
         # Upsampling the generated images
         # 1. Prepare the input images and prompts
@@ -399,7 +406,7 @@ class VisualClozePipeline(
                     content_prompt[i % len(content_prompt)] if content_prompt[i % len(content_prompt)] else ""
                 )
                 if not isinstance(generator, (torch.Generator,)):
-                    upsampling_generator.append(generator[i % num_images_per_prompt])
+                    upsampling_generator.append(generator[i % len(content_prompt)])
 
         # 2. Apply the denosing loop
         upsampling_output = self.upsampling_pipe(
