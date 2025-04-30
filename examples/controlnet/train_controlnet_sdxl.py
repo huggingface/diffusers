@@ -135,18 +135,17 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
         
-        # Use the same interpolation mode as in training
-        if args.interpolation_type.lower() == "lanczos":
+        # Get the interpolation mode from string
+        try:
+            interpolation_mode = getattr(transforms.InterpolationMode, args.interpolation_type.upper())
+        except (AttributeError, KeyError):
             interpolation_mode = transforms.InterpolationMode.LANCZOS
-        else:
-            interpolation_mode = transforms.InterpolationMode.BILINEAR
-            
-        transform = transforms.Compose([
-            transforms.Resize(args.resolution, interpolation=interpolation_mode),
-            transforms.CenterCrop(args.resolution),
-        ])
-        validation_image = transform(validation_image)
         
+        validation_image = validation_image.resize(
+            (args.resolution, args.resolution), 
+            resample=Image.Resampling.LANCZOS if interpolation_mode == transforms.InterpolationMode.LANCZOS else Image.Resampling.BILINEAR
+        )
+
         images = []
 
         for _ in range(args.num_validation_images):
@@ -602,8 +601,11 @@ def parse_args(input_args=None):
         "--interpolation_type",
         type=str,
         default="lanczos",
-        choices=["lanczos", "bilinear"],
-        help="The interpolation method to use for resizing images. Choose between 'lanczos' (default) and 'bilinear'.",
+        help=(
+            "The interpolation method to use for resizing images. Choose between 'bilinear', 'bicubic', 'lanczos', "
+            "'nearest', 'nearest-exact', 'area', etc. See https://pytorch.org/vision/stable/transforms.html for all "
+            "options. Default is 'lanczos'."
+        ),
     )
 
     if input_args is not None:
@@ -750,11 +752,14 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
 
 
 def prepare_train_dataset(dataset, accelerator):
-    # Set the interpolation mode based on user preference
-    if args.interpolation_type.lower() == "lanczos":
+    # Get the interpolation mode from string
+    try:
+        interpolation_mode = getattr(transforms.InterpolationMode, args.interpolation_type.upper())
+    except (AttributeError, KeyError):
+        logger.warning(
+            f"Interpolation mode {args.interpolation_type} not found. Falling back to LANCZOS."
+        )
         interpolation_mode = transforms.InterpolationMode.LANCZOS
-    else:
-        interpolation_mode = transforms.InterpolationMode.BILINEAR
     
     image_transforms = transforms.Compose(
         [
