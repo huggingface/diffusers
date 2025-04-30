@@ -22,12 +22,22 @@ from transformers import T5EncoderModel, T5TokenizerFast
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLCosmos, CosmosTransformer3DModel
 from ...schedulers import EDMEulerScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_cosmos_guardrail_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .cosmos_guardrail import CosmosSafetyChecker
 from .pipeline_output import CosmosPipelineOutput
+
+
+if is_cosmos_guardrail_available():
+    from cosmos_guardrail import CosmosSafetyChecker
+else:
+
+    class CosmosSafetyChecker:
+        def __init__(self, *args, **kwargs):
+            raise ImportError(
+                "`cosmos_guardrail` is not installed. Please install it to use the safety checker for Cosmos: `pip install cosmos_guardrail`."
+            )
 
 
 if is_torch_xla_available():

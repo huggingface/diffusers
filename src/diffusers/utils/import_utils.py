@@ -218,6 +218,7 @@ _optimum_quanto_available, _optimum_quanto_version = _is_package_available("opti
 _pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_available("pytorch_retinaface")
 _better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
 _nltk_available, _nltk_version = _is_package_available("nltk")
+_cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("cosmos_guardrail")
 
 
 def is_torch_available():
@@ -366,6 +367,10 @@ def is_better_profanity_available():
 
 def is_nltk_available():
     return _nltk_available
+
+
+def is_cosmos_guardrail_available():
+    return _cosmos_guardrail_available
 
 
 # docstyle-ignore

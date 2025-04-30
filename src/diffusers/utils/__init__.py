@@ -66,6 +66,7 @@ from .import_utils import (
     is_bitsandbytes_available,
     is_bitsandbytes_version,
     is_bs4_available,
+    is_cosmos_guardrail_available,
     is_flax_available,
     is_ftfy_available,
     is_gguf_available,

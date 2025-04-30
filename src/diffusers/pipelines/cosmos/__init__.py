@@ -22,7 +22,6 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["cosmos_guardrail"] = ["CosmosSafetyChecker"]
     _import_structure["pipeline_cosmos"] = ["CosmosPipeline"]
     _import_structure["pipeline_cosmos_video2world"] = ["CosmosVideoToWorldPipeline"]
 
@@ -34,7 +33,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .cosmos_guardrail import CosmosSafetyChecker
         from .pipeline_cosmos import CosmosPipeline
         from .pipeline_cosmos_video2world import CosmosVideoToWorldPipeline
 
