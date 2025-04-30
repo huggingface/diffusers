@@ -59,8 +59,6 @@ from transformers import (
 from ...schedulers import EulerDiscreteScheduler
 from ...guiders import ClassifierFreeGuidance
 from ...configuration_utils import FrozenDict
-from ...schedulers import KarrasDiffusionSchedulers
-from ...guiders import GuiderType, ClassifierFreeGuidance
 
 import numpy as np
 
@@ -192,7 +190,6 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
                 ClassifierFreeGuidance, 
                 config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config"),
-            ComponentSpec("guider", GuiderType),
         ]
 
     @property
@@ -333,7 +330,6 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
                 ClassifierFreeGuidance, 
                 config=FrozenDict({"guidance_scale": 7.5}), 
                 default_creation_method="from_config"),
-            ComponentSpec("guider", GuiderType),
         ]
 
     @property
@@ -2093,8 +2089,6 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
                 config=FrozenDict({"guidance_scale": 7.5}), 
                 default_creation_method="from_config"),
             ComponentSpec("scheduler", EulerDiscreteScheduler),
-            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
 
@@ -2276,7 +2270,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
             ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
         )
 
-        with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
+        with self.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
                 guider_data = pipeline.guider.prepare_inputs(data)
@@ -2353,12 +2347,9 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                 config=FrozenDict({"guidance_scale": 7.5}), 
                 default_creation_method="from_config"),
             ComponentSpec("scheduler", EulerDiscreteScheduler),
-            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetModel),
             ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}), default_creation_method="from_config"),
-            ComponentSpec("control_image_processor", VaeImageProcessor, obj=VaeImageProcessor(do_convert_rgb=True, do_normalize=False)),
         ]
 
     @property
@@ -2782,9 +2773,6 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
                 VaeImageProcessor, 
                 config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}), 
                 default_creation_method="from_config"),
-            ComponentSpec("scheduler", KarrasDiffusionSchedulers),
-            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
-            ComponentSpec("control_image_processor", VaeImageProcessor, obj=VaeImageProcessor(do_convert_rgb=True, do_normalize=False)),
         ]
 
     @property
@@ -3078,7 +3066,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
             ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
         )
 
-        with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
+        with self.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
                 guider_data = pipeline.guider.prepare_inputs(data)
