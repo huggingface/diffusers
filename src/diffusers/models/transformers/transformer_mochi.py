@@ -13,23 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numbers
 from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import FeedForward
-from ..attention_processor import AttentionModuleMixin, MochiAttention, MochiAttnProcessor2_0
+from ..attention_processor import AttentionModuleMixin
 from ..cache_utils import CacheMixin
 from ..embeddings import MochiCombinedTimestepCaptionEmbedding, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, RMSNorm
+from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -140,16 +147,37 @@ class MochiAttnProcessorSDPA:
         return hidden_states, encoder_hidden_states
 
 
+class MochiRMSNorm(nn.Module):
+    def __init__(self, dim, eps: float, elementwise_affine: bool = True):
+        super().__init__()
+
+        self.eps = eps
+
+        if isinstance(dim, numbers.Integral):
+            dim = (dim,)
+
+        self.dim = torch.Size(dim)
+
+        if elementwise_affine:
+            self.weight = nn.Parameter(torch.ones(dim))
+        else:
+            self.weight = None
+
+    def forward(self, hidden_states):
+        input_dtype = hidden_states.dtype
+        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+
+        if self.weight is not None:
+            hidden_states = hidden_states * self.weight
+        hidden_states = hidden_states.to(input_dtype)
+
+        return hidden_states
+
+
 @maybe_allow_in_graph
 class MochiAttention(nn.Module, AttentionModuleMixin):
-    """
-    Specialized attention module for Mochi video models.
-
-    Features RMSNorm normalization and rotary position embeddings.
-    """
-
-    # Set Mochi-specific processor classes
-    default_processor_class = MochiAttnProcessorSDPA
+    default_processor_cls = MochiAttnProcessorSDPA
     _available_processors = [MochiAttnProcessorSDPA]
 
     def __init__(
@@ -167,9 +195,6 @@ class MochiAttention(nn.Module, AttentionModuleMixin):
         eps: float = 1e-5,
     ):
         super().__init__()
-
-        # Import here to avoid circular imports
-        from ..normalization import MochiRMSNorm
 
         # Core parameters
         self.inner_dim = dim_head * heads
@@ -216,6 +241,21 @@ class MochiAttention(nn.Module, AttentionModuleMixin):
 
         # Initialize attention processor using the default class
         self.processor = self.default_processor_class()
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        return self.processor(
+            self,
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            attention_mask=attention_mask,
+            **kwargs,
+        )
 
 
 class MochiModulatedRMSNorm(nn.Module):
@@ -358,7 +398,6 @@ class MochiTransformerBlock(nn.Module):
             out_dim=dim,
             out_context_dim=pooled_projection_dim,
             context_pre_only=context_pre_only,
-            processor=MochiAttnProcessor2_0(),
             eps=1e-5,
         )
 

@@ -22,11 +22,11 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import JointTransformerBlock
 from ..attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..transformers.modeling_common import JointTransformerBlock
 from ..transformers.transformer_sd3 import SD3SingleTransformerBlock
 from .controlnet import BaseOutput, zero_module
 

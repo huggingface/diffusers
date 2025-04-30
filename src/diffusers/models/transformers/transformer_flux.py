@@ -14,7 +14,7 @@
 
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -24,11 +24,11 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention import FeedForward
-from ...models.attention_processor import AttentionModuleMixin
+from ...models.attention_processor import AttentionModuleMixin, AttentionProcessor
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, RMSNorm
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.import_utils import is_torch_npu_available, is_torch_xla_available
+from ...utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_torch_xla_version
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..cache_utils import CacheMixin
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
@@ -271,7 +271,7 @@ class FluxIPAdapterAttnProcessorSDPA(torch.nn.Module):
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "FluxAttention",
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
@@ -760,11 +760,6 @@ class FluxTransformer2DModel(
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
         are fused. For cross-attention modules, key and value projection matrices are fused.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
         """
         self.original_attn_processors = None
 
@@ -775,7 +770,7 @@ class FluxTransformer2DModel(
         self.original_attn_processors = self.attn_processors
 
         for module in self.modules():
-            if isinstance(module, Attention):
+            if isinstance(module, AttentionModuleMixin):
                 module.fuse_projections(fuse=True)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
