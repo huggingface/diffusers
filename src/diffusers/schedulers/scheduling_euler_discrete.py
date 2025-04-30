@@ -668,6 +668,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         dt = self.sigmas[self.step_index + 1] - sigma_hat
 
         prev_sample = sample + derivative * dt
+
         # Cast sample back to model compatible dtype
         prev_sample = prev_sample.to(model_output.dtype)
 
