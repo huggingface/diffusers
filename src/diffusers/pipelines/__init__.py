@@ -723,7 +723,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserPipeline,
             UniDiffuserTextDecoder,
         )
-        from .visualcloze import VisualClozePipeline, VisualClozeGenerationPipeline
+        from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
         from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
