@@ -172,7 +172,7 @@ class ModularPipelineMixin:
 
         # Import components loader (it is model-specific class)
         loader_class_name = MODULAR_LOADER_MAPPING[self.model_name]
-        diffusers_module = importlib.import_module(self.__module__.split(".")[0])
+        diffusers_module = importlib.import_module("diffusers")
         loader_class = getattr(diffusers_module, loader_class_name)
         
         # Create deep copies to avoid modifying the original specs
