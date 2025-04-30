@@ -480,6 +480,15 @@ def parse_args(input_args=None):
         action="store_true",
         help="debug loss for each image, if filenames are available in the dataset",
     )
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -914,7 +923,10 @@ def main(args):
         return tokens_one, tokens_two
 
     # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+    interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+    if interpolation is None:
+            raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
+    train_resize = transforms.Resize(args.resolution, interpolation=interpolation)
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
     train_transforms = transforms.Compose(
