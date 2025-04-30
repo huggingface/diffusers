@@ -349,8 +349,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         variance_noise: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-        _model_output_uncond: Optional[torch.Tensor] = None,
-        _use_cfgpp: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
@@ -388,11 +386,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
-        
-        if _use_cfgpp and self.config.prediction_type != "epsilon":
-            raise ValueError(
-                f"CFG++ is only supported for prediction type `epsilon`, but got {self.config.prediction_type}."
-            )
 
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
@@ -418,7 +411,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-            pred_epsilon = model_output if not _use_cfgpp else _model_output_uncond
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
             pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)

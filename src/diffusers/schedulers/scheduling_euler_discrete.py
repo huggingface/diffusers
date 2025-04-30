@@ -584,8 +584,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-        _model_output_uncond: Optional[torch.Tensor] = None,
-        _use_cfgpp: bool = False,
     ) -> Union[EulerDiscreteSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
@@ -629,11 +627,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
                 "See `StableDiffusionPipeline` for a usage example."
             )
-        
-        if _use_cfgpp and self.config.prediction_type != "epsilon":
-            raise ValueError(
-                f"CFG++ is only supported for prediction type `epsilon`, but got {self.config.prediction_type}."
-            )
 
         if self.step_index is None:
             self._init_step_index(timestep)
@@ -675,38 +668,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         dt = self.sigmas[self.step_index + 1] - sigma_hat
 
         prev_sample = sample + derivative * dt
-        if _use_cfgpp:
-            prev_sample = prev_sample + (_model_output_uncond - model_output) * self.sigmas[self.step_index + 1]
-        
-        # denoised = sample - model_output * sigmas[i]
-        # d = (sample - denoised) / sigmas[i]
-        # new_sample = denoised + d * sigmas[i + 1]
-
-        # new_sample = denoised + (sample - denoised) * sigmas[i + 1] / sigmas[i]
-        # new_sample = sample - model_output * sigmas[i] + model_output * sigmas[i + 1]
-        # new_sample = sample + model_output * (sigmas[i + 1] - sigmas[i])
-        # new_sample = sample - model_output * sigmas[i] + model_output * sigmas[i + 1] --- (1)
-
-        # CFG++ =====
-        # denoised = sample - model_output * sigmas[i]
-        # uncond_denoised = sample - model_output_uncond * sigmas[i]
-        # d = (sample - uncond_denoised) / sigmas[i]
-        # new_sample = denoised + d * sigmas[i + 1]
-
-        # new_sample = denoised + (sample - uncond_denoised) * sigmas[i + 1] / sigmas[i]
-        # new_sample = sample - model_output * sigmas[i] + model_output_uncond * sigmas[i + 1] --- (2)
-
-        # To go from (1) to (2):
-        # new_sample_2 = new_sample_1 - model_output * sigmas[i + 1] + model_output_uncond * sigmas[i + 1]
-        # new_sample_2 = new_sample_1 + (model_output_uncond - model_output) * sigmas[i + 1]
-        # new_sample_2 = new_sample_1 + diff * sigmas[i + 1]
-
-        # diff = model_output_uncond - model_output
-        # diff = model_output_uncond - (model_output_uncond + g * (model_output_cond - model_output_uncond))
-        # diff = model_output_uncond - (g * model_output_cond + (1 - g) * model_output_uncond)
-        # diff = model_output_uncond - g * model_output_cond + (g - 1) * model_output_uncond
-        # diff = g * (model_output_uncond - model_output_cond)
-        
         # Cast sample back to model compatible dtype
         prev_sample = prev_sample.to(model_output.dtype)
 
