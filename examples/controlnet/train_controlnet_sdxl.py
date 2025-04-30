@@ -134,8 +134,19 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
-        validation_image = validation_image.resize((args.resolution, args.resolution))
-
+        
+        # Use the same interpolation mode as in training
+        if args.interpolation_type.lower() == "lanczos":
+            interpolation_mode = transforms.InterpolationMode.LANCZOS
+        else:
+            interpolation_mode = transforms.InterpolationMode.BILINEAR
+            
+        transform = transforms.Compose([
+            transforms.Resize(args.resolution, interpolation=interpolation_mode),
+            transforms.CenterCrop(args.resolution),
+        ])
+        validation_image = transform(validation_image)
+        
         images = []
 
         for _ in range(args.num_validation_images):
@@ -587,6 +598,13 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+    parser.add_argument(
+        "--interpolation_type",
+        type=str,
+        default="lanczos",
+        choices=["lanczos", "bilinear"],
+        help="The interpolation method to use for resizing images. Choose between 'lanczos' (default) and 'bilinear'.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -732,9 +750,15 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
 
 
 def prepare_train_dataset(dataset, accelerator):
+    # Set the interpolation mode based on user preference
+    if args.interpolation_type.lower() == "lanczos":
+        interpolation_mode = transforms.InterpolationMode.LANCZOS
+    else:
+        interpolation_mode = transforms.InterpolationMode.BILINEAR
+    
     image_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.Resize(args.resolution, interpolation=interpolation_mode),
             transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -743,7 +767,7 @@ def prepare_train_dataset(dataset, accelerator):
 
     conditioning_image_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.Resize(args.resolution, interpolation=interpolation_mode),
             transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
         ]
