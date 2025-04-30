@@ -3569,7 +3569,7 @@ SDXL_SUPPORTED_BLOCKS = {
 
 
 # YiYi Notes: model specific components:
-## (1) it should inherit from ModularPipelineComponents
+## (1) it should inherit from ModularLoader
 ## (2) acts like a container that holds components and configs
 ## (3) define default config (related to components), e.g. default_sample_size, vae_scale_factor, num_channels_unet, num_channels_latents
 ## (4) inherit from model-specic loader class (e.g. StableDiffusionXLLoraLoaderMixin)

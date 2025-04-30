@@ -1328,7 +1328,7 @@ class LDMSuperResolutionPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class ModularPipeline(metaclass=DummyObject):
+class ModularLoader(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
