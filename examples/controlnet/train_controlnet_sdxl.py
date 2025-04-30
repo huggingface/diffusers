@@ -134,7 +134,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
-        
+
         try:
             interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper())
         except (AttributeError, KeyError):
@@ -145,11 +145,13 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
                 f"Interpolation mode {args.image_interpolation_mode} is not supported. "
                 f"Please select one of the following: {', '.join(supported_interpolation_modes)}"
             )
-            
-        transform = transforms.Compose([
-            transforms.Resize(args.resolution, interpolation=interpolation),
-            transforms.CenterCrop(args.resolution),
-        ])
+
+        transform = transforms.Compose(
+            [
+                transforms.Resize(args.resolution, interpolation=interpolation),
+                transforms.CenterCrop(args.resolution),
+            ]
+        )
         validation_image = transform(validation_image)
 
         images = []
@@ -767,7 +769,7 @@ def prepare_train_dataset(dataset, accelerator):
             f"Interpolation mode {args.image_interpolation_mode} is not supported. "
             f"Please select one of the following: {', '.join(supported_interpolation_modes)}"
         )
-    
+
     image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=interpolation_mode),
