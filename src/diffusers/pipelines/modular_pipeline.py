@@ -22,25 +22,45 @@ from typing import Any, Dict, List, Tuple, Union, Optional, Type
 import torch
 from tqdm.auto import tqdm
 import re
+import os
+import importlib
 
-from ..configuration_utils import ConfigMixin
+from huggingface_hub.utils import validate_hf_hub_args
+
+from ..configuration_utils import ConfigMixin, FrozenDict
 from ..utils import (
     is_accelerate_available,
     is_accelerate_version,
     logging,
+    PushToHubMixin,
 )
-from .pipeline_loading_utils import _get_pipeline_class
+from .pipeline_loading_utils import _get_pipeline_class, simple_get_class_obj,_fetch_class_library_tuple
+from .modular_pipeline_utils import (
+    ComponentSpec,
+    ConfigSpec,
+    InputParam,
+    OutputParam,
+    format_components,
+    format_configs,
+    format_input_params,
+    format_inputs_short,
+    format_intermediates_short,
+    format_output_params,
+    format_params,
+    make_doc_string,
+)
+from .components_manager import ComponentsManager
 
-
+from copy import deepcopy
 if is_accelerate_available():
     import accelerate
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-MODULAR_PIPELINE_MAPPING = OrderedDict(
+MODULAR_LOADER_MAPPING = OrderedDict(
     [
-        ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
+        ("stable-diffusion-xl", "StableDiffusionXLModularLoader"),
     ]
 )
 
@@ -138,236 +158,116 @@ class BlockState:
         return f"BlockState(\n{attributes}\n)"
 
 
-@dataclass
-class ComponentSpec:
-    """Specification for a pipeline component."""
-    name: str
-    type_hint: Type
-    description: Optional[str] = None
-    obj: Any = None # you can create a default component if it is a stateless class like scheduler, guider or image processor
-    default_class_name: Union[str, List[str], Tuple[str, str]] = None  # Either "class_name" or ["module", "class_name"]
-    default_repo: Optional[Union[str, List[str]]] = None # either "repo" or ["repo", "subfolder"]
 
-@dataclass 
-class ConfigSpec:
-    """Specification for a pipeline configuration parameter."""
-    name: str
-    default: Any
-    description: Optional[str] = None
-
-
-@dataclass
-class InputParam:
-    name: str
-    type_hint: Any = None
-    default: Any = None
-    required: bool = False
-    description: str = ""
-
-    def __repr__(self):
-        return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
-
-@dataclass 
-class OutputParam:
-    name: str
-    type_hint: Any = None
-    description: str = ""
-
-    def __repr__(self):
-        return f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
-
-def format_inputs_short(inputs):
+class ModularPipelineMixin:
     """
-    Format input parameters into a string representation, with required params first followed by optional ones.
+    Mixin for all PipelineBlocks: PipelineBlock, AutoPipelineBlocks, SequentialPipelineBlocks
+    """
     
-    Args:
-        inputs: List of input parameters with 'required' and 'name' attributes, and 'default' for optional params
+
+    def setup_loader(self, modular_repo: Optional[Union[str, os.PathLike]] = None, component_manager: Optional[ComponentsManager] = None, collection: Optional[str] = None):
+        """
+        create a mouldar loader, optionally accept modular_repo to load from hub.
+        """
+
+        # Import components loader (it is model-specific class)
+        loader_class_name = MODULAR_LOADER_MAPPING[self.model_name]
+        diffusers_module = importlib.import_module("diffusers")
+        loader_class = getattr(diffusers_module, loader_class_name)
         
-    Returns:
-        str: Formatted string of input parameters
-    
-    Example:
-        >>> inputs = [
-        ...     InputParam(name="prompt", required=True),
-        ...     InputParam(name="image", required=True),
-        ...     InputParam(name="guidance_scale", required=False, default=7.5),
-        ...     InputParam(name="num_inference_steps", required=False, default=50)
-        ... ]
-        >>> format_inputs_short(inputs)
-        'prompt, image, guidance_scale=7.5, num_inference_steps=50'
-    """
-    required_inputs = [param for param in inputs if param.required]
-    optional_inputs = [param for param in inputs if not param.required]
-    
-    required_str = ", ".join(param.name for param in required_inputs)
-    optional_str = ", ".join(f"{param.name}={param.default}" for param in optional_inputs)
-    
-    inputs_str = required_str
-    if optional_str:
-        inputs_str = f"{inputs_str}, {optional_str}" if required_str else optional_str
+        # Create deep copies to avoid modifying the original specs
+        component_specs = deepcopy(self.expected_components)
+        config_specs = deepcopy(self.expected_configs)
+        # Create the loader with the updated specs
+        specs = component_specs + config_specs
         
-    return inputs_str
+        self.loader = loader_class(specs, modular_repo=modular_repo, component_manager=component_manager, collection=collection)
 
 
-def format_intermediates_short(intermediates_inputs: List[InputParam], required_intermediates_inputs: List[str], intermediates_outputs: List[OutputParam]) -> str:
-    """
-    Formats intermediate inputs and outputs of a block into a string representation.
-    
-    Args:
-        intermediates_inputs: List of intermediate input parameters
-        required_intermediates_inputs: List of required intermediate input names
-        intermediates_outputs: List of intermediate output parameters
-    
-    Returns:
-        str: Formatted string like:
-            Intermediates:
-                - inputs: Required(latents), dtype
-                - modified: latents  # variables that appear in both inputs and outputs
-                - outputs: images    # new outputs only
-    """
-    # Handle inputs
-    input_parts = []
-    for inp in intermediates_inputs:
-        if inp.name in required_intermediates_inputs:
-            input_parts.append(f"Required({inp.name})")
+    @property
+    def default_call_parameters(self) -> Dict[str, Any]:
+        params = {}
+        for input_param in self.inputs:
+            params[input_param.name] = input_param.default
+        return params
+
+    def run(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
+        """
+        Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
+        """
+        if state is None:
+            state = PipelineState()
+
+        if not hasattr(self, "loader"):
+            raise ValueError("Loader is not set, please call `setup_loader()` first.")
+
+        # Make a copy of the input kwargs
+        input_params = kwargs.copy()
+
+        default_params = self.default_call_parameters
+
+        # Add inputs to state, using defaults if not provided in the kwargs or the state
+        # if same input already in the state, will override it if provided in the kwargs
+
+        intermediates_inputs = [inp.name for inp in self.intermediates_inputs]
+        for name, default in default_params.items():
+            if name in input_params:
+                if name not in intermediates_inputs:
+                    state.add_input(name, input_params.pop(name))
+                else:
+                    state.add_input(name, input_params[name])
+            elif name not in state.inputs:
+                state.add_input(name, default)
+
+        for name in intermediates_inputs:
+            if name in input_params:
+                state.add_intermediate(name, input_params.pop(name))
+
+        # Warn about unexpected inputs
+        if len(input_params) > 0:
+            logger.warning(f"Unexpected input '{input_params.keys()}' provided. This input will be ignored.")
+        # Run the pipeline
+        with torch.no_grad():
+            try:
+                pipeline, state = self(self.loader, state)
+            except Exception:
+                error_msg = f"Error in block: ({self.__class__.__name__}):\n"
+                logger.error(error_msg)
+                raise
+
+        if output is None:
+            return state
+
+
+        elif isinstance(output, str):
+            return state.get_intermediate(output)
+
+        elif isinstance(output, (list, tuple)):
+            return state.get_intermediates(output)
         else:
-            input_parts.append(inp.name)
-    
-    # Handle modified variables (appear in both inputs and outputs)
-    inputs_set = {inp.name for inp in intermediates_inputs}
-    modified_parts = []
-    new_output_parts = []
-    
-    for out in intermediates_outputs:
-        if out.name in inputs_set:
-            modified_parts.append(out.name)
-        else:
-            new_output_parts.append(out.name)
-    
-    result = []
-    if input_parts:
-        result.append(f"    - inputs: {', '.join(input_parts)}")
-    if modified_parts:
-        result.append(f"    - modified: {', '.join(modified_parts)}")
-    if new_output_parts:
-        result.append(f"    - outputs: {', '.join(new_output_parts)}")
-        
-    return "\n".join(result) if result else "    (none)"
+            raise ValueError(f"Output '{output}' is not a valid output type")
 
-
-def format_params(params: List[Union[InputParam, OutputParam]], header: str = "Args", indent_level: int = 4, max_line_length: int = 115) -> str:
-    """Format a list of InputParam or OutputParam objects into a readable string representation.
-
-    Args:
-        params: List of InputParam or OutputParam objects to format
-        header: Header text to use (e.g. "Args" or "Returns")
-        indent_level: Number of spaces to indent each parameter line (default: 4)
-        max_line_length: Maximum length for each line before wrapping (default: 115)
-
-    Returns:
-        A formatted string representing all parameters
-    """
-    if not params:
-        return ""
-        
-    base_indent = " " * indent_level
-    param_indent = " " * (indent_level + 4)
-    desc_indent = " " * (indent_level + 8)
-    formatted_params = []
-    
-    def get_type_str(type_hint):
-        if hasattr(type_hint, "__origin__") and type_hint.__origin__ is Union:
-            types = [t.__name__ if hasattr(t, "__name__") else str(t) for t in type_hint.__args__]
-            return f"Union[{', '.join(types)}]"
-        return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
-    
-    def wrap_text(text: str, indent: str, max_length: int) -> str:
-        """Wrap text while preserving markdown links and maintaining indentation."""
-        words = text.split()
-        lines = []
-        current_line = []
-        current_length = 0
-
-        for word in words:
-            word_length = len(word) + (1 if current_line else 0)
-            
-            if current_line and current_length + word_length > max_length:
-                lines.append(" ".join(current_line))
-                current_line = [word]
-                current_length = len(word)
-            else:
-                current_line.append(word)
-                current_length += word_length
-        
-        if current_line:
-            lines.append(" ".join(current_line))
-            
-        return f"\n{indent}".join(lines)
-    
-    # Add the header
-    formatted_params.append(f"{base_indent}{header}:")
-    
-    for param in params:
-        # Format parameter name and type
-        type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
-        param_str = f"{param_indent}{param.name} (`{type_str}`"
-        
-        # Add optional tag and default value if parameter is an InputParam and optional
-        if isinstance(param, InputParam):
-            if not param.required:
-                param_str += ", *optional*"
-                if param.default is not None:
-                    param_str += f", defaults to {param.default}"
-        param_str += "):"
-            
-        # Add description on a new line with additional indentation and wrapping
-        if param.description:
-            desc = re.sub(
-                r'\[(.*?)\]\((https?://[^\s\)]+)\)',
-                r'[\1](\2)',
-                param.description
+    @torch.compiler.disable
+    def progress_bar(self, iterable=None, total=None):
+        if not hasattr(self, "_progress_bar_config"):
+            self._progress_bar_config = {}
+        elif not isinstance(self._progress_bar_config, dict):
+            raise ValueError(
+                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
-            wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
-            param_str += f"\n{desc_indent}{wrapped_desc}"
-            
-        formatted_params.append(param_str)
-    
-    return "\n\n".join(formatted_params)
 
-# Then update the original functions to use this combined version:
-def format_input_params(input_params: List[InputParam], indent_level: int = 4, max_line_length: int = 115) -> str:
-    return format_params(input_params, "Args", indent_level, max_line_length)
+        if iterable is not None:
+            return tqdm(iterable, **self._progress_bar_config)
+        elif total is not None:
+            return tqdm(total=total, **self._progress_bar_config)
+        else:
+            raise ValueError("Either `total` or `iterable` has to be defined.")
 
-def format_output_params(output_params: List[OutputParam], indent_level: int = 4, max_line_length: int = 115) -> str:
-    return format_params(output_params, "Returns", indent_level, max_line_length)
+    def set_progress_bar_config(self, **kwargs):
+        self._progress_bar_config = kwargs
 
 
-
-def make_doc_string(inputs, intermediates_inputs, outputs, description=""):
-    """
-    Generates a formatted documentation string describing the pipeline block's parameters and structure.
-    
-    Returns:
-        str: A formatted string containing information about call parameters, intermediate inputs/outputs,
-            and final intermediate outputs.
-    """
-    output = ""
-
-    if description:
-        desc_lines = description.strip().split('\n')
-        aligned_desc = '\n'.join('  ' + line for line in desc_lines)
-        output += aligned_desc + "\n\n"
-
-    output += format_input_params(inputs + intermediates_inputs, indent_level=2)
-    
-    output += "\n\n"
-    output += format_output_params(outputs, indent_level=2)
-
-    return output
-
-
-
-class PipelineBlock:
+class PipelineBlock(ModularPipelineMixin):
     
     model_name = None
     
@@ -440,31 +340,15 @@ class PipelineBlock:
             desc.extend(f"      {line}" for line in desc_lines[1:])
         desc = '\n'.join(desc) + '\n'
 
-        # Components section - focus only on expected components
+        # Components section - use format_components with add_empty_lines=False
         expected_components = getattr(self, "expected_components", [])
-        expected_components_str_list = []
+        components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
+        components = "  " + components_str.replace("\n", "\n  ")
 
-        for component_spec in expected_components:
-            component_str = f"    - {component_spec.name} ({component_spec.type_hint})"
-            
-            # Add repo info if available
-            if component_spec.default_repo:
-                if isinstance(component_spec.default_repo, list) and len(component_spec.default_repo) == 2:
-                    repo_info = component_spec.default_repo[0]
-                    subfolder = component_spec.default_repo[1]
-                    if subfolder:
-                        repo_info += f", subfolder={subfolder}"
-                else:
-                    repo_info = component_spec.default_repo
-                component_str += f" [{repo_info}]"
-            
-            expected_components_str_list.append(component_str)
-
-        components = "Components:\n" + "\n".join(expected_components_str_list)
-
-        # Configs section - focus only on expected configs
+        # Configs section - use format_configs with add_empty_lines=False
         expected_configs = getattr(self, "expected_configs", [])
-        configs = "Configs:\n" + "\n".join(f"    - {k}" for k in sorted(expected_configs))
+        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
+        configs = "  " + configs_str.replace("\n", "\n  ")
 
         # Inputs section
         inputs_str = format_inputs_short(self.inputs)
@@ -478,8 +362,8 @@ class PipelineBlock:
             f"{class_name}(\n"
             f"  Class: {base_class}\n"
             f"{desc}"
-            f"  {components}\n"
-            f"  {configs}\n"
+            f"{components}\n"
+            f"{configs}\n"
             f"  {inputs}\n"
             f"  {intermediates}\n"
             f")"
@@ -488,7 +372,15 @@ class PipelineBlock:
 
     @property
     def doc(self):
-        return make_doc_string(self.inputs, self.intermediates_inputs, self.outputs, self.description)
+        return make_doc_string(
+            self.inputs, 
+            self.intermediates_inputs, 
+            self.outputs, 
+            self.description,
+            class_name=self.__class__.__name__,
+            expected_components=self.expected_components,
+            expected_configs=self.expected_configs
+        )
 
 
     def get_block_state(self, state: PipelineState) -> dict:
@@ -575,7 +467,7 @@ def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) ->
     return list(combined_dict.values())
 
 
-class AutoPipelineBlocks:
+class AutoPipelineBlocks(ModularPipelineMixin):
     """
     A class that automatically selects a block to run based on the inputs.
 
@@ -796,32 +688,13 @@ class AutoPipelineBlocks:
 
         # Components section - focus only on expected components
         expected_components = getattr(self, "expected_components", [])
-        expected_components_str_list = []
+        components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
         
-        for component_spec in expected_components:
-            
-            component_str = f"    - {component_spec.name} ({component_spec.type_hint.__name__})"
-            
-            # Add repo info if available
-            if component_spec.default_repo:
-                if isinstance(component_spec.default_repo, list) and len(component_spec.default_repo) == 2:
-                    repo_info = component_spec.default_repo[0]
-                    subfolder = component_spec.default_repo[1]
-                    if subfolder:
-                        repo_info += f", subfolder={subfolder}"
-                else:
-                    repo_info = component_spec.default_repo
-                component_str += f" [{repo_info}]"
-            
-            expected_components_str_list.append(component_str)
-
-        components_str = "  Components:\n" + "\n".join(expected_components_str_list)
-
-        # Configs section - focus only on expected configs
+        # Configs section - use format_configs with add_empty_lines=False
         expected_configs = getattr(self, "expected_configs", [])
-        configs_str = "  Configs:\n" + "\n".join(f"    - {config.name}" for config in sorted(expected_configs, key=lambda x: x.name))
+        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
 
-        # Blocks section
+        # Blocks section - moved to the end with simplified format
         blocks_str = "  Blocks:\n"
         for i, (name, block) in enumerate(self.blocks.items()):
             # Get trigger input for this block
@@ -846,54 +719,31 @@ class AutoPipelineBlocks:
             indented_desc = desc_lines[0]
             if len(desc_lines) > 1:
                 indented_desc += '\n' + '\n'.join('                   ' + line for line in desc_lines[1:])
-            blocks_str += f"       Description: {indented_desc}\n"
-
-            # Format inputs
-            inputs_str = format_inputs_short(block.inputs)
-            blocks_str += f"       inputs: {inputs_str}\n"
-
-            # Format intermediates
-            intermediates_str = format_intermediates_short(
-                block.intermediates_inputs,
-                block.required_intermediates_inputs,
-                block.intermediates_outputs
-            )
-            if intermediates_str != "    (none)":
-                blocks_str += "       intermediates:\n"
-                indented_intermediates = "\n".join(
-                    "        " + line for line in intermediates_str.split("\n")
-                )
-                blocks_str += f"{indented_intermediates}\n"
-            blocks_str += "\n"
-
-        # Inputs and outputs section
-        inputs_str = format_inputs_short(self.inputs)
-        inputs_str = "  Inputs:\n    " + inputs_str
-        outputs = [out.name for out in self.outputs]
-        
-        intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
-        intermediates_str = (
-            "\n  Intermediates:\n"
-            f"{intermediates_str}\n" 
-            f"    - final outputs: {', '.join(outputs)}"
-        )
+            blocks_str += f"       Description: {indented_desc}\n\n"
 
         return (
             f"{header}\n"
-            f"{desc}"
-            f"{components_str}\n"
-            f"{configs_str}\n"
-            f"{blocks_str}\n"
-            f"{inputs_str}\n"
-            f"{intermediates_str}\n"
+            f"{desc}\n\n"
+            f"{components_str}\n\n"
+            f"{configs_str}\n\n"
+            f"{blocks_str}"
             f")"
         )
 
+
     @property
     def doc(self):
-        return make_doc_string(self.inputs, self.intermediates_inputs, self.outputs, self.description)
+        return make_doc_string(
+            self.inputs, 
+            self.intermediates_inputs, 
+            self.outputs, 
+            self.description,
+            class_name=self.__class__.__name__,
+            expected_components=self.expected_components,
+            expected_configs=self.expected_configs
+        )
 
-class SequentialPipelineBlocks:
+class SequentialPipelineBlocks(ModularPipelineMixin):
     """
     A class that combines multiple pipeline block classes into one. When called, it will call each block in sequence.
     """
@@ -1168,32 +1018,13 @@ class SequentialPipelineBlocks:
 
         # Components section - focus only on expected components
         expected_components = getattr(self, "expected_components", [])
-        expected_components_str_list = []
+        components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
         
-        for component_spec in expected_components:
-            
-            component_str = f"    - {component_spec.name} ({component_spec.type_hint.__name__})"
-            
-            # Add repo info if available
-            if component_spec.default_repo:
-                if isinstance(component_spec.default_repo, list) and len(component_spec.default_repo) == 2:
-                    repo_info = component_spec.default_repo[0]
-                    subfolder = component_spec.default_repo[1]
-                    if subfolder:
-                        repo_info += f", subfolder={subfolder}"
-                else:
-                    repo_info = component_spec.default_repo
-                component_str += f" [{repo_info}]"
-            
-            expected_components_str_list.append(component_str)
-
-        components_str = "  Components:\n" + "\n".join(expected_components_str_list)
-
-        # Configs section - focus only on expected configs
+        # Configs section - use format_configs with add_empty_lines=False
         expected_configs = getattr(self, "expected_configs", [])
-        configs_str = "  Configs:\n" + "\n".join(f"    - {config.name}" for config in sorted(expected_configs, key=lambda x: x.name))
+        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
 
-        # Blocks section
+        # Blocks section - moved to the end with simplified format
         blocks_str = "  Blocks:\n"
         for i, (name, block) in enumerate(self.blocks.items()):
             # Get trigger input for this block
@@ -1218,84 +1049,171 @@ class SequentialPipelineBlocks:
             indented_desc = desc_lines[0]
             if len(desc_lines) > 1:
                 indented_desc += '\n' + '\n'.join('                   ' + line for line in desc_lines[1:])
-            blocks_str += f"       Description: {indented_desc}\n"
-
-            # Format inputs
-            inputs_str = format_inputs_short(block.inputs)
-            blocks_str += f"       inputs: {inputs_str}\n"
-
-            # Format intermediates
-            intermediates_str = format_intermediates_short(
-                block.intermediates_inputs,
-                block.required_intermediates_inputs,
-                block.intermediates_outputs
-            )
-            if intermediates_str != "    (none)":
-                blocks_str += "       intermediates:\n"
-                indented_intermediates = "\n".join(
-                    "        " + line for line in intermediates_str.split("\n")
-                )
-                blocks_str += f"{indented_intermediates}\n"
-            blocks_str += "\n"
-
-        # Inputs and outputs section
-        inputs_str = format_inputs_short(self.inputs)
-        inputs_str = "  Inputs:\n    " + inputs_str
-        outputs = [out.name for out in self.outputs]
-        
-        intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
-        intermediates_str = (
-            "\n  Intermediates:\n"
-            f"{intermediates_str}\n" 
-            f"    - final outputs: {', '.join(outputs)}"
-        )
+            blocks_str += f"       Description: {indented_desc}\n\n"
 
         return (
             f"{header}\n"
-            f"{desc}"
-            f"{components_str}\n"
-            f"{configs_str}\n"
-            f"{blocks_str}\n"
-            f"{inputs_str}\n"
-            f"{intermediates_str}\n"
+            f"{desc}\n\n"
+            f"{components_str}\n\n"
+            f"{configs_str}\n\n"
+            f"{blocks_str}"
             f")"
         )
 
 
     @property
     def doc(self):
-        return make_doc_string(self.inputs, self.intermediates_inputs, self.outputs, self.description)
+        return make_doc_string(
+            self.inputs, 
+            self.intermediates_inputs, 
+            self.outputs, 
+            self.description,
+            class_name=self.__class__.__name__,
+            expected_components=self.expected_components,
+            expected_configs=self.expected_configs
+        )
 
-class ModularPipeline(ConfigMixin):
+
+
+# YiYi TODO: 
+# 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
+# 2. do we need ConfigSpec? seems pretty unnecessrary for loader, can just add and kwargs to the loader
+# 3. add validator for methods where we accpet kwargs to be passed to from_pretrained()
+class ModularLoader(ConfigMixin, PushToHubMixin):
     """
-    Base class for all Modular pipelines.
+    Base class for all Modular pipelines loaders.
 
     """
+    config_name = "modular_model_index.json"
 
-    config_name = "model_index.json"
-    _exclude_from_cpu_offload = []
 
-    def __init__(self, block):
-        self.pipeline_block = block
+    def register_components(self, **kwargs):
+        """
+        Register components with their corresponding specs. 
+        This method is called when component changed or __init__ is called.
 
-        for component_spec in self.expected_components:
-            if component_spec.obj is not None:
-                setattr(self, component_spec.name, component_spec.obj)
+        Args:
+            **kwargs: Keyword arguments where keys are component names and values are component objects.
+        
+        """
+        for name, module in kwargs.items():
+
+            # current component spec
+            component_spec = self._component_specs.get(name)
+            if component_spec is None:
+                logger.warning(f"ModularLoader.register_components: skipping unknown component '{name}'")
+                continue
+            
+            is_registered = hasattr(self, name)
+
+            if module is not None and not hasattr(module, "_diffusers_load_id"):
+                raise ValueError(f"`ModularLoader` only supports components created from `ComponentSpec`.")
+
+            # actual library and class name of the module
+
+            if module is not None:
+                library, class_name = _fetch_class_library_tuple(module)
+                new_component_spec = ComponentSpec.from_component(name, module)
+                component_spec_dict = self._component_spec_to_dict(new_component_spec)
+            
             else:
-                setattr(self, component_spec.name, None)
+                library, class_name = None, None
+                # if module is None, we do not update the spec, 
+                # but we still need to update the config to make sure it's synced with the component spec
+                # (in the case of the first time registration, we initilize the object with component spec, and then we call register_components() to register it to config)
+                new_component_spec = component_spec
+                component_spec_dict = self._component_spec_to_dict(component_spec)
+
+            # do not register if component is not to be loaded from pretrained
+            if new_component_spec.default_creation_method == "from_pretrained":
+                register_dict = {name: (library, class_name, component_spec_dict)}
+            else:
+                register_dict = {}
+
+            # set the component as attribute
+            # if it is not set yet, just set it and skip the process to check and warn below
+            if not is_registered:
+                self.register_to_config(**register_dict)
+                self._component_specs[name] = new_component_spec
+                setattr(self, name, module)
+                if module is not None and self._component_manager is not None:
+                    self._component_manager.add(name, module, self._collection)
+                continue
+            
+            current_module = getattr(self, name, None)
+            # skip if the component is already registered with the same object
+            if current_module is module:
+                logger.info(f"ModularLoader.register_components: {name} is already registered with same object, skipping")
+                continue
+            
+            # it module is not an instance of the expected type, still register it but with a warning
+            if module is not None and component_spec.type_hint is not None and not isinstance(module, component_spec.type_hint):
+                logger.warning(f"ModularLoader.register_components: adding {name} with new type: {module.__class__.__name__}, previous type: {component_spec.type_hint.__name__}")
+
+            # warn if unregister
+            if current_module is not None and module is None:
+                logger.info(
+                    f"ModularLoader.register_components: setting '{name}' to None "
+                    f"(was {current_module.__class__.__name__})"
+                )
+            # same type, new instance → debug
+            elif current_module is not None \
+                and module is not None \
+                and isinstance(module, current_module.__class__) \
+                and current_module != module:
+                logger.debug(
+                    f"ModularLoader.register_components: replacing existing '{name}' "
+                    f"(same type {type(current_module).__name__}, new instance)"
+                )
+
+            # save modular_model_index.json config
+            self.register_to_config(**register_dict)
+            # update component spec
+            self._component_specs[name] = new_component_spec
+            # finally set models
+            setattr(self, name, module)
+            if module is not None and self._component_manager is not None:
+                self._component_manager.add(name, module, self._collection)
+
+
+    
+    # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
+    def __init__(self, specs: List[Union[ComponentSpec, ConfigSpec]], modular_repo: Optional[str] = None, component_manager: Optional[ComponentsManager] = None, collection: Optional[str] = None, **kwargs):
+        """
+        Initialize the loader with a list of component specs and config specs.
+        """
+        self._component_manager = component_manager
+        self._collection = collection
+        self._component_specs = {
+            spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ComponentSpec)
+        }
+        self._config_specs = {
+            spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ConfigSpec)
+        }
+
+        # update component_specs and config_specs from modular_repo
+        if modular_repo is not None:
+            config_dict = self.load_config(modular_repo, **kwargs)
+
+            for name, value in config_dict.items():
+                if name in self._component_specs and self._component_specs[name].default_creation_method == "from_pretrained" and isinstance(value, (tuple, list)) and len(value) == 3:
+                    library, class_name, component_spec_dict = value
+                    component_spec = self._dict_to_component_spec(name, component_spec_dict)
+                    self._component_specs[name] = component_spec
+
+                elif name in self._config_specs:
+                    self._config_specs[name].default = value
+        
+        register_components_dict = {}
+        for name, component_spec in self._component_specs.items():
+            register_components_dict[name] = None
+        self.register_components(**register_components_dict)
         
         default_configs = {}
-        for config_spec in self.expected_configs:
-            default_configs[config_spec.name] = config_spec.default
+        for name, config_spec in self._config_specs.items():
+            default_configs[name] = config_spec.default
         self.register_to_config(**default_configs)
 
-
-    @classmethod
-    def from_block(cls, block):
-        modular_pipeline_class_name = MODULAR_PIPELINE_MAPPING[block.model_name]
-        modular_pipeline_class = _get_pipeline_class(cls, class_name=modular_pipeline_class_name)
-
-        return modular_pipeline_class(block)
 
     @property
     def device(self) -> torch.device:
@@ -1320,7 +1238,7 @@ class ModularPipeline(ConfigMixin):
         Accelerate's module hooks.
         """
         for name, model in self.components.items():
-            if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:
+            if not isinstance(model, torch.nn.Module):
                 continue
 
             if not hasattr(model, "_hf_hook"):
@@ -1333,11 +1251,21 @@ class ModularPipeline(ConfigMixin):
                 ):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
+    
+    @property
+    def device(self) -> torch.device:
+        r"""
+        Returns:
+            `torch.device`: The torch device on which the pipeline is located.
+        """
 
-    
-    def get_execution_blocks(self, *trigger_inputs):
-        return self.pipeline_block.get_execution_blocks(*trigger_inputs)
-    
+        modules = [m for m in self.components.values() if isinstance(m, torch.nn.Module)]
+
+        for module in modules:
+            return module.device
+
+        return torch.device("cpu")
+
     @property
     def dtype(self) -> torch.dtype:
         r"""
@@ -1352,340 +1280,257 @@ class ModularPipeline(ConfigMixin):
 
         return torch.float32
 
-    @property
-    def expected_components(self):
-        return self.pipeline_block.expected_components
 
     @property
-    def expected_configs(self):
-        return self.pipeline_block.expected_configs
+    def components(self) -> Dict[str, Any]:
+        # return only components we've actually set as attributes on self
+        return {
+            name: getattr(self, name)
+            for name in self._component_specs.keys()
+            if hasattr(self, name)
+        }
 
-    @property
-    def components(self):
-        components = {}
-        for component_spec in self.expected_components:
-            if hasattr(self, component_spec.name):
-                components[component_spec.name] = getattr(self, component_spec.name)
-        return components
+    def update(self, **kwargs):
+        """
+        Update components and configs after instance creation.
+        
+        Args:
 
-    # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.progress_bar
-    def progress_bar(self, iterable=None, total=None):
-        if not hasattr(self, "_progress_bar_config"):
-            self._progress_bar_config = {}
-        elif not isinstance(self._progress_bar_config, dict):
-            raise ValueError(
-                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
+        """   
+        """
+        Update components and configuration values after the loader has been instantiated.
+        
+        This method allows you to:
+        1. Replace existing components with new ones (e.g., updating the unet or text_encoder)
+        2. Update configuration values (e.g., changing requires_safety_checker flag)
+        
+        Args:
+            **kwargs: Component objects or configuration values to update:
+                - Component objects: Must be created using ComponentSpec (e.g., `unet=new_unet, text_encoder=new_encoder`)
+                - Configuration values: Simple values to update configuration settings (e.g., `requires_safety_checker=False`)
+        
+        Raises:
+            ValueError: If a component wasn't created using ComponentSpec (doesn't have `_diffusers_load_id` attribute)
+            
+        Examples:
+            ```python
+            # Update multiple components at once
+            loader.update(
+                unet=new_unet_model,
+                text_encoder=new_text_encoder
             )
+            
+            # Update configuration values
+            loader.update(
+                requires_safety_checker=False,
+                guidance_rescale=0.7
+            )
+            
+            # Update both components and configs together
+            loader.update(
+                unet=new_unet_model,
+                requires_safety_checker=False
+            )
+            ```
+        """   
 
-        if iterable is not None:
-            return tqdm(iterable, **self._progress_bar_config)
-        elif total is not None:
-            return tqdm(total=total, **self._progress_bar_config)
-        else:
-            raise ValueError("Either `total` or `iterable` has to be defined.")
+        # extract component_specs_updates & config_specs_updates from `specs`
+        passed_components = {k: kwargs.pop(k) for k in self._component_specs if k in kwargs}
+        passed_config_values = {k: kwargs.pop(k) for k in self._config_specs if k in kwargs}
 
-    # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.set_progress_bar_config
-    def set_progress_bar_config(self, **kwargs):
-        self._progress_bar_config = kwargs
+        for name, component in passed_components.items():
+            if not hasattr(component, "_diffusers_load_id"):
+                raise ValueError(f"`ModularLoader` only supports components created from `ComponentSpec`.")   
+    
+        if len(kwargs) > 0:
+            logger.warning(f"Unexpected keyword arguments, will be ignored: {kwargs.keys()}")
+        
 
-    def __call__(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
+        self.register_components(**passed_components)
+
+
+        config_to_register = {}
+        for name, new_value in passed_config_values.items():
+
+            # e.g. requires_aesthetics_score = False
+            self._config_specs[name].default = new_value
+            config_to_register[name] = new_value
+        self.register_to_config(**config_to_register)
+
+
+    # YiYi TODO: support map for additional from_pretrained kwargs
+    def load(self, component_names: Optional[List[str]] = None, **kwargs):
         """
-        Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
+        Load selectedcomponents from specs.
+        
+        Args:
+            component_names: List of component names to load
+            **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
+             - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
+             - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
+             - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g. `repo`, `variant`, `revision`, etc.
         """
-        if state is None:
-            state = PipelineState()
+        if component_names is None:
+            component_names = list(self._component_specs.keys())
+        elif not isinstance(component_names, list):
+            component_names = [component_names]
 
-        # Make a copy of the input kwargs
-        input_params = kwargs.copy()
-
-        default_params = self.default_call_parameters
-
-        # Add inputs to state, using defaults if not provided in the kwargs or the state
-        # if same input already in the state, will override it if provided in the kwargs
-
-        intermediates_inputs = [inp.name for inp in self.pipeline_block.intermediates_inputs]
-        for name, default in default_params.items():
-            if name in input_params:
-                if name not in intermediates_inputs:
-                    state.add_input(name, input_params.pop(name))
+        components_to_load = set([name for name in component_names if name in self._component_specs])
+        unknown_component_names = set([name for name in component_names if name not in self._component_specs])
+        if len(unknown_component_names) > 0:
+            logger.warning(f"Unknown components will be ignored: {unknown_component_names}")
+        
+        components_to_register = {}
+        for name in components_to_load:
+            spec = self._component_specs[name]
+            component_load_kwargs = {}
+            for key, value in kwargs.items():
+                if not isinstance(value, dict):
+                    # if the value is a single value, apply it to all components
+                    component_load_kwargs[key] = value
                 else:
-                    state.add_input(name, input_params[name])
-            elif name not in state.inputs:
-                state.add_input(name, default)
-
-        for name in intermediates_inputs:
-            if name in input_params:
-                state.add_intermediate(name, input_params.pop(name))
-
-        # Warn about unexpected inputs
-        if len(input_params) > 0:
-            logger.warning(f"Unexpected input '{input_params.keys()}' provided. This input will be ignored.")
-        # Run the pipeline
-        with torch.no_grad():
+                    if name in value:
+                        # if it is a dict, check if the component name is in the dict
+                        component_load_kwargs[key] = value[name]
+                    elif "default" in value:
+                        # check if the default is specified
+                        component_load_kwargs[key] = value["default"]
             try:
-                pipeline, state = self.pipeline_block(self, state)
-            except Exception:
-                error_msg = f"Error in block: ({self.pipeline_block.__class__.__name__}):\n"
-                logger.error(error_msg)
-                raise
+                components_to_register[name] = spec.create(**component_load_kwargs)
+            except Exception as e:
+                logger.warning(f"Failed to create component '{name}': {e}")
+            
+        # Register all components at once
+        self.register_components(**components_to_register)
 
-        if output is None:
-            return state
+    # YiYi TODO: should support to method
+    def to(self, *args, **kwargs):
+        pass
 
+    # YiYi TODO: 
+    # 1. should support save some components too! currently only modular_model_index.json is saved
+    # 2. maybe order the json file to make it more readable: configs first, then components
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, spec_only: bool = True, **kwargs):
 
-        elif isinstance(output, str):
-            return state.get_intermediate(output)
+        component_names = list(self._component_specs.keys())
+        config_names = list(self._config_specs.keys())
+        self.register_to_config(_components_names=component_names, _configs_names=config_names)
+        self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
+        config = dict(self.config)
+        config.pop("_components_names", None)
+        config.pop("_configs_names", None)
+        self._internal_dict = FrozenDict(config)
 
-        elif isinstance(output, (list, tuple)):
-            return state.get_intermediates(output)
-        else:
-            raise ValueError(f"Output '{output}' is not a valid output type")
+    
+    @classmethod
+    @validate_hf_hub_args
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], spec_only: bool = True, **kwargs):
+        
+        config_dict = cls.load_config(pretrained_model_name_or_path, **kwargs)
+        expected_component = set(config_dict.pop("_components_names"))
+        expected_config = set(config_dict.pop("_configs_names"))
 
-    def update_states(self, **kwargs):
+        component_specs = []
+        config_specs = []
+        for name, value in config_dict.items():
+            if name in expected_component and isinstance(value, (tuple, list)) and len(value) == 3:
+                library, class_name, component_spec_dict = value
+                component_spec = cls._dict_to_component_spec(name, component_spec_dict)
+                component_specs.append(component_spec)
+
+            elif name in expected_config:
+                config_specs.append(ConfigSpec(name=name, default=value))
+        
+        for name in expected_component:
+            for spec in component_specs:
+                if spec.name == name:
+                    break
+            else:
+                # append a empty component spec for these not in modular_model_index
+                component_specs.append(ComponentSpec(name=name, default_creation_method="from_config"))
+        return cls(component_specs + config_specs)
+
+    
+    @staticmethod
+    def _component_spec_to_dict(component_spec: ComponentSpec) -> Any:
         """
-        Update components and configs after instance creation. Auxiliaries (e.g. image_processor) should be defined for
-        each pipeline block, does not need to be updated by users. Logs if existing non-None components are being
-        overwritten.
+        Convert a ComponentSpec into a JSON‐serializable dict for saving in
+        `modular_model_index.json`.
+
+        This dict contains:
+          - "type_hint": Tuple[str, str]
+              The fully‐qualified module path and class name of the component.
+          - All loading fields defined by `component_spec.loading_fields()`, typically:
+              - "repo": Optional[str]
+                  The model repository (e.g., "stabilityai/stable-diffusion-xl").
+              - "subfolder": Optional[str]
+                  A subfolder within the repo where this component lives.
+              - "variant": Optional[str]
+                  An optional variant identifier for the model.
+              - "revision": Optional[str]
+                  A specific git revision (commit hash, tag, or branch).
+              - ... any other loading fields defined on the spec.
 
         Args:
-            kwargs (dict): Keyword arguments to update the states.
-        """
-
-        for component in self.expected_components:
-            if component.name in kwargs:
-                if hasattr(self, component.name) and getattr(self, component.name) is not None:
-                    current_component = getattr(self, component.name)
-                    new_component = kwargs[component.name]
-
-                    if not isinstance(new_component, current_component.__class__):
-                        logger.info(
-                            f"Overwriting existing component '{component.name}' "
-                            f"(type: {current_component.__class__.__name__}) "
-                            f"with type: {new_component.__class__.__name__})"
-                        )
-                    elif isinstance(current_component, torch.nn.Module):
-                        if id(current_component) != id(new_component):
-                            logger.info(
-                                f"Overwriting existing component '{component.name}' "
-                                f"(type: {type(current_component).__name__}) "
-                                f"with new value (type: {type(new_component).__name__})"
-                            )
-
-                setattr(self, component.name, kwargs.pop(component.name))
-
-        configs_to_add = {}
-        for config in self.expected_configs:
-            if config.name in kwargs:
-                configs_to_add[config.name] = kwargs.pop(config.name)
-        self.register_to_config(**configs_to_add)
-
-    @property
-    def default_call_parameters(self) -> Dict[str, Any]:
-        params = {}
-        for input_param in self.pipeline_block.inputs:
-            params[input_param.name] = input_param.default
-        return params
-
-    # def __repr__(self):
-    #     output = "ModularPipeline:\n"
-    #     output += "==============================\n\n"
-
-    #     block = self.pipeline_block
-        
-    #     # List the pipeline block structure first
-    #     output += "Pipeline Block:\n"
-    #     output += "--------------\n"
-    #     if hasattr(block, "blocks"):
-    #         output += f"{block.__class__.__name__}\n"
-    #         base_class = block.__class__.__bases__[0].__name__
-    #         output += f" (Class: {base_class})\n" if base_class != "object" else "\n"
-    #         for sub_block_name, sub_block in block.blocks.items():
-    #             if hasattr(block, "block_trigger_inputs"):
-    #                 trigger_input = block.block_to_trigger_map[sub_block_name]
-    #                 trigger_info = f" [trigger: {trigger_input}]" if trigger_input is not None else " [default]"
-    #                 output += f"  • {sub_block_name} ({sub_block.__class__.__name__}){trigger_info}\n"
-    #             else:
-    #                 output += f"  • {sub_block_name} ({sub_block.__class__.__name__})\n"
-    #     else:
-    #         output += f"{block.__class__.__name__}\n"
-    #     output += "\n"
-
-    #     # List the components registered in the pipeline
-    #     output += "Registered Components:\n"
-    #     output += "----------------------\n"
-    #     for name, component in self.components.items():
-    #         output += f"{name}: {type(component).__name__}"
-    #         if hasattr(component, "dtype") and hasattr(component, "device"):
-    #             output += f" (dtype={component.dtype}, device={component.device})"
-    #         output += "\n"
-    #     output += "\n"
-
-    #     # List the configs registered in the pipeline
-    #     output += "Registered Configs:\n"
-    #     output += "------------------\n"
-    #     for name, config in self.config.items():
-    #         output += f"{name}: {config!r}\n"
-    #     output += "\n"
-
-    #     # Add auto blocks section
-    #     if hasattr(block, "trigger_inputs") and block.trigger_inputs:
-    #         output += "------------------\n"
-    #         output += "This pipeline contains blocks that are selected at runtime based on inputs.\n\n"
-    #         output += f"Trigger Inputs: {block.trigger_inputs}\n"
-    #         # Get first trigger input as example
-    #         example_input = next(t for t in block.trigger_inputs if t is not None)
-    #         output += f"  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('{example_input}')`).\n"
-    #         output += "Check `.doc` of returned object for more information.\n\n"
-
-    #     # List the call parameters
-    #     full_doc = self.pipeline_block.doc
-    #     if "------------------------" in full_doc:
-    #         full_doc = full_doc.split("------------------------")[0].rstrip()
-    #     output += full_doc
-
-    #     return output
-
-    # YiYi TODO: try to unify the to method with the one in DiffusionPipeline
-    # Modified from diffusers.pipelines.pipeline_utils.DiffusionPipeline.to
-    def to(self, *args, **kwargs):
-        r"""
-        Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
-        arguments of `self.to(*args, **kwargs).`
-
-        <Tip>
-
-            If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is. Otherwise,
-            the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
-
-        </Tip>
-
-
-        Here are the ways to call `to`:
-
-        - `to(dtype, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the specified
-          [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
-        - `to(device, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the specified
-          [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
-        - `to(device=None, dtype=None, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the
-          specified [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device) and
-          [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
-
-        Arguments:
-            dtype (`torch.dtype`, *optional*):
-                Returns a pipeline with the specified
-                [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
-            device (`torch.Device`, *optional*):
-                Returns a pipeline with the specified
-                [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
-            silence_dtype_warnings (`str`, *optional*, defaults to `False`):
-                Whether to omit warnings if the target `dtype` is not compatible with the target `device`.
+            component_spec (ComponentSpec):
+                The spec object describing one pipeline component.
 
         Returns:
-            [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
+            Dict[str, Any]: A mapping suitable for JSON serialization.
+
+        Example:
+            >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec
+            >>> from diffusers.models.unet import UNet2DConditionModel
+            >>> spec = ComponentSpec(
+            ...     name="unet",
+            ...     type_hint=UNet2DConditionModel,
+            ...     config=None,
+            ...     repo="path/to/repo",
+            ...     subfolder="subfolder",
+            ...     variant=None,
+            ...     revision=None,
+            ...     default_creation_method="from_pretrained",
+            ... )
+            >>> ModularLoader._component_spec_to_dict(spec)
+            {
+                "type_hint": ("diffusers.models.unet", "UNet2DConditionModel"),
+                "repo": "path/to/repo",
+                "subfolder": "subfolder",
+                "variant": None,
+                "revision": None,
+            }
         """
-        dtype = kwargs.pop("dtype", None)
-        device = kwargs.pop("device", None)
-        silence_dtype_warnings = kwargs.pop("silence_dtype_warnings", False)
+        if component_spec.type_hint is not None:
+            lib_name, cls_name = _fetch_class_library_tuple(component_spec.type_hint)
+        else:
+            lib_name = None
+            cls_name = None
+        load_spec_dict = {k: getattr(component_spec, k) for k in component_spec.loading_fields()}
+        return {
+            "type_hint": (lib_name, cls_name),
+            **load_spec_dict,
+        }
 
-        dtype_arg = None
-        device_arg = None
-        if len(args) == 1:
-            if isinstance(args[0], torch.dtype):
-                dtype_arg = args[0]
-            else:
-                device_arg = torch.device(args[0]) if args[0] is not None else None
-        elif len(args) == 2:
-            if isinstance(args[0], torch.dtype):
-                raise ValueError(
-                    "When passing two arguments, make sure the first corresponds to `device` and the second to `dtype`."
-                )
-            device_arg = torch.device(args[0]) if args[0] is not None else None
-            dtype_arg = args[1]
-        elif len(args) > 2:
-            raise ValueError("Please make sure to pass at most two arguments (`device` and `dtype`) `.to(...)`")
+    @staticmethod
+    def _dict_to_component_spec(
+        name: str,
+        spec_dict: Dict[str, Any],
+    ) -> ComponentSpec:
+        """
+        Reconstruct a ComponentSpec from a dict.
+        """
+        # make a shallow copy so we can pop() safely
+        spec_dict = spec_dict.copy()
+        # pull out and resolve the stored type_hint
+        lib_name, cls_name = spec_dict.pop("type_hint")
+        if lib_name is not None and cls_name is not None:
+            type_hint = simple_get_class_obj(lib_name, cls_name)
+        else:
+            type_hint = None
 
-        if dtype is not None and dtype_arg is not None:
-            raise ValueError(
-                "You have passed `dtype` both as an argument and as a keyword argument. Please only pass one of the two."
-            )
-
-        dtype = dtype or dtype_arg
-
-        if device is not None and device_arg is not None:
-            raise ValueError(
-                "You have passed `device` both as an argument and as a keyword argument. Please only pass one of the two."
-            )
-
-        device = device or device_arg
-
-        # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
-        def module_is_sequentially_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
-                return False
-
-            return hasattr(module, "_hf_hook") and (
-                isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
-                or hasattr(module._hf_hook, "hooks")
-                and isinstance(module._hf_hook.hooks[0], accelerate.hooks.AlignDevicesHook)
-            )
-
-        def module_is_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
-                return False
-
-            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
-
-        # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
-        pipeline_is_sequentially_offloaded = any(
-            module_is_sequentially_offloaded(module) for _, module in self.components.items()
+        # re‐assemble the ComponentSpec
+        return ComponentSpec(
+            name=name,
+            type_hint=type_hint,
+            **spec_dict,
         )
-        if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
-            raise ValueError(
-                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
-            )
-
-        is_pipeline_device_mapped = hasattr(self, "hf_device_map") and self.hf_device_map is not None and len(self.hf_device_map) > 1
-        if is_pipeline_device_mapped:
-            raise ValueError(
-                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
-            )
-
-        # Display a warning in this case (the operation succeeds but the benefits are lost)
-        pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
-        if pipeline_is_offloaded and device and torch.device(device).type == "cuda":
-            logger.warning(
-                f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
-            )
-
-        modules = [m for m in self.components.values() if isinstance(m, torch.nn.Module)]
-
-        is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
-        for module in modules:
-            is_loaded_in_8bit = hasattr(module, "is_loaded_in_8bit") and module.is_loaded_in_8bit
-
-            if is_loaded_in_8bit and dtype is not None:
-                logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {dtype} is not yet supported. Module is still in 8bit precision."
-                )
-
-            if is_loaded_in_8bit and device is not None:
-                logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {dtype} via `.to()` is not yet supported. Module is still on {module.device}."
-                )
-            else:
-                module.to(device, dtype)
-
-            if (
-                module.dtype == torch.float16
-                and str(device) in ["cpu"]
-                and not silence_dtype_warnings
-                and not is_offloaded
-            ):
-                logger.warning(
-                    "Pipelines loaded with `dtype=torch.float16` cannot run with `cpu` device. It"
-                    " is not recommended to move them to `cpu` as running them will fail. Please make"
-                    " sure to use an accelerator to run the pipeline in inference, due to the lack of"
-                    " support for`float16` operations on this device in PyTorch. Please, remove the"
-                    " `torch_dtype=torch.float16` argument, or use another device for inference."
-                )
-        return self
