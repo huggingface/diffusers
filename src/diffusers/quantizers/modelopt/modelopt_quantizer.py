@@ -139,7 +139,6 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
         import modelopt.torch.opt as mto
-        import modelopt.torch.quantization as mtq
 
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert
 
@@ -148,7 +147,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
 
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
 
-        mto.apply_mode(model, mode=[("quantize", self.quantization_config.modelopt_config)], registry=mtq.mode.QuantizeModeRegistry)
+        mto.apply_mode(model, mode=[("quantize", self.quantization_config.modelopt_config)])
         model.config.quantization_config = self.quantization_config
 
     def _process_model_after_weight_loading(self, model, **kwargs):
