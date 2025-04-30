@@ -362,13 +362,10 @@ def parse_args(input_args=None):
         "--lora_alpha",
         type=int,
         default=None,
-        help="Scaling factor for LoRA, if not provided will be set by default to be the same as --rank")
+        help="Scaling factor for LoRA, if not provided will be set by default to be the same as --rank",
+    )
 
-    parser.add_argument(
-        "--lora_dropout",
-        type=float,
-        default=0.0,
-        help="Dropout probability for LoRA layers")
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
 
     parser.add_argument(
         "--with_prior_preservation",

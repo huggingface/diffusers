@@ -663,13 +663,10 @@ def parse_args(input_args=None):
         "--lora_alpha",
         type=int,
         default=None,
-        help="Scaling factor for LoRA, if not provided will be set by default to be the same as --rank")
+        help="Scaling factor for LoRA, if not provided will be set by default to be the same as --rank",
+    )
 
-    parser.add_argument(
-        "--lora_dropout",
-        type=float,
-        default=0.0,
-        help="Dropout probability for LoRA layers")
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
 
     parser.add_argument(
         "--use_dora",
@@ -1234,14 +1231,26 @@ def main(args):
 
     # now we will add new LoRA weights to the attention layers
     unet_target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
-    unet_lora_config = get_lora_config(rank=args.rank, alpha=args.lora_alpha, dropout=args.lora_dropout, use_dora=args.use_dora, target_modules=unet_target_modules)
+    unet_lora_config = get_lora_config(
+        rank=args.rank,
+        alpha=args.lora_alpha,
+        dropout=args.lora_dropout,
+        use_dora=args.use_dora,
+        target_modules=unet_target_modules,
+    )
     unet.add_adapter(unet_lora_config)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
         text_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
-        text_lora_config = get_lora_config(rank=args.rank, alpha=args.lora_alpha, dropout=args.lora_dropout, use_dora=args.use_dora, target_modules=text_target_modules)
+        text_lora_config = get_lora_config(
+            rank=args.rank,
+            alpha=args.lora_alpha,
+            dropout=args.lora_dropout,
+            use_dora=args.use_dora,
+            target_modules=text_target_modules,
+        )
         text_encoder_one.add_adapter(text_lora_config)
         text_encoder_two.add_adapter(text_lora_config)
 
