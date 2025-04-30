@@ -41,7 +41,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class BaseFluxAttnProcessor:
     """Base attention processor for Flux models with common functionality."""
 
-    is_fused = False
     compatible_backends = []
 
     def __init__(self):
@@ -377,13 +376,6 @@ class FluxIPAdapterAttnProcessorSDPA(torch.nn.Module):
 
 @maybe_allow_in_graph
 class FluxAttention(nn.Module, AttentionModuleMixin):
-    """
-    Specialized attention implementation for Flux models.
-
-    This attention module provides optimized implementation for Flux models,
-    with support for RMSNorm, rotary embeddings, and added key/value projections.
-    """
-
     _default_processor_cls = FluxAttnProcessorSDPA
     _available_processors = [
         FluxAttnProcessorSDPA,

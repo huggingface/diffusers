@@ -5115,6 +5115,54 @@ class PAGIdentitySanaLinearAttnProcessorSDPA:
 # Deprecated classes for backward compatibility
 
 
+class AttnProcessor:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AttnProcessor` is deprecated and this will be removed in a future version. Please use `AttnProcessorSDPA`"
+        deprecate("AttnProcessor", "1.0.0", deprecation_message)
+
+        return AttnProcessorSDPA(*args, **kwargs)
+
+
+class AttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AttnProcessorSDPA`"
+        deprecate("AttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return AttnProcessorSDPA(*args, **kwargs)
+
+
+class AttnAddedKVProcessor:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AttnAddedKVAttentionProcessor` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessorSDPA`"
+        deprecate("AttnAddedKVAttentionProcessor", "1.0.0", deprecation_message)
+
+        return AttnAddedKVProcessorSDPA(*args, **kwargs)
+
+
+class AttnAddedKVProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AttnAddedKVAttentionProcessor` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessorSDPA`"
+        deprecate("AttnAddedKVAttentionProcessor", "1.0.0", deprecation_message)
+
+        return AttnAddedKVProcessorSDPA(*args, **kwargs)
+
+
+class AllegroAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AllegroAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AllegroAttnProcessorSDPA`"
+        deprecate("AllegroAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return AllegroAttnProcessorSDPA(*args, **kwargs)
+
+
+class AuraFlowAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AuraFlowAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AuraFlowAttnProcessorSDPA`"
+        deprecate("AuraFlowAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return AuraFlowAttnProcessorSDPA(*args, **kwargs)
+
+
 class MochiAttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = "`MochiAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `MochiAttnProcessorSDPA`"
@@ -5150,10 +5198,13 @@ class FluxSingleAttnProcessor2_0:
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     """
 
-    def __init__(self):
+    def __new__(cls, *args, **kwargs):
         deprecation_message = "`FluxSingleAttnProcessorSDPA` is deprecated and will be removed in a future version. Please use `FluxAttnProcessorSDPA` instead."
-        deprecate("FluxSingleAttnProcessor2_0", "0.32.0", deprecation_message)
-        super().__init__()
+        deprecate("FluxSingleAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        from .transformers.transformer_allegro import FluxAttnProcessorSDPA
+
+        return FluxAttnProcessorSDPA(*args, **kwargs)
 
 
 class FusedAttnProcessor2_0:
@@ -5164,26 +5215,11 @@ class FusedAttnProcessor2_0:
         return AttnProcessorSDPA(*args, **kwargs)
 
 
-class AttnAddedKVProcessor:
-    def __new__(cls, *args, **kwargs):
-        deprecation_message = "`AttnAddedKVAttentionProcessor` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessorSDPA`"
-        deprecate("AttnAddedKVAttentionProcessor", "1.0.0", deprecation_message)
-
-        return AttnAddedKVProcessorSDPA(*args, **kwargs)
-
-
-class AttnAddedKVProcessor2_0:
-    def __new__(cls, *args, **kwargs):
-        deprecation_message = "`AttnAddedKVAttentionProcessor` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessorSDPA`"
-        deprecate("AttnAddedKVAttentionProcessor", "1.0.0", deprecation_message)
-
-        return AttnAddedKVProcessorSDPA(*args, **kwargs)
-
-
 class JointAttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = "`JointAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `JointAttnProcessorSDPA`"
         deprecate("JointAttnProcessor2_0", "1.0.0", deprecation_message)
+
         return JointAttnProcessorSDPA(*args, **kwargs)
 
 
@@ -5191,6 +5227,7 @@ class PAGJointAttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = "`PAGJointAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGJointAttnProcessorSDPA`"
         deprecate("PAGJointAttnProcessor2_0", "1.0.0", deprecation_message)
+
         return PAGJointAttnProcessorSDPA(*args, **kwargs)
 
 
@@ -5198,6 +5235,7 @@ class PAGCFGJointAttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = "`PAGCFGJointAttnProcessor2_0 is deprecated and this will be removed in a future version. Please use `PAGCFGJointAttnProcessorSDPA`"
         deprecate("PAGCFGJointAttnProcessor2_0", "1.0.0", deprecation_message)
+
         return PAGCFGJointAttnProcessorSDPA(*args, **kwargs)
 
 
@@ -5205,27 +5243,15 @@ class FusedJointAttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = "`FusedJointAttnProcessor2_0 is deprecated and this will be removed in a future version. Please use `JointAttnProcessorSDPA`"
         deprecate("FusedJointAttnProcessor2_0", "1.0.0", deprecation_message)
+
         return JointAttnProcessorSDPA(*args, **kwargs)
-
-
-class AllegroAttnProcessor2_0:
-    def __new__(cls, *args, **kwargs):
-        deprecation_message = "`AllegroAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AllegroAttnProcessorSDPA`"
-        deprecate("AllegroAttnProcessor2_0", "1.0.0", deprecation_message)
-        return AllegroAttnProcessorSDPA(*args, **kwargs)
-
-
-class AuraFlowAttnProcessor2_0:
-    def __new__(cls, *args, **kwargs):
-        deprecation_message = "`AuraFlowAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AuraFlowAttnProcessorSDPA`"
-        deprecate("AuraFlowAttnProcessor2_0", "1.0.0", deprecation_message)
-        return AuraFlowAttnProcessorSDPA(*args, **kwargs)
 
 
 class FusedAuraFlowAttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = "`FusedAuraFlowAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AuraFlowAttnProcessorSDPA`"
         deprecate("FusedAuraFlowAttnProcessor2_0", "1.0.0", deprecation_message)
+
         return AuraFlowAttnProcessorSDPA(*args, **kwargs)
 
 
@@ -5256,22 +5282,6 @@ class FusedCogVideoXAttnProcessor2_0:
         return CogVideoXAttnProcessorSDPA(*args, **kwargs)
 
 
-class AttnProcessor:
-    def __new__(cls, *args, **kwargs):
-        deprecation_message = "`AttnProcessor` is deprecated and this will be removed in a future version. Please use `AttnProcessorSDPA`"
-        deprecate("AttnProcessor", "1.0.0", deprecation_message)
-
-        return AttnProcessorSDPA(*args, **kwargs)
-
-
-class AttnProcessor2_0:
-    def __new__(cls, *args, **kwargs):
-        deprecation_message = "`AttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AttnProcessorSDPA`"
-        deprecate("AttnProcessor2_0", "1.0.0", deprecation_message)
-
-        return AttnProcessorSDPA(*args, **kwargs)
-
-
 class XLAFlashAttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = "`XLAFlashAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `XLAFlashAttnProcessorSDPA`"
@@ -5281,7 +5291,7 @@ class XLAFlashAttnProcessor2_0:
 
 
 class XLAFluxFlashAttnProcessor2_0:
-    def __init__(cls, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecation_message = "`XLAFluxFlashAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `XLAFluxFlashAttnProcessorSDPA`"
         deprecate("XLAFluxFlashAttnProcessor2_0", "1.0.0", deprecation_message)
 
@@ -5290,18 +5300,18 @@ class XLAFluxFlashAttnProcessor2_0:
         return FluxAttnProcessorXLA(*args, **kwargs)
 
 
-class StableAudioAttnProcessor2_0(StableAudioAttnProcessorSDPA):
-    def __init__(self, *args, **kwargs):
+class StableAudioAttnProcessor2_0:
+    def __new__(self, *args, **kwargs):
         deprecation_message = "`StableAudioAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `StableAudioAttnProcessorSDPA`"
         deprecate("StableAudioAttnProcessor2_0", "1.0.0", deprecation_message)
-        super().__init__(*args, **kwargs)
+        return StableAudioAttnProcessorSDPA(*args, **kwargs)
 
 
 class HunyuanAttnProcessor2_0(HunyuanAttnProcessorSDPA):
-    def __init__(self, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecation_message = "`HunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `HunyuanAttnProcessorSDPA`"
         deprecate("HunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
-        super().__init__(*args, **kwargs)
+        return HunyuanAttnProcessorSDPA(*args, **kwargs)
 
 
 class FusedHunyuanAttnProcessor2_0(FusedHunyuanAttnProcessorSDPA):
