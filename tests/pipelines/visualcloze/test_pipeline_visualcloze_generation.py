@@ -6,7 +6,12 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxTransformer2DModel, VisualClozeGenerationPipeline
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    FluxTransformer2DModel,
+    VisualClozeGenerationPipeline,
+)
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,

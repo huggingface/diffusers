@@ -12,37 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
-from .pipeline_visualcloze_generation import VisualClozeGenerationPipeline
-from .pipeline_visualcloze_upsampling import VisualClozeUpsamplingPipeline
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
-    USE_PEFT_BACKEND,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
-from .visualcloze_utils import VisualClozeProcessor
+from .pipeline_visualcloze_generation import VisualClozeGenerationPipeline
+from ..flux.pipeline_flux_fill import FluxFillPipeline as VisualClozeUpsamplingPipeline
 
 
 if is_torch_xla_available():
-    import torch_xla.core.xla_model as xm
-
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
@@ -97,6 +88,7 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("visualcloze.png")
         ```
 """
+
 
 class VisualClozePipeline(
     DiffusionPipeline,
@@ -368,12 +360,12 @@ class VisualClozePipeline(
             is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
             images.
         """
-        
-        print('generation_pipe')
+
+        print("generation_pipe")
 
         generation_output = self.generation_pipe(
-            task_prompt=task_prompt, 
-            content_prompt=content_prompt, 
+            task_prompt=task_prompt,
+            content_prompt=content_prompt,
             image=image,
             num_inference_steps=num_inference_steps,
             sigmas=sigmas,
@@ -386,9 +378,9 @@ class VisualClozePipeline(
             joint_attention_kwargs=joint_attention_kwargs,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            max_sequence_length=max_sequence_length
+            max_sequence_length=max_sequence_length,
         )
-        
+
         # Upsampling the generated images
         # 1. Prepare the input images and prompts
         if not isinstance(content_prompt, (list)):
@@ -403,10 +395,12 @@ class VisualClozePipeline(
             for image in generation_output.images[i]:
                 upsampling_image.append(image)
                 upsampling_mask.append(Image.new("RGB", image.size, (255, 255, 255)))
-                upsampling_prompt.append(content_prompt[i % len(content_prompt)] if content_prompt[i % len(content_prompt)] else '')
+                upsampling_prompt.append(
+                    content_prompt[i % len(content_prompt)] if content_prompt[i % len(content_prompt)] else ""
+                )
                 if not isinstance(generator, (torch.Generator,)):
                     upsampling_generator.append(generator[i % num_images_per_prompt])
-        
+
         # 2. Apply the denosing loop
         upsampling_output = self.upsampling_pipe(
             prompt=upsampling_prompt,
@@ -423,10 +417,10 @@ class VisualClozePipeline(
             joint_attention_kwargs=joint_attention_kwargs,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            max_sequence_length=max_sequence_length
+            max_sequence_length=max_sequence_length,
         )
         image = upsampling_output.images
-        
+
         output = []
         if output_type == "pil":
             # Each sample in the batch may have multiple output images. When returning as PIL images,

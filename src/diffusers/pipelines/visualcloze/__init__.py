@@ -24,7 +24,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_visualcloze_combined"] = ["VisualClozePipeline"]
     _import_structure["pipeline_visualcloze_generation"] = ["VisualClozeGenerationPipeline"]
-    _import_structure["pipeline_visualcloze_upsampling"] = ["VisualClozeUpsamplingPipeline"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -37,7 +36,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_visualcloze_combined import VisualClozePipeline
         from .pipeline_visualcloze_generation import VisualClozeGenerationPipeline
-        from .pipeline_visualcloze_upsampling import VisualClozeUpsamplingPipeline
 
 
 else:

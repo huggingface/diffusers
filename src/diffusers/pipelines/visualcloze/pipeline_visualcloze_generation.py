@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -27,15 +26,14 @@ from ...utils import (
     USE_PEFT_BACKEND,
     is_torch_xla_available,
     logging,
-    replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
+from ..flux.pipeline_flux import calculate_shift, retrieve_latents, retrieve_timesteps
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
 from .visualcloze_utils import VisualClozeProcessor
-from ..flux.pipeline_flux import calculate_shift, retrieve_timesteps, retrieve_latents
 
 
 if is_torch_xla_available():
@@ -345,7 +343,6 @@ class VisualClozeGenerationPipeline(
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
-
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -732,7 +729,7 @@ class VisualClozeGenerationPipeline(
 
         device = self._execution_device
 
-         # 3. Prepare prompt embeddings
+        # 3. Prepare prompt embeddings
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
@@ -848,7 +845,7 @@ class VisualClozeGenerationPipeline(
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-         # 7. Post-process the image
+        # 7. Post-process the image
         # Crop the target image
         # Since the generated image is a concatenation of the conditional and target regions,
         # we need to extract only the target regions based on their positions
