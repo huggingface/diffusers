@@ -27,10 +27,10 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
+from ..flux.pipeline_flux_fill import FluxFillPipeline as VisualClozeUpsamplingPipeline
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_visualcloze_generation import VisualClozeGenerationPipeline
-from ..flux.pipeline_flux_fill import FluxFillPipeline as VisualClozeUpsamplingPipeline
 
 
 if is_torch_xla_available():
