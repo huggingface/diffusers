@@ -15,6 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import PIL.Image
 import torch
 from transformers import (
     CLIPTextModelWithProjection,
@@ -31,8 +32,8 @@ from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
-    deprecate,
     USE_PEFT_BACKEND,
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -42,7 +43,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import StableDiffusion3PipelineOutput
-import PIL.Image
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -97,6 +98,7 @@ def calculate_shift(
     b = base_shift - m * base_seq_len
     mu = image_seq_len * m + b
     return mu
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
@@ -172,7 +174,9 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3InstructPix2PixPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3IPAdapterMixin):
+class StableDiffusion3InstructPix2PixPipeline(
+    DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3IPAdapterMixin
+):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -697,7 +701,7 @@ class StableDiffusion3InstructPix2PixPipeline(DiffusionPipeline, SD3LoraLoaderMi
         device,
         generator,
         do_classifier_free_guidance,
-        ):
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -711,9 +715,9 @@ class StableDiffusion3InstructPix2PixPipeline(DiffusionPipeline, SD3LoraLoaderMi
             image_latents = image
         else:
             image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax", generator=generator)
-        
+
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-        
+
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
             deprecation_message = (
@@ -1079,7 +1083,9 @@ class StableDiffusion3InstructPix2PixPipeline(DiffusionPipeline, SD3LoraLoaderMi
                 original_pooled_prompt_embeds = pooled_prompt_embeds
             # The extra concat similar to how it's done in SD InstructPix2Pix.
             prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds, negative_prompt_embeds], dim=0)
-            pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, negative_pooled_prompt_embeds, negative_pooled_prompt_embeds], dim=0)
+            pooled_prompt_embeds = torch.cat(
+                [pooled_prompt_embeds, negative_pooled_prompt_embeds, negative_pooled_prompt_embeds], dim=0
+            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
@@ -1185,10 +1191,10 @@ class StableDiffusion3InstructPix2PixPipeline(DiffusionPipeline, SD3LoraLoaderMi
                 if self.do_classifier_free_guidance:
                     noise_pred_text, noise_pred_image, noise_pred_uncond = noise_pred.chunk(3)
                     noise_pred = (
-                    noise_pred_uncond
-                    + self.guidance_scale * (noise_pred_text - noise_pred_image)
-                    + self.image_guidance_scale * (noise_pred_image - noise_pred_uncond)
-                )
+                        noise_pred_uncond
+                        + self.guidance_scale * (noise_pred_text - noise_pred_image)
+                        + self.image_guidance_scale * (noise_pred_image - noise_pred_uncond)
+                    )
                     should_skip_layers = (
                         True
                         if i > num_inference_steps * skip_layer_guidance_start
