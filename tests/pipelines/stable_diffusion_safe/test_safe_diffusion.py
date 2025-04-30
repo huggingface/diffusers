@@ -393,11 +393,10 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
             {
                 ("xpu", 3): [0.3244, 0.3355, 0.3260, 0.3123, 0.3246, 0.3426, 0.3109, 0.3471, 0.4001],
                 ("cuda", 7): [0.3502, 0.3622, 0.3396, 0.3642, 0.3478, 0.3318, 0.35, 0.3348, 0.3297],
-                ("cuda", 8): [0.3244, 0.3355, 0.3260, 0.3123, 0.3246, 0.3426, 0.3109, 0.3471, 0.4001],
+                ("cuda", 8): [0.3605, 0.3684, 0.3712, 0.3624, 0.3675, 0.3726, 0.3494, 0.3748, 0.4044],
             }
         )
         expected_slice = expected_slices.get_expectation()
-
         assert image.shape == (1, 512, 512, 3)
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -424,10 +423,11 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
             {
                 ("xpu", 3): [0.6178, 0.6260, 0.6194, 0.6435, 0.6265, 0.6461, 0.6567, 0.6576, 0.6444],
                 ("cuda", 7): [0.5531, 0.5206, 0.4895, 0.5156, 0.5182, 0.4751, 0.4802, 0.4803, 0.4443],
-                ("cuda", 8): [0.6178, 0.6260, 0.6194, 0.6435, 0.6265, 0.6461, 0.6567, 0.6576, 0.6444],
+                ("cuda", 8): [0.5892, 0.5959, 0.5914, 0.6123, 0.5982, 0.6141, 0.6180, 0.6262, 0.6171],
             }
         )
 
+        print(f"image_slice: {image_slice.flatten()}")
         expected_slice = expected_slices.get_expectation()
 
         assert image.shape == (1, 512, 512, 3)
