@@ -542,8 +542,11 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     composed_bg_image += img_array * image_mask_bg[index]
                 
                 composed_image_all += img_array * image_mask_all[index]
-                masked_bg += np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
-
+                if is_product.lower() == "true":
+                    masked_bg += 255*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
+                else:
+                    masked_bg += img_array * image_mask_bg[index]
+                    
             composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
             composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
             masked_bg = Image.fromarray(masked_bg.astype(np.uint8)).convert('RGB')
