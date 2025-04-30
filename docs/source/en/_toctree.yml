@@ -294,10 +294,10 @@
         title: CogView3PlusTransformer2DModel
       - local: api/models/cogview4_transformer2d
         title: CogView4Transformer2DModel
-      - local: api/models/cosmos_transformer3d
-        title: CosmosTransformer3DModel
       - local: api/models/consisid_transformer3d
         title: ConsisIDTransformer3DModel
+      - local: api/models/cosmos_transformer3d
+        title: CosmosTransformer3DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
