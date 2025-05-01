@@ -365,6 +365,10 @@ def is_timm_available():
     return _timm_available
 
 
+def is_hpu_available():
+    return all(importlib.util.find_spec(lib) for lib in ("habana_frameworks", "habana_frameworks.torch"))
+
+
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
 {0} requires the FLAX library but it was not found in your environment. Checkout the instructions on the
