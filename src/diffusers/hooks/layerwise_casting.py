@@ -60,9 +60,9 @@ class LayerwiseCastingHook(ModelHook):
         module.to(dtype=self.storage_dtype, non_blocking=self.non_blocking)
         return module
 
-    def deinitalize_hook(self, module: torch.nn.Module):
+    def deinitialize_hook(self, module: torch.nn.Module):
         raise NotImplementedError(
-            "LayerwiseCastingHook does not support deinitalization. A model once enabled with layerwise casting will "
+            "LayerwiseCastingHook does not support deinitialization. A model once enabled with layerwise casting will "
             "have casted its weights to a lower precision dtype for storage. Casting this back to the original dtype "
             "will lead to precision loss, which might have an impact on the model's generation quality. The model should "
             "be re-initialized and loaded in the original dtype."
