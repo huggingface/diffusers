@@ -211,7 +211,7 @@
     - local: optimization/mps
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
-      title: Habana Gaudi
+      title: Intel Gaudi
     - local: optimization/neuron
       title: AWS Neuron
     title: Optimized hardware
