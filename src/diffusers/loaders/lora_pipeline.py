@@ -91,18 +91,19 @@ def _maybe_dequantize_weight_for_expanded_lora(model, module):
         )
 
     weight_on_cpu = False
-    if not module.weight.is_cuda:
+    if module.weight.device.type == "cpu":
         weight_on_cpu = True
 
+    device = torch.accelerator.current_accelerator().type if hasattr(torch, "accelerator") else "cuda"
     if is_bnb_4bit_quantized:
         module_weight = dequantize_bnb_weight(
-            module.weight.cuda() if weight_on_cpu else module.weight,
+            module.weight.to(device) if weight_on_cpu else module.weight,
             state=module.weight.quant_state,
             dtype=model.dtype,
         ).data
     elif is_gguf_quantized:
         module_weight = dequantize_gguf_tensor(
-            module.weight.cuda() if weight_on_cpu else module.weight,
+            module.weight.to(device) if weight_on_cpu else module.weight,
         )
         module_weight = module_weight.to(model.dtype)
     else:
@@ -2412,7 +2413,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     ) -> bool:
         """
         Control LoRA expands the shape of the input layer from (3072, 64) to (3072, 128). This method handles that and
-        generalizes things a bit so that any parameter that needs expansion receives appropriate treatement.
+        generalizes things a bit so that any parameter that needs expansion receives appropriate treatment.
         """
         state_dict = {}
         if lora_state_dict is not None:

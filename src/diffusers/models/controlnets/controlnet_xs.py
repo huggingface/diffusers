@@ -734,17 +734,17 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             unet (`UNet2DConditionModel`):
                 The UNet model we want to control.
             controlnet (`ControlNetXSAdapter`):
-                The ConntrolNet-XS adapter with which the UNet will be fused. If none is given, a new ConntrolNet-XS
+                The ControlNet-XS adapter with which the UNet will be fused. If none is given, a new ControlNet-XS
                 adapter will be created.
             size_ratio (float, *optional*, defaults to `None`):
-                Used to contruct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details.
+                Used to construct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details.
             ctrl_block_out_channels (`List[int]`, *optional*, defaults to `None`):
-                Used to contruct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details,
+                Used to construct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details,
                 where this parameter is called `block_out_channels`.
             time_embedding_mix (`float`, *optional*, defaults to None):
-                Used to contruct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details.
+                Used to construct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details.
             ctrl_optional_kwargs (`Dict`, *optional*, defaults to `None`):
-                Passed to the `init` of the new controlent if no controlent was given.
+                Passed to the `init` of the new controlnet if no controlnet was given.
         """
         if controlnet is None:
             controlnet = ControlNetXSAdapter.from_unet(
