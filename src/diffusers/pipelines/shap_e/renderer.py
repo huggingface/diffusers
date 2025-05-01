@@ -983,9 +983,9 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         fields = torch.cat(fields, dim=1)
         fields = fields.float()
 
-        assert (
-            len(fields.shape) == 3 and fields.shape[-1] == 1
-        ), f"expected [meta_batch x inner_batch] SDF results, but got {fields.shape}"
+        assert len(fields.shape) == 3 and fields.shape[-1] == 1, (
+            f"expected [meta_batch x inner_batch] SDF results, but got {fields.shape}"
+        )
 
         fields = fields.reshape(1, *([grid_size] * 3))
 
@@ -1038,10 +1038,10 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         textures = _convert_srgb_to_linear(textures)
         textures = textures.float()
 
-        # 3.3 augument the mesh with texture data
-        assert len(textures.shape) == 3 and textures.shape[-1] == len(
-            texture_channels
-        ), f"expected [meta_batch x inner_batch x texture_channels] field results, but got {textures.shape}"
+        # 3.3 augment the mesh with texture data
+        assert len(textures.shape) == 3 and textures.shape[-1] == len(texture_channels), (
+            f"expected [meta_batch x inner_batch x texture_channels] field results, but got {textures.shape}"
+        )
 
         for m, texture in zip(raw_meshes, textures):
             texture = texture[: len(m.verts)]

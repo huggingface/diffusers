@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import gc
 import unittest
 
@@ -20,6 +21,7 @@ import torch
 from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import get_logger
+from diffusers.utils.import_utils import compare_versions
 from diffusers.utils.testing_utils import require_torch_gpu, torch_device
 
 
@@ -53,6 +55,39 @@ class DummyModel(ModelMixin):
         x = self.linear_1(x)
         x = self.activation(x)
         for block in self.blocks:
+            x = block(x)
+        x = self.linear_2(x)
+        return x
+
+
+# This model implementation contains one type of block (single_blocks) instantiated before another type of block (double_blocks).
+# The invocation order of these blocks, however, is first the double_blocks and then the single_blocks.
+# With group offloading implementation before https://github.com/huggingface/diffusers/pull/11375, such a modeling implementation
+# would result in a device mismatch error because of the assumptions made by the code. The failure case occurs when using:
+#   offload_type="block_level", num_blocks_per_group=2, use_stream=True
+# Post the linked PR, the implementation will work as expected.
+class DummyModelWithMultipleBlocks(ModelMixin):
+    def __init__(
+        self, in_features: int, hidden_features: int, out_features: int, num_layers: int, num_single_layers: int
+    ) -> None:
+        super().__init__()
+
+        self.linear_1 = torch.nn.Linear(in_features, hidden_features)
+        self.activation = torch.nn.ReLU()
+        self.single_blocks = torch.nn.ModuleList(
+            [DummyBlock(hidden_features, hidden_features, hidden_features) for _ in range(num_single_layers)]
+        )
+        self.double_blocks = torch.nn.ModuleList(
+            [DummyBlock(hidden_features, hidden_features, hidden_features) for _ in range(num_layers)]
+        )
+        self.linear_2 = torch.nn.Linear(hidden_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.linear_1(x)
+        x = self.activation(x)
+        for block in self.double_blocks:
+            x = block(x)
+        for block in self.single_blocks:
             x = block(x)
         x = self.linear_2(x)
         return x
@@ -212,3 +247,23 @@ class GroupOffloadTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
         with self.assertRaisesRegex(ValueError, "Cannot apply group offloading"):
             pipe.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
+
+    def test_block_level_stream_with_invocation_order_different_from_initialization_order(self):
+        if torch.device(torch_device).type != "cuda":
+            return
+        model = DummyModelWithMultipleBlocks(
+            in_features=self.in_features,
+            hidden_features=self.hidden_features,
+            out_features=self.out_features,
+            num_layers=self.num_layers,
+            num_single_layers=self.num_layers + 1,
+        )
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        context = contextlib.nullcontext()
+        if compare_versions("diffusers", "<=", "0.33.0"):
+            # Will raise a device mismatch RuntimeError mentioning weights are on CPU but input is on device
+            context = self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device")
+
+        with context:
+            model(self.input)

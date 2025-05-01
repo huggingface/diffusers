@@ -20,7 +20,7 @@ import torch
 from transformers import (
     ClapFeatureExtractor,
     ClapModel,
-    GPT2Model,
+    GPT2LMHeadModel,
     RobertaTokenizer,
     RobertaTokenizerFast,
     SpeechT5HifiGan,
@@ -196,7 +196,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         text_encoder: ClapModel,
         text_encoder_2: Union[T5EncoderModel, VitsModel],
         projection_model: AudioLDM2ProjectionModel,
-        language_model: GPT2Model,
+        language_model: GPT2LMHeadModel,
         tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
         tokenizer_2: Union[T5Tokenizer, T5TokenizerFast, VitsTokenizer],
         feature_extractor: ClapFeatureExtractor,
@@ -259,7 +259,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             )
 
         device_type = torch_device.type
-        device = torch.device(f"{device_type}:{gpu_id or torch_device.index}")
+        device_str = device_type
+        if gpu_id or torch_device.index:
+            device_str = f"{device_str}:{gpu_id or torch_device.index}"
+        device = torch.device(device_str)
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
@@ -316,9 +319,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
 
             # forward pass to get next hidden states
-            output = self.language_model(**model_inputs, return_dict=True)
+            output = self.language_model(**model_inputs, output_hidden_states=True, return_dict=True)
 
-            next_hidden_states = output.last_hidden_state
+            next_hidden_states = output.hidden_states[-1]
 
             # Update the model input
             inputs_embeds = torch.cat([inputs_embeds, next_hidden_states[:, -1:, :]], dim=1)
@@ -370,7 +373,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 *e.g.* prompt weighting. If not provided, negative_prompt_embeds will be computed from
                 `negative_prompt` input argument.
             generated_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings from the GPT2 langauge model. Can be used to easily tweak text inputs,
+                Pre-generated text embeddings from the GPT2 language model. Can be used to easily tweak text inputs,
                  *e.g.* prompt weighting. If not provided, text embeddings will be generated from `prompt` input
                  argument.
             negative_generated_prompt_embeds (`torch.Tensor`, *optional*):
@@ -391,7 +394,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             attention_mask (`torch.LongTensor`):
                 Attention mask to be applied to the `prompt_embeds`.
             generated_prompt_embeds (`torch.Tensor`):
-                Text embeddings generated from the GPT2 langauge model.
+                Text embeddings generated from the GPT2 language model.
 
         Example:
 
@@ -788,7 +791,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         if transcription is None:
             if self.text_encoder_2.config.model_type == "vits":
-                raise ValueError("Cannot forward without transcription. Please make sure to" " have transcription")
+                raise ValueError("Cannot forward without transcription. Please make sure to have transcription")
         elif transcription is not None and (
             not isinstance(transcription, str) and not isinstance(transcription, list)
         ):
@@ -901,7 +904,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             generated_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings from the GPT2 langauge model. Can be used to easily tweak text inputs,
+                Pre-generated text embeddings from the GPT2 language model. Can be used to easily tweak text inputs,
                  *e.g.* prompt weighting. If not provided, text embeddings will be generated from `prompt` input
                  argument.
             negative_generated_prompt_embeds (`torch.Tensor`, *optional*):

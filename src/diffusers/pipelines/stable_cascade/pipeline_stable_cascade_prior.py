@@ -626,11 +626,11 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if output_type == "np":
-            latents = latents.cpu().float().numpy()  # float() as bfloat16-> numpy doesnt work
-            prompt_embeds = prompt_embeds.cpu().float().numpy()  # float() as bfloat16-> numpy doesnt work
+            latents = latents.cpu().float().numpy()  # float() as bfloat16-> numpy doesn't work
+            prompt_embeds = prompt_embeds.cpu().float().numpy()  # float() as bfloat16-> numpy doesn't work
             negative_prompt_embeds = (
                 negative_prompt_embeds.cpu().float().numpy() if negative_prompt_embeds is not None else None
-            )  # float() as bfloat16-> numpy doesnt work
+            )  # float() as bfloat16-> numpy doesn't work
 
         if not return_dict:
             return (

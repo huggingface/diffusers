@@ -210,7 +210,7 @@ class MochiDownBlock3D(nn.Module):
                 hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
                     resnet,
                     hidden_states,
-                    conv_cache=conv_cache.get(conv_cache_key),
+                    conv_cache.get(conv_cache_key),
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -306,7 +306,7 @@ class MochiMidBlock3D(nn.Module):
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
-                    resnet, hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                    resnet, hidden_states, conv_cache.get(conv_cache_key)
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -382,7 +382,7 @@ class MochiUpBlock3D(nn.Module):
                 hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
                     resnet,
                     hidden_states,
-                    conv_cache=conv_cache.get(conv_cache_key),
+                    conv_cache.get(conv_cache_key),
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -497,6 +497,8 @@ class MochiEncoder3D(nn.Module):
         self.norm_out = MochiChunkedGroupNorm3D(block_out_channels[-1])
         self.proj_out = nn.Linear(block_out_channels[-1], 2 * out_channels, bias=False)
 
+        self.gradient_checkpointing = False
+
     def forward(
         self, hidden_states: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
@@ -513,13 +515,13 @@ class MochiEncoder3D(nn.Module):
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             hidden_states, new_conv_cache["block_in"] = self._gradient_checkpointing_func(
-                self.block_in, hidden_states, conv_cache=conv_cache.get("block_in")
+                self.block_in, hidden_states, conv_cache.get("block_in")
             )
 
             for i, down_block in enumerate(self.down_blocks):
                 conv_cache_key = f"down_block_{i}"
                 hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
-                    down_block, hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                    down_block, hidden_states, conv_cache.get(conv_cache_key)
                 )
         else:
             hidden_states, new_conv_cache["block_in"] = self.block_in(
@@ -623,13 +625,13 @@ class MochiDecoder3D(nn.Module):
         # 1. Mid
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             hidden_states, new_conv_cache["block_in"] = self._gradient_checkpointing_func(
-                self.block_in, hidden_states, conv_cache=conv_cache.get("block_in")
+                self.block_in, hidden_states, conv_cache.get("block_in")
             )
 
             for i, up_block in enumerate(self.up_blocks):
                 conv_cache_key = f"up_block_{i}"
                 hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
-                    up_block, hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                    up_block, hidden_states, conv_cache.get(conv_cache_key)
                 )
         else:
             hidden_states, new_conv_cache["block_in"] = self.block_in(
@@ -907,7 +909,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
     def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
 
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)

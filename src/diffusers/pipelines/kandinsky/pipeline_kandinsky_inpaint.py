@@ -496,7 +496,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 "As of diffusers==0.19.0 this behavior has been inverted. Now white pixels are repainted and black pixels are preserved. "
                 "This way, Kandinsky's masking behavior is aligned with Stable Diffusion. "
                 "THIS means that you HAVE to invert the input mask to have the same behavior as before as explained in https://github.com/huggingface/diffusers/pull/4207. "
-                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.23.0"
+                "This warning will be suppressed after the first inference call and will be removed in diffusers>0.23.0"
             )
             self._warn_has_been_called = True
 
@@ -579,7 +579,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                 f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
                 f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                f" = {num_channels_latents + num_channels_masked_image + num_channels_mask}. Please verify the config of"
                 " `pipeline.unet` or your `mask_image` or `image` input."
             )
 

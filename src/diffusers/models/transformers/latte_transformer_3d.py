@@ -18,10 +18,9 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.embeddings import PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..attention import BasicTransformerBlock
 from ..cache_utils import CacheMixin
-from ..embeddings import PatchEmbed
+from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
@@ -31,7 +30,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
 
     """
-    A 3D Transformer model for video-like data, paper: https://arxiv.org/abs/2401.03048, offical code:
+    A 3D Transformer model for video-like data, paper: https://arxiv.org/abs/2401.03048, official code:
     https://github.com/Vchitect/Latte
 
     Parameters:
@@ -217,7 +216,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         )
         num_patches = height * width
 
-        hidden_states = self.pos_embed(hidden_states)  # alrady add positional embeddings
+        hidden_states = self.pos_embed(hidden_states)  # already add positional embeddings
 
         added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
         timestep, embedded_timestep = self.adaln_single(
@@ -273,7 +272,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
                 if i == 0 and num_frame > 1:
-                    hidden_states = hidden_states + self.temp_pos_embed
+                    hidden_states = hidden_states + self.temp_pos_embed.to(hidden_states.dtype)
 
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
                     hidden_states = self._gradient_checkpointing_func(

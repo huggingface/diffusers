@@ -66,10 +66,10 @@ Let's dive deeper into what these steps entail.
 1. Load a UNet that corresponds to the UNet in the LoRA checkpoint. In this case, both LoRAs use the SDXL UNet as their base model.
 
 ```python
-from diffusers import UNet2DConditionModel
+from diffusers import AutoModel
 import torch
 
-unet = UNet2DConditionModel.from_pretrained(
+unet = AutoModel.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     torch_dtype=torch.float16,
     use_safetensors=True,
@@ -136,7 +136,7 @@ feng_peft_model.load_state_dict(original_state_dict, strict=True)
 ```python
 from peft import PeftModel
 
-base_unet = UNet2DConditionModel.from_pretrained(
+base_unet = AutoModel.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     torch_dtype=torch.float16,
     use_safetensors=True,

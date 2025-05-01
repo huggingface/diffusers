@@ -326,6 +326,10 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             Whether to use elementwise affinity in the normalization layer.
         norm_eps (`float`, defaults to `1e-6`):
             The epsilon value for the normalization layer.
+        qk_norm (`str`, *optional*, defaults to `None`):
+            The normalization to use for the query and key.
+        timestep_scale (`float`, defaults to `1.0`):
+            The scale to use for the timesteps.
     """
 
     _supports_gradient_checkpointing = True
@@ -355,6 +359,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         guidance_embeds: bool = False,
         guidance_embeds_scale: float = 0.1,
         qk_norm: Optional[str] = None,
+        timestep_scale: float = 1.0,
     ) -> None:
         super().__init__()
 
@@ -478,6 +483,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         encoder_attention_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_block_samples: Optional[Tuple[torch.Tensor]] = None,
         return_dict: bool = True,
     ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
         if attention_kwargs is not None:
@@ -541,7 +547,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
         # 2. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for block in self.transformer_blocks:
+            for index_block, block in enumerate(self.transformer_blocks):
                 hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
@@ -552,9 +558,11 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                     post_patch_height,
                     post_patch_width,
                 )
+                if controlnet_block_samples is not None and 0 < index_block <= len(controlnet_block_samples):
+                    hidden_states = hidden_states + controlnet_block_samples[index_block - 1]
 
         else:
-            for block in self.transformer_blocks:
+            for index_block, block in enumerate(self.transformer_blocks):
                 hidden_states = block(
                     hidden_states,
                     attention_mask,
@@ -564,6 +572,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                     post_patch_height,
                     post_patch_width,
                 )
+                if controlnet_block_samples is not None and 0 < index_block <= len(controlnet_block_samples):
+                    hidden_states = hidden_states + controlnet_block_samples[index_block - 1]
 
         # 3. Normalization
         hidden_states = self.norm_out(hidden_states, embedded_timestep, self.scale_shift_table)

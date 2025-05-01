@@ -14,6 +14,7 @@ specific language governing permissions and limitations under the License.
 
 <div class="flex flex-wrap space-x-1">
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+  <img alt="MPS" src="https://img.shields.io/badge/MPS-000000?style=flat&logo=apple&logoColor=white%22">
 </div>
 
 Flux is a series of text-to-image generation models based on diffusion transformers. To know more about Flux, check out the original [blog post](https://blackforestlabs.ai/announcing-black-forest-labs/) by the creators of Flux, Black Forest Labs.
@@ -346,7 +347,7 @@ image = pipe(
     height=1024,
     prompt="wearing sunglasses",
     negative_prompt="",
-    true_cfg=4.0,
+    true_cfg_scale=4.0,
     generator=torch.Generator().manual_seed(4444),
     ip_adapter_image=image,
 ).images[0]

@@ -14,10 +14,11 @@ import tempfile
 import time
 import unittest
 import urllib.parse
+from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -26,6 +27,7 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
+from .constants import DIFFUSERS_REQUEST_TIMEOUT
 from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -46,6 +48,17 @@ from .import_utils import (
 )
 from .logging import get_logger
 
+
+if is_torch_available():
+    import torch
+
+    IS_ROCM_SYSTEM = torch.version.hip is not None
+    IS_CUDA_SYSTEM = torch.version.cuda is not None
+    IS_XPU_SYSTEM = getattr(torch.version, "xpu", None) is not None
+else:
+    IS_ROCM_SYSTEM = False
+    IS_CUDA_SYSTEM = False
+    IS_XPU_SYSTEM = False
 
 global_rng = random.Random()
 
@@ -594,7 +607,7 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
             # local_path can be passed to correct images of tests
             return Path(local_path, arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]).as_posix()
         elif arry.startswith("http://") or arry.startswith("https://"):
-            response = requests.get(arry)
+            response = requests.get(arry, timeout=DIFFUSERS_REQUEST_TIMEOUT)
             response.raise_for_status()
             arry = np.load(BytesIO(response.content))
         elif os.path.isfile(arry):
@@ -615,7 +628,7 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
 
 
 def load_pt(url: str, map_location: str):
-    response = requests.get(url)
+    response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
     arry = torch.load(BytesIO(response.content), map_location=map_location)
     return arry
@@ -634,7 +647,7 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
-            image = PIL.Image.open(requests.get(image, stream=True).raw)
+            image = PIL.Image.open(requests.get(image, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT).raw)
         elif os.path.isfile(image):
             image = PIL.Image.open(image)
         else:
@@ -869,7 +882,7 @@ def pytest_terminal_summary_main(tr, id):
             f.write("slowest durations\n")
             for i, rep in enumerate(dlist):
                 if rep.duration < durations_min:
-                    f.write(f"{len(dlist)-i} durations < {durations_min} secs were omitted")
+                    f.write(f"{len(dlist) - i} durations < {durations_min} secs were omitted")
                     break
                 f.write(f"{rep.duration:02.2f}s {rep.when:<8} {rep.nodeid}\n")
 
@@ -1014,7 +1027,7 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
     process.join(timeout=timeout)
 
     if results["error"] is not None:
-        test_case.fail(f'{results["error"]}')
+        test_case.fail(f"{results['error']}")
 
 
 class CaptureLogger:
@@ -1161,7 +1174,7 @@ if is_torch_available():
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
         "cuda": torch.cuda.reset_max_memory_allocated,
-        "xpu": None,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
         "default": None,
@@ -1172,6 +1185,13 @@ if is_torch_available():
         "cpu": 0,
         "mps": 0,
         "default": 0,
+    }
+    BACKEND_SYNCHRONIZE = {
+        "cuda": torch.cuda.synchronize,
+        "xpu": getattr(torch.xpu, "synchronize", None),
+        "cpu": None,
+        "mps": None,
+        "default": None,
     }
 
 
@@ -1193,6 +1213,10 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 # These are callables which automatically dispatch the function specific to the accelerator
 def backend_manual_seed(device: str, seed: int):
     return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+
+
+def backend_synchronize(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
 
 
 def backend_empty_cache(device: str):
@@ -1274,3 +1298,93 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEMORY_STATS_FN")
         update_mapping_from_spec(BACKEND_RESET_MAX_MEMORY_ALLOCATED, "RESET_MAX_MEMORY_ALLOCATED_FN")
         update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
+
+
+# Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers/testing_utils.py#L3090
+
+# Type definition of key used in `Expectations` class.
+DeviceProperties = Tuple[Union[str, None], Union[int, None]]
+
+
+@functools.lru_cache
+def get_device_properties() -> DeviceProperties:
+    """
+    Get environment device properties.
+    """
+    if IS_CUDA_SYSTEM or IS_ROCM_SYSTEM:
+        import torch
+
+        major, _ = torch.cuda.get_device_capability()
+        if IS_ROCM_SYSTEM:
+            return ("rocm", major)
+        else:
+            return ("cuda", major)
+    elif IS_XPU_SYSTEM:
+        import torch
+
+        # To get more info of the architecture meaning and bit allocation, refer to https://github.com/intel/llvm/blob/sycl/sycl/include/sycl/ext/oneapi/experimental/device_architecture.def
+        arch = torch.xpu.get_device_capability()["architecture"]
+        gen_mask = 0x000000FF00000000
+        gen = (arch & gen_mask) >> 32
+        return ("xpu", gen)
+    else:
+        return (torch_device, None)
+
+
+if TYPE_CHECKING:
+    DevicePropertiesUserDict = UserDict[DeviceProperties, Any]
+else:
+    DevicePropertiesUserDict = UserDict
+
+
+class Expectations(DevicePropertiesUserDict):
+    def get_expectation(self) -> Any:
+        """
+        Find best matching expectation based on environment device properties.
+        """
+        return self.find_expectation(get_device_properties())
+
+    @staticmethod
+    def is_default(key: DeviceProperties) -> bool:
+        return all(p is None for p in key)
+
+    @staticmethod
+    def score(key: DeviceProperties, other: DeviceProperties) -> int:
+        """
+        Returns score indicating how similar two instances of the `Properties` tuple are. Points are calculated using
+        bits, but documented as int. Rules are as follows:
+            * Matching `type` gives 8 points.
+            * Semi-matching `type`, for example cuda and rocm, gives 4 points.
+            * Matching `major` (compute capability major version) gives 2 points.
+            * Default expectation (if present) gives 1 points.
+        """
+        (device_type, major) = key
+        (other_device_type, other_major) = other
+
+        score = 0b0
+        if device_type == other_device_type:
+            score |= 0b1000
+        elif device_type in ["cuda", "rocm"] and other_device_type in ["cuda", "rocm"]:
+            score |= 0b100
+
+        if major == other_major and other_major is not None:
+            score |= 0b10
+
+        if Expectations.is_default(other):
+            score |= 0b1
+
+        return int(score)
+
+    def find_expectation(self, key: DeviceProperties = (None, None)) -> Any:
+        """
+        Find best matching expectation based on provided device properties.
+        """
+        (result_key, result) = max(self.data.items(), key=lambda x: Expectations.score(key, x[0]))
+
+        if Expectations.score(key, result_key) == 0:
+            raise ValueError(f"No matching expectation found for {key}")
+
+        return result
+
+    def __repr__(self):
+        return f"{self.data}"
