@@ -82,6 +82,7 @@ class HiDreamTransformerTests(ModelTesterMixin, unittest.TestCase):
             "axes_dims_rope": (4, 2, 2),
             "max_resolution": (32, 32),
             "llama_layers": (0, 1),
+            "force_inference_output": True,  # TODO: as we don't implement MoE loss in training tests.
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
