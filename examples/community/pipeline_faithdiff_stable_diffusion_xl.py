@@ -118,7 +118,7 @@ EXAMPLE_DOC_STRING = """
         >>> # Here we need use pipeline internal unet model
         >>> pipe.unet = pipe.unet_model.from_pretrained(model_id, subfolder="unet", variant="fp16", use_safetensors=True)
         >>>
-        >>> # Load aditional layers to the model
+        >>> # Load additional layers to the model
         >>> pipe.unet.load_additional_layers(weight_path="proc_data/faithdiff/FaithDiff.bin", dtype=dtype)
         >>>
         >>> # Enable vae tiling

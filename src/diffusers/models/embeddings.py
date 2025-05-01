@@ -97,7 +97,7 @@ def get_3d_sincos_pos_embed(
             The spatial dimension of positional embeddings. If an integer is provided, the same size is applied to both
             spatial dimensions (height and width).
         temporal_size (`int`):
-            The temporal dimension of postional embeddings (number of frames).
+            The temporal dimension of positional embeddings (number of frames).
         spatial_interpolation_scale (`float`, defaults to 1.0):
             Scale factor for spatial grid interpolation.
         temporal_interpolation_scale (`float`, defaults to 1.0):
@@ -169,7 +169,7 @@ def _get_3d_sincos_pos_embed_np(
             The spatial dimension of positional embeddings. If an integer is provided, the same size is applied to both
             spatial dimensions (height and width).
         temporal_size (`int`):
-            The temporal dimension of postional embeddings (number of frames).
+            The temporal dimension of positional embeddings (number of frames).
         spatial_interpolation_scale (`float`, defaults to 1.0):
             Scale factor for spatial grid interpolation.
         temporal_interpolation_scale (`float`, defaults to 1.0):

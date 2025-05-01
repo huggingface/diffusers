@@ -202,8 +202,8 @@ class WanRotaryPosEmbed(nn.Module):
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
-        self.freqs = self.freqs.to(hidden_states.device)
-        freqs = self.freqs.split_with_sizes(
+        freqs = self.freqs.to(hidden_states.device)
+        freqs = freqs.split_with_sizes(
             [
                 self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
                 self.attention_head_dim // 6,
