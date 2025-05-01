@@ -295,9 +295,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         if device is None:
             device = self._execution_device
 
-        if self.transformer is not None:
-            dtype = self.transformer.dtype
-        elif self.text_encoder is not None:
+        if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
         else:
             dtype = None
@@ -493,7 +491,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         # &amp
         caption = re.sub(r"&amp", "", caption)
 
-        # ip adresses:
+        # ip addresses:
         caption = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", " ", caption)
 
         # article ids:
@@ -806,13 +804,14 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
+        transformer_dtype = self.transformer.dtype
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(prompt_embeds.dtype)
+                timestep = t.expand(latents.shape[0])
                 latents_model_input = latents / self.scheduler.config.sigma_data
 
                 scm_timestep = torch.sin(timestep) / (torch.cos(timestep) + torch.sin(timestep))
@@ -821,12 +820,11 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 latent_model_input = latents_model_input * torch.sqrt(
                     scm_timestep_expanded**2 + (1 - scm_timestep_expanded) ** 2
                 )
-                latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
                 # predict noise model_output
                 noise_pred = self.transformer(
-                    latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
+                    latent_model_input.to(dtype=transformer_dtype),
+                    encoder_hidden_states=prompt_embeds.to(dtype=transformer_dtype),
                     encoder_attention_mask=prompt_attention_mask,
                     guidance=guidance,
                     timestep=scm_timestep,

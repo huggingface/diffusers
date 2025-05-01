@@ -180,6 +180,55 @@ jobs:
         pip install slack_sdk tabulate
         python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
+  run_torch_compile_tests:
+    name: PyTorch Compile CUDA tests
+
+    runs-on:
+      group: aws-g4dn-2xlarge
+
+    container:
+      image: diffusers/diffusers-pytorch-compile-cuda
+      options: --gpus 0 --shm-size "16gb" --ipc host
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: NVIDIA-SMI
+      run: |
+        nvidia-smi
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test,training]
+    - name: Environment
+      run: |
+        python utils/print_env.py
+    - name: Run torch compile tests on GPU
+      env:
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        RUN_COMPILE: yes
+      run: |
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_compile_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: torch_compile_test_reports
+        path: reports
+
+    - name: Generate Report and Notify Channel
+      if: always()
+      run: |
+        pip install slack_sdk tabulate
+        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
+  
   run_big_gpu_torch_tests:
     name: Torch tests on big GPU
     strategy:
@@ -417,7 +466,7 @@ jobs:
             additional_deps: ["peft"]
           - backend: "gguf"
             test_location: "gguf"
-            additional_deps: []
+            additional_deps: ["peft"]
           - backend: "torchao"
             test_location: "torchao"
             additional_deps: []

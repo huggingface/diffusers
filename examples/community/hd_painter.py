@@ -34,7 +34,7 @@ class RASGAttnProcessor:
         temb: Optional[torch.Tensor] = None,
         scale: float = 1.0,
     ) -> torch.Tensor:
-        # Same as the default AttnProcessor up untill the part where similarity matrix gets saved
+        # Same as the default AttnProcessor up until the part where similarity matrix gets saved
         downscale_factor = self.mask_resoltuion // hidden_states.shape[1]
         residual = hidden_states
 
@@ -686,7 +686,7 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
                     f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                     f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
                     f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    f" = {num_channels_latents + num_channels_masked_image + num_channels_mask}. Please verify the config of"
                     " `pipeline.unet` or your `mask_image` or `image` input."
                 )
         elif num_channels_unet != 4:
