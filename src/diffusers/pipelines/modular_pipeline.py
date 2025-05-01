@@ -199,7 +199,8 @@ class ModularPipelineMixin:
             state = PipelineState()
 
         if not hasattr(self, "loader"):
-            raise ValueError("Loader is not set, please call `setup_loader()` first.")
+            logger.warning("Loader is not set, please call `setup_loader()` if you need to load checkpoints for your pipeline.")
+            self.loader = None
 
         # Make a copy of the input kwargs
         input_params = kwargs.copy()
