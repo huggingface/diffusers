@@ -868,7 +868,7 @@ class VisualClozeGenerationPipeline(
                         if output_type == "pil":
                             cropped.append(cur_image.crop((start, 0, start + size[1], size[0])))
                         else:
-                            cropped.append(cur_image[0:size[0], start:start + size[1]])
+                            cropped.append(cur_image[0 : size[0], start : start + size[1]])
                     start += size[1]
                 image.append(cropped)
             if output_type != "pil":

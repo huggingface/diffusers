@@ -377,7 +377,7 @@ class VisualClozePipeline(
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
-            output_type=output_type if upsampling_strength == 0 else 'pil'
+            output_type=output_type if upsampling_strength == 0 else "pil",
         )
         if upsampling_strength == 0:
             # Offload all models
