@@ -2432,7 +2432,7 @@ class StableDiffusionXLInstructPix2PixPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class StableDiffusionXLModularPipeline(metaclass=DummyObject):
+class StableDiffusionXLModularLoader(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
