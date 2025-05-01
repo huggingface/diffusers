@@ -16,6 +16,9 @@ specific language governing permissions and limitations under the License.
 
 IP-Adapter files are typically ~100MBs because they only contain the image embeddings. This means you need to load a model first, and then load the IP-Adapter with [`~loaders.IPAdapterMixin.load_ip_adapter`].
 
+> [!TIP]
+> IP-Adapters are available to many models such as [Flux](../api/pipelines/flux#ip-adapter) and [Stable Diffusion 3](../api/pipelines/stable_diffusion/stable_diffusion_3), and more. The examples in this guide use Stable Diffusion and Stable Diffusion XL.
+
 Use the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] parameter to scale the influence of the IP-Adapter during generation. A value of `1.0` means the model is only conditioned on the image prompt, and `0.5` typically produces balanced results between the text and image prompt.
 
 ```py

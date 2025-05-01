@@ -79,7 +79,7 @@ The [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method is the 
 - the LoRA weights don't have separate UNet and text encoder identifiers
 - the LoRA weights have separate UNet and text encoder identifiers
 
-The [`~loaders.PeftAdapterMixin.load_lora_adapter`] method is used to directly load a LoRA adapter at the *model-level*. It builds and prepares the necessary model configuration for the adapter. This method can also load the LoRA adapter into the UNet and text encoder.
+The [`~loaders.PeftAdapterMixin.load_lora_adapter`] method is used to directly load a LoRA adapter at the *model-level*, as long as the model is a Diffusers model that is a subclass of [`PeftAdapterMixin`]. It builds and prepares the necessary model configuration for the adapter. This method also loads the LoRA adapter into the UNet.
 
 For example, if you're only loading a LoRA into the UNet, [`~loaders.PeftAdapterMixin.load_lora_adapter`] ignores the text encoder keys. Use the `prefix` parameter to filter and load the appropriate state dicts, `"unet"` to load.
 
@@ -630,3 +630,5 @@ Browse the [LoRA Studio](https://lorastudio.co/models) for different LoRAs to us
 	width="850"
 	height="450"
 ></iframe>
+
+You can find additional LoRAs in the [FLUX LoRA the Explorer](https://huggingface.co/spaces/multimodalart/flux-lora-the-explorer) and [LoRA the Explorer](https://huggingface.co/spaces/multimodalart/LoraTheExplorer) Spaces.
