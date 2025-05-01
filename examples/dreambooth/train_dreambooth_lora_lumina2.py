@@ -48,7 +48,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    Lumina2Text2ImgPipeline,
+    Lumina2Pipeline,
     Lumina2Transformer2DModel,
 )
 from diffusers.optimization import get_scheduler
@@ -72,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -898,7 +898,7 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            pipeline = Lumina2Text2ImgPipeline.from_pretrained(
+            pipeline = Lumina2Pipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                 revision=args.revision,
@@ -990,7 +990,7 @@ def main(args):
     text_encoder.to(dtype=torch.bfloat16)
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
-    text_encoding_pipeline = Lumina2Text2ImgPipeline.from_pretrained(
+    text_encoding_pipeline = Lumina2Pipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=None,
         transformer=None,
@@ -1034,7 +1034,7 @@ def main(args):
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-            Lumina2Text2ImgPipeline.save_lora_weights(
+            Lumina2Pipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
             )
@@ -1050,10 +1050,10 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict = Lumina2Text2ImgPipeline.lora_state_dict(input_dir)
+        lora_state_dict = Lumina2Pipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
-            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
+            f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
         }
         transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
         incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
@@ -1473,7 +1473,7 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
-                pipeline = Lumina2Text2ImgPipeline.from_pretrained(
+                pipeline = Lumina2Pipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     transformer=accelerator.unwrap_model(transformer),
                     revision=args.revision,
@@ -1503,14 +1503,14 @@ def main(args):
             transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
-        Lumina2Text2ImgPipeline.save_lora_weights(
+        Lumina2Pipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
         )
 
         # Final inference
         # Load previous pipeline
-        pipeline = Lumina2Text2ImgPipeline.from_pretrained(
+        pipeline = Lumina2Pipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             revision=args.revision,
             variant=args.variant,

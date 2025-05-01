@@ -68,6 +68,8 @@ if is_torch_available():
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
 
+    from diffusers.quantizers.bitsandbytes import replace_with_bnb_linear
+
 
 @require_bitsandbytes_version_greater("0.43.2")
 @require_accelerate
@@ -317,6 +319,18 @@ class BnB8bitBasicTests(Base8bitTests):
         # Check that this does not throw an error
         _ = self.model_fp16.to(torch_device)
 
+    def test_bnb_8bit_logs_warning_for_no_quantization(self):
+        model_with_no_linear = torch.nn.Sequential(torch.nn.Conv2d(4, 4, 3), torch.nn.ReLU())
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        logger = logging.get_logger("diffusers.quantizers.bitsandbytes.utils")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            _ = replace_with_bnb_linear(model_with_no_linear, quantization_config=quantization_config)
+        assert (
+            "You are loading your model in 8bit or 4bit but no linear modules were found in your model."
+            in cap_logger.out
+        )
+
 
 class Bnb8bitDeviceTests(Base8bitTests):
     def setUp(self) -> None:
@@ -509,13 +523,15 @@ class SlowBnb8bitTests(Base8bitTests):
             torch_dtype=torch.float16,
             device_map=torch_device,
         )
+
         # CUDA device placement works.
+        device = torch_device if torch_device != "rocm" else "cuda"
         pipeline_8bit = DiffusionPipeline.from_pretrained(
             self.model_name,
             transformer=transformer_8bit,
             text_encoder_3=text_encoder_3_8bit,
             torch_dtype=torch.float16,
-        ).to("cuda")
+        ).to(device)
 
         # Check if inference works.
         _ = pipeline_8bit("table", max_sequence_length=20, num_inference_steps=2)

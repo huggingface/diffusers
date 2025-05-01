@@ -122,7 +122,7 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "python>=3.8.0",
-    "ruff==0.1.5",
+    "ruff==0.9.10",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
@@ -142,6 +142,7 @@ _deps = [
     "urllib3<=2.0.0",
     "black",
     "phonemizer",
+    "opencv-python",
 ]
 
 # this is a lookup table with items like:
@@ -268,7 +269,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.33.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.34.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
