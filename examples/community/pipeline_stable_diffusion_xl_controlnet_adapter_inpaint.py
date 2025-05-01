@@ -150,7 +150,7 @@ def _preprocess_adapter_image(image, height, width):
             image = torch.cat(image, dim=0)
         else:
             raise ValueError(
-                f"Invalid image tensor! Expecting image tensor with 3 or 4 dimension, but recive: {image[0].ndim}"
+                f"Invalid image tensor! Expecting image tensor with 3 or 4 dimension, but receive: {image[0].ndim}"
             )
     return image
 

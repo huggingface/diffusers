@@ -90,7 +90,7 @@ class PeftInputAutocastDisableHook(ModelHook):
           that the inputs are casted to the computation dtype correctly always. However, there are two goals we are
           hoping to achieve:
             1. Making forward implementations independent of device/dtype casting operations as much as possible.
-            2. Peforming inference without losing information from casting to different precisions. With the current
+            2. Performing inference without losing information from casting to different precisions. With the current
                PEFT implementation (as linked in the reference above), and assuming running layerwise casting inference
                with storage_dtype=torch.float8_e4m3fn and compute_dtype=torch.bfloat16, inputs are cast to
                torch.float8_e4m3fn in the lora layer. We will then upcast back to torch.bfloat16 when we continue the

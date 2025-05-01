@@ -131,7 +131,7 @@ class AmusedPipeline(DiffusionPipeline):
                 generation deterministic.
             latents (`torch.IntTensor`, *optional*):
                 Pre-generated tokens representing latent vectors in `self.vqvae`, to be used as inputs for image
-                gneration. If not provided, the starting latents will be completely masked.
+                generation. If not provided, the starting latents will be completely masked.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument. A single vector from the
