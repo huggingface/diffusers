@@ -76,7 +76,14 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 )
 ```
 
-The `device_map` parameter also works on the model-level. This is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Instead of `balanced`, set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the 
+You can inspect a pipeline's device map with `hf_device_map`.
+
+```py
+print(pipeline.hf_device_map)
+{'unet': 1, 'vae': 1, 'safety_checker': 0, 'text_encoder': 0}
+```
+
+The `device_map` parameter also works on the model-level. This is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Instead of `balanced`, set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the [Model sharding](../training/distributed_inference#model-sharding) docs for more details.
 
 ```py
 import torch
@@ -88,13 +95,6 @@ transformer = AutoModel.from_pretrained(
     device_map="auto",
     torch_dtype=torch.bfloat16
 )
-```
-
-You can inspect a pipeline's device map with `hf_device_map`.
-
-```py
-print(pipeline.hf_device_map)
-{'unet': 1, 'vae': 1, 'safety_checker': 0, 'text_encoder': 0}
 ```
 
 For more fine-grained control, pass a dictionary to enforce the maximum GPU memory to use on each device. If a device is not in `max_memory`, it is ignored and pipeline components won't be distributed to it.
@@ -245,7 +245,7 @@ Call [`~ModelMixin.enable_group_offload`] to enable it for standard Diffusers mo
 
 The `offload_type` parameter can be set to `block_level` or `leaf_level`.
 
-- `block_level` offloads groups of layers based on the `num_blocks_per_group` parameter. For example, if `num_blocks_per_group=2` on a model with 40 layers, 2 layers are onloaded and offloaded at a time (2o total onloads/offloads). This drastically reduces memory requirements.
+- `block_level` offloads groups of layers based on the `num_blocks_per_group` parameter. For example, if `num_blocks_per_group=2` on a model with 40 layers, 2 layers are onloaded and offloaded at a time (20 total onloads/offloads). This drastically reduces memory requirements.
 - `leaf_level` offloads individual layers at the lowest level and is equivalent to [CPU offloading](#cpu-offloading). But it can be made faster if you use streams without giving up inference speed.
 
 ```py
@@ -287,7 +287,7 @@ Set `record_stream=True` for more of a speedup at the cost of slightly increased
 > [!TIP]
 > When `use_stream=True` on VAEs with tiling enabled, make sure to do a dummy forward pass (possible with dummy inputs as well) before inference to avoid device mismatch errors. This may not work on all implementations, so feel free to open an issue if you encounter any problems.
 
-The `num_blocks_per_group` parameter should be set to `1` if `use_stream` is enabled.
+If you're using `block_level` group offloading with `use_stream` enabled, the `num_blocks_per_group` parameter should be set to `1`, otherwise a warning will be raised.
 
 ```py
 pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True, record_stream=True)
