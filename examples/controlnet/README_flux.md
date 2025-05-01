@@ -411,7 +411,7 @@ export CAPTION_COLUMN='caption_column'
 
 export CACHE_DIR="/data/train_csr/.cache/huggingface/"
 export OUTPUT_DIR='/data/train_csr/FLUX/MODEL_OUT/'$MODEL_TYPE
-# The first step is to use Python to precompute all caches.Replace the first line below with this line. (I am not sure why using acclerate would cause problems.)
+# The first step is to use Python to precompute all caches.Replace the first line below with this line. (I am not sure why using accelerate would cause problems.)
 
 CUDA_VISIBLE_DEVICES=0 python3 train_controlnet_flux.py \
 

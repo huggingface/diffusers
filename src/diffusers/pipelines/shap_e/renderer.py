@@ -1038,7 +1038,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         textures = _convert_srgb_to_linear(textures)
         textures = textures.float()
 
-        # 3.3 augument the mesh with texture data
+        # 3.3 augment the mesh with texture data
         assert len(textures.shape) == 3 and textures.shape[-1] == len(texture_channels), (
             f"expected [meta_batch x inner_batch x texture_channels] field results, but got {textures.shape}"
         )

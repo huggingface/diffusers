@@ -803,7 +803,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
     def _combine(self, img_vae, img_clip):
         r"""
-        Combines a latent iamge img_vae of shape (B, C, H, W) and a CLIP-embedded image img_clip of shape (B, 1,
+        Combines a latent image img_vae of shape (B, C, H, W) and a CLIP-embedded image img_clip of shape (B, 1,
         clip_img_dim) into a single tensor of shape (B, C * H * W + clip_img_dim).
         """
         img_vae = torch.reshape(img_vae, (img_vae.shape[0], -1))
