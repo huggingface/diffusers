@@ -37,9 +37,9 @@ if sys.version_info < (3, 8):
 else:
     import importlib.metadata as importlib_metadata
 try:
-    package_map = importlib_metadata.packages_distributions()  # load-once to avoid expensive calls
+    _package_map = importlib_metadata.packages_distributions()  # load-once to avoid expensive calls
 except Exception:
-    package_map = None
+    _package_map = None
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -59,13 +59,13 @@ _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") f
 
 
 def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[bool, str]:
-    global package_map
+    global _package_map
     pkg_exists = importlib.util.find_spec(pkg_name) is not None
     pkg_version = "N/A"
 
     if pkg_exists:
-        if package_map is None:
-            package_map = defaultdict(list)
+        if _package_map is None:
+            _package_map = defaultdict(list)
             try:
                 # Fallback for Python < 3.10
                 for dist in importlib_metadata.distributions():
@@ -75,16 +75,16 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[b
                     } - {None}
                     _top_level_inferred = filter(lambda name: "." not in name, _infered_opt_names)
                     for pkg in _top_level_declared or _top_level_inferred:
-                        package_map[pkg].append(dist.metadata["Name"])
+                        _package_map[pkg].append(dist.metadata["Name"])
             except Exception as _:
                 pass
         try:
-            if get_dist_name and pkg_name in package_map and package_map[pkg_name]:
-                if len(package_map[pkg_name]) > 1:
+            if get_dist_name and pkg_name in _package_map and _package_map[pkg_name]:
+                if len(_package_map[pkg_name]) > 1:
                     logger.warning(
-                        f"Multiple distributions found for package {pkg_name}. Picked distribution: {package_map[pkg_name][0]}"
+                        f"Multiple distributions found for package {pkg_name}. Picked distribution: {_package_map[pkg_name][0]}"
                     )
-                pkg_name = package_map[pkg_name][0]
+                pkg_name = _package_map[pkg_name][0]
             pkg_version = importlib_metadata.version(pkg_name)
             logger.debug(f"Successfully imported {pkg_name} version {pkg_version}")
         except (ImportError, importlib_metadata.PackageNotFoundError):
