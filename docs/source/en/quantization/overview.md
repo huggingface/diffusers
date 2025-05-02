@@ -42,9 +42,9 @@ Diffusers currently supports the following quantization methods.
 
 ## Pipeline-level quantization
 
-Diffusers allows users to directly initialize pipelines from checkpoints that may contain quantized models([example](https://huggingface.co/hf-internal-testing/flux.1-dev-nf4-pkg)). However, users may want to apply
+Diffusers allows users to directly initialize pipelines from checkpoints that may contain quantized models ([example](https://huggingface.co/hf-internal-testing/flux.1-dev-nf4-pkg)). However, users may want to apply
 quantization on-the-fly when initializing a pipeline from a pre-trained and non-quantized checkpoint. You can
-do this with [`PipelineQuantizationConfig`].
+do this with [`~quantizers.PipelineQuantizationConfig`].
 
 Start by defining a `PipelineQuantizationConfig`:
 
