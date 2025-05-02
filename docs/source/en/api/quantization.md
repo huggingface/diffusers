@@ -23,7 +23,7 @@ Learn how to quantize models in the [Quantization](../quantization/overview) gui
 
 ## PipelineQuantizationConfig
 
-[[autodoc]] quantizers.__init__.PipelineQuantizationConfig
+[[autodoc]] quantizers.PipelineQuantizationConfig
 
 ## BitsAndBytesConfig
 
