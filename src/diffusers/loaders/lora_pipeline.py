@@ -1667,9 +1667,10 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -1686,14 +1687,19 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -1703,6 +1709,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
@@ -2985,9 +2992,10 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -3004,14 +3012,19 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -3021,6 +3034,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
@@ -3302,9 +3316,10 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -3321,14 +3336,19 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -3338,6 +3358,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -3621,9 +3642,10 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -3640,14 +3662,19 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -3657,6 +3684,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -3940,9 +3968,10 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -3959,14 +3988,19 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -3976,6 +4010,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -4262,9 +4297,10 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -4281,14 +4317,19 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -4298,6 +4339,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -4585,9 +4627,10 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -4604,14 +4647,19 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -4621,6 +4669,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
@@ -4890,13 +4939,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->WanTransformer3DModel
     def load_lora_into_transformer(
-        cls,
-        state_dict,
-        transformer,
-        adapter_name=None,
-        _pipeline=None,
-        low_cpu_mem_usage=False,
-        hotswap: bool = False,
+        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -4946,7 +4989,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -5269,9 +5312,10 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -5288,14 +5332,19 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -5305,6 +5354,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -5588,9 +5638,10 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -5607,14 +5658,19 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -5624,6 +5680,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
