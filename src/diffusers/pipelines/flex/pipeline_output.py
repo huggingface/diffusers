@@ -9,7 +9,7 @@ from ...utils import BaseOutput
 
 
 @dataclass
-class FluxPipelineOutput(BaseOutput):
+class Flex2PipelineOutput(BaseOutput):
     """
     Output class for Stable Diffusion pipelines.
 
