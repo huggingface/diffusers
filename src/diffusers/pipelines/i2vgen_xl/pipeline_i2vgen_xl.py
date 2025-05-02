@@ -462,7 +462,7 @@ class I2VGenXLPipeline(
         image_latents = image_latents.unsqueeze(2)
 
         # Append a position mask for each subsequent frame
-        # after the intial image latent frame
+        # after the initial image latent frame
         frame_position_mask = []
         for frame_idx in range(num_frames - 1):
             scale = (frame_idx + 1) / (num_frames - 1)

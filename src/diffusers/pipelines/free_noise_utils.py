@@ -478,7 +478,7 @@ class AnimateDiffFreeNoiseMixin:
                 Must be one of ["shuffle_context", "repeat_context", "random"].
                     - "shuffle_context"
                         Shuffles a fixed batch of `context_length` latents to create a final latent of size
-                        `num_frames`. This is usually the best setting for most generation scenarious. However, there
+                        `num_frames`. This is usually the best setting for most generation scenarios. However, there
                         might be visible repetition noticeable in the kinds of motion/animation generated.
                     - "repeated_context"
                         Repeats a fixed batch of `context_length` latents to create a final latent of size
