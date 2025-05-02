@@ -193,6 +193,8 @@ class PeftAdapterMixin:
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
 
+        from .lora_base import LORA_ADAPTER_METADATA_KEY
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -236,11 +238,11 @@ class PeftAdapterMixin:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
-            metadata = state_dict.pop("lora_adapter_metadata", None)
+            metadata = state_dict.pop(LORA_ADAPTER_METADATA_KEY, None)
             state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
             if metadata is not None:
-                state_dict["lora_adapter_metadata"] = metadata
+                state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
@@ -464,22 +466,18 @@ class PeftAdapterMixin:
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             weight_name: (`str`, *optional*, defaults to `None`): Name of the file to serialize the state dict with.
-            lora_adapter_metadata: TODO
         """
         from peft.utils import get_peft_model_state_dict
 
-        from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
-
-        if lora_adapter_metadata is not None and not safe_serialization:
-            raise ValueError("`lora_adapter_metadata` cannot be specified when not using `safe_serialization`.")
-        if not isinstance(lora_adapter_metadata, dict):
-            raise ValueError("`lora_adapter_metadata` must be of type `dict`.")
+        from .lora_base import LORA_ADAPTER_METADATA_KEY, LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
 
         if adapter_name is None:
             adapter_name = get_adapter_name(self)
 
         if adapter_name not in getattr(self, "peft_config", {}):
             raise ValueError(f"Adapter name {adapter_name} not found in the model.")
+
+        lora_adapter_metadata = self.peft_config[adapter_name]
 
         lora_layers_to_save = get_peft_model_state_dict(
             self.to(dtype=torch.float32 if upcast_before_saving else None), adapter_name=adapter_name
@@ -497,7 +495,7 @@ class PeftAdapterMixin:
                     for key, value in lora_adapter_metadata.items():
                         if isinstance(value, set):
                             lora_adapter_metadata[key] = list(value)
-                    metadata["lora_adapter_metadata"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+                    metadata[LORA_ADAPTER_METADATA_KEY] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
 
                 return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
@@ -512,7 +510,6 @@ class PeftAdapterMixin:
             else:
                 weight_name = LORA_WEIGHT_NAME
 
-        # TODO: we could consider saving the `peft_config` as well.
         save_path = Path(save_directory, weight_name).as_posix()
         save_function(lora_layers_to_save, save_path)
         logger.info(f"Model weights saved in {save_path}")
