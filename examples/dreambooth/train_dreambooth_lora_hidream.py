@@ -24,7 +24,6 @@ import shutil
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from torch.utils.data.sampler import Sampler, BatchSampler
 
 import numpy as np
 import torch
@@ -40,6 +39,7 @@ from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
+from torch.utils.data.sampler import BatchSampler
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
@@ -57,9 +57,9 @@ from diffusers.training_utils import (
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
+    find_nearest_bucket,
     free_memory,
     parse_buckets_string,
-    find_nearest_bucket
 )
 from diffusers.utils import (
     check_min_version,
@@ -69,6 +69,7 @@ from diffusers.utils import (
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
+
 
 if is_wandb_available():
     import wandb
@@ -81,13 +82,14 @@ logger = get_logger(__name__)
 if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
 
+
 def save_model_card(
-        repo_id: str,
-        images=None,
-        base_model: str = None,
-        instance_prompt=None,
-        validation_prompt=None,
-        repo_folder=None,
+    repo_id: str,
+    images=None,
+    base_model: str = None,
+    instance_prompt=None,
+    validation_prompt=None,
+    repo_folder=None,
 ):
     widget_dict = []
     if images is not None:
@@ -189,13 +191,13 @@ def load_text_encoders(class_one, class_two, class_three):
 
 
 def log_validation(
-        pipeline,
-        args,
-        accelerator,
-        pipeline_args,
-        epoch,
-        torch_dtype,
-        is_final_validation=False,
+    pipeline,
+    args,
+    accelerator,
+    pipeline_args,
+    epoch,
+    torch_dtype,
+    is_final_validation=False,
 ):
     args.num_validation_images = args.num_validation_images if args.num_validation_images else 1
     logger.info(
@@ -244,7 +246,7 @@ def log_validation(
 
 
 def import_model_class_from_model_name_or_path(
-        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
@@ -331,8 +333,8 @@ def parse_args(input_args=None):
         type=str,
         default="image",
         help="The column of the dataset containing the target image. By "
-             "default, the standard Image Dataset maps out 'file_name' "
-             "to 'image'.",
+        "default, the standard Image Dataset maps out 'file_name' "
+        "to 'image'.",
     )
     parser.add_argument(
         "--caption_column",
@@ -598,7 +600,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="coefficients for computing the Prodigy stepsize using running averages. If set to None, "
-             "uses the value of square root of beta2. Ignored if optimizer is adamW",
+        "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
@@ -629,7 +631,7 @@ def parse_args(input_args=None):
         type=bool,
         default=True,
         help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. "
-             "Ignored if optimizer is adamW",
+        "Ignored if optimizer is adamW",
     )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
@@ -736,17 +738,17 @@ class DreamBoothDataset(Dataset):
     """
 
     def __init__(
-            self,
-            instance_data_root,
-            instance_prompt,
-            class_prompt,
-            class_data_root=None,
-            class_num=None,
-            size=1024,
-            repeats=1,
-            center_crop=False,
-            buckets=[(1024,1024),(768,1360),(1360, 768),(880, 1168),(1168, 880), (1248, 832), (832, 1248)],
-            # buckets=[(1024, 1024)],
+        self,
+        instance_data_root,
+        instance_prompt,
+        class_prompt,
+        class_data_root=None,
+        class_num=None,
+        size=1024,
+        repeats=1,
+        center_crop=False,
+        buckets=[(1024, 1024), (768, 1360), (1360, 768), (880, 1168), (1168, 880), (1248, 832), (832, 1248)],
+        # buckets=[(1024, 1024)],
     ):
         # self.size = (size, size)
         self.center_crop = center_crop
@@ -930,11 +932,9 @@ def collate_fn(examples, with_prior_preservation=False):
 class BucketBatchSampler(BatchSampler):
     def __init__(self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False):
         if not isinstance(batch_size, int) or batch_size <= 0:
-            raise ValueError("batch_size should be a positive integer value, "
-                             "but got batch_size={}".format(batch_size))
+            raise ValueError("batch_size should be a positive integer value, but got batch_size={}".format(batch_size))
         if not isinstance(drop_last, bool):
-            raise ValueError("drop_last should be a boolean value, but got "
-                             "drop_last={}".format(drop_last))
+            raise ValueError("drop_last should be a boolean value, but got drop_last={}".format(drop_last))
 
         self.dataset = dataset
         self.batch_size = batch_size
@@ -954,7 +954,7 @@ class BucketBatchSampler(BatchSampler):
             random.shuffle(indices_in_bucket)
             # Create batches
             for i in range(0, len(indices_in_bucket), self.batch_size):
-                batch = indices_in_bucket[i:i + self.batch_size]
+                batch = indices_in_bucket[i : i + self.batch_size]
                 if len(batch) < self.batch_size and self.drop_last:
                     continue  # Skip partial batch if drop_last is True
                 self.batches.append(batch)
@@ -1064,7 +1064,7 @@ def main(args):
             pipeline.to(accelerator.device)
 
             for example in tqdm(
-                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
                 images = pipeline(example["prompt"]).images
 
@@ -1278,7 +1278,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Make sure the trainable params are in float32.
@@ -1368,10 +1368,7 @@ def main(args):
         repeats=args.repeats,
         center_crop=args.center_crop,
     )
-    batch_sampler = BucketBatchSampler(
-        train_dataset,
-        batch_size=args.train_batch_size,
-        drop_last=False)
+    batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=False)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_sampler=batch_sampler,

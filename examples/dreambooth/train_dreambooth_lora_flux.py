@@ -24,7 +24,6 @@ import shutil
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from torch.utils.data.sampler import Sampler, BatchSampler
 
 import numpy as np
 import torch
@@ -40,6 +39,7 @@ from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
+from torch.utils.data.sampler import BatchSampler
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
@@ -58,9 +58,9 @@ from diffusers.training_utils import (
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
+    find_nearest_bucket,
     free_memory,
     parse_buckets_string,
-    find_nearest_bucket
 )
 from diffusers.utils import (
     check_min_version,
@@ -911,11 +911,9 @@ def collate_fn(examples, with_prior_preservation=False):
 class BucketBatchSampler(BatchSampler):
     def __init__(self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False):
         if not isinstance(batch_size, int) or batch_size <= 0:
-            raise ValueError("batch_size should be a positive integer value, "
-                             "but got batch_size={}".format(batch_size))
+            raise ValueError("batch_size should be a positive integer value, but got batch_size={}".format(batch_size))
         if not isinstance(drop_last, bool):
-            raise ValueError("drop_last should be a boolean value, but got "
-                             "drop_last={}".format(drop_last))
+            raise ValueError("drop_last should be a boolean value, but got drop_last={}".format(drop_last))
 
         self.dataset = dataset
         self.batch_size = batch_size
@@ -935,7 +933,7 @@ class BucketBatchSampler(BatchSampler):
             random.shuffle(indices_in_bucket)
             # Create batches
             for i in range(0, len(indices_in_bucket), self.batch_size):
-                batch = indices_in_bucket[i:i + self.batch_size]
+                batch = indices_in_bucket[i : i + self.batch_size]
                 if len(batch) < self.batch_size and self.drop_last:
                     continue  # Skip partial batch if drop_last is True
                 self.batches.append(batch)
@@ -1512,10 +1510,7 @@ def main(args):
         repeats=args.repeats,
         center_crop=args.center_crop,
     )
-    batch_sampler = BucketBatchSampler(
-        train_dataset,
-        batch_size=args.train_batch_size,
-        drop_last=False)
+    batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=False)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_sampler=batch_sampler,

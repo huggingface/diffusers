@@ -3,9 +3,10 @@ import copy
 import gc
 import math
 import random
+import re
 import warnings
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
-import re
+
 import numpy as np
 import torch
 
@@ -308,12 +309,13 @@ def free_memory():
     elif hasattr(torch, "xpu") and torch.xpu.is_available():
         torch.xpu.empty_cache()
 
+
 def parse_buckets_string(buckets_str):
-    """ Parses a string defining buckets into a list of (height, width) tuples. """
+    """Parses a string defining buckets into a list of (height, width) tuples."""
     if not buckets_str:
         raise ValueError("Bucket string cannot be empty.")
 
-    bucket_pairs = buckets_str.strip().split(';')
+    bucket_pairs = buckets_str.strip().split(";")
     parsed_buckets = []
     for pair_str in bucket_pairs:
         match = re.match(r"^\s*(\d+)\s*,\s*(\d+)\s*$", pair_str)
@@ -335,9 +337,10 @@ def parse_buckets_string(buckets_str):
 
     return parsed_buckets
 
+
 def find_nearest_bucket(h, w, bucket_options):
-    """ Finds the closes bucket to the given height and width. """
-    min_metric = float('inf')
+    """Finds the closes bucket to the given height and width."""
+    min_metric = float("inf")
     best_bucket_idx = None
     for bucket_idx, (bucket_h, bucket_w) in enumerate(bucket_options):
         metric = abs(h * bucket_w - w * bucket_h)
@@ -345,6 +348,7 @@ def find_nearest_bucket(h, w, bucket_options):
             min_metric = metric
             best_bucket_idx = bucket_idx
     return best_bucket_idx
+
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
 class EMAModel:
