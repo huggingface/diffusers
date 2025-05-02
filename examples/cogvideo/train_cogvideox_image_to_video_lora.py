@@ -879,7 +879,7 @@ def prepare_rotary_positional_embeddings(
 
 
 def get_optimizer(args, params_to_optimize, use_deepspeed: bool = False):
-    # Use DeepSpeed optimzer
+    # Use DeepSpeed optimizer
     if use_deepspeed:
         from accelerate.utils import DummyOptim
 

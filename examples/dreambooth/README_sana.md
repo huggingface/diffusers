@@ -113,7 +113,7 @@ To better track our training experiments, we're using the following flags in the
 
 Additionally, we welcome you to explore the following CLI arguments:
 
-* `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
+* `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
 * `--complex_human_instruction`: Instructions for complex human attention as shown in [here](https://github.com/NVlabs/Sana/blob/main/configs/sana_app_config/Sana_1600M_app.yaml#L55).
 * `--max_sequence_length`: Maximum sequence length to use for text embeddings.
 
