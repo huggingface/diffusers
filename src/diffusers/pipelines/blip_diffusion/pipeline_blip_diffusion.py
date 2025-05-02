@@ -138,7 +138,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
     def get_query_embeddings(self, input_image, src_subject):
         return self.qformer(image_input=input_image, text_input=src_subject, return_dict=False)
 
-    # from the original Blip Diffusion code, speciefies the target subject and augments the prompt by repeating it
+    # from the original Blip Diffusion code, specifies the target subject and augments the prompt by repeating it
     def _build_prompt(self, prompts, tgt_subjects, prompt_strength=1.0, prompt_reps=20):
         rv = []
         for prompt, tgt_subject in zip(prompts, tgt_subjects):
