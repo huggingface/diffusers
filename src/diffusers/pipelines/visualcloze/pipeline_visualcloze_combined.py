@@ -98,7 +98,7 @@ class VisualClozePipeline(
 ):
     r"""
     The VisualCloze pipeline for image generation with visual context. Reference:
-    https://github.com/lzyhha/VisualCloze/tree/main This pipeline is designed to generate images based on visual
+    https://github.com/lzyhha/VisualCloze/tree/main. This pipeline is designed to generate images based on visual
     in-context examples.
 
     Args:
