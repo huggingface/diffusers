@@ -26,6 +26,7 @@ from diffusers import (
     WanPipeline,
     WanTransformer3DModel,
 )
+from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps, torch_device
 
 
@@ -162,9 +163,9 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.unload_lora_weights()
             state_dict = pipe.lora_state_dict(tmpdir, load_with_metadata=True)
 
-            self.assertTrue("lora_metadata" in state_dict)
+            self.assertTrue(LORA_ADAPTER_METADATA_KEY in state_dict)
 
-            parsed_metadata = state_dict["lora_metadata"]
+            parsed_metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
             parsed_metadata = {k[len("transformer.") :]: v for k, v in parsed_metadata.items()}
             check_if_dicts_are_equal(parsed_metadata, metadata)
 

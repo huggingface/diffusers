@@ -64,6 +64,7 @@ logger = logging.get_logger(__name__)
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
+LORA_ADAPTER_METADATA_KEY = "lora_adapter_metadata"
 
 
 def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
@@ -208,7 +209,6 @@ def _fetch_state_dict(
     subfolder,
     user_agent,
     allow_pickle,
-    load_with_metadata=False,
 ):
     model_file = None
     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -226,8 +226,6 @@ def _fetch_state_dict(
                         file_extension=".safetensors",
                         local_files_only=local_files_only,
                     )
-                if load_with_metadata and not weight_name.endswith(".safetensors"):
-                    raise ValueError("`load_with_metadata` cannot be set to True when not using safetensors.")
 
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
@@ -242,10 +240,7 @@ def _fetch_state_dict(
                     user_agent=user_agent,
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                if load_with_metadata:
-                    state_dict = _maybe_populate_state_dict_with_metadata(
-                        state_dict, model_file, metadata_key="lora_adapter_metadata"
-                    )
+                state_dict = _maybe_populate_state_dict_with_metadata(state_dict, model_file)
 
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:

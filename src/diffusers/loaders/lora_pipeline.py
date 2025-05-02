@@ -4727,7 +4727,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
-            load_with_metadata: TODO
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
@@ -4762,7 +4761,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
-        load_with_metadata = kwargs.pop("load_with_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -4787,7 +4785,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
-            load_with_metadata=load_with_metadata,
         )
         if any(k.startswith("diffusion_model.") for k in state_dict):
             state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
@@ -4861,7 +4858,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        load_with_metadata = kwargs.get("load_with_metadata", False)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -4888,7 +4884,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
-            load_with_metadata=load_with_metadata,
             hotswap=hotswap,
         )
 
@@ -4902,54 +4897,25 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
-        load_with_metadata: bool = False,
     ):
         """
-                This will load the LoRA layers specified in `state_dict` into `transformer`.
+        This will load the LoRA layers specified in `state_dict` into `transformer`.
 
-                Parameters:
-                    state_dict (`dict`):
-                        A standard state dict containing the lora layer parameters. The keys can either be indexed
-                        directly into the unet or prefixed with an additional `unet` which can be used to distinguish
-                        between text encoder lora layers.
-                    transformer (`WanTransformer3DModel`):
-                        The Transformer model to load the LoRA layers into.
-                    adapter_name (`str`, *optional*):
-                        Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                        `default_{i}` where i is the total number of adapters being loaded.
-                    low_cpu_mem_usage (`bool`, *optional*):
-                        Speed up model loading by only loading the pretrained LoRA weights and not initializing the
-                        random weights.
-        <<<<<<< HEAD
-                    hotswap : (`bool`, *optional*)
-                        Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded
-                        adapter in-place. This means that, instead of loading an additional adapter, this will take the
-                        existing adapter weights and replace them with the weights of the new adapter. This can be
-                        faster and more memory efficient. However, the main advantage of hotswapping is that when the
-                        model is compiled with torch.compile, loading the new adapter does not require recompilation of
-                        the model. When using hotswapping, the passed `adapter_name` should be the name of an already
-                        loaded adapter.
-
-                        If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling),
-                        you need to call an additional method before loading the adapter:
-
-                        ```py
-                        pipeline = ...  # load diffusers pipeline
-                        max_rank = ...  # the highest rank among all LoRAs that you want to load
-                        # call *before* compiling and loading the LoRA adapter
-                        pipeline.enable_lora_hotswap(target_rank=max_rank)
-                        pipeline.load_lora_weights(file_name)
-                        # optionally compile the model now
-                        ```
-
-                        Note that hotswapping adapters of the text encoder is not yet supported. There are some further
-                        limitations to this technique, which are documented here:
-                        https://huggingface.co/docs/peft/main/en/package_reference/hotswap
-                    load_with_metadata: TODO
-        =======
-                    hotswap (`bool`, *optional*):
-                        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-        >>>>>>> main
+        Parameters:
+            state_dict (`dict`):
+                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
+                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
+                encoder lora layers.
+            transformer (`WanTransformer3DModel`):
+                The Transformer model to load the LoRA layers into.
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
+            hotswap (`bool`, *optional*):
+                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4965,7 +4931,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
-            load_with_metadata=load_with_metadata,
         )
 
     @classmethod

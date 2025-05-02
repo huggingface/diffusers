@@ -148,12 +148,16 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
 
 
 def get_peft_kwargs(
-    rank_dict, network_alpha_dict, peft_state_dict, is_unet=True, prefix=None, load_with_metadata=False
+    rank_dict,
+    network_alpha_dict,
+    peft_state_dict,
+    is_unet=True,
+    prefix=None,
 ):
-    if load_with_metadata:
-        if "lora_adapter_metadata" not in peft_state_dict:
-            raise ValueError("Couldn't find 'lora_adapter_metadata' key in the `peft_state_dict`.")
-        metadata = peft_state_dict["lora_adapter_metadata"]
+    from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
+
+    if LORA_ADAPTER_METADATA_KEY in peft_state_dict:
+        metadata = peft_state_dict[LORA_ADAPTER_METADATA_KEY]
         if prefix is not None:
             metadata = {k.replace(f"{prefix}.", ""): v for k, v in metadata.items()}
         return metadata

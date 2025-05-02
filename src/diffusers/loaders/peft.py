@@ -120,7 +120,6 @@ class PeftAdapterMixin:
         pretrained_model_name_or_path_or_dict,
         prefix="transformer",
         hotswap: bool = False,
-        load_with_metadata: bool = False,
         **kwargs,
     ):
         r"""
@@ -190,7 +189,6 @@ class PeftAdapterMixin:
                 limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
 
-            load_with_metadata: TODO
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
@@ -233,7 +231,6 @@ class PeftAdapterMixin:
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
-            load_with_metadata=load_with_metadata,
         )
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
@@ -280,7 +277,6 @@ class PeftAdapterMixin:
                 rank,
                 network_alpha_dict=network_alphas,
                 peft_state_dict=state_dict,
-                load_with_metadata=load_with_metadata,
                 prefix=prefix,
             )
             _maybe_raise_error_for_ambiguity(lora_config_kwargs)
