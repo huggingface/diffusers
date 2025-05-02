@@ -896,7 +896,7 @@ class LoraBaseMixin:
 
         if lora_adapter_metadata and not safe_serialization:
             raise ValueError("`lora_adapter_metadata` cannot be specified when not using `safe_serialization`.")
-        if not isinstance(lora_adapter_metadata, dict):
+        if lora_adapter_metadata and not isinstance(lora_adapter_metadata, dict):
             raise ValueError("`lora_adapter_metadata` must be of type `dict`.")
 
         if save_function is None:
