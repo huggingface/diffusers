@@ -27,12 +27,18 @@ from diffusers import (
     WanTransformer3DModel,
 )
 from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    check_if_dicts_are_equal,
+    floats_tensor,
+    require_peft_backend,
+    skip_mps,
+    torch_device,
+)
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_dicts_are_equal  # noqa: E402
+from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
@@ -161,7 +167,7 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 **lora_state_dicts,
             )
             pipe.unload_lora_weights()
-            state_dict = pipe.lora_state_dict(tmpdir, load_with_metadata=True)
+            state_dict = pipe.lora_state_dict(tmpdir)
 
             self.assertTrue(LORA_ADAPTER_METADATA_KEY in state_dict)
 
@@ -194,7 +200,7 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 **lora_state_dicts,
             )
             pipe.unload_lora_weights()
-            pipe.load_lora_weights(tmpdir, load_with_metadata=True)
+            pipe.load_lora_weights(tmpdir)
 
             output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
 

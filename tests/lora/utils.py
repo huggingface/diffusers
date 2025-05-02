@@ -61,33 +61,6 @@ def state_dicts_almost_equal(sd1, sd2):
     return models_are_equal
 
 
-def check_if_dicts_are_equal(dict1, dict2):
-    for key, value in dict1.items():
-        if isinstance(value, set):
-            dict1[key] = list(value)
-    for key, value in dict2.items():
-        if isinstance(value, set):
-            dict2[key] = list(value)
-
-    for key in dict1:
-        if key not in dict2:
-            raise ValueError(
-                f"Key '{key}' is missing in the second dictionary. Its value in the first dictionary is {dict1[key]}."
-            )
-        if dict1[key] != dict2[key]:
-            raise ValueError(
-                f"Difference found at key '{key}': first dictionary has {dict1[key]}, second dictionary has {dict2[key]}."
-            )
-
-    for key in dict2:
-        if key not in dict1:
-            raise ValueError(
-                f"Key '{key}' is missing in the first dictionary. Its value in the second dictionary is {dict2[key]}."
-            )
-
-    return True
-
-
 def check_if_lora_correctly_set(model) -> bool:
     """
     Checks if the LoRA layers are correctly set with peft

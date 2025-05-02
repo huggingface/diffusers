@@ -451,7 +451,6 @@ class PeftAdapterMixin:
         upcast_before_saving: bool = False,
         safe_serialization: bool = True,
         weight_name: Optional[str] = None,
-        lora_adapter_metadata: Optional[dict] = None,
     ):
         """
         Save the LoRA parameters corresponding to the underlying model.
@@ -477,7 +476,7 @@ class PeftAdapterMixin:
         if adapter_name not in getattr(self, "peft_config", {}):
             raise ValueError(f"Adapter name {adapter_name} not found in the model.")
 
-        lora_adapter_metadata = self.peft_config[adapter_name]
+        lora_adapter_metadata = self.peft_config[adapter_name].to_dict()
 
         lora_layers_to_save = get_peft_model_state_dict(
             self.to(dtype=torch.float32 if upcast_before_saving else None), adapter_name=adapter_name
