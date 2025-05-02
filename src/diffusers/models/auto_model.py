@@ -158,24 +158,32 @@ class AutoModel(ConfigMixin):
             "subfolder": subfolder,
         }
 
-        try:
-            # To avoid circular import problem.
-            from diffusers import pipelines
+        if subfolder is not None:
+            try:
+                # To avoid circular import problem.
+                from diffusers import pipelines
 
-            mindex_kwargs = {k: v for k, v in load_config_kwargs.items() if k != "subfolder"}
-            mindex_kwargs["filename"] = "model_index.json"
-            config_path = hf_hub_download(pretrained_model_or_path, **mindex_kwargs)
-            config = cls.load_config(config_path, **load_config_kwargs)
-            library, orig_class_name = config[subfolder]
-            model_cls, _ = get_class_obj_and_candidates(
-                library_name=library,
-                class_name=orig_class_name,
-                importable_classes=ALL_IMPORTABLE_CLASSES,
-                pipelines=pipelines,
-                is_pipeline_module=hasattr(pipelines, library),
-            )
-        except EntryNotFoundError:
-            # If `model_index.json` is not found, we try to load the model from the
+                mindex_kwargs = {k: v for k, v in load_config_kwargs.items() if k != "subfolder"}
+                mindex_kwargs["filename"] = "model_index.json"
+                config_path = hf_hub_download(pretrained_model_or_path, **mindex_kwargs)
+                config = cls.load_config(config_path, **load_config_kwargs)
+                library, orig_class_name = config[subfolder]
+                model_cls, _ = get_class_obj_and_candidates(
+                    library_name=library,
+                    class_name=orig_class_name,
+                    importable_classes=ALL_IMPORTABLE_CLASSES,
+                    pipelines=pipelines,
+                    is_pipeline_module=hasattr(pipelines, library),
+                )
+            except EntryNotFoundError:
+                # If `model_index.json` is not found, we load the model from the
+                # `config.json` file and `diffusers` library.
+                config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+                library = importlib.import_module("diffusers")
+                orig_class_name = config["_class_name"]
+                model_cls = getattr(library, orig_class_name, None)
+        else:
+            # If `subfolder` is not provided, we load the model from the
             # `config.json` file and `diffusers` library.
             config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
             library = importlib.import_module("diffusers")
