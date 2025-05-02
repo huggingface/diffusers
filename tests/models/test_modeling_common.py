@@ -1150,7 +1150,7 @@ class ModelTesterMixin:
     @parameterized.expand([(4, 4, True), (4, 8, False), (8, 4, False)])
     @torch.no_grad()
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_adapter_metadata_is_loaded_correctly(self, rank, lora_alpha, use_dora):
+    def test_lora_adapter_metadata_is_loaded_correctly(self, rank, lora_alpha, use_dora):
         from peft import LoraConfig
 
         from diffusers.loaders.peft import PeftAdapterMixin
