@@ -827,12 +827,7 @@ class DreamBoothDataset(Dataset):
             if not image.mode == "RGB":
                 image = image.convert("RGB")
 
-            if args.random_flip and random.random() < 0.5:
-                # flip
-                image = train_flip(image)
-
             width, height = image.size
-            print("width, height", width, height)
             # Find the closest bucket
             bucket_idx = find_nearest_bucket(height, width, self.buckets)
             target_height, target_width = self.buckets[bucket_idx]
@@ -851,12 +846,11 @@ class DreamBoothDataset(Dataset):
             image = train_resize(image)
             if args.center_crop:
                 image = train_crop(image)
-                print("cropped", image.size)
             else:
                 y1, x1, h, w = train_crop.get_params(image, self.size)
                 image = crop(image, y1, x1, h, w)
-                print("cropped", image.size)
-
+            if args.random_flip and random.random() < 0.5:
+                image = train_flip(image)
             image = train_transforms(image)
             self.pixel_values.append((image, bucket_idx))
             # self.assignments.append((image, bucket_idx))
