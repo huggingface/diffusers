@@ -16,10 +16,9 @@ import importlib
 import os
 from typing import Optional, Union
 
-from huggingface_hub import constants, hf_hub_download
-from huggingface_hub.utils import validate_hf_hub_args
+from huggingface_hub import hf_hub_download
+from huggingface_hub.utils import EntryNotFoundError, validate_hf_hub_args
 
-from .. import pipelines
 from ..configuration_utils import ConfigMixin
 from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
 
@@ -160,6 +159,9 @@ class AutoModel(ConfigMixin):
         }
 
         try:
+            # To avoid circular import problem.
+            from diffusers import pipelines
+
             mindex_kwargs = {k: v for k, v in load_config_kwargs.items() if k != "subfolder"}
             mindex_kwargs["filename"] = "model_index.json"
             config_path = hf_hub_download(pretrained_model_or_path, **mindex_kwargs)
@@ -171,11 +173,10 @@ class AutoModel(ConfigMixin):
                 importable_classes=ALL_IMPORTABLE_CLASSES,
                 pipelines=pipelines,
                 is_pipeline_module=hasattr(pipelines, library),
-                component_name=subfolder,
-                cache_dir=constants.HF_HUB_CACHE,
             )
-        except Exception:
-            # Fallback to loading the config from the config.json file and `diffusers` library
+        except EntryNotFoundError:
+            # If `model_index.json` is not found, we try to load the model from the
+            # `config.json` file and `diffusers` library.
             config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
             library = importlib.import_module("diffusers")
             orig_class_name = config["_class_name"]

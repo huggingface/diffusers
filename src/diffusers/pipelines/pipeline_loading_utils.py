@@ -332,17 +332,17 @@ def maybe_raise_or_warn(
 
 
 def get_class_obj_and_candidates(
-    library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name, cache_dir
+    library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
 ):
     """Simple helper method to retrieve class object of module as well as potential parent class objects"""
-    component_folder = os.path.join(cache_dir, component_name)
+    component_folder = os.path.join(cache_dir, component_name) if component_name and cache_dir else None
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
 
         class_obj = getattr(pipeline_module, class_name)
         class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
-    elif os.path.isfile(os.path.join(component_folder, library_name + ".py")):
+    elif component_folder and os.path.isfile(os.path.join(component_folder, library_name + ".py")):
         # load custom component
         class_obj = get_class_from_dynamic_module(
             component_folder, module_file=library_name + ".py", class_name=class_name
