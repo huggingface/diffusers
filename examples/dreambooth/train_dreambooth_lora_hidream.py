@@ -58,6 +58,8 @@ from diffusers.training_utils import (
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
     free_memory,
+    parse_buckets_string,
+    find_nearest_bucket
 )
 from diffusers.utils import (
     check_min_version,
@@ -78,34 +80,6 @@ logger = get_logger(__name__)
 
 if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
-
-def parse_buckets_string(buckets_str):
-    """ Parses a string defining buckets into a list of (height, width) tuples. """
-    if not buckets_str:
-        raise ValueError("Bucket string cannot be empty.")
-
-    bucket_pairs = buckets_str.strip().split(';')
-    parsed_buckets = []
-    for pair_str in bucket_pairs:
-        match = re.match(r"^\s*(\d+)\s*,\s*(\d+)\s*$", pair_str)
-        if not match:
-            raise ValueError(f"Invalid bucket format: '{pair_str}'. Expected 'height,width'.")
-        try:
-            height = int(match.group(1))
-            width = int(match.group(2))
-            if height <= 0 or width <= 0:
-                raise ValueError("Bucket dimensions must be positive integers.")
-            if height % 8 != 0 or width % 8 != 0:
-                logger.warning(f"Bucket dimension ({height},{width}) not divisible by 8. This might cause issues.")
-            parsed_buckets.append((height, width))
-        except ValueError as e:
-            raise ValueError(f"Invalid integer in bucket pair '{pair_str}': {e}") from e
-
-    if not parsed_buckets:
-         raise ValueError("No valid buckets found in the provided string.")
-
-    logger.info(f"Using parsed aspect ratio buckets: {parsed_buckets}")
-    return parsed_buckets
 
 def save_model_card(
         repo_id: str,
@@ -761,19 +735,6 @@ class DreamBoothDataset(Dataset):
     It pre-processes the images.
     """
 
-    @staticmethod
-    def find_nearest_bucket(h, w, bucket_options):
-        min_metric = float('inf')
-        best_bucket = None
-        best_bucket_idx = None
-        for bucket_idx, (bucket_h, bucket_w) in enumerate(bucket_options):
-            metric = abs(h * bucket_w - w * bucket_h)
-            if metric <= min_metric:
-                min_metric = metric
-                best_bucket = (bucket_h, bucket_w)
-                best_bucket_idx = bucket_idx
-        return best_bucket_idx
-
     def __init__(
             self,
             instance_data_root,
@@ -1400,7 +1361,7 @@ def main(args):
         buckets = parse_buckets_string(args.aspect_ratio_buckets)
     else:
         buckets = [(args.resolution, args.resolution)]
-
+    logger.info(f"Using parsed aspect ratio buckets: {buckets}")
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
