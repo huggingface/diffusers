@@ -239,11 +239,11 @@ class PeftAdapterMixin:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
-            metadata = state_dict.pop("lora_metadata", None)
+            metadata = state_dict.pop("lora_adapter_metadata", None)
             state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
             if metadata is not None:
-                state_dict["lora_metadata"] = metadata
+                state_dict["lora_adapter_metadata"] = metadata
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:

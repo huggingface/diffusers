@@ -360,7 +360,7 @@ def _maybe_populate_state_dict_with_metadata(state_dict, model_file, metadata_ke
                 metadata_keys = list(metadata.keys())
                 if not (len(metadata_keys) == 1 and metadata_keys[0] == "format"):
                     peft_metadata = {k: v for k, v in metadata.items() if k != "format"}
-                    state_dict["lora_metadata"] = json.loads(peft_metadata[metadata_key])
+                    state_dict["lora_adapter_metadata"] = json.loads(peft_metadata[metadata_key])
         else:
             raise ValueError("Metadata couldn't be parsed from the safetensors file.")
     return state_dict
