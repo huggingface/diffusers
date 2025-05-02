@@ -1060,10 +1060,10 @@ class ModelTesterMixin:
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
 
-    @parameterized.expand([True, False])
+    @parameterized.expand([(4, 4, True), (4, 8, False), (8, 4, False)])
     @torch.no_grad()
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_save_load_lora_adapter(self, use_dora=False):
+    def test_save_load_lora_adapter(self, rank, lora_alpha, use_dora=False):
         from peft import LoraConfig
         from peft.utils import get_peft_model_state_dict
 
@@ -1079,8 +1079,8 @@ class ModelTesterMixin:
         output_no_lora = model(**inputs_dict, return_dict=False)[0]
 
         denoiser_lora_config = LoraConfig(
-            r=4,
-            lora_alpha=4,
+            r=rank,
+            lora_alpha=lora_alpha,
             target_modules=["to_q", "to_k", "to_v", "to_out.0"],
             init_lora_weights=False,
             use_dora=use_dora,
@@ -1147,12 +1147,12 @@ class ModelTesterMixin:
 
             self.assertTrue(f"Adapter name {wrong_name} not found in the model." in str(err_context.exception))
 
+    @parameterized.expand([(4, 4, True), (4, 8, False), (8, 4, False)])
     @torch.no_grad()
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_adapter_metadata_is_loaded_correctly(self):
+    def test_adapter_metadata_is_loaded_correctly(self, rank, lora_alpha, use_dora):
         from peft import LoraConfig
 
-        from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
         from diffusers.loaders.peft import PeftAdapterMixin
 
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
@@ -1162,11 +1162,11 @@ class ModelTesterMixin:
             return
 
         denoiser_lora_config = LoraConfig(
-            r=4,
-            lora_alpha=4,
+            r=rank,
+            lora_alpha=lora_alpha,
             target_modules=["to_q", "to_k", "to_v", "to_out.0"],
             init_lora_weights=False,
-            use_dora=False,
+            use_dora=use_dora,
         )
         model.add_adapter(denoiser_lora_config)
         metadata = model.peft_config["default"].to_dict()
@@ -1177,15 +1177,12 @@ class ModelTesterMixin:
             model_file = os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
             self.assertTrue(os.path.isfile(model_file))
 
-            with safetensors.torch.safe_open(model_file, framework="pt", device="cpu") as f:
-                if hasattr(f, "metadata"):
-                    parsed_metadata = f.metadata()
-                parsed_metadata = {k: v for k, v in parsed_metadata.items() if k != "format"}
-                self.assertTrue(LORA_ADAPTER_METADATA_KEY in parsed_metadata)
-                parsed_metadata = {k: v for k, v in parsed_metadata.items() if k != "format"}
+            model.unload_lora()
+            self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
 
-                parsed_metadata = json.loads(parsed_metadata[LORA_ADAPTER_METADATA_KEY])
-                check_if_dicts_are_equal(parsed_metadata, metadata)
+            model.load_lora_adapter(tmpdir, prefix=None, use_safetensors=True)
+            parsed_metadata = model.peft_config["default_0"].to_dict()
+            check_if_dicts_are_equal(metadata, parsed_metadata)
 
     @require_torch_accelerator
     def test_cpu_offload(self):
