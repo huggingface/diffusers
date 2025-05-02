@@ -72,7 +72,7 @@ class GaussianSmoothing(nn.Module):
     """
     Copied from official repo: https://github.com/showlab/BoxDiff/blob/master/utils/gaussian_smoothing.py
     Apply gaussian smoothing on a
-    1d, 2d or 3d tensor. Filtering is performed seperately for each channel
+    1d, 2d or 3d tensor. Filtering is performed separately for each channel
     in the input using a depthwise convolution.
     Arguments:
         channels (int, sequence): Number of channels of the input tensors. Output will

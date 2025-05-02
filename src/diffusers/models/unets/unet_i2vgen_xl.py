@@ -154,7 +154,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # of that, we used `num_attention_heads` for arguments that actually denote attention head dimension. This
         # is why we ignore `num_attention_heads` and calculate it from `attention_head_dims` below.
         # This is still an incorrect way of calculating `num_attention_heads` but we need to stick to it
-        # without running proper depcrecation cycles for the {down,mid,up} blocks which are a
+        # without running proper deprecation cycles for the {down,mid,up} blocks which are a
         # part of the public API.
         num_attention_heads = attention_head_dim
 
