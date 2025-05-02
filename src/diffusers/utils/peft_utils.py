@@ -158,9 +158,10 @@ def get_peft_kwargs(
 
     if LORA_ADAPTER_METADATA_KEY in peft_state_dict:
         metadata = peft_state_dict[LORA_ADAPTER_METADATA_KEY]
-        if prefix is not None:
-            metadata = {k.replace(f"{prefix}.", ""): v for k, v in metadata.items()}
-        return metadata
+        if metadata:
+            if prefix is not None:
+                metadata = {k.replace(f"{prefix}.", ""): v for k, v in metadata.items()}
+            return metadata
 
     rank_pattern = {}
     alpha_pattern = {}

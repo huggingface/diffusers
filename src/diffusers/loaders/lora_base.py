@@ -906,7 +906,7 @@ class LoraBaseMixin:
                     # We need to be able to serialize the NoneTypes too, otherwise we run into
                     # 'NoneType' object cannot be converted to 'PyString'
                     metadata = {"format": "pt"}
-                    if lora_adapter_metadata is not None:
+                    if lora_adapter_metadata:
                         for key, value in lora_adapter_metadata.items():
                             if isinstance(value, set):
                                 lora_adapter_metadata[key] = list(value)

@@ -1695,10 +1695,9 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -3020,10 +3019,9 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -3344,10 +3342,9 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -3670,10 +3667,9 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -3996,10 +3992,9 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -4325,10 +4320,9 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -4655,10 +4649,9 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -5014,10 +5007,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -5340,10 +5332,9 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
@@ -5666,10 +5657,9 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
-        if transformer_lora_adapter_metadata:
+        if transformer_lora_adapter_metadata is not None:
             lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
