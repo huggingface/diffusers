@@ -199,7 +199,7 @@ class DiffusersQuantizer(ABC):
 
     def dequantize(self, model):
         """
-        Potentially dequantize the model to retrive the original model, with some loss in accuracy / performance. Note
+        Potentially dequantize the model to retrieve the original model, with some loss in accuracy / performance. Note
         not all quantization schemes support this.
         """
         model = self._dequantize(model)

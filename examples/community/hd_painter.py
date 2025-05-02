@@ -201,16 +201,16 @@ class PAIntAAttnProcessor:
         # ================================================== #
         # We use a hack by running the code from the BasicTransformerBlock that is between Self and Cross attentions here
         # The other option would've been modifying the BasicTransformerBlock and adding this functionality here.
-        # I assumed that changing the BasicTransformerBlock would have been a bigger deal and decided to use this hack isntead.
+        # I assumed that changing the BasicTransformerBlock would have been a bigger deal and decided to use this hack instead.
 
-        # The SelfAttention block recieves the normalized latents from the BasicTransformerBlock,
+        # The SelfAttention block receives the normalized latents from the BasicTransformerBlock,
         # But the residual of the output is the non-normalized version.
         # Therefore we unnormalize the input hidden state here
         unnormalized_input_hidden_states = (
             input_hidden_states + self.transformer_block.norm1.bias
         ) * self.transformer_block.norm1.weight
 
-        # TODO: return if neccessary
+        # TODO: return if necessary
         # if self.use_ada_layer_norm_zero:
         #     attn_output = gate_msa.unsqueeze(1) * attn_output
         # elif self.use_ada_layer_norm_single:
@@ -220,7 +220,7 @@ class PAIntAAttnProcessor:
         if transformer_hidden_states.ndim == 4:
             transformer_hidden_states = transformer_hidden_states.squeeze(1)
 
-        # TODO: return if neccessary
+        # TODO: return if necessary
         # 2.5 GLIGEN Control
         # if gligen_kwargs is not None:
         #     transformer_hidden_states = self.fuser(transformer_hidden_states, gligen_kwargs["objs"])
@@ -266,7 +266,7 @@ class PAIntAAttnProcessor:
             ) = cross_attention_input_hidden_states.chunk(2)
 
             # Same split for the encoder_hidden_states i.e. the tokens
-            # Since the SelfAttention processors don't get the encoder states as input, we inject them into the processor in the begining.
+            # Since the SelfAttention processors don't get the encoder states as input, we inject them into the processor in the beginning.
             _encoder_hidden_states_unconditional, encoder_hidden_states_conditional = self.encoder_hidden_states.chunk(
                 2
             )
@@ -896,7 +896,7 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
 class GaussianSmoothing(nn.Module):
     """
     Apply gaussian smoothing on a
-    1d, 2d or 3d tensor. Filtering is performed seperately for each channel
+    1d, 2d or 3d tensor. Filtering is performed separately for each channel
     in the input using a depthwise convolution.
 
     Args:
