@@ -1028,7 +1028,7 @@ class StableDiffusionXL_AE_Pipeline(
         if padding_mask_crop is not None:
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                    f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
                 )
             if not isinstance(mask_image, PIL.Image.Image):
                 raise ValueError(
@@ -1036,7 +1036,7 @@ class StableDiffusionXL_AE_Pipeline(
                     f" {type(mask_image)}."
                 )
             if output_type != "pil":
-                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is {output_type}.")
 
         if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
             raise ValueError(
@@ -1509,7 +1509,7 @@ class StableDiffusionXL_AE_Pipeline(
 
         add_time_ids = add_time_ids.repeat(batch_size, 1).to(DEVICE)
 
-        # interative sampling
+        # interactive sampling
         self.scheduler.set_timesteps(num_inference_steps)
         latents_list = [latents]
         pred_x0_list = []
@@ -1548,7 +1548,7 @@ class StableDiffusionXL_AE_Pipeline(
         x: torch.FloatTensor,
     ):
         """
-        predict the sampe the next step in the denoise process.
+        predict the sample the next step in the denoise process.
         """
         ref_noise = model_output[:1, :, :, :].expand(model_output.shape)
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
@@ -2050,7 +2050,7 @@ class StableDiffusionXL_AE_Pipeline(
                     f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                     f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
                     f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    f" = {num_channels_latents + num_channels_masked_image + num_channels_mask}. Please verify the config of"
                     " `pipeline.unet` or your `mask_image` or `image` input."
                 )
         elif num_channels_unet != 4:

@@ -76,7 +76,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -814,7 +814,7 @@ def main():
         text_encoder_1, text_encoder_2, optimizer, train_dataloader, lr_scheduler
     )
 
-    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -965,12 +965,12 @@ def main():
                 index_no_updates_2[min(placeholder_token_ids_2) : max(placeholder_token_ids_2) + 1] = False
 
                 with torch.no_grad():
-                    accelerator.unwrap_model(text_encoder_1).get_input_embeddings().weight[
-                        index_no_updates
-                    ] = orig_embeds_params[index_no_updates]
-                    accelerator.unwrap_model(text_encoder_2).get_input_embeddings().weight[
-                        index_no_updates_2
-                    ] = orig_embeds_params_2[index_no_updates_2]
+                    accelerator.unwrap_model(text_encoder_1).get_input_embeddings().weight[index_no_updates] = (
+                        orig_embeds_params[index_no_updates]
+                    )
+                    accelerator.unwrap_model(text_encoder_2).get_input_embeddings().weight[index_no_updates_2] = (
+                        orig_embeds_params_2[index_no_updates_2]
+                    )
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:

@@ -176,7 +176,7 @@ class OmniGenPipeline(
         get the continue embedding of input images by VAE
 
         Args:
-            input_pixel_values: normlized pixel of input images
+            input_pixel_values: normalized pixel of input images
             device:
         Returns: torch.Tensor
         """

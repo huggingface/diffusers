@@ -97,7 +97,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         for i, audio in enumerate(audios):
             write(f"maestro_test_{i}.wav", pipe.unet.sample_rate, audio.transpose())
 
-        # To dislay in google colab
+        # To display in google colab
         import IPython.display as ipd
 
         for audio in audios:
