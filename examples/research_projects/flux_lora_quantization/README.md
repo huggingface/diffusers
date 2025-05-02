@@ -69,7 +69,7 @@ accelerate launch --config_file=accelerate.yaml \
   --seed="0"
 ```
 
-We can direcly pass a quantized checkpoint path, too:
+We can directly pass a quantized checkpoint path, too:
 
 ```diff
 + --quantized_model_path="hf-internal-testing/flux.1-dev-nf4-pkg"

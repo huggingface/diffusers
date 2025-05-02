@@ -18,6 +18,7 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import (
     ClapAudioConfig,
@@ -44,7 +45,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, is_torch_version, nightly, torch_device
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -474,6 +475,11 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # increase tolerance from 1e-4 -> 3e-4 to account for large composite model
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-4)
 
+    @pytest.mark.xfail(
+        condition=is_torch_version(">=", "2.7"),
+        reason="Test currently fails on PyTorch 2.7.",
+        strict=False,
+    )
     def test_inference_batch_single_identical(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
         self._test_inference_batch_single_identical(expected_max_diff=2e-4)

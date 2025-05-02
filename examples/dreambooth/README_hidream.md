@@ -107,7 +107,7 @@ To better track our training experiments, we're using the following flags in the
 
 Additionally, we welcome you to explore the following CLI arguments:
 
-* `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
+* `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
 * `--rank`: The rank of the LoRA layers. The higher the rank, the more parameters are trained. The default is 16.
 
 We provide several options for optimizing memory optimization:
