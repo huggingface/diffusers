@@ -152,7 +152,7 @@ def get_peft_kwargs(
 ):
     if load_with_metadata:
         if "lora_metadata" not in peft_state_dict:
-            raise ValueError("Couldn't find '_metadata' key in the `peft_state_dict`.")
+            raise ValueError("Couldn't find 'lora_metadata' key in the `peft_state_dict`.")
         metadata = peft_state_dict["lora_metadata"]
         if prefix is not None:
             metadata = {k.replace(f"{prefix}.", ""): v for k, v in metadata.items()}
