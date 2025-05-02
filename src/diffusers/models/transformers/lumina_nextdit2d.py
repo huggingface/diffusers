@@ -43,7 +43,7 @@ class LuminaNextDiTBlock(nn.Module):
         num_kv_heads (`int`):
             Number of attention heads in key and value features (if using GQA), or set to None for the same as query.
         multiple_of (`int`): The number of multiple of ffn layer.
-        ffn_dim_multiplier (`float`): The multipier factor of ffn layer dimension.
+        ffn_dim_multiplier (`float`): The multiplier factor of ffn layer dimension.
         norm_eps (`float`): The eps for norm layer.
         qk_norm (`bool`): normalization for query and key.
         cross_attention_dim (`int`): Cross attention embedding dimension of the input text prompt hidden_states.

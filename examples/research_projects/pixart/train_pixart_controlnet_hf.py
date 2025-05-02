@@ -612,7 +612,7 @@ def main():
     # See Section 3.1. of the paper.
     max_length = 120
 
-    # For mixed precision training we cast all non-trainable weigths (vae, text_encoder) to half-precision
+    # For mixed precision training we cast all non-trainable weights (vae, text_encoder) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":

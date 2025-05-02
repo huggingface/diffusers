@@ -97,7 +97,7 @@ class SdeDragPipeline(DiffusionPipeline):
             steps (`int`, *optional*, defaults to 200):
                 The number of sampling iterations.
             step_size (`int`, *optional*, defaults to 2):
-                The drag diatance of each drag step.
+                The drag distance of each drag step.
             image_scale (`float`, *optional*, defaults to 0.3):
                 To avoid duplicating the content, use image_scale to perturbs the source.
             adapt_radius (`int`, *optional*, defaults to 5):
