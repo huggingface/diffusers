@@ -12,178 +12,258 @@ specific language governing permissions and limitations under the License.
 
 # Reduce memory usage
 
-A barrier to using diffusion models is the large amount of memory required. To overcome this challenge, there are several memory-reducing techniques you can use to run even some of the largest models on free-tier or consumer GPUs. Some of these techniques can even be combined to further reduce memory usage.
+Modern diffusion models like [Flux](../api/pipelines/flux) and [Wan](../api/pipelines/wan) have billions of parameters that take up a lot of memory on your hardware for inference. This is challenging because common GPUs often don't have sufficient memory. To overcome the memory limitations, you can use more than one GPU (if available), offload some of the pipeline components to the CPU, and more.
 
-<Tip>
+This guide will show you how to reduce your memory usage. 
 
-In many cases, optimizing for memory or speed leads to improved performance in the other, so you should try to optimize for both whenever you can. This guide focuses on minimizing memory usage, but you can also learn more about how to [Speed up inference](fp16).
+> [!TIP]
+> Keep in mind these techniques may need to be adjusted depending on the model! For example, a transformer-based diffusion model may not benefit equally from these inference speed optimizations as a UNet-based model.
 
-</Tip>
+## Multiple GPUs
 
-The results below are obtained from generating a single 512x512 image from the prompt a photo of an astronaut riding a horse on mars with 50 DDIM steps on a Nvidia Titan RTX, demonstrating the speed-up you can expect as a result of reduced memory consumption.
+If you have access to more than one GPU, there a few options for efficiently loading and distributing a large model across your hardware. These features are supported by the [Accelerate](https://huggingface.co/docs/accelerate/index) library, so make sure it is installed first.
 
-|                  | latency | speed-up |
-| ---------------- | ------- | ------- |
-| original         | 9.50s   | x1      |
-| fp16             | 3.61s   | x2.63   |
-| channels last    | 3.30s   | x2.88   |
-| traced UNet      | 3.21s   | x2.96   |
-| memory-efficient attention  | 2.63s  | x3.61   |
-
-## Sliced VAE
-
-Sliced VAE enables decoding large batches of images with limited VRAM or batches with 32 images or more by decoding the batches of latents one image at a time. You'll likely want to couple this with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to reduce memory use further if you have xFormers installed.
-
-To use sliced VAE, call [`~StableDiffusionPipeline.enable_vae_slicing`] on your pipeline before inference:
-
-```python
-import torch
-from diffusers import StableDiffusionPipeline
-
-pipe = StableDiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
-    use_safetensors=True,
-)
-pipe = pipe.to("cuda")
-
-prompt = "a photo of an astronaut riding a horse on mars"
-pipe.enable_vae_slicing()
-#pipe.enable_xformers_memory_efficient_attention()
-images = pipe([prompt] * 32).images
+```bash
+pip install -U accelerate
 ```
 
-You may see a small performance boost in VAE decoding on multi-image batches, and there should be no performance impact on single-image batches.
+### Sharded checkpoints
 
-## Tiled VAE
+Loading large checkpoints in several shards in useful because the shards are loaded one at a time. This keeps memory usage low, only requiring enough memory for the model size and the largest shard size. We recommend sharding when the fp32 checkpoint is greater than 5GB. The default shard size is 5GB.
 
-Tiled VAE processing also enables working with large images on limited VRAM (for example, generating 4k images on 8GB of VRAM) by splitting the image into overlapping tiles, decoding the tiles, and then blending the outputs together to compose the final image. You should also used tiled VAE with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to reduce memory use further if you have xFormers installed.
+Shard a checkpoint in [`~DiffusionPipeline.save_pretrained`] with the `max_shard_size` parameter.
 
-To use tiled VAE processing, call [`~StableDiffusionPipeline.enable_vae_tiling`] on your pipeline before inference:
+```py
+from diffusers import AutoModel
 
-```python
-import torch
-from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
-
-pipe = StableDiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
-    use_safetensors=True,
+unet = AutoModel.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet"
 )
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-pipe = pipe.to("cuda")
-prompt = "a beautiful landscape photograph"
-pipe.enable_vae_tiling()
-#pipe.enable_xformers_memory_efficient_attention()
-
-image = pipe([prompt], width=3840, height=2224, num_inference_steps=20).images[0]
+unet.save_pretrained("sdxl-unet-sharded", max_shard_size="5GB")
 ```
 
-The output image has some tile-to-tile tone variation because the tiles are decoded separately, but you shouldn't see any sharp and obvious seams between the tiles. Tiling is turned off for images that are 512x512 or smaller.
+Now you can use the sharded checkpoint, instead of the regular checkpoint, to save memory.
+
+```py
+import torch
+from diffusers import AutoModel, StableDiffusionXLPipeline
+
+unet = AutoModel.from_pretrained(
+    "username/sdxl-unet-sharded", torch_dtype=torch.float16
+)
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    unet=unet,
+    torch_dtype=torch.float16
+).to("cuda")
+```
+
+### Device placement
+
+> [!WARNING]
+> Device placement is an experimental feature and the API may change. Only the `balanced` strategy is supported at the moment. We plan to support additional mapping strategies in the future.
+
+The `device_map` parameter controls how the model components in a pipeline are distributed across devices. The `balanced` device placement strategy evenly splits the pipeline across all available devices.
+
+```py
+import torch
+from diffusers import AutoModel, StableDiffusionXLPipeline
+
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    device_map="balanced"
+)
+```
+
+You can inspect a pipeline's device map with `hf_device_map`.
+
+```py
+print(pipeline.hf_device_map)
+{'unet': 1, 'vae': 1, 'safety_checker': 0, 'text_encoder': 0}
+```
+
+The `device_map` parameter also works on the model-level. This is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Instead of `balanced`, set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the [Model sharding](../training/distributed_inference#model-sharding) docs for more details.
+
+```py
+import torch
+from diffusers import AutoModel
+
+transformer = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", 
+    subfolder="transformer",
+    device_map="auto",
+    torch_dtype=torch.bfloat16
+)
+```
+
+For more fine-grained control, pass a dictionary to enforce the maximum GPU memory to use on each device. If a device is not in `max_memory`, it is ignored and pipeline components won't be distributed to it.
+
+```py
+import torch
+from diffusers import AutoModel, StableDiffusionXLPipeline
+
+max_memory = {0:"1GB", 1:"1GB"}
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    device_map="balanced",
+    max_memory=max_memory
+)
+```
+
+Diffusers uses the maxmium memory of all devices by default, but if they don't fit on the GPUs, then you'll need to use a single GPU and offload to the CPU with the methods below.
+
+- [`~DiffusionPipeline.enable_model_cpu_offload`] only works on a single GPU but a very large model may not fit on it
+- [`~DiffusionPipeline.enable_sequential_cpu_offload`] may work but it is extremely slow and also limited to a single GPU
+
+Use the [`~DiffusionPipeline.reset_device_map`] method to reset the `device_map`. This is necessary if you want to use methods like `.to()`, [`~DiffusionPipeline.enable_sequential_cpu_offload`], and [`~DiffusionPipeline.enable_model_cpu_offload`] on a pipeline that was device-mapped.
+
+```py
+pipeline.reset_device_map()
+```
+
+## VAE slicing
+
+VAE slicing saves memory by splitting large batches of inputs into a single batch of data and separately processing them. This method works best when generating more than one image at a time.
+
+For example, if you're generating 4 images at once, decoding would increase peak activation memory by 4x. VAE slicing reduces this by only decoding 1 image at a time instead of all 4 images at once.
+
+Call [`~StableDiffusionPipeline.enable_vae_slicing`] to enable sliced VAE. You can expect a small increase in performance when decoding multi-image batches and no performance impact for single-image batches.
+
+```py
+import torch
+from diffusers import AutoModel, StableDiffusionXLPipeline
+
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+).to("cuda")
+pipeline.enable_vae_slicing()
+pipeline(["An astronaut riding a horse on Mars"]*32).images[0]
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+```
+
+> [!WARNING]
+> [`AutoencoderKLWan`] and [`AsymmetricAutoencoderKL`] don't support slicing.
+
+## VAE tiling
+
+VAE tiling saves memory by dividing an image into smaller overlapping tiles instead of processing the entire image at once. This also reduces peak memory usage because the GPU is only processing a tile at a time.
+
+Call [`~StableDiffusionPipeline.enable_vae_tiling`] to enable VAE tiling. The generated image may have some tone variation from tile-to-tile because they're decoded separately, but there shouldn't be any obvious seams between the tiles. Tiling is disabled for resolutions lower than a pre-specified (but configurable) limit. For example, this limit is 512x512 for the VAE in [`StableDiffusionPipeline`].
+
+```py
+import torch
+from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import load_image
+
+pipeline = AutoPipelineForImage2Image.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+).to("cuda")
+pipeline.enable_vae_tiling()
+
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png")
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+pipeline(prompt, image=init_image, strength=0.5).images[0]
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+```
+
+> [!WARNING]
+> [`AutoencoderKLWan`] and [`AsymmetricAutoencoderKL`] don't support tiling.
 
 ## CPU offloading
 
-Offloading the weights to the CPU and only loading them on the GPU when performing the forward pass can also save memory. Often, this technique can reduce memory consumption to less than 3GB.
+CPU offloading selectively moves weights from the GPU to the CPU. When a component is required, it is transferred to the GPU and when it isn't required, it is moved to the CPU. This method works on submodules rather than whole models. It saves memory by avoiding storing the entire model on the GPU.
 
-To perform CPU offloading, call [`~StableDiffusionPipeline.enable_sequential_cpu_offload`]:
+CPU offloading dramatically reduces memory usage, but it is also **extremely slow** because submodules are passed back and forth multiple times between devices. It can often be impractical due to how slow it is.
 
-```Python
+> [!WARNING]
+> Don't move the pipeline to CUDA before calling [`~DiffusionPipeline.enable_sequential_cpu_offload`], otherwise the amount of memory saved is only minimal (refer to this [issue](https://github.com/huggingface/diffusers/issues/1934) for more details). This is a stateful operation that installs hooks on the model.
+
+Call [`~DiffusionPipeline.enable_sequential_cpu_offload`] to enable it on a pipeline.
+
+```py
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
-    use_safetensors=True,
+pipeline = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
 )
+pipeline.enable_sequential_cpu_offload()
 
-prompt = "a photo of an astronaut riding a horse on mars"
-pipe.enable_sequential_cpu_offload()
-image = pipe(prompt).images[0]
+pipeline(
+    prompt="An astronaut riding a horse on Mars",
+    guidance_scale=0.,
+    height=768,
+    width=1360,
+    num_inference_steps=4,
+    max_sequence_length=256,
+).images[0]
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 ```
-
-CPU offloading works on submodules rather than whole models. This is the best way to minimize memory consumption, but inference is much slower due to the iterative nature of the diffusion process. The UNet component of the pipeline runs several times (as many as `num_inference_steps`); each time, the different UNet submodules are sequentially onloaded and offloaded as needed, resulting in a large number of memory transfers.
-
-<Tip>
-
-Consider using [model offloading](#model-offloading) if you want to optimize for speed because it is much faster. The tradeoff is your memory savings won't be as large.
-
-</Tip>
-
-<Tip warning={true}>
-
-When using [`~StableDiffusionPipeline.enable_sequential_cpu_offload`], don't move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal (see this [issue](https://github.com/huggingface/diffusers/issues/1934) for more information).
-
-[`~StableDiffusionPipeline.enable_sequential_cpu_offload`] is a stateful operation that installs hooks on the models.
-
-</Tip>
 
 ## Model offloading
 
-<Tip>
+Model offloading moves entire models to the GPU instead of selectively moving *some* layers or model components. One of the main pipeline models, usually the text encoder, UNet, and VAE, is placed on the GPU while the other components are held on the CPU. Components like the UNet that run multiple times stays on the GPU until its completely finished and no longer needed. This eliminates the communication overhead of [CPU offloading](#cpu-offloading) and makes model offloading a faster alternative. The tradeoff is memory savings won't be as large.
 
-Model offloading requires 🤗 Accelerate version 0.17.0 or higher.
+> [!WARNING]
+> Keep in mind that if models are reused outside the pipeline after hookes have been installed (see [Removing Hooks](https://huggingface.co/docs/accelerate/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module) for more details), you need to run the entire pipeline and models in the expected order to properly offload them. This is a stateful operation that installs hooks on the model.
 
-</Tip>
+Call [`~DiffusionPipeline.enable_model_cpu_offload`] to enable it on a pipeline.
 
-[Sequential CPU offloading](#cpu-offloading) preserves a lot of memory but it makes inference slower because submodules are moved to GPU as needed, and they're immediately returned to the CPU when a new module runs.
-
-Full-model offloading is an alternative that moves whole models to the GPU, instead of handling each model's constituent *submodules*. There is a negligible impact on inference time (compared with moving the pipeline to `cuda`), and it still provides some memory savings.
-
-During model offloading, only one of the main components of the pipeline (typically the text encoder, UNet and VAE)
-is placed on the GPU while the others wait on the CPU. Components like the UNet that run for multiple iterations stay on the GPU until they're no longer needed.
-
-Enable model offloading by calling [`~StableDiffusionPipeline.enable_model_cpu_offload`] on the pipeline:
-
-```Python
+```py
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
-    use_safetensors=True,
+pipeline = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
 )
+pipline.enable_model_cpu_offload()
 
-prompt = "a photo of an astronaut riding a horse on mars"
-pipe.enable_model_cpu_offload()
-image = pipe(prompt).images[0]
+pipeline(
+    prompt="An astronaut riding a horse on Mars",
+    guidance_scale=0.,
+    height=768,
+    width=1360,
+    num_inference_steps=4,
+    max_sequence_length=256,
+).images[0]
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 ```
 
-<Tip warning={true}>
-
-In order to properly offload models after they're called, it is required to run the entire pipeline and models are called in the pipeline's expected order. Exercise caution if models are reused outside the context of the pipeline after hooks have been installed. See [Removing Hooks](https://huggingface.co/docs/accelerate/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module) for more information.
-
-[`~StableDiffusionPipeline.enable_model_cpu_offload`] is a stateful operation that installs hooks on the models and state on the pipeline.
-
-</Tip>
+[`~DiffusionPipeline.enable_model_cpu_offload`] also helps when you're using the [`~StableDiffusionXLPipeline.encode_prompt`] method on its own to generate the text encoders hidden state.
 
 ## Group offloading
 
-Group offloading is the middle ground between sequential and model offloading. It works by offloading groups of internal layers (either `torch.nn.ModuleList` or `torch.nn.Sequential`), which uses less memory than model-level offloading. It is also faster than sequential-level offloading because the number of device synchronizations is reduced.
+Group offloading moves groups of internal layers ([torch.nn.ModuleList](https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html) or [torch.nn.Sequential](https://pytorch.org/docs/stable/generated/torch.nn.Sequential.html)) to the CPU. It uses less memory than [model offloading](#model-offloading) and it is faster than [CPU offloading](#cpu-offloading) because it reduces communication overhead.
 
-To enable group offloading, call the [`~ModelMixin.enable_group_offload`] method on the model if it is a Diffusers model implementation. For any other model implementation, use [`~hooks.group_offloading.apply_group_offloading`]:
+> [!WARNING]
+> Group offloading may not work with all models if the forward implementation contains weight-dependent device casting of inputs because it may clash with group offloading's device casting mechanism.
 
-```python
+Call [`~ModelMixin.enable_group_offload`] to enable it for standard Diffusers model components that inherit from [`ModelMixin`]. For other model components that don't inherit from [`ModelMixin`], such as a generic [torch.nn.Module](https://pytorch.org/docs/stable/generated/torch.nn.Module.html), use [`~hooks.apply_group_offloading`] instead.
+
+The `offload_type` parameter can be set to `block_level` or `leaf_level`.
+
+- `block_level` offloads groups of layers based on the `num_blocks_per_group` parameter. For example, if `num_blocks_per_group=2` on a model with 40 layers, 2 layers are onloaded and offloaded at a time (20 total onloads/offloads). This drastically reduces memory requirements.
+- `leaf_level` offloads individual layers at the lowest level and is equivalent to [CPU offloading](#cpu-offloading). But it can be made faster if you use streams without giving up inference speed.
+
+```py
 import torch
 from diffusers import CogVideoXPipeline
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 
-# Load the pipeline
 onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
-pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
 
-# We can utilize the enable_group_offload method for Diffusers model implementations
-pipe.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True)
+# Use the enable_group_offload method for Diffusers model implementations
+pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level")
+pipeline.vae.enable_group_offload(onload_device=onload_device, offload_type="leaf_level")
 
-# Uncomment the following to also allow recording the current streams.
-# pipe.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True, record_stream=True)
-
-# For any other model implementations, the apply_group_offloading function can be used
-apply_group_offloading(pipe.text_encoder, onload_device=onload_device, offload_type="block_level", num_blocks_per_group=2)
-apply_group_offloading(pipe.vae, onload_device=onload_device, offload_type="leaf_level")
+# Use the apply_group_offloading method for other model components
+apply_group_offloading(pipeline.text_encoder, onload_device=onload_device, offload_type="block_level", num_blocks_per_group=2)
 
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
@@ -193,48 +273,55 @@ prompt = (
     "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
     "atmosphere of this unique musical performance."
 )
-video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
-# This utilized about 14.79 GB. It can be further reduced by using tiling and using leaf_level offloading throughout the pipeline.
+video = pipeline(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
 print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 export_to_video(video, "output.mp4", fps=8)
 ```
 
-Group offloading (for CUDA devices with support for asynchronous data transfer streams) overlaps data transfer and computation to reduce the overall execution time compared to sequential offloading. This is enabled using layer prefetching with CUDA streams. The next layer to be executed is loaded onto the accelerator device while the current layer is being executed - this increases the memory requirements slightly. Group offloading also supports leaf-level offloading (equivalent to sequential CPU offloading) but can be made much faster when using streams.
+### CUDA stream
 
-<Tip>
+The `use_stream` parameter can be activated for CUDA devices that support asynchronous data transfer streams to reduce overall execution time compared to [CPU offloading](#cpu-offloading). It overlaps data transfer and computation by using layer prefetching. The next layer to be executed is loaded onto the GPU while the current layer is still being executed. It can increase CPU memory significantly so ensure you have 2x the amount of memory as the model size.
 
-- Group offloading may not work with all models out-of-the-box. If the forward implementations of the model contain weight-dependent device-casting of inputs, it may clash with the offloading mechanism's handling of device-casting.
-- The `offload_type` parameter can be set to either `block_level` or `leaf_level`. `block_level` offloads groups of `torch::nn::ModuleList` or `torch::nn:Sequential` modules based on a configurable attribute `num_blocks_per_group`. For example, if you set `num_blocks_per_group=2` on a standard transformer model containing 40 layers, it will onload/offload 2 layers at a time for a total of 20 onload/offloads. This drastically reduces the VRAM requirements. `leaf_level` offloads individual layers at the lowest level, which is equivalent to sequential offloading. However, unlike sequential offloading, group offloading can be made much faster when using streams, with minimal compromise to end-to-end generation time.
-- The `use_stream` parameter can be used with CUDA devices to enable prefetching layers for onload. It defaults to `False`. Layer prefetching allows overlapping computation and data transfer of model weights, which drastically reduces the overall execution time compared to other offloading methods. However, it can increase the CPU RAM usage significantly. Ensure that available CPU RAM that is at least twice the size of the model when setting `use_stream=True`. You can find more information about CUDA streams [here](https://pytorch.org/docs/stable/generated/torch.cuda.Stream.html)
-- If specifying `use_stream=True` on VAEs with tiling enabled, make sure to do a dummy forward pass (possibly with dummy inputs) before the actual inference to avoid device-mismatch errors. This may not work on all implementations. Please open an issue if you encounter any problems.
-- The parameter `low_cpu_mem_usage` can be set to `True` to reduce CPU memory usage when using streams for group offloading. This is useful when the CPU memory is the bottleneck, but it may counteract the benefits of using streams and increase the overall execution time. The CPU memory savings come from creating pinned-tensors on-the-fly instead of pre-pinning them. This parameter is better suited for using `leaf_level` offloading.
-- When using `use_stream=True`, users can additionally specify `record_stream=True` to get better speedups at the expense of slightly increased memory usage. Refer to the [official PyTorch docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) to know more about this.
+Set `record_stream=True` for more of a speedup at the cost of slightly increased memory usage. Refer to the [torch.Tensor.record_stream](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) docs to learn more.
 
-For more information about available parameters and an explanation of how group offloading works, refer to [`~hooks.group_offloading.apply_group_offloading`].
+> [!TIP]
+> When `use_stream=True` on VAEs with tiling enabled, make sure to do a dummy forward pass (possible with dummy inputs as well) before inference to avoid device mismatch errors. This may not work on all implementations, so feel free to open an issue if you encounter any problems.
 
-</Tip>
+If you're using `block_level` group offloading with `use_stream` enabled, the `num_blocks_per_group` parameter should be set to `1`, otherwise a warning will be raised.
 
-## FP8 layerwise weight-casting
+```py
+pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True, record_stream=True)
+```
 
-PyTorch supports `torch.float8_e4m3fn` and `torch.float8_e5m2` as weight storage dtypes, but they can't be used for computation in many different tensor operations due to unimplemented kernel support. However, you can use these dtypes to store model weights in fp8 precision and upcast them on-the-fly when the layers are used in the forward pass. This is known as layerwise weight-casting.
+The `low_cpu_mem_usage` parameter can be set to `True` to reduce CPU memory usage when using streams during group offloading. It is best for `leaf_level` offloading and when CPU memory is bottlenecked. Memory is saved by creating pinned tensors on the fly instead of pre-pinning them. However, this may increase overall execution time.
 
-Typically, inference on most models is done with `torch.float16` or `torch.bfloat16` weight/computation precision. Layerwise weight-casting cuts down the memory footprint of the model weights by approximately half.
+## Layerwise casting
 
-```python
+Layerwise casting stores weights in a smaller data format (for example, `torch.float8_e4m3fn` and `torch.float8_e5m2`) to use less memory and upcasts those weights to a higher precision like `torch.float16` or `torch.bfloat16` for computation. Certain layers (normalization and modulation related weights) are skipped because storing them in fp8 can degrade generation quality.
+
+> [!WARNING]
+> Layerwise casting may not work with all models if the forward implementation contains internal typecasting of weights. The current implementation of layerwise casting assumes the forward pass is independent of the weight precision and the input datatypes are always specified in `compute_dtype` (see [here](https://github.com/huggingface/transformers/blob/7f5077e53682ca855afc826162b204ebf809f1f9/src/transformers/models/t5/modeling_t5.py#L294-L299) for an incompatible implementation).
+>
+> Layerwise casting may also fail on custom modeling implementations with [PEFT](https://huggingface.co/docs/peft/index) layers. There are some checks available but they are not extensively tested or guaranteed to work in all cases.
+
+Call [`~ModelMixin.enable_layerwise_casting`] to set the storage and computation datatypes.
+
+```py
 import torch
 from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel
 from diffusers.utils import export_to_video
 
-model_id = "THUDM/CogVideoX-5b"
-
-# Load the model in bfloat16 and enable layerwise casting
-transformer = CogVideoXTransformer3DModel.from_pretrained(model_id, subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = CogVideoXTransformer3DModel.from_pretrained(
+    "THUDM/CogVideoX-5b",
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16
+)
 transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
 
-# Load the pipeline
-pipe = CogVideoXPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
-
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b",
+    transformer=transformer,
+    torch_dtype=torch.bfloat16
+).to("cuda")
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
     "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
@@ -243,43 +330,53 @@ prompt = (
     "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
     "atmosphere of this unique musical performance."
 )
-video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
+video = pipeline(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 export_to_video(video, "output.mp4", fps=8)
 ```
 
-In the above example, layerwise casting is enabled on the transformer component of the pipeline. By default, certain layers are skipped from the FP8 weight casting because it can lead to significant degradation of generation quality. The normalization and modulation related weight parameters are also skipped by default.
-
-However, you gain more control and flexibility by directly utilizing the [`~hooks.layerwise_casting.apply_layerwise_casting`] function instead of [`~ModelMixin.enable_layerwise_casting`].
-
-<Tip>
-
-- Layerwise casting may not work with all models out-of-the-box. Sometimes, the forward implementations of the model might contain internal typecasting of weight values. Such implementations are not supported due to the currently simplistic implementation of layerwise casting, which assumes that the forward pass is independent of the weight precision and that the input dtypes are always in `compute_dtype`. An example of an incompatible implementation can be found [here](https://github.com/huggingface/transformers/blob/7f5077e53682ca855afc826162b204ebf809f1f9/src/transformers/models/t5/modeling_t5.py#L294-L299).
-- Layerwise casting may fail on custom modeling implementations that make use of [PEFT](https://github.com/huggingface/peft) layers. Some minimal checks to handle this case is implemented but is not extensively tested or guaranteed to work in all cases.
-- It can be also be applied partially to specific layers of a model. Partially applying layerwise casting can either be done manually by calling the `apply_layerwise_casting` function on specific internal modules, or by specifying the `skip_modules_pattern` and `skip_modules_classes` parameters for a root module. These parameters are particularly useful for layers such as normalization and modulation.
-
-</Tip>
-
-## Channels-last memory format
-
-The channels-last memory format is an alternative way of ordering NCHW tensors in memory to preserve dimension ordering. Channels-last tensors are ordered in such a way that the channels become the densest dimension (storing images pixel-per-pixel). Since not all operators currently support the channels-last format, it may result in worst performance but you should still try and see if it works for your model.
-
-For example, to set the pipeline's UNet to use the channels-last format:
+The [`~hooks.apply_layerwise_casting`] method can also be used if you need more control and flexibility. It can be partially applied to model layers by calling it on specific internal modules. Use the `skip_modules_pattern` or `skip_modules_classes` parameters to specify modules to avoid, such as the normalization and modulation layers.
 
 ```python
-print(pipe.unet.conv_out.state_dict()["weight"].stride())  # (2880, 9, 3, 1)
-pipe.unet.to(memory_format=torch.channels_last)  # in-place operation
+import torch
+from diffusers import CogVideoXTransformer3DModel
+from diffusers.hooks import apply_layerwise_casting
+
+transformer = CogVideoXTransformer3DModel.from_pretrained(
+    "THUDM/CogVideoX-5b",
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16
+)
+
+# skip the normalization layer
+apply_layerwise_casting(
+    transformer,
+    storage_dtype=torch.float8_e4m3fn,
+    compute_dtype=torch.bfloat16,
+    skip_modules_classes=["norm"],
+    non_blocking=True,
+)
+```
+
+## torch.channels_last
+
+[torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) flips how tensors are stored from `(batch size, channels, height, width)` to `(batch size, heigh, width, channels)`. This aligns the tensors with how the hardware sequentially accesses the tensors stored in memory and avoids skipping around in memory to access the pixel values.
+
+Not all operators currently support the channels-last format and may result in worst performance, but it is still worth trying.
+
+```py
+print(pipeline.unet.conv_out.state_dict()["weight"].stride())  # (2880, 9, 3, 1)
+pipeline.unet.to(memory_format=torch.channels_last)  # in-place operation
 print(
-    pipe.unet.conv_out.state_dict()["weight"].stride()
+    pipeline.unet.conv_out.state_dict()["weight"].stride()
 )  # (2880, 1, 960, 320) having a stride of 1 for the 2nd dimension proves that it works
 ```
 
-## Tracing
+## torch.jit.trace
 
-Tracing runs an example input tensor through the model and captures the operations that are performed on it as that input makes its way through the model's layers. The executable or `ScriptFunction` that is returned is optimized with just-in-time compilation.
+[torch.jit.trace](https://pytorch.org/docs/stable/generated/torch.jit.trace.html) records the operations a model performs on a sample input and creates a new, optimized representation of the model based on the recorded execution path. During tracing, the model is optimized to reduce overhead from Python and dynamic control flows and operations are fused together for more efficiency. The returned executable or [ScriptFunction](https://pytorch.org/docs/stable/generated/torch.jit.ScriptFunction.html) can be compiled.
 
-To trace a UNet:
-
-```python
+```py
 import time
 import torch
 from diffusers import StableDiffusionPipeline
@@ -292,8 +389,7 @@ torch.set_grad_enabled(False)
 n_experiments = 2
 unet_runs_per_experiment = 50
 
-
-# load inputs
+# load sample inputs
 def generate_inputs():
     sample = torch.randn((2, 4, 64, 64), device="cuda", dtype=torch.float16)
     timestep = torch.rand(1, device="cuda", dtype=torch.float16) * 999
@@ -301,12 +397,12 @@ def generate_inputs():
     return sample, timestep, encoder_hidden_states
 
 
-pipe = StableDiffusionPipeline.from_pretrained(
+pipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")
-unet = pipe.unet
+unet = pipeline.unet
 unet.eval()
 unet.to(memory_format=torch.channels_last)  # use channels_last memory format
 unet.forward = functools.partial(unet.forward, return_dict=False)  # set return_dict=False as default
@@ -323,13 +419,11 @@ unet_traced = torch.jit.trace(unet, inputs)
 unet_traced.eval()
 print("done tracing")
 
-
 # warmup and optimize graph
 for _ in range(5):
     with torch.inference_mode():
         inputs = generate_inputs()
         orig_output = unet_traced(*inputs)
-
 
 # benchmarking
 with torch.inference_mode():
@@ -352,20 +446,18 @@ with torch.inference_mode():
 unet_traced.save("unet_traced.pt")
 ```
 
-Replace the `unet` attribute of the pipeline with the traced model:
+Replace the pipeline's UNet with the traced version.
 
-```python
-from diffusers import StableDiffusionPipeline
+```py
 import torch
+from diffusers import StableDiffusionPipeline
 from dataclasses import dataclass
-
 
 @dataclass
 class UNet2DConditionOutput:
     sample: torch.Tensor
 
-
-pipe = StableDiffusionPipeline.from_pretrained(
+pipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
@@ -374,8 +466,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
 # use jitted unet
 unet_traced = torch.jit.load("unet_traced.pt")
 
-
-# del pipe.unet
+# del pipeline.unet
 class TracedUNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -386,8 +477,7 @@ class TracedUNet(torch.nn.Module):
         sample = unet_traced(latent_model_input, t, encoder_hidden_states)[0]
         return UNet2DConditionOutput(sample=sample)
 
-
-pipe.unet = TracedUNet()
+pipeline.unet = TracedUNet()
 
 with torch.inference_mode():
     image = pipe([prompt] * 1, num_inference_steps=50).images[0]
@@ -395,39 +485,31 @@ with torch.inference_mode():
 
 ## Memory-efficient attention
 
-Recent work on optimizing bandwidth in the attention block has generated huge speed-ups and reductions in GPU memory usage. The most recent type of memory-efficient attention is [Flash Attention](https://arxiv.org/abs/2205.14135) (you can check out the original code at [HazyResearch/flash-attention](https://github.com/HazyResearch/flash-attention)).
+> [!TIP]
+> Memory-efficient attention optimizes for memory usage *and* [inference speed](./fp16#scaled-dot-product-attention!
 
-<Tip>
+The Transformers attention mechanism is memory-intensive, especially for long sequences, so you can try using different and more memory-efficient attention types.
 
-If you have PyTorch >= 2.0 installed, you should not expect a speed-up for inference when enabling `xformers`.
+By default, if PyTorch >= 2.0 is installed, [scaled dot-product attention (SDPA)](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) is used. You don't need to make any additional changes to your code.
 
-</Tip>
+SDPA supports [FlashAttention](https://github.com/Dao-AILab/flash-attention) and [xFormers](https://github.com/facebookresearch/xformers) as well as a native C++ PyTorch implementation. It automatically selects the most optimal implementation based on your input.
 
-To use Flash Attention, install the following:
+You can explicitly use xFormers with the [`~ModelMixin.enable_xformers_memory_efficient_attention`] method.
 
-- PyTorch > 1.12
-- CUDA available
-- [xFormers](xformers)
-
-Then call [`~ModelMixin.enable_xformers_memory_efficient_attention`] on the pipeline:
-
-```python
-from diffusers import DiffusionPipeline
+```py
+# pip install xformers
 import torch
+from diffusers import StableDiffusionXLPipeline
 
-pipe = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
     torch_dtype=torch.float16,
-    use_safetensors=True,
 ).to("cuda")
-
-pipe.enable_xformers_memory_efficient_attention()
-
-with torch.inference_mode():
-    sample = pipe("a small cat")
-
-# optional: You can disable it via
-# pipe.disable_xformers_memory_efficient_attention()
+pipeline.enable_xformers_memory_efficient_attention()
 ```
 
-The iteration speed when using `xformers` should match the iteration speed of PyTorch 2.0 as described [here](torch2.0).
+Call [`~ModelMixin.disable_xformers_memory_efficient_attention`] to disable it.
+
+```py
+pipeline.disable_xformers_memory_efficient_attention()
+```
