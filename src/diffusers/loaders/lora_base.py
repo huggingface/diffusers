@@ -894,7 +894,7 @@ class LoraBaseMixin:
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
-        if lora_adapter_metadata is not None and not safe_serialization:
+        if lora_adapter_metadata and not safe_serialization:
             raise ValueError("`lora_adapter_metadata` cannot be specified when not using `safe_serialization`.")
         if not isinstance(lora_adapter_metadata, dict):
             raise ValueError("`lora_adapter_metadata` must be of type `dict`.")
