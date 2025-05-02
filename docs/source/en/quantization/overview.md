@@ -39,3 +39,62 @@ Diffusers currently supports the following quantization methods.
 - [Quanto](./quanto.md)
 
 [This resource](https://huggingface.co/docs/transformers/main/en/quantization/overview#when-to-use-what) provides a good overview of the pros and cons of different quantization techniques.
+
+## Pipeline-level quantization
+
+Diffusers allows users to directly initialize pipelines from checkpoints that may contain quantized models([example](https://huggingface.co/hf-internal-testing/flux.1-dev-nf4-pkg)). However, users may want to apply
+quantization on-the-fly when initializing a pipeline from a pre-trained and non-quantized checkpoint. You can
+do this with [`PipelineQuantizationConfig`].
+
+Start by defining a `PipelineQuantizationConfig`:
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.quantizers.quantization_config import QuantoConfig
+from diffusers.quantizers import PipelineQuantizationConfig
+from transformers import BitsAndBytesConfig
+
+pipeline_quant_config = PipelineQuantizationConfig(
+    quant_mapping={
+        "transformer": QuantoConfig(weights_dtype="int8"),
+        "text_encoder_2": BitsAndBytesConfig(
+            load_in_4bit=True, compute_dtype=torch.bfloat16
+        ),
+    }
+)
+```
+
+Then pass it to [`~DiffusionPipeline.from_pretrained`] and run inference:
+
+```py
+pipe = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+image = pipe("photo of a cute dog").images[0]
+```
+
+This method allows for more granular control over the quantization specifications of individual 
+model-level components of a pipeline. It also allows for different quantization backends for
+different components. In the above example, you used a combination of Quanto and BitsandBytes.
+
+The other method is simpler in terms of experience but is
+less-flexible. Start by defining a `PipelineQuantizationConfig` but in a different way:
+
+```py
+pipeline_quant_config = PipelineQuantizationConfig(
+    quant_backend="bitsandbytes_4bit",
+    quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
+    components_to_quantize=["transformer", "text_encoder_2"],
+)
+```
+
+This `pipeline_quant_config` can now be passed to [`~DiffusionPipeline.from_pretrained`] similar to the above example.
+
+In this case, `quant_kwargs` will be used to initialize the quantization specifications
+of the respective quantization configuration class of `quant_backend`. `components_to_quantize`
+is used to denote the components that will be quantized. For most pipelines, you would want to
+keep `transformer` in the list as that is often the most compute and memory intensive.

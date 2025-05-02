@@ -33,7 +33,49 @@ logger = logging.get_logger(__name__)
 
 
 class PipelineQuantizationConfig:
-    """TODO"""
+    """
+    Configuration class to be used when applying quantization on-the-fly to [`~DiffusionPipeline.from_pretrained`].
+
+    Args:
+        quant_backend (`str`): Quantization backend to be used. When using this option, we assume that the backend
+            is available to both `diffusers` and `transformers`.
+        quant_kwargs (`dict`): Params to initialize the quantization backend class.
+        components_to_quantize (`list`): Components of a pipeline to be quantized.
+        quant_mapping (`dict`): Mapping defining the quantization specs to be used for the pipeline
+            components. When using this argument, users are not expected to provide `quant_backend`, `quant_kawargs`,
+            and `components_to_quantize`.
+
+    Examples:
+
+    When using with `quant_backend`:
+
+    >>> import torch >>> from diffusers import DiffusionPipeline >>> from diffusers.quantizers import
+    PipelineQuantizationConfig
+
+    >>> pipeline_quant_config = PipelineQuantizationConfig( ... quant_backend="bitsandbytes_4bit", ... quant_kwargs={
+    ... "load_in_4bit": True, ... "bnb_4bit_quant_type": "nf4", ... "bnb_4bit_compute_dtype": torch.bfloat16, ... },
+    ... components_to_quantize=["transformer", "text_encoder_2"], ... )
+
+    >>> pipe = DiffusionPipeline.from_pretrained( ... "black-forest-labs/FLUX.1-dev", ...
+    quantization_config=pipeline_quant_config, ... torch_dtype=torch.bfloat16, ... ).to("cuda")
+
+    >>> image = pipe("photo of a cute dog").images[0]
+
+    When using with `quant_mapping`:
+
+    >>> import torch >>> from diffusers import DiffusionPipeline >>> from diffusers.quantizers.quantization_config
+    import QuantoConfig >>> from diffusers.quantizers import PipelineQuantizationConfig >>> from transformers import
+    BitsAndBytesConfig
+
+    >>> pipeline_quant_config = PipelineQuantizationConfig( ... quant_mapping={ ... "transformer":
+    QuantoConfig(weights_dtype="int8"), ... "text_encoder_2": BitsAndBytesConfig( ... load_in_4bit=True,
+    compute_dtype=torch.bfloat16 ... ), ... } ... )
+
+    >>> pipe = DiffusionPipeline.from_pretrained( ... "black-forest-labs/FLUX.1-dev", ...
+    quantization_config=pipeline_quant_config, ... torch_dtype=torch.bfloat16, ... ).to("cuda")
+
+    >>> image = pipe("photo of a cute dog").images[0]
+    """
 
     def __init__(
         self,

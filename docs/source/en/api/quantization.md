@@ -23,6 +23,9 @@ Learn how to quantize models in the [Quantization](../quantization/overview) gui
 
 </Tip>
 
+## PipelineQuantizationConfig
+
+[[autodoc]] PipelineQuantizationConfig
 
 ## BitsAndBytesConfig
 
