@@ -2413,7 +2413,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     ) -> bool:
         """
         Control LoRA expands the shape of the input layer from (3072, 64) to (3072, 128). This method handles that and
-        generalizes things a bit so that any parameter that needs expansion receives appropriate treatement.
+        generalizes things a bit so that any parameter that needs expansion receives appropriate treatment.
         """
         state_dict = {}
         if lora_state_dict is not None:

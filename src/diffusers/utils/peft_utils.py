@@ -153,19 +153,19 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
     r = lora_alpha = list(rank_dict.values())[0]
 
     if len(set(rank_dict.values())) > 1:
-        # get the rank occuring the most number of times
+        # get the rank occurring the most number of times
         r = collections.Counter(rank_dict.values()).most_common()[0][0]
 
-        # for modules with rank different from the most occuring rank, add it to the `rank_pattern`
+        # for modules with rank different from the most occurring rank, add it to the `rank_pattern`
         rank_pattern = dict(filter(lambda x: x[1] != r, rank_dict.items()))
         rank_pattern = {k.split(".lora_B.")[0]: v for k, v in rank_pattern.items()}
 
     if network_alpha_dict is not None and len(network_alpha_dict) > 0:
         if len(set(network_alpha_dict.values())) > 1:
-            # get the alpha occuring the most number of times
+            # get the alpha occurring the most number of times
             lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
 
-            # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
+            # for modules with alpha different from the most occurring alpha, add it to the `alpha_pattern`
             alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
             if is_unet:
                 alpha_pattern = {
