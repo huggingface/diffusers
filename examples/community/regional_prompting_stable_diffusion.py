@@ -220,7 +220,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
             revers = True
 
             def pcallback(s_self, step: int, timestep: int, latents: torch.Tensor, selfs=None):
-                if "PRO" in mode:  # in Prompt mode, make masks from sum of attension maps
+                if "PRO" in mode:  # in Prompt mode, make masks from sum of attention maps
                     self.step = step
 
                     if len(self.attnmaps_sizes) > 3:
@@ -552,9 +552,9 @@ def get_attn_maps(self, attn):
 
 def reset_attnmaps(self):  # init parameters in every batch
     self.step = 0
-    self.attnmaps = {}  # maked from attention maps
+    self.attnmaps = {}  # made from attention maps
     self.attnmaps_sizes = []  # height,width set of u-net blocks
-    self.attnmasks = {}  # maked from attnmaps for regions
+    self.attnmasks = {}  # made from attnmaps for regions
     self.maskready = False
     self.history = {}
 

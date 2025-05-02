@@ -24,7 +24,7 @@
 
 ## Generating Videos with Wan 2.1
 
-We will first need to install some addtional dependencies.
+We will first need to install some additional dependencies.
 
 ```shell
 pip install -u ftfy imageio-ffmpeg imageio
@@ -285,7 +285,7 @@ pipe = WanImageToVideoPipeline.from_pretrained(
     image_encoder=image_encoder,
     torch_dtype=torch.bfloat16
 )
-# Since we've offloaded the larger models alrady, we can move the rest of the model components to GPU
+# Since we've offloaded the larger models already, we can move the rest of the model components to GPU
 pipe.to("cuda")
 
 image = load_image(
@@ -368,7 +368,7 @@ pipe = WanImageToVideoPipeline.from_pretrained(
     image_encoder=image_encoder,
     torch_dtype=torch.bfloat16
 )
-# Since we've offloaded the larger models alrady, we can move the rest of the model components to GPU
+# Since we've offloaded the larger models already, we can move the rest of the model components to GPU
 pipe.to("cuda")
 
 image = load_image(

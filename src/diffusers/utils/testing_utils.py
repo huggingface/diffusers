@@ -1186,6 +1186,13 @@ if is_torch_available():
         "mps": 0,
         "default": 0,
     }
+    BACKEND_SYNCHRONIZE = {
+        "cuda": torch.cuda.synchronize,
+        "xpu": getattr(torch.xpu, "synchronize", None),
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
@@ -1206,6 +1213,10 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 # These are callables which automatically dispatch the function specific to the accelerator
 def backend_manual_seed(device: str, seed: int):
     return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+
+
+def backend_synchronize(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
 
 
 def backend_empty_cache(device: str):
