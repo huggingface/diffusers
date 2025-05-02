@@ -433,7 +433,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         ait_up_keys = [k + ".lora_B.weight" for k in ait_keys]
         if not is_sparse:
             # down_weight is copied to each split
-            ait_sd.update({k: down_weight for k in ait_down_keys})
+            ait_sd.update(dict.fromkeys(ait_down_keys, down_weight))
 
             # up_weight is split to each split
             ait_sd.update({k: v for k, v in zip(ait_up_keys, torch.split(up_weight, dims, dim=0))})  # noqa: C416
@@ -819,7 +819,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_pe:
                 logger.info(
                     "The `position_embedding` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
 
             else:
@@ -835,7 +835,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_t5:
                 logger.info(
                     "The `t5xxl` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -850,7 +850,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_diff_b:
                 logger.info(
                     "The `diff_b` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -866,7 +866,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_diff:
                 logger.info(
                     "The `diff` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -923,7 +923,7 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
         ait_up_keys = [k + ".lora_B.weight" for k in ait_keys]
 
         # down_weight is copied to each split
-        ait_sd.update({k: down_weight for k in ait_down_keys})
+        ait_sd.update(dict.fromkeys(ait_down_keys, down_weight))
 
         # up_weight is split to each split
         ait_sd.update({k: v for k, v in zip(ait_up_keys, torch.split(up_weight, dims, dim=0))})  # noqa: C416
@@ -1237,7 +1237,7 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
             f"double_blocks.{i}.txt_attn.norm.key_norm.scale"
         )
 
-    # single transfomer blocks
+    # single transformer blocks
     for i in range(num_single_layers):
         block_prefix = f"single_transformer_blocks.{i}."
 
