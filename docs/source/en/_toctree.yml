@@ -19,8 +19,6 @@
     title: Train a diffusion model
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
-  - local: tutorials/inference_with_big_models
-    title: Working with big models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
@@ -181,7 +179,7 @@
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
-    title: Speed up inference
+    title: Accelerate inference
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/torch2.0
