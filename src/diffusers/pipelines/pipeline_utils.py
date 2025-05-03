@@ -58,6 +58,7 @@ from ..utils import (
     _is_valid_type,
     is_accelerate_available,
     is_accelerate_version,
+    is_hpu_available,
     is_torch_npu_available,
     is_torch_version,
     is_transformers_version,
@@ -65,7 +66,7 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
-from ..utils.torch_utils import is_compiled_module
+from ..utils.torch_utils import get_device, is_compiled_module
 
 
 if is_torch_npu_available():
@@ -404,6 +405,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
+            _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
+
+            if is_loaded_in_8bit_bnb:
+                return False
+
             return hasattr(module, "_hf_hook") and (
                 isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
                 or hasattr(module._hf_hook, "hooks")
@@ -444,6 +450,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             logger.warning(
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
+
+        # Enable generic support for Intel Gaudi accelerator using GPU/HPU migration
+        if device_type == "hpu" and kwargs.pop("hpu_migration", True) and is_hpu_available():
+            os.environ["PT_HPU_GPU_MIGRATION"] = "1"
+            logger.debug("Environment variable set: PT_HPU_GPU_MIGRATION=1")
+
+            import habana_frameworks.torch  # noqa: F401
+
+            # HPU hardware check
+            if not (hasattr(torch, "hpu") and torch.hpu.is_available()):
+                raise ValueError("You are trying to call `.to('hpu')` but HPU device is unavailable.")
+
+            os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+            logger.debug("Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1")
 
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
@@ -1084,19 +1104,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the accelerator when its
+        `forward` method is called, and the model remains in accelerator until the next model runs. Memory savings are
+        lower than with `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution
+        of the `unet`.
 
         Arguments:
             gpu_id (`int`, *optional*):
                 The ID of the accelerator that shall be used in inference. If not specified, it will default to 0.
-            device (`torch.Device` or `str`, *optional*, defaults to "cuda"):
+            device (`torch.Device` or `str`, *optional*, defaults to None):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
-                default to "cuda".
+                automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
 
@@ -1117,6 +1138,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
         self.remove_all_hooks()
+
+        if device is None:
+            device = get_device()
+            if device == "cpu":
+                raise RuntimeError("`enable_model_cpu_offload` requires accelerator, but not found")
 
         torch_device = torch.device(device)
         device_index = torch_device.index
@@ -1196,20 +1222,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
         r"""
         Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
         dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
-        and then moved to `torch.device('meta')` and loaded to GPU only when their specific submodule has its `forward`
-        method called. Offloading happens on a submodule basis. Memory savings are higher than with
+        and then moved to `torch.device('meta')` and loaded to accelerator only when their specific submodule has its
+        `forward` method called. Offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
 
         Arguments:
             gpu_id (`int`, *optional*):
                 The ID of the accelerator that shall be used in inference. If not specified, it will default to 0.
-            device (`torch.Device` or `str`, *optional*, defaults to "cuda"):
+            device (`torch.Device` or `str`, *optional*, defaults to None):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
-                default to "cuda".
+                automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
 
@@ -1224,6 +1250,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise ValueError(
                 "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_sequential_cpu_offload() isn't allowed. You can call `reset_device_map()` first and then call `enable_sequential_cpu_offload()`."
             )
+
+        if device is None:
+            device = get_device()
+            if device == "cpu":
+                raise RuntimeError("`enable_sequential_cpu_offload` requires accelerator, but not found")
 
         torch_device = torch.device(device)
         device_index = torch_device.index

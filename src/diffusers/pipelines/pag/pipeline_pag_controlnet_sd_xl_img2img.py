@@ -115,7 +115,7 @@ EXAMPLE_DOC_STRING = """
         ...     with torch.no_grad(), torch.autocast("cuda"):
         ...         depth_map = depth_estimator(image).predicted_depth
 
-        ...     depth_map = torch.nn.fuctional.interpolate(
+        ...     depth_map = torch.nn.functional.interpolate(
         ...         depth_map.unsqueeze(1),
         ...         size=(1024, 1024),
         ...         mode="bicubic",

@@ -19,18 +19,13 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.attention import FeedForward
-from ...models.attention_processor import (
-    Attention,
-    AttentionProcessor,
-    CogVideoXAttnProcessor2_0,
-)
-from ...models.modeling_utils import ModelMixin
-from ...models.normalization import AdaLayerNormContinuous
 from ...utils import logging
+from ..attention import FeedForward
+from ..attention_processor import Attention, AttentionProcessor, CogVideoXAttnProcessor2_0
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings, CogView3PlusPatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
-from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
+from ..modeling_utils import ModelMixin
+from ..normalization import AdaLayerNormContinuous, CogView3PlusAdaLayerNormZeroTextImage
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

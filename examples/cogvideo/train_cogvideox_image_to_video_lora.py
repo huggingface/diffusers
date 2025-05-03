@@ -61,7 +61,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -879,7 +879,7 @@ def prepare_rotary_positional_embeddings(
 
 
 def get_optimizer(args, params_to_optimize, use_deepspeed: bool = False):
-    # Use DeepSpeed optimzer
+    # Use DeepSpeed optimizer
     if use_deepspeed:
         from accelerate.utils import DummyOptim
 

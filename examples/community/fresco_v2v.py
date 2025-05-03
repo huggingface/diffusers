@@ -351,7 +351,7 @@ def my_forward(
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
             added_cond_kwargs: (`dict`, *optional*):
-                A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
+                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
                 are passed along to the UNet blocks.
 
         Returns:
@@ -864,9 +864,9 @@ def get_flow_and_interframe_paras(flow_model, imgs):
 class AttentionControl:
     """
     Control FRESCO-based attention
-    * enable/diable spatial-guided attention
-    * enable/diable temporal-guided attention
-    * enable/diable cross-frame attention
+    * enable/disable spatial-guided attention
+    * enable/disable temporal-guided attention
+    * enable/disable cross-frame attention
     * collect intermediate attention feature (for spatial-guided attention)
     """
 
