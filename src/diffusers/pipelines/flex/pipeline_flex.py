@@ -656,6 +656,10 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
         return self._num_timesteps
 
     @property
+    def current_timesteps(self):
+        return self._current_timesteps
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -782,6 +786,7 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Define call parameters
@@ -814,10 +819,10 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
         )
 
         # 3. Prepare control image
-        num_channels_latents = self.transformer.config.in_channels // 4
+        num_channels_latents = self.transformer.config.in_channels // (4 * 3)
 
-        num_control_channels = 33 # 16 + 1 + 16
-        num_channels_latents = num_channels_latents - num_control_channels
+        num_control_channels = 2 * num_channels_latents + 1 # 16 + 1 + 16
+        # num_channels_latents = num_channels_latents - num_control_channels
 
         control_latents = None
         inpaint_latents = None
@@ -829,7 +834,7 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
         if control_image is None:
             control_latents = torch.zeros(
                 batch_size * num_images_per_prompt,
-                16,
+                num_channels_latents,
                 latent_height,
                 latent_width,
                 device=device,
@@ -853,7 +858,7 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
         if inpaint_image is None and inpaint_mask is None:
             inpaint_latents = torch.zeros(
                 batch_size * num_images_per_prompt,
-                16,
+                num_channels_latents,
                 latent_height,
                 latent_width,
                 device=device,
@@ -958,10 +963,13 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
+
                 control_latents = packed_latent_controls if i < control_cutoff else packed_latent_no_controls
                 latent_model_input = torch.cat([latents, control_latents], dim=2)
 
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                print(latents.shape, timestep)
 
                 guidance = (
                     torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
@@ -1004,6 +1012,8 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
+        self._current_timestep = None
 
         if output_type == "latent":
             image = latents
