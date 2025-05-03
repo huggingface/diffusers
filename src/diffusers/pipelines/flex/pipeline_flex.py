@@ -210,8 +210,8 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->transformer->vae"
-    _optional_components = ["image_encoder", "feature_extractor"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "control_image"]
+    _optional_components = []
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
         self,
@@ -656,8 +656,8 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
         return self._num_timesteps
 
     @property
-    def current_timesteps(self):
-        return self._current_timesteps
+    def current_timestep(self):
+        return self._current_timestep
 
     @property
     def interrupt(self):
@@ -828,8 +828,8 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
         inpaint_latents = None
         inpaint_latents_mask = None
 
-        latent_height = height // self.vae_scale_factor
-        latent_width = width // self.vae_scale_factor
+        latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
 
         if control_image is None:
             control_latents = torch.zeros(
