@@ -994,7 +994,7 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
                 guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 noise_pred = self.transformer(
-                    hidden_states=latents,
+                    hidden_states=latent_model_input,
                     timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
