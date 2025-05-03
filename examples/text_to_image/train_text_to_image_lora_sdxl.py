@@ -925,7 +925,7 @@ def main(args):
     # Preprocessing the datasets.
     interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
     if interpolation is None:
-            raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
+        raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
     train_resize = transforms.Resize(args.resolution, interpolation=interpolation)
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
