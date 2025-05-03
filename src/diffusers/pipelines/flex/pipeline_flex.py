@@ -969,7 +969,6 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
                 latent_model_input = torch.cat([latents, control_latents], dim=2)
 
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                print(latents.shape, timestep)
 
                 guidance = (
                     torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
