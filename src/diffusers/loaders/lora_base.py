@@ -888,7 +888,7 @@ class LoraBaseMixin:
         weight_name: str,
         save_function: Callable,
         safe_serialization: bool,
-        lora_adapter_metadata: dict = None,
+        lora_adapter_metadata: Optional[dict] = None,
     ):
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
