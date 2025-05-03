@@ -60,7 +60,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> diffusers import Flex2Pipeline
+        >>> from diffusers import Flex2Pipeline
         >>> from diffusers.utils import load_image
 
         >>> name_or_path = "ostris/Flex.2-preview"
