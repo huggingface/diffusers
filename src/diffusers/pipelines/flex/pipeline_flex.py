@@ -916,7 +916,7 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
         latent_no_controls = torch.cat([inpaint_latents, inpaint_latents_mask, torch.zeros_like(control_latents)], dim=1)
 
         height_latent_controls, width_latent_controls = latent_controls.shape[2:]
-        packed_latent_controls = self._packed_latents(
+        packed_latent_controls = self._pack_latents(
             latent_controls,
             batch_size * num_images_per_prompt,
             num_control_channels,
