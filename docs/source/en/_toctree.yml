@@ -17,12 +17,8 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - local: tutorials/using_peft_for_inference
-    title: Load LoRAs for inference
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
-  - local: tutorials/inference_with_big_models
-    title: Working with big models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
@@ -33,11 +29,24 @@
     title: Load schedulers and models
   - local: using-diffusers/other-formats
     title: Model files and layouts
-  - local: using-diffusers/loading_adapters
-    title: Load adapters
   - local: using-diffusers/push_to_hub
     title: Push files to the Hub
   title: Load pipelines and adapters
+- sections:
+  - local: tutorials/using_peft_for_inference
+    title: LoRA
+  - local: using-diffusers/ip_adapter
+    title: IP-Adapter
+  - local: using-diffusers/controlnet
+    title: ControlNet
+  - local: using-diffusers/t2i_adapter
+    title: T2I-Adapter
+  - local: using-diffusers/dreambooth
+    title: DreamBooth
+  - local: using-diffusers/textual_inversion_inference
+    title: Textual inversion
+  title: Adapters
+  isExpanded: false
 - sections:
   - local: using-diffusers/unconditional_image_generation
     title: Unconditional image generation
@@ -59,8 +68,6 @@
     title: Create a server
   - local: training/distributed_inference
     title: Distributed inference
-  - local: using-diffusers/merge_loras
-    title: Merge LoRAs
   - local: using-diffusers/scheduler_features
     title: Scheduler features
   - local: using-diffusers/callback
@@ -97,20 +104,12 @@
     title: SDXL Turbo
   - local: using-diffusers/kandinsky
     title: Kandinsky
-  - local: using-diffusers/ip_adapter
-    title: IP-Adapter
   - local: using-diffusers/omnigen
     title: OmniGen
   - local: using-diffusers/pag
     title: PAG
-  - local: using-diffusers/controlnet
-    title: ControlNet
-  - local: using-diffusers/t2i_adapter
-    title: T2I-Adapter
   - local: using-diffusers/inference_with_lcm
     title: Latent Consistency Model
-  - local: using-diffusers/textual_inversion_inference
-    title: Textual inversion
   - local: using-diffusers/shap-e
     title: Shap-E
   - local: using-diffusers/diffedit
@@ -180,7 +179,7 @@
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
-    title: Speed up inference
+    title: Accelerate inference
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/torch2.0
