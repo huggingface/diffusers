@@ -63,6 +63,8 @@ EXAMPLE_DOC_STRING = """
         >>> diffusers import Flex2Pipeline
         >>> from diffusers.utils import load_image
 
+        >>> name_or_path = "ostris/Flex.2-preview"
+
         >>> inpaint_image = load_image("https://ostris.com/wp-content/uploads/2025/04/dog.jpg")
         >>> inpaint_mask = load_image("https://ostris.com/wp-content/uploads/2025/04/dog_mask.jpg")
         >>> control_image = load_image("https://ostris.com/wp-content/uploads/2025/04/dog_depth.jpg")
