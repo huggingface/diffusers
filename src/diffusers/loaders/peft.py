@@ -238,11 +238,11 @@ class PeftAdapterMixin:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
-            metadata = state_dict.pop(LORA_ADAPTER_METADATA_KEY, None)
             state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
-            if metadata is not None:
-                state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
+        metadata = state_dict.pop(LORA_ADAPTER_METADATA_KEY, None)
+        if metadata is not None:
+            state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
@@ -487,8 +487,7 @@ class PeftAdapterMixin:
         if safe_serialization:
 
             def save_function(weights, filename):
-                # We need to be able to serialize the NoneTypes too, otherwise we run into
-                # 'NoneType' object cannot be converted to 'PyString'
+                # Inject framework format.
                 metadata = {"format": "pt"}
                 if lora_adapter_metadata is not None:
                     for key, value in lora_adapter_metadata.items():

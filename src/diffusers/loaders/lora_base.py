@@ -903,8 +903,7 @@ class LoraBaseMixin:
             if safe_serialization:
 
                 def save_function(weights, filename):
-                    # We need to be able to serialize the NoneTypes too, otherwise we run into
-                    # 'NoneType' object cannot be converted to 'PyString'
+                    # Inject framework format.
                     metadata = {"format": "pt"}
                     if lora_adapter_metadata:
                         for key, value in lora_adapter_metadata.items():

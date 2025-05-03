@@ -31,7 +31,6 @@ from diffusers.utils.testing_utils import (
     check_if_dicts_are_equal,
     floats_tensor,
     require_peft_backend,
-    skip_mps,
     torch_device,
 )
 
@@ -42,7 +41,7 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-@skip_mps
+# @skip_mps
 class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
@@ -147,8 +146,8 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
-    def test_adapter_metadata_is_loaded_correctly(self):
-        # Will write the test in utils.py eventually.
+    def test_lora_adapter_metadata_is_loaded_correctly(self):
+        # TODO: Will write the test in utils.py eventually.
         scheduler_cls = self.scheduler_classes[0]
         components, _, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
         pipe = self.pipeline_class(**components)
@@ -175,7 +174,7 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             parsed_metadata = {k[len("transformer.") :]: v for k, v in parsed_metadata.items()}
             check_if_dicts_are_equal(parsed_metadata, metadata)
 
-    def test_adapter_metadata_save_load_inference(self):
+    def test_lora_adapter_metadata_save_load_inference(self):
         # Will write the test in utils.py eventually.
         scheduler_cls = self.scheduler_classes[0]
         components, _, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
