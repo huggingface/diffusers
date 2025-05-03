@@ -43,7 +43,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import FluxPipelineOutput
+from .pipeline_output import Flex2PipelineOutput
 
 
 if is_torch_xla_available():
@@ -1046,4 +1046,4 @@ class Flex2Pipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin,
         if not return_dict:
             return (image,)
 
-        return FluxPipelineOutput(images=image)
+        return Flex2PipelineOutput(images=image)
