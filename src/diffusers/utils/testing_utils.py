@@ -135,10 +135,10 @@ def numpy_cosine_similarity_distance(a, b):
 def check_if_dicts_are_equal(dict1, dict2):
     for key, value in dict1.items():
         if isinstance(value, set):
-            dict1[key] = list(value)
+            dict1[key] = sorted(value)
     for key, value in dict2.items():
         if isinstance(value, set):
-            dict2[key] = list(value)
+            dict2[key] = sorted(value)
 
     for key in dict1:
         if key not in dict2:
