@@ -1077,7 +1077,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             generator,
         )
 
-        def apply_dilate_to_mask_image(mask,iterations = 8):
+        def apply_dilate_to_mask_image(mask,iterations):
             kernel = np.ones((3, 3), np.uint8)
             mask = np.array(mask, dtype=bool)
             mask = mask.astype(np.uint8)
@@ -1089,7 +1089,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
         # input np array size: 4096 x 3
         # output np array size: 64 x 64 x 3
-        def mask_gradienting(mask, iterations=1):
+        def mask_gradienting(mask, iterations=3):
             mask_array = mask.reshape(64,64,-1)
 
             # gradent 1
