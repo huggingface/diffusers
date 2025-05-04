@@ -1273,6 +1273,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,mask)
+            return (image,)
 
         return FluxPipelineOutput(images=image)
