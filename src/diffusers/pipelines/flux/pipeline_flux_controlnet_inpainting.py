@@ -1075,6 +1075,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             generator,
         )
 
+        print(f'mask size={mask.size()}')
+
         controlnet_keep = []
         for i in range(len(timesteps)):
             keeps = [
