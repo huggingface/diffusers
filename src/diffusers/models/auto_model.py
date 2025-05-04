@@ -15,7 +15,7 @@
 import os
 from typing import Optional, Union
 
-from huggingface_hub.utils import EntryNotFoundError, validate_hf_hub_args
+from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
 from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
@@ -169,18 +169,38 @@ class AutoModel(ConfigMixin):
 
             if subfolder is not None and subfolder in config:
                 library, orig_class_name = config[subfolder]
+                load_config_kwargs.update({"subfolder": subfolder})
 
-        except EntryNotFoundError as e:
+        except EnvironmentError as e:
             logger.debug(e)
 
         # Unable to load from model_index.json so fallback to loading from config
         if library is None and orig_class_name is None:
             cls.config_name = "config.json"
-            load_config_kwargs.update({"subfolder": subfolder})
+            config = cls.load_config(pretrained_model_or_path, subfolder=subfolder, **load_config_kwargs)
 
-            config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-            orig_class_name = config["_class_name"]
-            library = "diffusers"
+            if "_class_name" in config:
+                # If we find a class name in the config, we can try to load the model as a diffusers model
+                orig_class_name = config["_class_name"]
+                library = "diffusers"
+                load_config_kwargs.update({"subfolder": subfolder})
+            else:
+                # If we don't find a class name in the config, we can try to load the model as a transformers model
+                logger.warning(
+                    f"Doesn't look like a diffusers model. Loading {pretrained_model_or_path} as a transformer model."
+                )
+                if "architectures" in config and len(config["architectures"]) > 0:
+                    if len(config["architectures"]) > 1:
+                        logger.warning(
+                            f"Found multiple architectures in {pretrained_model_or_path}. Using the first one: {config['architectures'][0]}"
+                        )
+                    orig_class_name = config["architectures"][0]
+                    library = "transformers"
+                    load_config_kwargs.update({"subfolder": "" if subfolder is None else subfolder})
+                else:
+                    raise ValueError(
+                        f"Couldn't find model associated with the config file at {pretrained_model_or_path}."
+                    )
 
         model_cls, _ = get_class_obj_and_candidates(
             library_name=library,
