@@ -768,7 +768,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        iterations: Optional[int] = 1,
+        iterations: Optional[int] = 3,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1119,12 +1119,22 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             gray2_array = gray2_array * dilated_mask2_image_bool
             mask3_array = np.where(mask2_array>0,mask2_array,gray2_array)
 
-            # rescale to 1.0, 0.75, 0.5, 0.25, 0.0
+            # gradent 4
+            dilated_mask3_image = apply_dilate_to_mask_image(mask3_array,iterations = iterations)
+            mask3_array_bool = np.array(mask3_array,dtype=bool)
+            dilated_mask3_image_bool = np.array(dilated_mask3_image, dtype=bool)
+            gray3_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 50
+            gray3_array = gray3_array * (~mask3_array_bool)
+            gray3_array = gray3_array * dilated_mask3_image_bool
+            mask4_array = np.where(mask3_array>0,mask3_array,gray3_array)
+
+            # rescale to 1.0, 0.8, 0.6, 0.4, 0.2, 0.0
             final_mask_array = np.zeros_like(mask_array)
-            final_mask_array = np.where(mask3_array==255, 1, final_mask_array)
-            final_mask_array = np.where(mask3_array==200, 0.75, final_mask_array)
-            final_mask_array = np.where(mask3_array==150, 0.5, final_mask_array)
-            final_mask_array = np.where(mask3_array==100, 0.25, final_mask_array)
+            final_mask_array = np.where(mask4_array==255, 1.0, final_mask_array)
+            final_mask_array = np.where(mask4_array==200, 0.8, final_mask_array)
+            final_mask_array = np.where(mask4_array==150, 0.6, final_mask_array)
+            final_mask_array = np.where(mask4_array==100, 0.4, final_mask_array)
+            final_mask_array = np.where(mask4_array==50, 0.2, final_mask_array)
 
             return final_mask_array
 
