@@ -1,6 +1,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import cv2
 import numpy as np
 import PIL
 import torch
@@ -767,6 +768,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        iterations: Optional[int] = 1,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1074,6 +1076,65 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             device,
             generator,
         )
+
+        def apply_dilate_to_mask_image(mask,iterations = 8):
+            kernel = np.ones((3, 3), np.uint8)
+            mask = np.array(mask, dtype=bool)
+            mask = mask.astype(np.uint8)
+            mask = cv2.dilate(mask, kernel, iterations=iterations)
+            mask = mask.astype(np.uint8)
+            #mask = Image.fromarray(mask * 255)
+
+            return mask
+
+        # input np array size: 4096 x 3
+        # output np array size: 64 x 64 x 3
+        def mask_gradienting(mask, iterations=1):
+            mask_array = mask.reshape(64,64,-1)
+
+            # gradent 1
+            dilated_mask_image = apply_dilate_to_mask_image(mask_array,iterations = iterations)
+            original_mask_array_bool = np.array(mask_array,dtype=bool)
+            dilated_mask_array_bool = np.array(dilated_mask_image, dtype=bool)
+            gray_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 200
+            gray_array = gray_array * (~original_mask_array_bool)
+            gray_array = gray_array * dilated_mask_array_bool
+            mask1_array = np.where(mask_array>0, mask_array* 255, gray_array)
+
+            # gradent 2
+            dilated_mask1_image = apply_dilate_to_mask_image(mask1_array,iterations = iterations)
+            mask1_array_bool = np.array(mask1_array,dtype=bool)
+            dilated_mask1_image_bool = np.array(dilated_mask1_image, dtype=bool)
+            gray1_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 150
+            gray1_array = gray1_array * (~mask1_array_bool)
+            gray1_array = gray1_array * dilated_mask1_image_bool
+            mask2_array = np.where(mask1_array>0,mask1_array,gray1_array)
+
+            # gradent 3
+            dilated_mask2_image = apply_dilate_to_mask_image(mask2_array,iterations = iterations)
+            mask2_array_bool = np.array(mask2_array,dtype=bool)
+            dilated_mask2_image_bool = np.array(dilated_mask2_image, dtype=bool)
+            gray2_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 100
+            gray2_array = gray2_array * (~mask2_array_bool)
+            gray2_array = gray2_array * dilated_mask2_image_bool
+            mask3_array = np.where(mask2_array>0,mask2_array,gray2_array)
+
+            # rescale to 1.0, 0.75, 0.5, 0.25, 0.0
+            final_mask_array = np.zeros_like(mask_array)
+            final_mask_array = np.where(mask3_array==255, 1, final_mask_array)
+            final_mask_array = np.where(mask3_array==200, 0.75, final_mask_array)
+            final_mask_array = np.where(mask3_array==150, 0.5, final_mask_array)
+            final_mask_array = np.where(mask3_array==100, 0.25, final_mask_array)
+
+            return final_mask_array
+
+        # mask graident
+        tmp_mask = mask[0,:,:].cpu().numpy()
+        mask_gradient = mask_gradienting(tmp_mask, iterations=iterations)
+        tmp_tensor = torch.Tensor(mask_gradient)
+        tmp_tensor = tmp_tensor.view(-1,64)
+        tmp_tensor = torch.stack([tmp_tensor, tmp_tensor, tmp_tensor], dim=0)
+        mask = tmp_tensor.to(device=mask.device, dtype=mask.dtype)
 
         controlnet_keep = []
         for i in range(len(timesteps)):
