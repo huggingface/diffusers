@@ -394,7 +394,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         is_qv: Optional[bool] = False, # thesea modified for quick validation of product shots
         is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
-        iterations: Optional[int] = 10, # controlnet inpainting
+        iterations: Optional[int] = 20, # controlnet inpainting
         mask_value: Optional[int] = 255, # controlnet inpainting
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
