@@ -1075,9 +1075,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             generator,
         )
 
-        print(f'mask size={mask.size()}')
-        print(f'mask value={mask}')
-
         controlnet_keep = []
         for i in range(len(timesteps)):
             keeps = [
@@ -1205,6 +1202,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,)
+            return (image,mask)
 
         return FluxPipelineOutput(images=image)
