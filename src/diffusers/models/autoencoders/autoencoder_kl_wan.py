@@ -837,6 +837,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 out = torch.cat([out, out_], 2)
 
         enc = self.quant_conv(out)
+        self.clear_cache()
         return enc
 
     @apply_forward_hook
@@ -980,6 +981,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     time.append(tile)
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
+        self.clear_cache()
 
         result_rows = []
         for i, row in enumerate(rows):
@@ -1039,6 +1041,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     time.append(decoded)
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
+        self.clear_cache()
 
         result_rows = []
         for i, row in enumerate(rows):
