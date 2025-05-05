@@ -365,6 +365,8 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoderkl_cosmos
+        title: AutoencoderKLCosmos
       - local: api/models/autoencoder_kl_hunyuan_video
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video

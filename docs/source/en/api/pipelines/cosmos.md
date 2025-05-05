@@ -30,6 +30,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
   - all
   - __call__
 
+## CosmosVideoToWorldPipeline
+
+[[autodoc]] pipelines.cosmos.video_to_world_pipeline.CosmosVideoToWorldPipeline
+  - all
+  - __call__
+
 ## CosmosPipelineOutput
 
 [[autodoc]] pipelines.cosmos.pipeline_output.CosmosPipelineOutput
