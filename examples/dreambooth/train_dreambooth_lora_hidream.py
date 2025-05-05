@@ -1713,10 +1713,11 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        if args.upcast_before_saving:
-            transformer.to(torch.float32)
-        else:
-            transformer = transformer.to(weight_dtype)
+        if args.bnb_quantization_config_path is None:
+            if args.upcast_before_saving:
+                transformer.to(torch.float32)
+            else:
+                transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         HiDreamImagePipeline.save_lora_weights(
