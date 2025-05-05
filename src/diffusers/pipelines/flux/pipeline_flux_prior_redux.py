@@ -394,6 +394,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         is_qv: Optional[bool] = False, # thesea modified for quick validation of product shots
         is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
+        is_inpainting: Optional[bool] = False, # controlnet inpainting
         iterations: Optional[int] = 20, # controlnet inpainting
         mask_value: Optional[int] = 255, # controlnet inpainting
         image_width: Optional[int] = 1024,
@@ -647,7 +648,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         if not return_dict:
             if is_qv:
-                return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
+                if is_inpainting:
+                    return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
+                else:
+                    return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
             else:
                 return (prompt_embeds, pooled_prompt_embeds)
 
