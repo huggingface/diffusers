@@ -2103,7 +2103,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix = prefix or cls.transformer_name
         for key in list(state_dict.keys()):
             if key.split(".")[0] == prefix:
-                state_dict[key[len(f"{prefix}.") :]] = state_dict.pop(key)
+                state_dict[key.removeprefix(prefix + ".")] = state_dict.pop(key)
 
         # Find invalid keys
         transformer_state_dict = transformer.state_dict()
@@ -2425,7 +2425,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix = prefix or cls.transformer_name
         for key in list(state_dict.keys()):
             if key.split(".")[0] == prefix:
-                state_dict[key[len(f"{prefix}.") :]] = state_dict.pop(key)
+                state_dict[key.removeprefix(prefix + ".")] = state_dict.pop(key)
 
         # Expand transformer parameter shapes if they don't match lora
         has_param_with_shape_update = False
