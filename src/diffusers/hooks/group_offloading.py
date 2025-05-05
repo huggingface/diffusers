@@ -243,7 +243,7 @@ class GroupOffloadingHook(ModelHook):
 
 class LazyPrefetchGroupOffloadingHook(ModelHook):
     r"""
-    A hook, used in conjuction with GroupOffloadingHook, that applies lazy prefetching to groups of torch.nn.Module.
+    A hook, used in conjunction with GroupOffloadingHook, that applies lazy prefetching to groups of torch.nn.Module.
     This hook is used to determine the order in which the layers are executed during the forward pass. Once the layer
     invocation order is known, assignments of the next_group attribute for prefetching can be made, which allows
     prefetching groups in the correct order.

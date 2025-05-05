@@ -576,7 +576,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            "The transformer block layers to apply LoRA training on. Please specify the layers in a comma seperated string."
+            "The transformer block layers to apply LoRA training on. Please specify the layers in a comma separated string."
             "For examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md"
         ),
     )
@@ -585,7 +585,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            "The transformer blocks to apply LoRA training on. Please specify the block numbers in a comma seperated manner."
+            "The transformer blocks to apply LoRA training on. Please specify the block numbers in a comma separated manner."
             'E.g. - "--lora_blocks 12,30" will result in lora training of transformer blocks 12 and 30. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md'
         ),
     )
