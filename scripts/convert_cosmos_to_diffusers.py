@@ -7,7 +7,7 @@ from accelerate import init_empty_weights
 from huggingface_hub import snapshot_download
 from transformers import T5EncoderModel, T5TokenizerFast
 
-from diffusers import AutoencoderKLCosmos, CosmosPipeline, CosmosTransformer3DModel, EDMEulerScheduler
+from diffusers import AutoencoderKLCosmos, CosmosTextToWorldPipeline, CosmosTransformer3DModel, EDMEulerScheduler
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -92,6 +92,36 @@ TRANSFORMER_CONFIGS = {
         "max_size": (128, 240, 240),
         "patch_size": (1, 2, 2),
         "rope_scale": (2.0, 1.0, 1.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": "learnable",
+    },
+    "Cosmos-1.0-Diffusion-14B-Text2World": {
+        "in_channels": 16,
+        "out_channels": 16,
+        "num_attention_heads": 40,
+        "attention_head_dim": 128,
+        "num_layers": 36,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (2.0, 2.0, 2.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": "learnable",
+    },
+    "Cosmos-1.0-Diffusion-14B-Video2World": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 40,
+        "attention_head_dim": 128,
+        "num_layers": 36,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (2.0, 2.0, 2.0),
         "concat_padding_mask": True,
         "extra_pos_embed_type": "learnable",
     },
@@ -312,7 +342,7 @@ if __name__ == "__main__":
             final_sigmas_type="sigma_min",
         )
 
-        pipe = CosmosPipeline(
+        pipe = CosmosTextToWorldPipeline(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             transformer=transformer,
