@@ -48,20 +48,6 @@ class HunyuanVideoFramepackRotaryPosEmbed(nn.Module):
         self.theta = theta
 
     def forward(self, frame_indices: torch.Tensor, height: int, width: int, device: torch.device):
-        # This is from the original code.  We don't call _forward for each batch index because we know that
-        # each batch has the same frame indices. However, it may be possible that the frame indices don't
-        # always be the same for every item in a batch (such as in training). We cannot use the original
-        # implementation because our `apply_rotary_emb` function broadcasts across the batch dim, so we'd
-        # need to first implement another attention processor or modify the existing one with different apply_rotary_emb
-        # frame_indices = frame_indices.unbind(0)
-        # freqs = [self._forward(f, height, width, device) for f in frame_indices]
-        # freqs_cos, freqs_sin = zip(*freqs)
-        # freqs_cos = torch.stack(freqs_cos, dim=0)  # [B, W * H * T, D / 2]
-        # freqs_sin = torch.stack(freqs_sin, dim=0)  # [B, W * H * T, D / 2]
-        # return freqs_cos, freqs_sin
-        return self._forward(frame_indices, height, width, device)
-
-    def _forward(self, frame_indices, height, width, device):
         height = height // self.patch_size
         width = width // self.patch_size
         grid = torch.meshgrid(
