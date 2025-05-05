@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
 import os
 from typing import Optional, Union
 
-from huggingface_hub.utils import validate_hf_hub_args
+from huggingface_hub.utils import EntryNotFoundError, validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
+from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
 
 
 class AutoModel(ConfigMixin):
@@ -153,17 +153,39 @@ class AutoModel(ConfigMixin):
             "token": token,
             "local_files_only": local_files_only,
             "revision": revision,
-            "subfolder": subfolder,
         }
 
-        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-        orig_class_name = config["_class_name"]
+        library = None
+        orig_class_name = None
+        from diffusers import pipelines
 
-        library = importlib.import_module("diffusers")
+        # Always attempt to fetch model_index.json first
+        try:
+            cls.config_name = "model_index.json"
+            config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
 
-        model_cls = getattr(library, orig_class_name, None)
-        if model_cls is None:
-            raise ValueError(f"AutoModel can't find a model linked to {orig_class_name}.")
+            if subfolder is not None and subfolder in config:
+                library, orig_class_name = config[subfolder]
+
+        except (OSError, EntryNotFoundError) as e:
+            logger.debug(e)
+
+        # Unable to load from model_index.json so fallback to loading from config
+        if library is None and orig_class_name is None:
+            cls.config_name = "config.json"
+            load_config_kwargs.update({"subfolder": subfolder})
+
+            config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+            orig_class_name = config["_class_name"]
+            library = "diffusers"
+
+        model_cls, _ = get_class_obj_and_candidates(
+            library_name=library,
+            class_name=orig_class_name,
+            importable_classes=ALL_IMPORTABLE_CLASSES,
+            pipelines=pipelines,
+            is_pipeline_module=hasattr(pipelines, library),
+        )
 
         kwargs = {**load_config_kwargs, **kwargs}
         return model_cls.from_pretrained(pretrained_model_or_path, **kwargs)

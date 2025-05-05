@@ -23,8 +23,9 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import Attention, AttentionMixin
+from ..attention import Attention, AttentionMixin, AttentionModuleMixin
 from ..attention_processor import (
+    AttnProcessorMixin,
     AuraFlowAttnProcessor2_0,
 )
 from ..embeddings import TimestepEmbedding, Timesteps
@@ -133,6 +134,98 @@ class AuraFlowPreFinalBlock(nn.Module):
         return x
 
 
+class AuraFlowAttnProcessorSDPA(AttnProcessorMixin):
+    """Attention processor used typically in processing Aura Flow."""
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
+            raise ImportError(
+                "AuraFlowAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
+            )
+
+    def __call__(
+        self,
+        attn: AttentionModuleMixin,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        *args,
+        **kwargs,
+    ) -> torch.FloatTensor:
+        batch_size = hidden_states.shape[0]
+        query, key, value, encoder_projections = self.get_projections(attn, hidden_states, encoder_hidden_states)
+
+        # `context` projections.
+        if encoder_projections is not None:
+            encoder_hidden_states_query_proj, encoder_hidden_states_key_proj, encoder_hidden_states_value_proj = (
+                encoder_projections
+            )
+
+        # Reshape.
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, attn.heads, head_dim)
+        value = value.view(batch_size, -1, attn.heads, head_dim)
+
+        # Apply QK norm.
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # Concatenate the projections.
+        if encoder_projections is not None:
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            )
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(batch_size, -1, attn.heads, head_dim)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            )
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_q(encoder_hidden_states_key_proj)
+
+            query = torch.cat([encoder_hidden_states_query_proj, query], dim=1)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
+
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
+
+        # Attention.
+        hidden_states = self.attention_fn(query, key, value, scale=attn.scale)
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # Split the attention outputs.
+        if encoder_hidden_states is not None:
+            hidden_states, encoder_hidden_states = (
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+                hidden_states[:, : encoder_hidden_states.shape[1]],
+            )
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+        if encoder_hidden_states is not None:
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        if encoder_hidden_states is not None:
+            return hidden_states, encoder_hidden_states
+        else:
+            return hidden_states
+
+
+class AuraFlowAttention(Attention):
+    default_processor_cls = AuraFlowAttnProcessorSDPA
+    _available_processors = [AuraFlowAttnProcessorSDPA]
+
+
 @maybe_allow_in_graph
 class AuraFlowSingleTransformerBlock(nn.Module):
     """Similar to `AuraFlowJointTransformerBlock` with a single DiT instead of an MMDiT."""
@@ -143,7 +236,7 @@ class AuraFlowSingleTransformerBlock(nn.Module):
         self.norm1 = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
         processor = AuraFlowAttnProcessor2_0()
-        self.attn = Attention(
+        self.attn = AuraFlowAttention(
             query_dim=dim,
             cross_attention_dim=None,
             dim_head=attention_head_dim,
@@ -206,7 +299,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
         self.norm1_context = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
         processor = AuraFlowAttnProcessor2_0()
-        self.attn = Attention(
+        self.attn = AuraFlowAttention(
             query_dim=dim,
             cross_attention_dim=None,
             added_kv_proj_dim=dim,

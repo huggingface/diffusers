@@ -22,10 +22,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import AttentionMixin
-from ..attention_processor import (
-    AttentionModuleMixin,
-)
+from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention_processor import Attention, AttnProcessorMixin
 from ..cache_utils import CacheMixin
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
@@ -37,13 +35,13 @@ from .modeling_common import FeedForward
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class BaseCogVideoXAttnProcessor:
+class CogVideoXAttnProcessorSDPA(AttnProcessorMixin):
     r"""
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
     query and key vectors, but does not include spatial normalization.
     """
 
-    compatible_backends = []
+    compatible_backends = ["cuda", "cpu", "xpu"]
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -51,56 +49,9 @@ class BaseCogVideoXAttnProcessor:
                 "CogVideoXAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
-    def get_projections(self, attn, hidden_states, encoder_hidden_states=None):
-        """Public method to get projections based on whether we're using fused mode or not."""
-        if self.is_fused and hasattr(attn, "to_qkv"):
-            return self._get_fused_projections(attn, hidden_states, encoder_hidden_states)
-
-        return self._get_projections(attn, hidden_states, encoder_hidden_states)
-
-    def _get_projections(self, attn, hidden_states, encoder_hidden_states=None):
-        """Get projections using standard separate projection matrices."""
-        # Standard separate projections
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        # Handle encoder projections if present
-        encoder_projections = None
-        if encoder_hidden_states is not None and hasattr(attn, "add_q_proj"):
-            encoder_query = attn.add_q_proj(encoder_hidden_states)
-            encoder_key = attn.add_k_proj(encoder_hidden_states)
-            encoder_value = attn.add_v_proj(encoder_hidden_states)
-            encoder_projections = (encoder_query, encoder_key, encoder_value)
-
-        return query, key, value, encoder_projections
-
-    def _get_fused_projections(self, attn, hidden_states, encoder_hidden_states=None):
-        """Get projections using fused QKV projection matrices."""
-        # Fused QKV projection
-        qkv = attn.to_qkv(hidden_states)
-        split_size = qkv.shape[-1] // 3
-        query, key, value = torch.split(qkv, split_size, dim=-1)
-
-        # Handle encoder projections if present
-        encoder_projections = None
-        if encoder_hidden_states is not None and hasattr(attn, "to_added_qkv"):
-            encoder_qkv = attn.to_added_qkv(encoder_hidden_states)
-            split_size = encoder_qkv.shape[-1] // 3
-            encoder_query, encoder_key, encoder_value = torch.split(encoder_qkv, split_size, dim=-1)
-            encoder_projections = (encoder_query, encoder_key, encoder_value)
-
-        return query, key, value, encoder_projections
-
-    def _compute_attention(self, query, key, value, attention_mask=None):
-        """Computes the attention. Can be overridden by hardware-specific implementations."""
-        return F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
     def __call__(
         self,
-        attn: CogVideoXAttention,
+        attn: AttentionModuleMixin,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
@@ -138,7 +89,7 @@ class BaseCogVideoXAttnProcessor:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        hidden_states = self._compute_attention(query, key, value, attention_mask=attention_mask)
+        hidden_states = self.attention_fn(query, key, value, attention_mask=attention_mask)
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
 
         # linear proj
@@ -152,51 +103,9 @@ class BaseCogVideoXAttnProcessor:
         return hidden_states, encoder_hidden_states
 
 
-class CogVideoXAttnProcessorSDPA(BaseCogVideoXAttnProcessor):
-    compatible_backends = ["cuda", "cpu", "xpu"]
-
-
-class CogVideoXAttention(nn.Module, AttentionModuleMixin):
+class CogVideoXAttention(Attention):
     default_processor_cls = CogVideoXAttnProcessorSDPA
     _available_processors = [CogVideoXAttnProcessorSDPA]
-
-    def __init__(
-        self, query_dim, dim_head, heads, dropout=0.0, qk_norm=None, eps=1e-6, bias=False, out_bias=False
-    ) -> None:
-        self.query_dim = query_dim
-        self.out_dim = query_dim
-        self.inner_dim = dim_head * heads
-        self.use_bias = bias
-
-        self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
-        self.to_k = nn.Linear(query_dim, self.inner_dim, bias=bias)
-        self.to_v = nn.Linear(query_dim, self.inner_dim, bias=bias)
-
-        if qk_norm is None:
-            self.norm_q = None
-            self.norm_k = None
-        elif qk_norm == "layer_norm":
-            self.norm_q = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
-            self.norm_k = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
-
-        self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
-        self.to_out.append(nn.Dropout(dropout))
-
-        self.set_processor(self.default_processor_cls())
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        return self.processor(
-            self,
-            hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            attention_mask=attention_mask,
-        )
 
 
 @maybe_allow_in_graph

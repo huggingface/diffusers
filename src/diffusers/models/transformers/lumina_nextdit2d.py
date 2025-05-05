@@ -20,7 +20,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..attention import LuminaFeedForward
-from ..attention_processor import Attention, LuminaAttnProcessor2_0
+from ..attention_processor import Attention, AttentionMixin, AttnProcessorMixin
 from ..embeddings import (
     LuminaCombinedTimestepCaptionEmbedding,
     LuminaPatchEmbed,
@@ -31,6 +31,101 @@ from ..normalization import LuminaLayerNormContinuous, LuminaRMSNormZero, RMSNor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class LuminaAttnProcessorSDPA(AttnProcessorMixin):
+    compatible_backends = ["cuda", "cpu", "xpu"]
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        query_rotary_emb: Optional[torch.Tensor] = None,
+        key_rotary_emb: Optional[torch.Tensor] = None,
+        base_sequence_length: Optional[int] = None,
+    ) -> torch.Tensor:
+        from .embeddings import apply_rotary_emb
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = hidden_states.shape
+
+        query, key, value, _ = self.get_projections(attn, hidden_states, encoder_hidden_states)
+
+        query_dim = query.shape[-1]
+        inner_dim = key.shape[-1]
+        head_dim = query_dim // attn.heads
+        dtype = query.dtype
+
+        # Get key-value heads
+        kv_heads = inner_dim // head_dim
+
+        # Apply Query-Key Norm if needed
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+
+        key = key.view(batch_size, -1, kv_heads, head_dim)
+        value = value.view(batch_size, -1, kv_heads, head_dim)
+
+        # Apply RoPE if needed
+        if query_rotary_emb is not None:
+            query = apply_rotary_emb(query, query_rotary_emb, use_real=False)
+        if key_rotary_emb is not None:
+            key = apply_rotary_emb(key, key_rotary_emb, use_real=False)
+
+        query, key = query.to(dtype), key.to(dtype)
+
+        # Apply proportional attention if true
+        if key_rotary_emb is None:
+            softmax_scale = None
+        else:
+            if base_sequence_length is not None:
+                softmax_scale = math.sqrt(math.log(sequence_length, base_sequence_length)) * attn.scale
+            else:
+                softmax_scale = attn.scale
+
+        # perform Grouped-qurey Attention (GQA)
+        n_rep = attn.heads // kv_heads
+        if n_rep >= 1:
+            key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+            value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+
+        # scaled_dot_product_attention expects attention_mask shape to be
+        # (batch, heads, source_length, target_length)
+        attention_mask = attention_mask.bool().view(batch_size, 1, 1, -1)
+        attention_mask = attention_mask.expand(-1, attn.heads, sequence_length, -1)
+
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, scale=softmax_scale
+        )
+        hidden_states = hidden_states.transpose(1, 2).to(dtype)
+
+        return hidden_states
+
+
+class LuminaNextAttention(Attention):
+    default_processor_cls = LuminaAttnProcessorSDPA
+    _available_processors = [LuminaAttnProcessorSDPA]
 
 
 class LuminaNextDiTBlock(nn.Module):
@@ -68,7 +163,7 @@ class LuminaNextDiTBlock(nn.Module):
         self.gate = nn.Parameter(torch.zeros([num_attention_heads]))
 
         # Self-attention
-        self.attn1 = Attention(
+        self.attn1 = LuminaNextAttention(
             query_dim=dim,
             cross_attention_dim=None,
             dim_head=dim // num_attention_heads,
@@ -78,12 +173,11 @@ class LuminaNextDiTBlock(nn.Module):
             eps=1e-5,
             bias=False,
             out_bias=False,
-            processor=LuminaAttnProcessor2_0(),
         )
         self.attn1.to_out = nn.Identity()
 
         # Cross-attention
-        self.attn2 = Attention(
+        self.attn2 = LuminaNextAttention(
             query_dim=dim,
             cross_attention_dim=cross_attention_dim,
             dim_head=dim // num_attention_heads,
@@ -93,7 +187,6 @@ class LuminaNextDiTBlock(nn.Module):
             eps=1e-5,
             bias=False,
             out_bias=False,
-            processor=LuminaAttnProcessor2_0(),
         )
 
         self.feed_forward = LuminaFeedForward(
@@ -175,7 +268,7 @@ class LuminaNextDiTBlock(nn.Module):
         return hidden_states
 
 
-class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
+class LuminaNextDiT2DModel(ModelMixin, ConfigMixin, AttentionMixin):
     """
     LuminaNextDiT: Diffusion model with a Transformer backbone.
 

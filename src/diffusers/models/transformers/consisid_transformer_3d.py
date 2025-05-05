@@ -22,8 +22,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import Attention, AttentionMixin
-from ..attention_processor import CogVideoXAttnProcessor2_0
+from ..attention import Attention
+from ..attention_processor import CogVideoXAttnProcessor2_0, CogVideoXAttnProcessorSDPA
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -229,6 +229,11 @@ class PerceiverCrossAttention(nn.Module):
         return self.to_out(out)
 
 
+class ConsisIDAttention(Attention):
+    default_processor_cls = CogVideoXAttnProcessorSDPA
+    _available_processors = [CogVideoXAttnProcessorSDPA]
+
+
 @maybe_allow_in_graph
 class ConsisIDBlock(nn.Module):
     r"""
@@ -287,7 +292,7 @@ class ConsisIDBlock(nn.Module):
         # 1. Self Attention
         self.norm1 = CogVideoXLayerNormZero(time_embed_dim, dim, norm_elementwise_affine, norm_eps, bias=True)
 
-        self.attn1 = Attention(
+        self.attn1 = ConsisIDAttention(
             query_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
