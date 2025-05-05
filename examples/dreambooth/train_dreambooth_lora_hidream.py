@@ -452,7 +452,7 @@ def parse_args(input_args=None):
         help=(
             "Aspect ratio buckets to use for training. Define as a string of 'h1,w1;h2,w2;...'. "
             "e.g. '1024,1024;768,1360;1360,768;880,1168;1168,880;1248,832;832,1248'"
-            "Images will be resized and cropped to fit the nearest bucket."
+            "Images will be resized and cropped to fit the nearest bucket. If provided, --resolution is ignored."
         ),
     )
     parser.add_argument(
@@ -744,13 +744,10 @@ class DreamBoothDataset(Dataset):
         class_prompt,
         class_data_root=None,
         class_num=None,
-        size=1024,
         repeats=1,
         center_crop=False,
-        buckets=[(1024, 1024), (768, 1360), (1360, 768), (880, 1168), (1168, 880), (1248, 832), (832, 1248)],
-        # buckets=[(1024, 1024)],
+        buckets=None,
     ):
-        # self.size = (size, size)
         self.center_crop = center_crop
 
         self.instance_prompt = instance_prompt
@@ -823,7 +820,6 @@ class DreamBoothDataset(Dataset):
             self.instance_images.extend(itertools.repeat(img, repeats))
 
         self.pixel_values = []
-        # self.aspect_assignments = []
         for image in self.instance_images:
             image = exif_transpose(image)
             if not image.mode == "RGB":
@@ -1351,11 +1347,12 @@ def main(args):
             safeguard_warmup=args.prodigy_safeguard_warmup,
         )
 
-    if args.aspect_ratio_buckets:
+    if args.aspect_ratio_buckets is not None:
         buckets = parse_buckets_string(args.aspect_ratio_buckets)
     else:
         buckets = [(args.resolution, args.resolution)]
     logger.info(f"Using parsed aspect ratio buckets: {buckets}")
+
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -1363,7 +1360,6 @@ def main(args):
         class_prompt=args.class_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         class_num=args.num_class_images,
-        size=args.resolution,
         buckets=buckets,
         repeats=args.repeats,
         center_crop=args.center_crop,
@@ -1372,8 +1368,6 @@ def main(args):
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_sampler=batch_sampler,
-        # batch_size=args.train_batch_size,
-        # shuffle=True,
         collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
         num_workers=args.dataloader_num_workers,
     )
