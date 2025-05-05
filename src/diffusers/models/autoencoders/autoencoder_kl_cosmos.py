@@ -193,12 +193,13 @@ class CosmosUnpatcher3d(nn.Module):
         )
 
     def _idwt(self, hidden_states: torch.Tensor, rescale: bool = False) -> torch.Tensor:
+        device = hidden_states.device
         dtype = hidden_states.dtype
-        h = self.wavelets
+        h = self.wavelets.to(device)
 
         g = hidden_states.shape[1] // 8  # split into 8 spatio-temporal filtered tesnors.
         hl = h.flip([0]).reshape(1, 1, -1).repeat([g, 1, 1])
-        hh = (h * ((-1) ** self._arange)).reshape(1, 1, -1).repeat(g, 1, 1)
+        hh = (h * ((-1) ** self._arange.to(device))).reshape(1, 1, -1).repeat(g, 1, 1)
         hl = hl.to(dtype=dtype)
         hh = hh.to(dtype=dtype)
 
