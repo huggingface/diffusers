@@ -25,11 +25,11 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.semantic_stable_diffusion import SemanticStableDiffusionPipeline as StableDiffusionPipeline
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     nightly,
-    require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     torch_device,
 )
 
@@ -42,13 +42,13 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @property
     def dummy_image(self):
@@ -238,7 +238,7 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         image = pipe("example prompt", num_inference_steps=2).images[0]
         assert image is not None
 
-    @require_accelerator
+    @require_torch_accelerator
     def test_semantic_diffusion_fp16(self):
         """Test that stable diffusion works with fp16"""
         unet = self.dummy_cond_unet
@@ -272,22 +272,21 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_positive_guidance(self):
-        torch_device = "cuda"
         pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -370,7 +369,6 @@ class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_negative_guidance(self):
-        torch_device = "cuda"
         pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -453,7 +451,6 @@ class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_multi_cond_guidance(self):
-        torch_device = "cuda"
         pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -536,7 +533,6 @@ class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_guidance_fp16(self):
-        torch_device = "cuda"
         pipe = StableDiffusionPipeline.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
         )
