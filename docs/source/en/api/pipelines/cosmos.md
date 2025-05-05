@@ -24,9 +24,9 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
-## CosmosPipeline
+## CosmosTextToWorldPipeline
 
-[[autodoc]] CosmosPipeline
+[[autodoc]] CosmosTextToWorldPipeline
   - all
   - __call__
 

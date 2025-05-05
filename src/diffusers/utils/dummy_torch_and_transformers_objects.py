@@ -407,7 +407,7 @@ class ConsisIDPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class CosmosPipeline(metaclass=DummyObject):
+class CosmosTextToWorldPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

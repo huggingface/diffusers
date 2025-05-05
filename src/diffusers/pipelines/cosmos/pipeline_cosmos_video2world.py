@@ -229,7 +229,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
-    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos.CosmosPipeline._get_t5_prompt_embeds
+    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -272,7 +272,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos.CosmosPipeline.encode_prompt
+    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],

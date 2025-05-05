@@ -22,7 +22,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLCosmos, CosmosPipeline, CosmosTransformer3DModel, EDMEulerScheduler
+from diffusers import AutoencoderKLCosmos, CosmosTextToWorldPipeline, CosmosTransformer3DModel, EDMEulerScheduler
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -33,15 +33,15 @@ from .cosmos_guardrail import DummyCosmosSafetyChecker
 enable_full_determinism()
 
 
-class CosmosPipelineWrapper(CosmosPipeline):
+class CosmosTextToWorldPipelineWrapper(CosmosTextToWorldPipeline):
     @staticmethod
     def from_pretrained(*args, **kwargs):
         kwargs["safety_checker"] = DummyCosmosSafetyChecker()
-        return CosmosPipeline.from_pretrained(*args, **kwargs)
+        return CosmosTextToWorldPipeline.from_pretrained(*args, **kwargs)
 
 
-class CosmosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = CosmosPipelineWrapper
+class CosmosTextToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = CosmosTextToWorldPipelineWrapper
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
