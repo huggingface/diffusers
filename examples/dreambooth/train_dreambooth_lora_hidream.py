@@ -1127,7 +1127,12 @@ def main(args):
     text_encoder_three.to(**to_kwargs)
     text_encoder_four.to(**to_kwargs)
     # we never offload the transformer to CPU, so we can just use the accelerator device
-    transformer.to(accelerator.device)
+    transformer_to_kwargs = (
+        {"device": accelerator.device}
+        if args.bnb_quantization_config_path is not None
+        else {"device": accelerator.device, "dtype": weight_dtype}
+    )
+    transformer.to(**transformer_to_kwargs)
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
     text_encoding_pipeline = HiDreamImagePipeline.from_pretrained(
