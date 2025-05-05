@@ -929,7 +929,7 @@ def main(args):
     if interpolation is None:
         raise ValueError(f"Unsupported interpolation mode {args.image_interpolation_mode}.")
     # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=interpolation) # Use dynamic interpolation method
+    train_resize = transforms.Resize(args.resolution, interpolation=interpolation)  # Use dynamic interpolation method
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
     train_transforms = transforms.Compose(
