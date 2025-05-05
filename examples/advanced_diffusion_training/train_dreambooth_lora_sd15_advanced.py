@@ -915,7 +915,7 @@ class DreamBoothDataset(Dataset):
             self.instance_images.extend(itertools.repeat(img, repeats))
         self.num_instance_images = len(self.instance_images)
         self._length = self.num_instance_images
-        
+
         interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
         if interpolation is None:
             raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
