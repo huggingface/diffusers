@@ -658,13 +658,6 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
-    parser.add_argument(
-        "--lora_alpha",
-        type=int,
-        default=None,
-        help="Scaling factor for LoRA, if not provided will be set by default to be the same as --rank",
-    )
-
     parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
 
     parser.add_argument(
@@ -704,9 +697,6 @@ def parse_args(input_args=None):
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
-
-    if args.lora_alpha is None:
-        args.lora_alpha = args.rank
 
     if args.with_prior_preservation:
         if args.class_data_dir is None:
@@ -1246,7 +1236,7 @@ def main(args):
     # now we will add new LoRA weights to the attention layers
     unet_lora_config = LoraConfig(
         r=args.rank,
-        lora_alpha=args.lora_alpha,
+        lora_alpha=args.rank,
         lora_dropout=args.lora_dropout,
         use_dora=args.use_dora,
         init_lora_weights="gaussian",
@@ -1259,7 +1249,7 @@ def main(args):
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
-            lora_alpha=args.lora_alpha,
+            lora_alpha=args.rank,
             lora_dropout=args.lora_dropout,
             use_dora=args.use_dora,
             init_lora_weights="gaussian",
