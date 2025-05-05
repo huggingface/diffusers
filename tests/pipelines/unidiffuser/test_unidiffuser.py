@@ -22,13 +22,13 @@ from diffusers import (
     UniDiffuserTextDecoder,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
     nightly,
     require_torch_2,
     require_torch_accelerator,
-    require_torch_gpu,
     run_test_in_subprocess,
     torch_device,
 )
@@ -577,24 +577,24 @@ class UniDiffuserPipelineFastTests(
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     @unittest.skip(
-        "Test not supported becauseit has a bunch of direct configs at init and also, this pipeline isn't used that much now."
+        "Test not supported because it has a bunch of direct configs at init and also, this pipeline isn't used that much now."
     )
     def test_encode_prompt_works_in_isolation():
         pass
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class UniDiffuserPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0, generate_latents=False):
         generator = torch.manual_seed(seed)
@@ -705,17 +705,17 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class UniDiffuserPipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0, generate_latents=False):
         generator = torch.manual_seed(seed)

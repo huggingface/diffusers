@@ -509,7 +509,8 @@ class StableDiffusionModelEditingPipeline(
                 The destination prompt. Must contain all words from `source_prompt` with additional ones to specify the
                 target edit.
             lamb (`float`, *optional*, defaults to 0.1):
-                The lambda parameter specifying the regularization intesity. Smaller values increase the editing power.
+                The lambda parameter specifying the regularization intensity. Smaller values increase the editing
+                power.
             restart_params (`bool`, *optional*, defaults to True):
                 Restart the model parameters to their pre-trained version before editing. This is done to avoid edit
                 compounding. When it is `False`, edits accumulate.

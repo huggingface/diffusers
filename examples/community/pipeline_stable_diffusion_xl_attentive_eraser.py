@@ -1509,7 +1509,7 @@ class StableDiffusionXL_AE_Pipeline(
 
         add_time_ids = add_time_ids.repeat(batch_size, 1).to(DEVICE)
 
-        # interative sampling
+        # interactive sampling
         self.scheduler.set_timesteps(num_inference_steps)
         latents_list = [latents]
         pred_x0_list = []
@@ -1548,7 +1548,7 @@ class StableDiffusionXL_AE_Pipeline(
         x: torch.FloatTensor,
     ):
         """
-        predict the sampe the next step in the denoise process.
+        predict the sample the next step in the denoise process.
         """
         ref_noise = model_output[:1, :, :, :].expand(model_output.shape)
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep]

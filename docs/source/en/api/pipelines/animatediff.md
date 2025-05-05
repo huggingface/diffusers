@@ -966,7 +966,7 @@ pipe.to("cuda")
 prompt = {
     0: "A caterpillar on a leaf, high quality, photorealistic",
     40: "A caterpillar transforming into a cocoon, on a leaf, near flowers, photorealistic",
-    80: "A cocoon on a leaf, flowers in the backgrond, photorealistic",
+    80: "A cocoon on a leaf, flowers in the background, photorealistic",
     120: "A cocoon maturing and a butterfly being born, flowers and leaves visible in the background, photorealistic",
     160: "A beautiful butterfly, vibrant colors, sitting on a leaf, flowers in the background, photorealistic",
     200: "A beautiful butterfly, flying away in a forest, photorealistic",
