@@ -32,7 +32,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 ## CosmosVideoToWorldPipeline
 
-[[autodoc]] pipelines.cosmos.video_to_world_pipeline.CosmosVideoToWorldPipeline
+[[autodoc]] CosmosVideoToWorldPipeline
   - all
   - __call__
 
