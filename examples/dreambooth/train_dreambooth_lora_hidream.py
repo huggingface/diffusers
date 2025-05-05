@@ -1089,7 +1089,8 @@ def main(args):
     if args.bnb_quantization_config_path is not None:
         with open(args.bnb_quantization_config_path, "r") as f:
             config_kwargs = json.load(f)
-            config_kwargs["bnb_4bit_compute_dtype"] = weight_dtype
+            if "load_in_4bit" in config_kwargs and config_kwargs["load_in_4bit"]:
+                config_kwargs["bnb_4bit_compute_dtype"] = weight_dtype
         quantization_config = BitsAndBytesConfig(**config_kwargs)
 
     transformer = HiDreamImageTransformer2DModel.from_pretrained(
