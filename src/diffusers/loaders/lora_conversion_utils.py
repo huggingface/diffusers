@@ -745,7 +745,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 i = int(k.split("lora_transformer_time_text_embed_timestep_embedder_linear_")[-1])
                 diffusers_key = f"time_text_embed.timestep_embedder.linear_{i}"
             else:
-                raise NotImplementedError(k)
+                raise NotImplementedError(f"Handling for key ({k}) is not implemented.")
 
             if "attn_" in k:
                 if "_to_out_0" in k:
