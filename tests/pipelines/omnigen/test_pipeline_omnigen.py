@@ -159,10 +159,25 @@ class OmniGenPipelineSlowTests(unittest.TestCase):
                     ],
                     dtype=np.float32,
                 ),
+                ("cuda", 8): np.array(
+                    [
+                        [0.0546875, 0.05664062, 0.04296875],
+                        [0.046875, 0.04101562, 0.03320312],
+                        [0.05078125, 0.04296875, 0.03125],
+                        [0.04296875, 0.04101562, 0.03320312],
+                        [0.0390625, 0.03710938, 0.02929688],
+                        [0.04296875, 0.03710938, 0.03125],
+                        [0.0390625, 0.03710938, 0.02929688],
+                        [0.0390625, 0.03710938, 0.02734375],
+                        [0.0390625, 0.03320312, 0.02734375],
+                        [0.0390625, 0.03320312, 0.02734375],
+                    ],
+                    dtype=np.float32,
+                ),
             }
         )
-
         expected_slice = expected_slices.get_expectation()
+
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4
