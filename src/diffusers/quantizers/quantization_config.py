@@ -791,8 +791,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         self.block_quantize = block_quantize
         self.calib_cfg = {
             "method": algorithm,
-            "forward_loop": forward_loop,
-            **kwargs,
+            "forward_loop": forward_loop
         }
         self.scale_channel_quantize = scale_channel_quantize
         self.scale_block_quantize = scale_block_quantize
