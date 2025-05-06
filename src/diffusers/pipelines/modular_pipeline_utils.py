@@ -244,11 +244,12 @@ class ConfigSpec:
 @dataclass
 class InputParam:
     """Specification for an input parameter."""
-    name: str
+    name: str = None
     type_hint: Any = None
     default: Any = None
     required: bool = False
     description: str = ""
+    kwargs_type: str = None
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -260,6 +261,7 @@ class OutputParam:
     name: str
     type_hint: Any = None
     description: str = ""
+    kwargs_type: str = None
 
     def __repr__(self):
         return f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
