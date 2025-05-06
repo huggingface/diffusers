@@ -49,6 +49,7 @@ else:
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# TODO(yiyi): We can pack the checkpoints nicely with modular loader
 EXAMPLE_DOC_STRING = """
     Examples:
         ##### Image-to-Video
