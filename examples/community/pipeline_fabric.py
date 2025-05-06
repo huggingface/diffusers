@@ -559,7 +559,7 @@ class FabricPipeline(DiffusionPipeline):
                 End point for providing feedback (between 0 and 1).
             min_weight (`float`, *optional*, defaults to `.05`):
                 Minimum weight for feedback.
-            max_weight (`float`, *optional*, defults tp `1.0`):
+            max_weight (`float`, *optional*, defaults tp `1.0`):
                 Maximum weight for feedback.
             neg_scale (`float`, *optional*, defaults to `.5`):
                 Scale factor for negative feedback.
