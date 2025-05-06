@@ -74,7 +74,7 @@ class PipelineQuantizationTests(unittest.TestCase):
 
         _ = pipe(self.prompt, num_inference_steps=self.num_inference_steps)
 
-    def test_quant_config_set_correctly_granular(self):
+    def test_quant_config_set_correctly_through_granular(self):
         quant_config = PipelineQuantizationConfig(
             quant_mapping={
                 "transformer": QuantoConfig(weights_dtype="int8"),
@@ -126,6 +126,21 @@ class PipelineQuantizationTests(unittest.TestCase):
 
         self.assertTrue(
             "The signatures of the __init__ methods of the quantization config classes" in str(err_context.exception)
+        )
+
+    def test_raises_error_for_wrong_config_class(self):
+        quant_config = {
+            "transformer": QuantoConfig(weights_dtype="int8"),
+            "text_encoder_2": TranBitsAndBytesConfig(load_in_4bit=True, compute_dtype=torch.bfloat16),
+        }
+        with self.assertRaises(ValueError) as err_context:
+            _ = DiffusionPipeline.from_pretrained(
+                self.model_name,
+                quantization_config=quant_config,
+                torch_dtype=torch.bfloat16,
+            )
+        self.assertTrue(
+            str(err_context.exception) == "`quantization_config` must be an instance of `PipelineQuantizationConfig`."
         )
 
     def test_validation_for_mapping(self):

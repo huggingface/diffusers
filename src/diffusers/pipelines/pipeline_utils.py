@@ -47,6 +47,7 @@ from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
+from ..quantizers import PipelineQuantizationConfig
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
@@ -741,6 +742,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
             )
+
+        if quantization_config is not None and not isinstance(quantization_config, PipelineQuantizationConfig):
+            raise ValueError("`quantization_config` must be an instance of `PipelineQuantizationConfig`.")
 
         if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
