@@ -227,6 +227,7 @@ else:
         "HunyuanVideoPipeline",
         "HunyuanSkyreelsImageToVideoPipeline",
         "HunyuanVideoImageToVideoPipeline",
+        "HunyuanVideoFramepackPipeline",
     ]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
@@ -589,6 +590,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_video import (
             HunyuanSkyreelsImageToVideoPipeline,
+            HunyuanVideoFramepackPipeline,
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
         )
