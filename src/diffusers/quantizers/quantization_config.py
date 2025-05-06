@@ -798,7 +798,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         Get the config from the quantization type.
         """
         import modelopt.torch.quantization as mtq
-        
+
         BASE_CONFIG = {
             "quant_cfg": {
                 "*weight_quantizer": {"fake_quant": False},
@@ -829,7 +829,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                         quant_cfg[k]["num_bits"] = self.type_bit_map[act_type]
                     continue
                 quant_cfg[k]["num_bits"] = self.type_bit_map[w_type]
-        
+
         if self.block_quantize and self.channel_quantize:
             quant_cfg["*weight_quantizer"]["block_sizes"] = {
                 self.channel_quantize: self.block_quantize
@@ -844,17 +844,13 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
 
         # Only fixed sizes are supported for now in modelopt
         if "NF4" in w_type:
-            BASE_CONFIG["quant_cfg"]["*weight_quantizer"]["block_sizes"].update({"scale_bits":8, "scale_block_sizes": {self.channel_quantize: self.block_quantize}})
+            quant_cfg["*weight_quantizer"]["block_sizes"].update({"scale_bits":8, "scale_block_sizes": {self.channel_quantize: self.block_quantize}})
         elif "NVFP4" in w_type:
-            BASE_CONFIG["quant_cfg"]["*weight_quantizer"]["block_sizes"].update({"scale_bits":(4,3), "type": "dynamic"})
+            quant_cfg["*weight_quantizer"]["block_sizes"].update({"scale_bits":(4,3), "type": "dynamic"})
         if act_type:
             if "NF4" in act_type:
-                BASE_CONFIG["quant_cfg"]["*input_quantizer"]["block_sizes"].update({"scale_bits":8, "scale_block_sizes": {self.channel_quantize: self.block_quantize}})
+                quant_cfg["*input_quantizer"]["block_sizes"].update({"scale_bits":8, "scale_block_sizes": {self.channel_quantize: self.block_quantize}})
             elif "NVFP4" in act_type:
-                BASE_CONFIG["quant_cfg"]["*input_quantizer"]["block_sizes"].update({"scale_bits":(4,3), "type": "dynamic"})
-
-        if self.modules_to_not_convert is not None:
-            for module in self.modules_to_not_convert:
-                quant_cfg["*" + module + "*"] = {"enable": False}
+                quant_cfg["*input_quantizer"]["block_sizes"].update({"scale_bits":(4,3), "type": "dynamic"})
 
         return BASE_CONFIG

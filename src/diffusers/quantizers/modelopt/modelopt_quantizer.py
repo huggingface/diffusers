@@ -70,25 +70,13 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
-        from modelopt.torch.quantization.nn import QuantInputBase, SequentialQuantizer, TensorQuantizer
         from modelopt.torch.quantization.qtensor import BaseQuantizedTensor
+        from modelopt.torch.quantization.utils import is_quantized
 
-        def is_param_quantized(module):
-            for _module in module.modules():
-                if isinstance(_module, TensorQuantizer) and not _module._dequantize:
-                    return True
-                elif isinstance(_module, SequentialQuantizer):
-                    for q in _module:
-                        if isinstance(q, TensorQuantizer) and not q._dequantize:
-                            return True
-            return False
-
-        module, tensor_name = get_module_from_name(model, param_name)
+        module, _ = get_module_from_name(model, param_name)
         if self.pre_quantized and any(isinstance(module, t) for t in [BaseQuantizedTensor]):
             return True
-        elif isinstance(module, QuantInputBase) and "weight" in tensor_name:
-            return is_param_quantized(module)
-        return False
+        return is_quantized(module)
 
     def create_quantized_param(
         self,
@@ -140,12 +128,17 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
         import modelopt.torch.opt as mto
 
-        self.modules_to_not_convert = self.quantization_config.modules_to_not_convert
+        modules_to_not_convert = self.quantization_config.modules_to_not_convert
 
-        if not isinstance(self.modules_to_not_convert, list):
-            self.modules_to_not_convert = [self.modules_to_not_convert]
+        if modules_to_not_convert is None:
+            modules_to_not_convert = []
+        if isinstance(modules_to_not_convert, str):
+            modules_to_not_convert = [modules_to_not_convert]
+        modules_to_not_convert.extend(keep_in_fp32_modules)
 
-        self.modules_to_not_convert.extend(keep_in_fp32_modules)
+        for module in modules_to_not_convert:
+            self.quantization_config.modelopt_config["quant_cfg"]["*" + module + "*"] = {"enable": False}
+        self.quantization_config.modules_to_not_convert = modules_to_not_convert
 
         mto.apply_mode(model, mode=[("quantize", self.quantization_config.modelopt_config)])
         model.config.quantization_config = self.quantization_config
