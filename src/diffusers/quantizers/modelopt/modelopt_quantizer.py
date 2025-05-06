@@ -99,7 +99,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             setattr(module, tensor_name, param_value)
         else:
             set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
-            mtq.calibrate(module, self.quantization_config.modelopt_config["algorithm"])
+            mtq.calibrate(module, self.quantization_config.modelopt_config["algorithm"], self.quantization_config.modelopt_config.forward_loop)
             mtq.compress(module)
             module.weight.requires_grad = False
 

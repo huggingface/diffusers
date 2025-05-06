@@ -791,8 +791,9 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         self.block_quantize = block_quantize
         self.calib_cfg = {
             "method": algorithm,
-            "forward_loop": forward_loop
+            # add more options here if needed
         }
+        self.forward_loop = forward_loop
         self.scale_channel_quantize = scale_channel_quantize
         self.scale_block_quantize = scale_block_quantize
         self.modelopt_config = self.get_config_from_quant_type() if not modelopt_config else modelopt_config
