@@ -419,4 +419,4 @@ transformer_4bit.dequantize()
 ## Resources
 
 * [End-to-end notebook showing Flux.1 Dev inference in a free-tier Colab](https://gist.github.com/sayakpaul/c76bd845b48759e11687ac550b99d8b4)
-* [Training](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_hidream.md#using-quantization)
+* [Training](https://github.com/huggingface/diffusers/blob/8c661ea586bf11cb2440da740dd3c4cf84679b85/examples/dreambooth/README_hidream.md#using-quantization)
