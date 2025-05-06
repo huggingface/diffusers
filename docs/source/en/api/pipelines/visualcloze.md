@@ -15,7 +15,13 @@
 
 # VisualCloze
 
-[VisualCloze: A Universal Image Generation Framework via Visual In-Context Learning](https://arxiv.org/abs/2504.07960) is an in-context learning based universal image generation framework that can 1) support various in-domain tasks, 2) generalize to unseen tasks through in-context learning, 3) unify multiple tasks into one step and generate both target image and intermediate results, and 4) support reverse-engineering a set of conditions from a target image.
+[VisualCloze: A Universal Image Generation Framework via Visual In-Context Learning](https://arxiv.org/abs/2504.07960) is an innovative in-context learning based universal image generation framework that offers key capabilities:
+1. Support for various in-domain tasks
+2. Generalization to unseen tasks through in-context learning
+3. Unify multiple tasks into one step and generate both target image and intermediate results
+4. Support reverse-engineering conditions from target images
+
+## Overview
 
 The abstract from the paper is:
 
@@ -25,37 +31,47 @@ The abstract from the paper is:
 
 ### Model loading
 
-VisualCloze releases two models suitable for diffusers, i.e., VisualClozePipeline-384 and VisualClozePipeline-512, which are trained with resolutions of 384 and 512, respectively. 
-The resolution means that each image is resized to the area of the square of it before concatenating images into a grid layout. 
-In this case, VisualCloze uses [SDEdit](https://arxiv.org/abs/2108.01073) to upsample the generated images.
+VisualCloze is a two-stage cascade pipeline, containing `VisualClozeGenerationPipeline` and `VisualClozeUpsamplingPipeline`.
+- In `VisualClozeGenerationPipeline`, each image is downsampled before concatenating images into a grid layout, avoiding excessively high resolutions. VisualCloze releases two models suitable for diffusers, i.e., [VisualClozePipeline-384](https://huggingface.co/VisualCloze/VisualClozePipeline-384) and [VisualClozePipeline-512](https://huggingface.co/VisualCloze/VisualClozePipeline-384), which downsample images to resolutions of 384 and 512, respectively. 
+- `VisualClozeUpsamplingPipeline` uses [SDEdit](https://arxiv.org/abs/2108.01073) to enable high-resolution image synthesis.
+
+The `VisualClozePipeline` integrates both stages to support convenient end-to-end sampling, while also allowing users to utilize each pipeline independently as needed.
+
 ```python
 import torch
 from diffusers import VisualClozePipeline
 
+# the pipeline has combined both pipelines to support convenient end-to-end sampling
 pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 ```
 
-### Input prompts
-VisualCloze supports a wide variety of tasks. You need to pass a task prompt to describe the intention of the generation task, and optionally, a content prompt to describe the caption of the image to be generated. When the content prompt is not needed, None should also be passed.
+### Input Specifications
 
-### Input images
+#### Task and Content Prompts
+- Task prompt: Required to describe the generation task intention
+- Content prompt: Optional description or caption of the target image
+- When content prompt is not needed, pass `None`
+- For batch inference, pass `List[str|None]`
 
-The input image should be a List[List[Image|None]]. Excluding the last row, each row represents an in-context example. The last row represents the current query, where the image to be generated is set to None.
-When using batch inference, the input images should be a List[List[List[Image|None]]], and the input prompts should be a List[str|None].
+#### Image Input Format
+- Format: `List[List[Image|None]]`
+- Structure:
+  - All rows except the last represent in-context examples
+  - Last row represents the current query (target image set to `None`)
+- For batch inference, pass `List[List[List[Image|None]]]`
 
-### Resolution
+#### Resolution Control
+- Default behavior:
+  - Initial generation in the first stage: area of ${pipe.resolution}^2$
+  - Upsampling in the second stage: 3x factor
+- Custom resolution: Adjust using `upsampling_height` and `upsampling_width` parameters
 
-By default, the model first generates an image with a resolution of ${model.resolution}^2$, and then upsamples it by a factor of three. You can try setting the `upsampling_height` and `upsampling_width` parameters to generate images with different size. 
+### Examples
 
+For comprehensive examples covering a wide range of tasks, please refer to the [Online Demo](https://huggingface.co/spaces/VisualCloze/VisualCloze) and [GitHub Repository](https://github.com/lzyhha/VisualCloze). Below are simple examples for three cases: mask-to-image conversion, edge detection, and subject-driven generation.
 
-### Examples 
-
-
-More examples covering a wide range of tasks can be found in the [Online Demo](https://huggingface.co/spaces/VisualCloze/VisualCloze) and [Github Repo](https://github.com/lzyhha/VisualCloze). 
-Here, the document shows simple examples for mask2image, edge-detection, and subject-driven generation.
-
-#### mask2image
+#### Example for mask2image
 
 ```python
 
@@ -191,6 +207,73 @@ image_result = pipe(
 
 # Save the resulting image
 image_result.save("visualcloze.png")
+```
+
+#### Utilize each pipeline independently 
+
+```python
+import torch
+from diffusers import VisualClozeGenerationPipeline, FluxFillPipeline as VisualClozeUpsamplingPipeline
+from diffusers.utils import load_image
+from PIL import Image
+
+pipe = VisualClozeGenerationPipeline.from_pretrained(
+    "VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+image_paths = [
+    # in-context examples
+    [
+        load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_mask.jpg"
+        ),
+        load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_image.jpg"
+        ),
+    ],
+    # query with the target image
+    [
+        load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_query_mask.jpg"
+        ),
+        None,  # No image needed for the target image
+    ],
+]
+task_prompt = "In each row, a logical task is demonstrated to achieve [IMAGE2] an aesthetically pleasing photograph based on [IMAGE1] sam 2-generated masks with rich color coding."
+content_prompt = "Majestic photo of a golden eagle perched on a rocky outcrop in a mountainous landscape. The eagle is positioned in the right foreground, facing left, with its sharp beak and keen eyes prominently visible. Its plumage is a mix of dark brown and golden hues, with intricate feather details. The background features a soft-focus view of snow-capped mountains under a cloudy sky, creating a serene and grandiose atmosphere. The foreground includes rugged rocks and patches of green moss. Photorealistic, medium depth of field, soft natural lighting, cool color palette, high contrast, sharp focus on the eagle, blurred background, tranquil, majestic, wildlife photography."
+
+# Stage 1: Generate initial image
+image = pipe(
+    task_prompt=task_prompt,
+    content_prompt=content_prompt,
+    image=image_paths,
+    guidance_scale=30,
+    num_inference_steps=30,
+    max_sequence_length=512,
+    generator=torch.Generator("cpu").manual_seed(0),
+).images[0][0]
+
+# Stage 2 (optional): Upsample the generated image
+pipe_upsample = VisualClozeUpsamplingPipeline.from_pipe(pipe)
+pipe_upsample.to("cuda")
+
+mask_image = Image.new("RGB", image.size, (255, 255, 255))
+
+image = pipe_upsample(
+    image=image,
+    mask_image=mask_image,
+    prompt=content_prompt,
+    width=1344,
+    height=768,
+    strength=0.4,
+    guidance_scale=30,
+    num_inference_steps=30,
+    max_sequence_length=512,
+    generator=torch.Generator("cpu").manual_seed(0),
+).images[0]
+
+image.save("visualcloze.png")
 ```
 
 ## VisualClozePipeline

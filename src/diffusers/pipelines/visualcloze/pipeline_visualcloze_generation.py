@@ -26,6 +26,7 @@ from ...utils import (
     USE_PEFT_BACKEND,
     is_torch_xla_available,
     logging,
+    replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
 )
@@ -45,6 +46,73 @@ else:
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```python
+        >>> import torch
+        >>> from diffusers import VisualClozeGenerationPipeline, FluxFillPipeline as VisualClozeUpsamplingPipeline
+        >>> from diffusers.utils import load_image
+        >>> from PIL import Image
+
+        >>> image_paths = [
+        ...     # in-context examples
+        ...     [
+        ...         load_image(
+        ...             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_mask.jpg"
+        ...         ),
+        ...         load_image(
+        ...             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_incontext-example-1_image.jpg"
+        ...         ),
+        ...     ],
+        ...     # query with the target image
+        ...     [
+        ...         load_image(
+        ...             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/visualcloze/visualcloze_mask2image_query_mask.jpg"
+        ...         ),
+        ...         None,  # No image needed for the target image
+        ...     ],
+        ... ]
+        >>> task_prompt = "In each row, a logical task is demonstrated to achieve [IMAGE2] an aesthetically pleasing photograph based on [IMAGE1] sam 2-generated masks with rich color coding."
+        >>> content_prompt = "Majestic photo of a golden eagle perched on a rocky outcrop in a mountainous landscape. The eagle is positioned in the right foreground, facing left, with its sharp beak and keen eyes prominently visible. Its plumage is a mix of dark brown and golden hues, with intricate feather details. The background features a soft-focus view of snow-capped mountains under a cloudy sky, creating a serene and grandiose atmosphere. The foreground includes rugged rocks and patches of green moss. Photorealistic, medium depth of field, soft natural lighting, cool color palette, high contrast, sharp focus on the eagle, blurred background, tranquil, majestic, wildlife photography."
+        >>> pipe = VisualClozeGenerationPipeline.from_pretrained(
+        ...     "VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16
+        ... )
+        >>> pipe.to("cuda")
+
+        >>> image = pipe(
+        ...     task_prompt=task_prompt,
+        ...     content_prompt=content_prompt,
+        ...     image=image_paths,
+        ...     guidance_scale=30,
+        ...     num_inference_steps=30,
+        ...     max_sequence_length=512,
+        ...     generator=torch.Generator("cpu").manual_seed(0),
+        ... ).images[0][0]
+
+        >>> # optional, upsampling the generated image
+        >>> pipe_upsample = VisualClozeUpsamplingPipeline.from_pipe(pipe)
+        >>> pipe_upsample.to("cuda")
+
+        >>> mask_image = Image.new("RGB", image.size, (255, 255, 255))
+
+        >>> image = pipe_upsample(
+        ...     image=image,
+        ...     mask_image=mask_image,
+        ...     prompt=content_prompt,
+        ...     width=1344,
+        ...     height=768,
+        ...     strength=0.4,
+        ...     guidance_scale=30,
+        ...     num_inference_steps=30,
+        ...     max_sequence_length=512,
+        ...     generator=torch.Generator("cpu").manual_seed(0),
+        ... ).images[0]
+
+        >>> image.save("visualcloze.png")
+        ```
+"""
 
 
 class VisualClozeGenerationPipeline(
@@ -613,6 +681,7 @@ class VisualClozeGenerationPipeline(
         return self._interrupt
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         task_prompt: Union[str, List[str]] = None,

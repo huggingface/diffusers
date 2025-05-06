@@ -43,7 +43,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```py
+        ```python
         >>> import torch
         >>> from diffusers import VisualClozePipeline
         >>> from diffusers.utils import load_image
