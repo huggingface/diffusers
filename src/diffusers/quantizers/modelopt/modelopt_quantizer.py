@@ -73,10 +73,12 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         from modelopt.torch.quantization.qtensor import BaseQuantizedTensor
         from modelopt.torch.quantization.utils import is_quantized
 
-        module, _ = get_module_from_name(model, param_name)
+        module, tensor_name = get_module_from_name(model, param_name)
         if self.pre_quantized and any(isinstance(module, t) for t in [BaseQuantizedTensor]):
             return True
-        return is_quantized(module)
+        elif is_quantized(module) and "weight" in tensor_name:
+            return True
+        return False
 
     def create_quantized_param(
         self,
