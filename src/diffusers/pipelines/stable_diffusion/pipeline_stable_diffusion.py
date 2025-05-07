@@ -991,7 +991,7 @@ class StableDiffusionPipeline(
         # 4. Prepare timesteps
         timestep_device = device
         if XLA_AVAILABLE:
-            timestep_device = 'cpu'
+            timestep_device = "cpu"
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, timestep_device, timesteps, sigmas
         )
