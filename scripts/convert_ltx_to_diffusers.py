@@ -7,7 +7,14 @@ from accelerate import init_empty_weights
 from safetensors.torch import load_file
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKLLTXVideo, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXVideoTransformer3DModel
+from diffusers import (
+    AutoencoderKLLTXVideo,
+    FlowMatchEulerDiscreteScheduler,
+    LTXLatentUpsamplePipeline,
+    LTXPipeline,
+    LTXVideoTransformer3DModel,
+)
+from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -123,17 +130,10 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
-def convert_transformer(
-    ckpt_path: str,
-    dtype: torch.dtype,
-    version: str = "0.9.0",
-):
+def convert_transformer(ckpt_path: str, config, dtype: torch.dtype):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(load_file(ckpt_path))
-    config = {}
-    if version == "0.9.5":
-        config["_use_causal_rope_fix"] = True
     with init_empty_weights():
         transformer = LTXVideoTransformer3DModel(**config)
 
@@ -178,6 +178,56 @@ def convert_vae(ckpt_path: str, config, dtype: torch.dtype):
 
     vae.load_state_dict(original_state_dict, strict=True, assign=True)
     return vae
+
+
+def convert_spatial_latent_upsampler(ckpt_path: str, config, dtype: torch.dtype):
+    original_state_dict = get_state_dict(load_file(ckpt_path))
+
+    with init_empty_weights():
+        latent_upsampler = LTXLatentUpsamplerModel(**config)
+
+    latent_upsampler.load_state_dict(original_state_dict, strict=True, assign=True)
+    return latent_upsampler
+
+
+def get_transformer_config(version: str) -> Dict[str, Any]:
+    if version == "0.9.7":
+        config = {
+            "in_channels": 128,
+            "out_channels": 128,
+            "patch_size": 1,
+            "patch_size_t": 1,
+            "num_attention_heads": 32,
+            "attention_head_dim": 128,
+            "cross_attention_dim": 4096,
+            "num_layers": 48,
+            "activation_fn": "gelu-approximate",
+            "qk_norm": "rms_norm_across_heads",
+            "norm_elementwise_affine": False,
+            "norm_eps": 1e-6,
+            "caption_channels": 4096,
+            "attention_bias": True,
+            "attention_out_bias": True,
+        }
+    else:
+        config = {
+            "in_channels": 128,
+            "out_channels": 128,
+            "patch_size": 1,
+            "patch_size_t": 1,
+            "num_attention_heads": 32,
+            "attention_head_dim": 64,
+            "cross_attention_dim": 2048,
+            "num_layers": 28,
+            "activation_fn": "gelu-approximate",
+            "qk_norm": "rms_norm_across_heads",
+            "norm_elementwise_affine": False,
+            "norm_eps": 1e-6,
+            "caption_channels": 4096,
+            "attention_bias": True,
+            "attention_out_bias": True,
+        }
+    return config
 
 
 def get_vae_config(version: str) -> Dict[str, Any]:
@@ -275,12 +325,33 @@ def get_vae_config(version: str) -> Dict[str, Any]:
     return config
 
 
+def get_spatial_latent_upsampler_config(version: str) -> Dict[str, Any]:
+    if version == "0.9.7":
+        config = {
+            "in_channels": 128,
+            "mid_channels": 512,
+            "num_blocks_per_stage": 4,
+            "dims": 3,
+            "spatial_upsample": True,
+            "temporal_upsample": False,
+        }
+    else:
+        raise ValueError(f"Unsupported version: {version}")
+    return config
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
     parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original vae checkpoint")
+    parser.add_argument(
+        "--spatial_latent_upsampler_path",
+        type=str,
+        default=None,
+        help="Path to original spatial latent upsampler checkpoint",
+    )
     parser.add_argument(
         "--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory"
     )
@@ -294,7 +365,11 @@ def get_args():
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="fp32", help="Torch dtype to save the model in.")
     parser.add_argument(
-        "--version", type=str, default="0.9.0", choices=["0.9.0", "0.9.1", "0.9.5"], help="Version of the LTX model"
+        "--version",
+        type=str,
+        default="0.9.0",
+        choices=["0.9.0", "0.9.1", "0.9.5", "0.9.7"],
+        help="Version of the LTX model",
     )
     return parser.parse_args()
 
@@ -324,7 +399,8 @@ if __name__ == "__main__":
         assert args.transformer_ckpt_path is not None and args.vae_ckpt_path is not None
 
     if args.transformer_ckpt_path is not None:
-        transformer: LTXVideoTransformer3DModel = convert_transformer(args.transformer_ckpt_path, dtype)
+        config = get_transformer_config(args.version)
+        transformer: LTXVideoTransformer3DModel = convert_transformer(args.transformer_ckpt_path, config, dtype)
         if not args.save_pipeline:
             transformer.save_pretrained(
                 output_path / "transformer", safe_serialization=True, max_shard_size="5GB", variant=variant
@@ -335,6 +411,16 @@ if __name__ == "__main__":
         vae: AutoencoderKLLTXVideo = convert_vae(args.vae_ckpt_path, config, dtype)
         if not args.save_pipeline:
             vae.save_pretrained(output_path / "vae", safe_serialization=True, max_shard_size="5GB", variant=variant)
+
+    if args.spatial_latent_upsampler_path is not None:
+        config = get_spatial_latent_upsampler_config(args.version)
+        latent_upsampler: LTXLatentUpsamplerModel = convert_spatial_latent_upsampler(
+            args.spatial_latent_upsampler_path, config, dtype
+        )
+        if not args.save_pipeline:
+            latent_upsampler.save_pretrained(
+                output_path / "latent_upsampler", safe_serialization=True, max_shard_size="5GB", variant=variant
+            )
 
     if args.save_pipeline:
         text_encoder_id = "google/t5-v1_1-xxl"
@@ -360,12 +446,40 @@ if __name__ == "__main__":
                 shift_terminal=0.1,
             )
 
-        pipe = LTXPipeline(
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            transformer=transformer,
-        )
-
-        pipe.save_pretrained(args.output_path, safe_serialization=True, variant=variant, max_shard_size="5GB")
+        if args.version in ["0.9.0", "0.9.1", "0.9.5"]:
+            pipe = LTXPipeline(
+                scheduler=scheduler,
+                vae=vae,
+                text_encoder=text_encoder,
+                tokenizer=tokenizer,
+                transformer=transformer,
+            )
+            pipe.save_pretrained(
+                output_path.as_posix(), safe_serialization=True, variant=variant, max_shard_size="5GB"
+            )
+        elif args.version in ["0.9.7"]:
+            pipe = LTXPipeline(
+                scheduler=scheduler,
+                vae=vae,
+                text_encoder=text_encoder,
+                tokenizer=tokenizer,
+                transformer=transformer,
+            )
+            pipe_upsample = LTXLatentUpsamplePipeline(
+                vae=vae,
+                latent_upsampler=latent_upsampler,
+            )
+            pipe.save_pretrained(
+                (output_path / "ltx_pipeline").as_posix(),
+                safe_serialization=True,
+                variant=variant,
+                max_shard_size="5GB",
+            )
+            pipe_upsample.save_pretrained(
+                (output_path / "ltx_upsample_pipeline").as_posix(),
+                safe_serialization=True,
+                variant=variant,
+                max_shard_size="5GB",
+            )
+        else:
+            raise ValueError(f"Unsupported version: {args.version}")
