@@ -18,7 +18,14 @@ import unittest
 import torch
 
 from diffusers import LTXVideoTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    is_torch_compile,
+    require_torch_2,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..test_modeling_common import ModelTesterMixin
 
@@ -81,3 +88,19 @@ class LTXTransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"LTXVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    @require_torch_gpu
+    @require_torch_2
+    @is_torch_compile
+    @slow
+    def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model.eval()
+        model = torch.compile(model, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
