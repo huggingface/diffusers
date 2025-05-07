@@ -175,9 +175,7 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
             latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
         latents = latents.to(self.latent_upsampler.dtype)
-        print("before:", latents.shape)
         latents = self.latent_upsampler(latents)
-        print("after:", latents.shape)
 
         if output_type == "latent":
             latents = self._normalize_latents(
