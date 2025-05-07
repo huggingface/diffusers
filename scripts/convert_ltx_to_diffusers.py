@@ -10,6 +10,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 from diffusers import (
     AutoencoderKLLTXVideo,
     FlowMatchEulerDiscreteScheduler,
+    LTXConditionPipeline,
     LTXLatentUpsamplePipeline,
     LTXPipeline,
     LTXVideoTransformer3DModel,
@@ -464,7 +465,7 @@ if __name__ == "__main__":
         for param in text_encoder.parameters():
             param.data = param.data.contiguous()
 
-        if args.version == "0.9.5":
+        if args.version in ["0.9.5", "0.9.7"]:
             scheduler = FlowMatchEulerDiscreteScheduler(use_dynamic_shifting=False)
         else:
             scheduler = FlowMatchEulerDiscreteScheduler(
@@ -488,23 +489,23 @@ if __name__ == "__main__":
                 output_path.as_posix(), safe_serialization=True, variant=variant, max_shard_size="5GB"
             )
         elif args.version in ["0.9.7"]:
-            # pipe = LTXPipeline(
-            #     scheduler=scheduler,
-            #     vae=vae,
-            #     text_encoder=text_encoder,
-            #     tokenizer=tokenizer,
-            #     transformer=transformer,
-            # )
+            pipe = LTXConditionPipeline(
+                scheduler=scheduler,
+                vae=vae,
+                text_encoder=text_encoder,
+                tokenizer=tokenizer,
+                transformer=transformer,
+            )
             pipe_upsample = LTXLatentUpsamplePipeline(
                 vae=vae,
                 latent_upsampler=latent_upsampler,
             )
-            # pipe.save_pretrained(
-            #     (output_path / "ltx_pipeline").as_posix(),
-            #     safe_serialization=True,
-            #     variant=variant,
-            #     max_shard_size="5GB",
-            # )
+            pipe.save_pretrained(
+                (output_path / "ltx_pipeline").as_posix(),
+                safe_serialization=True,
+                variant=variant,
+                max_shard_size="5GB",
+            )
             pipe_upsample.save_pretrained(
                 (output_path / "ltx_upsample_pipeline").as_posix(),
                 safe_serialization=True,
