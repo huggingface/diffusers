@@ -27,13 +27,13 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
 
 
-class LTXTransformerTests(ModelTesterMixin, unittest.TestCase):
+class LTXTransformerTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
     model_class = LTXVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
