@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import Any, Dict, Optional, Tuple, Union
 
-import math
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -185,7 +185,7 @@ class SanaAttnProcessor2_0:
 
         return hidden_states
 
-    
+
 class SanaAttnProcessor3_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).

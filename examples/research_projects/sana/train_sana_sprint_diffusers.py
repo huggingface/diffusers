@@ -15,72 +15,48 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import copy
-import itertools
-import json
+import io
 import logging
 import math
 import os
-import random
 import shutil
-import warnings
 from pathlib import Path
+from typing import Callable
 
 import accelerate
-import io
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import torchvision.transforms as T
-import torchvision.transforms.functional as TF
 import transformers
-import webdataset as wds
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, DistributedType, ProjectConfiguration, set_seed
-from braceexpand import braceexpand
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
-from huggingface_hub.utils import insecure_hashlib
 from packaging import version
-from peft.utils import get_peft_model_state_dict
 from PIL import Image
-from PIL.ImageOps import exif_transpose
 from safetensors.torch import load_file
 from torch.nn.utils.spectral_norm import SpectralNorm
-from torch.utils.data import default_collate, Dataset, DataLoader
-from torchvision.transforms.functional import crop
+from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, Gemma2Model
-from typing import Callable, List, Union
-from webdataset.tariterators import (
-    base_plus_ext,
-    tar_file_expander,
-    url_opener,
-    valid_sample,
-)
 
 import diffusers
 from diffusers import (
     AutoencoderDC,
-    FlowMatchEulerDiscreteScheduler,
     SanaPipeline,
     SanaSprintPipeline,
     SanaTransformer2DModel,
-    SCMScheduler,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
-    cast_training_params,
-    compute_density_for_timestep_sampling,
-    compute_loss_weighting_for_sd3,
     free_memory,
 )
 from diffusers.utils import (
     check_min_version,
-    convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
@@ -98,7 +74,7 @@ logger = get_logger(__name__)
 
 if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
-    
+
 COMPLEX_HUMAN_INSTRUCTION = [
     "Given a user prompt, generate an 'Enhanced prompt' that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:",
     "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
@@ -109,7 +85,7 @@ COMPLEX_HUMAN_INSTRUCTION = [
     "Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:",
     "User Prompt: ",
 ]
-    
+
 
 
 class Text2ImageDataset(Dataset):
@@ -140,17 +116,17 @@ class Text2ImageDataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
-    
+
     def __getitem__(self, idx):
         item = self.dataset[idx]
         text = item['llava']
         image_bytes = item['image']
-        
+
         # Convert bytes to PIL Image
         image = Image.open(io.BytesIO(image_bytes))
-        
+
         image_tensor = self.transform(image)
-        
+
         return {
             'text': text,
             'image': image_tensor
@@ -768,7 +744,7 @@ class DiscHeadModel:
 
     def __getattr__(self, name):
         return getattr(self.disc, name)
-    
+
 class SanaTrigFlow(SanaTransformer2DModel):
     def __init__(self, original_model, guidance=False):
         self.__dict__ = original_model.__dict__
@@ -779,7 +755,7 @@ class SanaTrigFlow(SanaTransformer2DModel):
             self.logvar_linear = torch.nn.Linear(hidden_size, 1)
             torch.nn.init.xavier_uniform_(self.logvar_linear.weight)
             torch.nn.init.constant_(self.logvar_linear.bias, 0)
-        
+
     def forward(self, hidden_states, encoder_hidden_states, timestep, guidance=None, jvp=False, return_logvar=False, **kwargs):
         batch_size = hidden_states.shape[0]
         latents = hidden_states
@@ -812,8 +788,8 @@ class SanaTrigFlow(SanaTransformer2DModel):
         trigflow_model_out = ((1 - 2 * flow_timestep_expanded) * latent_model_input + (1 - 2 * flow_timestep_expanded + 2 * flow_timestep_expanded**2) * model_out) / torch.sqrt(
             flow_timestep_expanded**2 + (1 - flow_timestep_expanded) ** 2
         )
-        
-        
+
+
         if self.guidance and guidance is not None:
             timestep, embedded_timestep = self.time_embed(
                 timestep, guidance=guidance, hidden_dtype=hidden_states.dtype
@@ -822,15 +798,15 @@ class SanaTrigFlow(SanaTransformer2DModel):
             timestep, embedded_timestep = self.time_embed(
                 timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype
             )
-        
+
         if return_logvar:
             logvar = self.logvar_linear(embedded_timestep)
             return trigflow_model_out, logvar
-        
+
 
         return (trigflow_model_out,)
 
-        
+
 
 def compute_density_for_timestep_sampling_scm(
     batch_size: int, logit_mean: float = None, logit_std: float = None
@@ -925,19 +901,19 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    
+
     ori_transformer = SanaTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant,
         guidance_embeds=True, cross_attention_type='vanilla'
     )
-    
+
     ori_transformer_no_guide = SanaTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant,
         guidance_embeds=False
     )
-    
+
     original_state_dict = load_file(f"{args.pretrained_model_name_or_path}/transformer/diffusion_pytorch_model.safetensors")
-    
+
     param_mapping = {
         'time_embed.emb.timestep_embedder.linear_1.weight': 'time_embed.timestep_embedder.linear_1.weight',
         'time_embed.emb.timestep_embedder.linear_1.bias': 'time_embed.timestep_embedder.linear_1.bias',
@@ -968,7 +944,7 @@ def main(args):
 
     transformer = SanaTrigFlow(ori_transformer, guidance=True).train()
     pretrained_model = SanaTrigFlow(ori_transformer_no_guide, guidance=False).eval()
-    
+
     disc = SanaMSCMDiscriminator(
         pretrained_model,
         is_multiscale=args.ladd_multi_scale,
@@ -1134,7 +1110,7 @@ def main(args):
         data_files=args.file_path,
         split='train',
     )
-    
+
     train_dataset = Text2ImageDataset(
         hf_dataset=hf_dataset,
         resolution=args.resolution,
@@ -1282,8 +1258,8 @@ def main(args):
             # Add noise according to TrigFlow.
             # zt = cos(t) * x + sin(t) * noise
             t = u.view(-1, 1, 1, 1)
-            noisy_model_input = torch.cos(t) * model_input + torch.sin(t) * noise     
-            
+            noisy_model_input = torch.cos(t) * model_input + torch.sin(t) * noise
+
 
             scm_cfg_scale = torch.tensor(
                 np.random.choice(args.scm_cfg_scale, size=bsz, replace=True),
@@ -1295,7 +1271,7 @@ def main(args):
                     hidden_states=scaled_x_t, timestep=t.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask, guidance=(scm_cfg_scale.flatten() * args.guidance_embeds_scale), jvp=True, return_logvar=True
                 )
                 return pred, logvar
-            
+
             if phase == "G":
                 transformer.train()
                 disc.eval()
@@ -1322,8 +1298,8 @@ def main(args):
 
                     v_x = torch.cos(t) * torch.sin(t) * dxt_dt / sigma_data
                     v_t = torch.cos(t) * torch.sin(t)
-                    
-                    
+
+
                     # Adapt from https://github.com/xandergos/sCM-mnist/blob/master/train_consistency.py
                     with torch.no_grad():
                         F_theta, F_theta_grad, logvar = torch.func.jvp(
@@ -1371,8 +1347,8 @@ def main(args):
                     loss_no_logvar = loss_no_logvar.mean()
                     loss_no_weight = l2_loss.mean()
                     g_norm = g_norm.mean()
-                    
-                    
+
+
                     pred_x_0 = torch.cos(t) * noisy_model_input - torch.sin(t) * F_theta * sigma_data
 
                     if args.train_largest_timestep:
@@ -1414,7 +1390,7 @@ def main(args):
                     # Add noise to predicted x0
                     z_D = torch.randn_like(model_input) * sigma_data
                     noised_predicted_x0 = torch.cos(t_D) * pred_x_0 + torch.sin(t_D) * z_D
-                    
+
 
                     # Calculate adversarial loss
                     pred_fake = disc(hidden_states=(noised_predicted_x0 / sigma_data), timestep=t_D.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask)
@@ -1445,7 +1421,7 @@ def main(args):
                         optimizer_G.step()
                         lr_scheduler.step()
                         optimizer_G.zero_grad(set_to_none=True)
-                
+
             elif phase == "D":
                 transformer.eval()
                 disc.train()
@@ -1515,7 +1491,7 @@ def main(args):
 
 
                     # Calculate D loss
-                    
+
                     pred_fake = disc(hidden_states=(noised_predicted_x0 / sigma_data), timestep=t_D_fake.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask)
                     pred_true = disc(hidden_states=(noised_latents / sigma_data), timestep=t_D_real.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask)
 
@@ -1542,7 +1518,7 @@ def main(args):
 
                         optimizer_D.step()
                         optimizer_D.zero_grad(set_to_none=True)
-                
+
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -1616,14 +1592,14 @@ def main(args):
             transformer.to(torch.float32)
         else:
             transformer = transformer.to(weight_dtype)
-            
+
         # Save discriminator heads
         disc = unwrap_model(disc)
         disc_heads_state_dict = disc.heads.state_dict()
-        
+
         # Save transformer model
         transformer.save_pretrained(os.path.join(args.output_dir, "transformer"))
-        
+
         # Save discriminator heads
         torch.save(disc_heads_state_dict, os.path.join(args.output_dir, "disc_heads.pt"))
 
