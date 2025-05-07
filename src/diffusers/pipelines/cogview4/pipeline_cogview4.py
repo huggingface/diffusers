@@ -599,8 +599,12 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             self.scheduler.config.get("base_shift", 0.25),
             self.scheduler.config.get("max_shift", 0.75),
         )
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas, mu=mu
+            self.scheduler, num_inference_steps, timestep_device, timesteps, sigmas, mu=mu
         )
         self._num_timesteps = len(timesteps)
 

@@ -1047,8 +1047,12 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
             scheduler_kwargs["mu"] = mu
         elif mu is not None:
             scheduler_kwargs["mu"] = mu
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, sigmas=sigmas, **scheduler_kwargs
+            self.scheduler, num_inference_steps, timestep_device, sigmas=sigmas, **scheduler_kwargs
         )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
