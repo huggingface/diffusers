@@ -65,7 +65,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         tokenizer ([`~transformers.CLIPTokenizer`]):
             A `CLIPTokenizer` to tokenize text.
-        transformer ([`SkyReelsV2TransformerModel`]):
+        transformer ([`WanTransformer3DModel`]):
             A SkyReels-V2 transformer model for diffusion.
         scheduler ([`FlowUniPCMultistepScheduler`]):
             A scheduler to be used in combination with the transformer to denoise the encoded video latents.

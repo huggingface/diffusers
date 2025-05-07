@@ -21,10 +21,10 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_skyreels_v2_text_to_video"] = ["SkyReelsV2TextToVideoPipeline"]
-    _import_structure["pipeline_skyreels_v2_image_to_video"] = ["SkyReelsV2ImageToVideoPipeline"]
     _import_structure["pipeline_skyreels_v2_diffusion_forcing"] = ["SkyReelsV2DiffusionForcingPipeline"]
 
+    _import_structure["pipeline_skyreels_v2_image_to_video"] = ["SkyReelsV2ImageToVideoPipeline"]
+    _import_structure["pipeline_skyreels_v2_text_to_video"] = ["SkyReelsV2TextToVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
