@@ -1021,10 +1021,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             scheduler_kwargs["mu"] = mu
         elif mu is not None:
             scheduler_kwargs["mu"] = mu
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
-            device,
+            timestep_device,
             sigmas=sigmas,
             **scheduler_kwargs,
         )
