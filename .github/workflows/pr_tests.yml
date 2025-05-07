@@ -11,6 +11,7 @@ on:
       - "tests/**.py"
       - ".github/**.yml"
       - "utils/**.py"
+      - "setup.py"
   push:
     branches:
       - ci-*
