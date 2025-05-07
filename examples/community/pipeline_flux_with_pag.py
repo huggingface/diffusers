@@ -30,6 +30,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -232,118 +233,6 @@ class PAGIdentitySelfAttnProcessor:
         # hidden_states_ptb = torch.zeros(value.shape).to(value.get_device())
         hidden_states_ptb = value
 
-        hidden_states_ptb = hidden_states_ptb.to(query.dtype)
-
-        # linear proj
-        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
-        # dropout
-        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
-
-        if input_ndim == 4:
-            hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        # cat
-        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class PAGCFGIdentitySelfAttnProcessor:
-    r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
-        residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        # chunk
-        hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
-        hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
-
-        # original path
-        batch_size, sequence_length, _ = hidden_states_org.shape
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states_org = attn.group_norm(hidden_states_org.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states_org)
-        key = attn.to_k(hidden_states_org)
-        value = attn.to_v(hidden_states_org)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states_org = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states_org = hidden_states_org.to(query.dtype)
-
-        # linear proj
-        hidden_states_org = attn.to_out[0](hidden_states_org)
-        # dropout
-        hidden_states_org = attn.to_out[1](hidden_states_org)
-
-        if input_ndim == 4:
-            hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        # perturbed path (identity attention)
-        batch_size, sequence_length, _ = hidden_states_ptb.shape
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
-
-        value = attn.to_v(hidden_states_ptb)
-        hidden_states_ptb = value
         hidden_states_ptb = hidden_states_ptb.to(query.dtype)
 
         # linear proj
@@ -596,12 +485,12 @@ class FluxPAGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
                 prompt_2 = [prompt_2]
             batch_size = len(prompt)
 
-            # Duplicate each prompt 3 times: [uncond, cond, perturbed]
+            # Only cond and perturbed (skip uncond)
             full_prompt = []
             full_prompt_2 = []
             for i in range(batch_size):
-                full_prompt.extend(["", prompt[i], prompt[i]])         # For CLIP
-                full_prompt_2.extend(["", prompt_2[i], prompt_2[i]])   # For T5
+                full_prompt.extend([prompt[i], prompt[i]])       # For CLIP
+                full_prompt_2.extend([prompt_2[i], prompt_2[i]]) # For T5
 
             # Encode prompts
             pooled_prompt_embeds = self._get_clip_prompt_embeds(
@@ -622,9 +511,9 @@ class FluxPAGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
         if self.text_encoder_2 and isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
             unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        # Dummy text_ids (for compatibility)
+        # Dummy text_ids (updated shape for 2 prompts)
         dtype = self.text_encoder.dtype if self.text_encoder else self.transformer.dtype
-        text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
+        text_ids = torch.zeros(prompt_embeds.shape[1], 2).to(device=device, dtype=dtype)
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
 
@@ -825,7 +714,8 @@ class FluxPAGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
         prompt_2: Optional[Union[str, List[str]]] = None,
         negative_prompt: Union[str, List[str]] = None,  #
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
-        true_pag: float = 1.0,  #
+        true_pag_scale: float = 1.0,  #
+        true_cfg_scale: float = 1.0,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 28,
@@ -951,28 +841,69 @@ class FluxPAGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        do_true_pag = true_pag > 1 and negative_prompt is not None
+        # do_true_pag = true_pag > 0
+        # (
+        #     prompt_embeds,
+        #     pooled_prompt_embeds,
+        #     text_ids,
+        # ) = self.encode_prompt(
+        #         prompt=prompt,
+        #         prompt_2=prompt_2,
+        #         prompt_embeds=prompt_embeds,
+        #         pooled_prompt_embeds=pooled_prompt_embeds,
+        #         device=device,
+        #         num_images_per_prompt=num_images_per_prompt,
+        #         max_sequence_length=max_sequence_length,
+        #         lora_scale=lora_scale,
+        #     )
+        
+        
+        has_neg_prompt = negative_prompt is not None or negative_prompt_embeds is not None
+        do_true_cfg = true_cfg_scale > 1.0 and has_neg_prompt
+        do_true_pag = true_pag_scale > 0
+
+        # encode positive prompts (always)
         (
             prompt_embeds,
             pooled_prompt_embeds,
             text_ids,
         ) = self.encode_prompt(
-                prompt=prompt,
-                prompt_2=prompt_2,
-                prompt_embeds=prompt_embeds,
-                pooled_prompt_embeds=pooled_prompt_embeds,
+            prompt=prompt,
+            prompt_2=prompt_2,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            max_sequence_length=max_sequence_length,
+            lora_scale=lora_scale,
+        )
+
+        # encode negative prompts if needed
+        if do_true_cfg:
+            (
+                negative_prompt_embeds,
+                negative_pooled_prompt_embeds,
+                _,
+            ) = self.encode_prompt(
+                prompt=negative_prompt,
+                prompt_2=negative_prompt_2,
+                prompt_embeds=negative_prompt_embeds,
+                pooled_prompt_embeds=negative_pooled_prompt_embeds,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
                 lora_scale=lora_scale,
             )
-        
-        if do_true_pag:
-            # For PAGCFG: [uncond, cond, perturbed]
-            prompt_embeds = torch.cat([prompt_embeds], dim=0)  # already 3x in encode_prompt
-        else:
-            # For PAG (only 2x needed: [cond, perturbed])
+
+        if do_true_cfg and not do_true_pag:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+        elif not do_true_cfg and do_true_pag:
             prompt_embeds = torch.cat([prompt_embeds, prompt_embeds], dim=0)
+            pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+        elif do_true_cfg and do_true_pag:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds, prompt_embeds], dim=0)
+            pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
@@ -1008,10 +939,10 @@ class FluxPAGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
         
-        if true_pag > 0:
+        if true_pag_scale > 0:
             for name, module in self.transformer.named_modules():
                 if isinstance(module, Attention):
-                    module.processor = PAGCFGIdentitySelfAttnProcessor() if negative_prompt else PAGIdentitySelfAttnProcessor()
+                    module.processor = PAGIdentitySelfAttnProcessor()
 
 
         # 6. Denoising loop
@@ -1020,10 +951,18 @@ class FluxPAGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
                 if self.interrupt:
                     continue
 
-                if do_true_pag:
-                    latent_model_input = torch.cat([latents] * 3)
-                else:
+                # cfg only
+                if do_true_cfg and not do_true_pag:
                     latent_model_input = torch.cat([latents] * 2)
+                # pag only
+                elif not do_true_cfg and do_true_pag:
+                    latent_model_input = torch.cat([latents] * 2)
+                # both
+                elif do_true_cfg and do_true_pag:
+                    latent_model_input = torch.cat([latents] * 3)
+                # neither
+                else:
+                    latent_model_input = latents
 
 
                 # handle guidance
@@ -1048,9 +987,23 @@ class FluxPAGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
                     return_dict=False,
                 )[0]
 
-                if do_true_pag:
+                if do_true_cfg and not do_true_pag:
+                    # uncond + cond
+                    uncond_pred, cond_pred = noise_pred.chunk(2)
+                    noise_pred = uncond_pred + true_cfg_scale * (cond_pred - uncond_pred)
+
+                elif not do_true_cfg and do_true_pag:
+                    # cond + perturbed
                     cond_pred, perturbed_pred = noise_pred.chunk(2)
-                    noise_pred = cond_pred + true_pag * (perturbed_pred - cond_pred)
+                    noise_pred = cond_pred + true_pag_scale * (perturbed_pred - cond_pred)
+
+                elif do_true_cfg and do_true_pag:
+                    # uncond + cond + perturbed
+                    uncond_pred, cond_pred, perturbed_pred = noise_pred.chunk(3)
+                    cfg_pred = uncond_pred + true_cfg_scale * (cond_pred - uncond_pred)
+                    noise_pred = cfg_pred + true_pag_scale * (perturbed_pred - cond_pred)
+
+                # else: no guidance
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
