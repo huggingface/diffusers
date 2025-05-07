@@ -187,6 +187,7 @@ def convert_spatial_latent_upsampler(ckpt_path: str, config, dtype: torch.dtype)
         latent_upsampler = LTXLatentUpsamplerModel(**config)
 
     latent_upsampler.load_state_dict(original_state_dict, strict=True, assign=True)
+    latent_upsampler.to(dtype)
     return latent_upsampler
 
 
@@ -231,7 +232,7 @@ def get_transformer_config(version: str) -> Dict[str, Any]:
 
 
 def get_vae_config(version: str) -> Dict[str, Any]:
-    if version == "0.9.0":
+    if version in ["0.9.0"]:
         config = {
             "in_channels": 3,
             "out_channels": 3,
@@ -260,7 +261,7 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "decoder_causal": False,
             "timestep_conditioning": False,
         }
-    elif version == "0.9.1":
+    elif version in ["0.9.1"]:
         config = {
             "in_channels": 3,
             "out_channels": 3,
@@ -290,7 +291,39 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "decoder_causal": False,
         }
         VAE_KEYS_RENAME_DICT.update(VAE_091_RENAME_DICT)
-    elif version == "0.9.5":
+    elif version in ["0.9.5"]:
+        config = {
+            "in_channels": 3,
+            "out_channels": 3,
+            "latent_channels": 128,
+            "block_out_channels": (128, 256, 512, 1024, 2048),
+            "down_block_types": (
+                "LTXVideo095DownBlock3D",
+                "LTXVideo095DownBlock3D",
+                "LTXVideo095DownBlock3D",
+                "LTXVideo095DownBlock3D",
+            ),
+            "decoder_block_out_channels": (256, 512, 1024),
+            "layers_per_block": (4, 6, 6, 2, 2),
+            "decoder_layers_per_block": (5, 5, 5, 5),
+            "spatio_temporal_scaling": (True, True, True, True),
+            "decoder_spatio_temporal_scaling": (True, True, True),
+            "decoder_inject_noise": (False, False, False, False),
+            "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+            "upsample_residual": (True, True, True),
+            "upsample_factor": (2, 2, 2),
+            "timestep_conditioning": True,
+            "patch_size": 4,
+            "patch_size_t": 1,
+            "resnet_norm_eps": 1e-6,
+            "scaling_factor": 1.0,
+            "encoder_causal": True,
+            "decoder_causal": False,
+            "spatial_compression_ratio": 32,
+            "temporal_compression_ratio": 8,
+        }
+        VAE_KEYS_RENAME_DICT.update(VAE_095_RENAME_DICT)
+    elif version in ["0.9.7"]:
         config = {
             "in_channels": 3,
             "out_channels": 3,
@@ -395,9 +428,6 @@ if __name__ == "__main__":
     variant = VARIANT_MAPPING[args.dtype]
     output_path = Path(args.output_path)
 
-    if args.save_pipeline:
-        assert args.transformer_ckpt_path is not None and args.vae_ckpt_path is not None
-
     if args.transformer_ckpt_path is not None:
         config = get_transformer_config(args.version)
         transformer: LTXVideoTransformer3DModel = convert_transformer(args.transformer_ckpt_path, config, dtype)
@@ -458,23 +488,23 @@ if __name__ == "__main__":
                 output_path.as_posix(), safe_serialization=True, variant=variant, max_shard_size="5GB"
             )
         elif args.version in ["0.9.7"]:
-            pipe = LTXPipeline(
-                scheduler=scheduler,
-                vae=vae,
-                text_encoder=text_encoder,
-                tokenizer=tokenizer,
-                transformer=transformer,
-            )
+            # pipe = LTXPipeline(
+            #     scheduler=scheduler,
+            #     vae=vae,
+            #     text_encoder=text_encoder,
+            #     tokenizer=tokenizer,
+            #     transformer=transformer,
+            # )
             pipe_upsample = LTXLatentUpsamplePipeline(
                 vae=vae,
                 latent_upsampler=latent_upsampler,
             )
-            pipe.save_pretrained(
-                (output_path / "ltx_pipeline").as_posix(),
-                safe_serialization=True,
-                variant=variant,
-                max_shard_size="5GB",
-            )
+            # pipe.save_pretrained(
+            #     (output_path / "ltx_pipeline").as_posix(),
+            #     safe_serialization=True,
+            #     variant=variant,
+            #     max_shard_size="5GB",
+            # )
             pipe_upsample.save_pretrained(
                 (output_path / "ltx_upsample_pipeline").as_posix(),
                 safe_serialization=True,

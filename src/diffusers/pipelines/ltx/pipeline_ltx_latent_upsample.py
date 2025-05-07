@@ -18,11 +18,15 @@ import torch
 
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLLTXVideo
+from ...utils import get_logger
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_latent_upsampler import LTXLatentUpsamplerModel
 from .pipeline_output import LTXPipelineOutput
+
+
+logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -52,6 +56,9 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         self.vae_spatial_compression_ratio = (
             self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 32
         )
+        self.vae_temporal_compression_ratio = (
+            self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
+        )
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
 
     def prepare_latents(
@@ -66,6 +73,7 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
 
+        video = video.to(device=device, dtype=self.vae.dtype)
         if isinstance(generator, list):
             if len(generator) != batch_size:
                 raise ValueError(
@@ -74,13 +82,10 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
                 )
 
             init_latents = [
-                retrieve_latents(self.vae.encode(video[i].unsqueeze(0).unsqueeze(2)), generator[i])
-                for i in range(batch_size)
+                retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
             ]
         else:
-            init_latents = [
-                retrieve_latents(self.vae.encode(img.unsqueeze(0).unsqueeze(2)), generator) for img in video
-            ]
+            init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator) for vid in video]
 
         init_latents = torch.cat(init_latents, dim=0).to(dtype)
         init_latents = self._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
@@ -117,6 +122,7 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         if video is None and latents is None:
             raise ValueError("One of `video` or `latents` has to be provided.")
 
+    @torch.no_grad()
     def __call__(
         self,
         video: Optional[List[PipelineImageInput]] = None,
@@ -136,10 +142,23 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
             latents=latents,
         )
 
-        batch_size = latents.shape[0]
+        if video is not None:
+            # Batched video input is not yet tested/supported. TODO: take a look later
+            batch_size = 1
+        else:
+            batch_size = latents.shape[0]
         device = self._execution_device
 
         if video is not None:
+            num_frames = len(video)
+            if num_frames % self.vae_temporal_compression_ratio != 1:
+                num_frames = (
+                    num_frames // self.vae_temporal_compression_ratio * self.vae_temporal_compression_ratio + 1
+                )
+                video = video[:num_frames]
+                logger.warning(
+                    f"Video length expected to be of the form `k * {self.vae_temporal_compression_ratio} + 1` but is {len(video)}. Truncating to {num_frames} frames."
+                )
             video = self.video_processor.preprocess_video(video, height=height, width=width)
             video = video.to(device=device, dtype=torch.float32)
 
@@ -156,7 +175,9 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
             latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
         latents = latents.to(self.latent_upsampler.dtype)
+        print("before:", latents.shape)
         latents = self.latent_upsampler(latents)
+        print("after:", latents.shape)
 
         if output_type == "latent":
             latents = self._normalize_latents(
