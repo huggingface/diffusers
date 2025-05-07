@@ -1143,8 +1143,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         mask_gradient = mask_gradienting(tmp_mask, iterations=iterations)
         tmp_tensor = torch.Tensor(mask_gradient)
         tmp_tensor = tmp_tensor.view(-1,64)
-        tmp_tensor = torch.stack([tmp_tensor, tmp_tensor, tmp_tensor], dim=0)
-        mask = tmp_tensor.to(device=mask.device, dtype=mask.dtype)
+        mask_tensor = torch.zeros_like(mask)
+        for index in range(mask_tensor.shape[0]):
+            mask_tensor[index,:,:] = tmp_tensor
+        #tmp_tensor = torch.stack([tmp_tensor, tmp_tensor, tmp_tensor], dim=0)
+        mask = mask_tensor.to(device=mask.device, dtype=mask.dtype)
 
         controlnet_keep = []
         for i in range(len(timesteps)):
