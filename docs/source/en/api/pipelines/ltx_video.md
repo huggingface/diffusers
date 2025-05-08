@@ -43,14 +43,16 @@ Note: The recommended dtype is for the transformer component. The VAE and text e
 
 LTX Video 0.9.7 comes with a spatial latent upscaler and a 13B parameter transformer. The inference involves generating a low resolution video first, which is very fast, followed by upscaling and refining the generated video.
 
+<!-- TODO(aryan): modify when official checkpoints are available -->
+
 ```python
 import torch
 from diffusers import LTXConditionPipeline, LTXLatentUpsamplePipeline
 from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
 from diffusers.utils import export_to_video, load_video
 
-pipe = LTXConditionPipeline.from_pretrained("/raid/aryan/diffusers-ltx/ltx_pipeline", torch_dtype=torch.bfloat16)
-pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained("/raid/aryan/diffusers-ltx/ltx_upsample_pipeline", vae=pipe.vae, torch_dtype=torch.bfloat16)
+pipe = LTXConditionPipeline.from_pretrained("a-r-r-o-w/LTX-Video-0.9.7-diffusers", torch_dtype=torch.bfloat16)
+pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained("a-r-r-o-w/LTX-Video-0.9.7-Latent-Spatial-Upsampler-diffusers", vae=pipe.vae, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 pipe_upsample.to("cuda")
 pipe.vae.enable_tiling()
