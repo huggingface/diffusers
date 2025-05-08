@@ -193,7 +193,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         if has_clean_x_embedder:
             self.clean_x_embedder = HunyuanVideoHistoryPatchEmbed(in_channels, inner_dim)
 
-        self.use_gradient_checkpointing = False
+        self.gradient_checkpointing = False
 
     def forward(
         self,
