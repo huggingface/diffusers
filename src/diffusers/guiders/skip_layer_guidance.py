@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import List, Optional, Union, TYPE_CHECKING, Dict, Tuple
 
 import torch
 
@@ -156,7 +156,11 @@ class SkipLayerGuidance(BaseGuidance):
             for hook_name in self._skip_layer_hook_names:
                 registry.remove_hook(hook_name, recurse=True)
     
-    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
+    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
+        
+        if input_fields is None:
+            input_fields = self._input_fields
+        
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]
@@ -168,7 +172,7 @@ class SkipLayerGuidance(BaseGuidance):
             input_predictions = ["pred_cond", "pred_uncond", "pred_cond_skip"]
         data_batches = []
         for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(self._input_fields, data, tuple_indices[i], input_predictions[i])
+            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], input_predictions[i])
             data_batches.append(data_batch)
         return data_batches
 

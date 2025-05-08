@@ -174,7 +174,7 @@ class BaseGuidance:
         from ..pipelines.modular_pipeline import BlockState
 
         if input_fields is None:
-            raise ValueError("Input fields have not been set. Please call `set_input_fields` before preparing inputs.")
+            raise ValueError("Input fields cannot be None. Please pass `input_fields` to `prepare_inputs` or call `set_input_fields` before preparing inputs.")
         data_batch = {}
         for key, value in input_fields.items():
             try:
@@ -186,7 +186,7 @@ class BaseGuidance:
                     # We've already checked that value is a string or a tuple of strings with length 2
                     pass
             except AttributeError:
-                raise ValueError(f"Expected `data` to have attribute(s) {value}, but it does not. Please check the input data.")
+                logger.warning(f"`data` does not have attribute(s) {value}, skipping.")
         data_batch[cls._identifier_key] = identifier
         return BlockState(**data_batch)
 

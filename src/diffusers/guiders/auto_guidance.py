@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import List, Optional, Union, TYPE_CHECKING, Dict, Tuple
 
 import torch
 
@@ -120,11 +120,15 @@ class AutoGuidance(BaseGuidance):
                 registry = HookRegistry.check_if_exists_or_initialize(denoiser)
                 registry.remove_hook(name, recurse=True)
     
-    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
+    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
+        
+        if input_fields is None:
+            input_fields = self._input_fields
+        
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
         for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(self._input_fields, data, tuple_indices[i], self._input_predictions[i])
+            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
             data_batches.append(data_batch)
         return data_batches
 
