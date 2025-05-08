@@ -21,7 +21,7 @@ import math
 import os
 import shutil
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 import accelerate
 import numpy as np
@@ -51,6 +51,7 @@ from diffusers import (
     SanaSprintPipeline,
     SanaTransformer2DModel,
 )
+from diffusers.models.attention_processor import Attention
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     free_memory,
