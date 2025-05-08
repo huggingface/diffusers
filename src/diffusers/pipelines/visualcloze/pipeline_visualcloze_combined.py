@@ -380,9 +380,6 @@ class VisualClozePipeline(
             output_type=output_type if upsampling_strength == 0 else "pil",
         )
         if upsampling_strength == 0:
-            # Offload all models
-            self.maybe_free_model_hooks()
-
             if not return_dict:
                 return (generation_output,)
 
@@ -440,9 +437,6 @@ class VisualClozePipeline(
                 start += n
         else:
             output = image
-
-        # Offload all models
-        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (output,)
