@@ -22,10 +22,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_hunyuan_skyreels_image2video"] = ["HunyuanSkyreelsImageToVideoPipeline"]
-    _import_structure["pipeline_hunyuan_video"] = ["HunyuanVideoPipeline"]
-    _import_structure["pipeline_hunyuan_video_framepack"] = ["HunyuanVideoFramepackPipeline"]
-    _import_structure["pipeline_hunyuan_video_image2video"] = ["HunyuanVideoImageToVideoPipeline"]
+    _import_structure["pipeline_cosmos_text2world"] = ["CosmosTextToWorldPipeline"]
+    _import_structure["pipeline_cosmos_video2world"] = ["CosmosVideoToWorldPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -35,10 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_hunyuan_skyreels_image2video import HunyuanSkyreelsImageToVideoPipeline
-        from .pipeline_hunyuan_video import HunyuanVideoPipeline
-        from .pipeline_hunyuan_video_framepack import HunyuanVideoFramepackPipeline
-        from .pipeline_hunyuan_video_image2video import HunyuanVideoImageToVideoPipeline
+        from .pipeline_cosmos_text2world import CosmosTextToWorldPipeline
+        from .pipeline_cosmos_video2world import CosmosVideoToWorldPipeline
 
 else:
     import sys
