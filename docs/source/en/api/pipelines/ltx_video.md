@@ -31,11 +31,92 @@ Available models:
 
 |  Model name   | Recommended dtype |
 |:-------------:|:-----------------:|
-| [`LTX Video 0.9.0`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.safetensors) | `torch.bfloat16` |
-| [`LTX Video 0.9.1`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.1.safetensors) | `torch.bfloat16` |
-| [`LTX Video 0.9.5`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.5.safetensors) | `torch.bfloat16` |
+| [`LTX Video 2B 0.9.0`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.safetensors) | `torch.bfloat16` |
+| [`LTX Video 2B 0.9.1`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.1.safetensors) | `torch.bfloat16` |
+| [`LTX Video 2B 0.9.5`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.5.safetensors) | `torch.bfloat16` |
+| [`LTX Video 13B 0.9.7`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltxv-13b-0.9.7-dev.safetensors) | `torch.bfloat16` |
+| [`LTX Video Spatial Upscaler 0.9.7`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltxv-spatial-upscaler-0.9.7.safetensors) | `torch.bfloat16` |
 
 Note: The recommended dtype is for the transformer component. The VAE and text encoders can be either `torch.float32`, `torch.bfloat16` or `torch.float16` but the recommended dtype is `torch.bfloat16` as used in the original repository.
+
+## Using LTX Video 13B 0.9.7
+
+LTX Video 0.9.7 comes with a spatial latent upscaler and a 13B parameter transformer. The inference involves generating a low resolution video first, which is very fast, followed by upscaling and refining the generated video.
+
+```python
+import torch
+from diffusers import LTXConditionPipeline, LTXLatentUpsamplePipeline
+from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
+from diffusers.utils import export_to_video, load_video
+
+pipe = LTXConditionPipeline.from_pretrained("/raid/aryan/diffusers-ltx/ltx_pipeline", torch_dtype=torch.bfloat16)
+pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained("/raid/aryan/diffusers-ltx/ltx_upsample_pipeline", vae=pipe.vae, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+pipe_upsample.to("cuda")
+pipe.vae.enable_tiling()
+
+def round_to_nearest_resolution_acceptable_by_vae(height, width):
+    height = height - (height % pipe.vae_temporal_compression_ratio)
+    width = width - (width % pipe.vae_temporal_compression_ratio)
+    return height, width
+
+video = load_video(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input-vid.mp4"
+)[:21]  # Use only the first 21 frames as conditioning
+condition1 = LTXVideoCondition(video=video, frame_index=0)
+
+prompt = "The video depicts a winding mountain road covered in snow, with a single vehicle traveling along it. The road is flanked by steep, rocky cliffs and sparse vegetation. The landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the solitude and beauty of a winter drive through a mountainous region."
+negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
+expected_height, expected_width = 768, 1152
+downscale_factor = 2 / 3
+num_frames = 161
+
+# Part 1. Generate video at smaller resolution
+# Text-only conditioning is also supported without the need to pass `conditions`
+downscaled_height, downscaled_width = int(expected_height * downscale_factor), int(expected_width * downscale_factor)
+downscaled_height, downscaled_width = round_to_nearest_resolution_acceptable_by_vae(downscaled_height, downscaled_width)
+latents = pipe(
+    conditions=[condition1],
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=downscaled_width,
+    height=downscaled_height,
+    num_frames=num_frames,
+    num_inference_steps=30,
+    generator=torch.Generator().manual_seed(0),
+    output_type="latent",
+).frames
+
+# Part 2. Upscale generated video using latent upsampler with fewer inference steps
+# The available latent upsampler upscales the height/width by 2x
+upscaled_height, upscaled_width = downscaled_height * 2, downscaled_width * 2
+upscaled_latents = pipe_upsample(
+    latents=latents,
+    output_type="latent"
+).frames
+
+# Part 3. Denoise the upscaled video with few steps to improve texture (optional, but recommended)
+# No extra conditioning is passed, so this effectively is a low-step refinement of the upscaled video
+video = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=upscaled_width,
+    height=upscaled_height,
+    num_frames=num_frames,
+    denoise_strength=0.4,  # Effectively, 4 inference steps out of 10
+    num_inference_steps=10,
+    latents=upscaled_latents,
+    decode_timestep=0.05,
+    image_cond_noise_scale=0.025,
+    generator=torch.Generator().manual_seed(0),
+    output_type="pil",
+).frames[0]
+
+# Part 4. Downscale the video to the expected resolution
+video = [frame.resize((expected_width, expected_height)) for frame in video]
+
+export_to_video(video, "output.mp4", fps=24)
+```
 
 ## Loading Single Files
 
@@ -201,6 +282,12 @@ export_to_video(video, "ship.mp4", fps=24)
 ## LTXConditionPipeline
 
 [[autodoc]] LTXConditionPipeline
+  - all
+  - __call__
+
+## LTXLatentUpsamplePipeline
+
+[[autodoc]] LTXLatentUpsamplePipeline
   - all
   - __call__
 
