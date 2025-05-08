@@ -579,8 +579,8 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
                     latent_model_input,
                     timestep=t,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_hidden_states_image=image_embeds,  # Pass image_embeds here
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_hidden_states_image=image_embeds,
+                    attention_kwargs=cross_attention_kwargs,
                 ).sample
 
                 if do_classifier_free_guidance:

@@ -367,13 +367,22 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
         )
 
         # Calculate temporal downsampling factor
-        if hasattr(self.vae.config, "temperal_downsample") and self.vae.config.temperal_downsample is not None:
+        if hasattr(self.vae.config, "temporal_downsample") and self.vae.config.temporal_downsample is not None:
+            num_true_temporal_downsamples = sum(1 for td in self.vae.config.temporal_downsample if td)
+            temporal_downsample_factor = 2**num_true_temporal_downsamples
+        elif hasattr(self.vae.config, "temperal_downsample") and self.vae.config.temperal_downsample is not None:
+            # This case handles old configs with the typo
+            logger.warning(
+                "Warning: VAE config uses a misspelled attribute 'temperal_downsample'. "
+                "Please update the VAE config to use 'temporal_downsample'. "
+                "Proceeding with the misspelled attribute for now."
+            )
             num_true_temporal_downsamples = sum(1 for td in self.vae.config.temperal_downsample if td)
             temporal_downsample_factor = 2**num_true_temporal_downsamples
         else:
             temporal_downsample_factor = 4
             logger.warning(
-                "VAE config does not have 'temperal_downsample'. Using default temporal_downsample_factor=4."
+                "VAE config does not specify 'temporal_downsample'. Using default temporal_downsample_factor=4."
             )
 
         # Calculate number of latent frames required for the full output sequence
@@ -559,9 +568,14 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.skyreels_v2.pipeline_skyreels_v2_text_to_video.SkyReelsV2PipelineOutput`] or `tuple`.
         """
-        # 0. Default height and width
-        height = height or self.transformer.config.sample_size * self.vae_scale_factor
-        width = width or self.transformer.config.sample_size * self.vae_scale_factor
+        # 0. Require height and width
+        if height is None or width is None:
+            raise ValueError("Please provide `height` and `width` for video generation.")
+        # Ensure multiples of VAE scale factor
+        height = height - height % self.vae_scale_factor
+        width = width - width % self.vae_scale_factor
+        if height == 0 or width == 0:
+            raise ValueError("Provided height and width are too small.")
 
         # 1. Check inputs
         self.check_inputs(
@@ -638,6 +652,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # prepare a 1-element tensor for this timestep
+                timesteps_tensor = torch.tensor([t], device=device, dtype=torch.int64)
                 # Prepare the known conditioned part (noised)
                 noised_conditioning_latents_full = None
                 if has_conditioning:
@@ -656,8 +672,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
                     noise = randn_tensor(
                         full_conditioning_latents.shape, generator=generator, device=device, dtype=prompt_dtype
                     )
-                    # Noise the 'clean' conditioning latents appropriate for this timestep t
-                    noised_conditioning_latents_full = self.scheduler.add_noise(full_conditioning_latents, noise, t)
+                    # Noise the 'clean' conditioning latents appropriate for this timestep
+                    noised_conditioning_latents_full = self.scheduler.add_noise(
+                        full_conditioning_latents, noise, timesteps_tensor
+                    )
 
                     # Combine current latents with noised conditioning latents using the mask
                     # latent_mask is True for generated regions, False for conditioned regions
@@ -667,16 +685,17 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
 
                 # Expand for CFG
                 latent_model_input = torch.cat([model_input] * 2) if do_classifier_free_guidance else model_input
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                # Scale model input for this timestep
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, timesteps_tensor)
 
                 # Predict noise
                 # Note: Transformer sees the combined input (noise in generated areas, noised known in conditioned areas)
                 model_pred = self.transformer(
                     latent_model_input,
-                    timestep=t,
+                    timestep=timesteps_tensor,
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_image=None,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_kwargs=cross_attention_kwargs,
                 ).sample
 
                 # CFG
@@ -685,7 +704,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
                     model_pred = model_pred_uncond + guidance_scale * (model_pred_text - model_pred_uncond)
 
                 # Scheduler step (operates on the full latents)
-                step_output = self.scheduler.step(model_pred, t, latents)
+                step_output = self.scheduler.step(model_pred, timesteps_tensor, latents)
                 current_latents = step_output.prev_sample
 
                 # Re-apply known conditioning information using the mask

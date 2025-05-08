@@ -518,7 +518,7 @@ class SkyReelsV2TextToVideoPipeline(DiffusionPipeline):
                     latent_model_input,
                     timestep=t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_kwargs=cross_attention_kwargs,
                 ).sample
 
                 # perform guidance
