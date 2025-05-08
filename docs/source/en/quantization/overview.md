@@ -98,3 +98,20 @@ In this case, `quant_kwargs` will be used to initialize the quantization specifi
 of the respective quantization configuration class of `quant_backend`. `components_to_quantize`
 is used to denote the components that will be quantized. For most pipelines, you would want to
 keep `transformer` in the list as that is often the most compute and memory intensive.
+
+The config below will work for most diffusion pipelines that have a `transformer` component present.
+In most case, you will want to quantize the `transformer` component as that is often the most compute-
+intensive part of a diffusion pipeline.
+
+```py
+pipeline_quant_config = PipelineQuantizationConfig(
+    quant_backend="bitsandbytes_4bit",
+    quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
+    components_to_quantize=["transformer"],
+)
+```
+
+Diffusion pipelines can have multiple text encoders. [`FluxPipeline`] has two, for example. It's
+recommended to quantize the text encoders that are memory-intensive. Some examples include T5,
+Llama, Gemma, etc. In the above example, you quantized the T5 model of [`FluxPipeline`] through
+`text_encoder_2` while keeping the CLIP model intact (accessible through `text_encoder`). 
