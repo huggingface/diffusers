@@ -16,7 +16,7 @@ from typing import Optional
 
 import torch
 
-from ...configuration_utils import ConfigMixin
+from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
 
 
@@ -94,6 +94,7 @@ class LTXLatentUpsamplerModel(ModelMixin, ConfigMixin):
             Whether to temporally upsample the latent
     """
 
+    @register_to_config
     def __init__(
         self,
         in_channels: int = 128,
