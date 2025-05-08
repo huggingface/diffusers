@@ -26,7 +26,7 @@ huggingface-cli download Efficient-Large-Model/SANA_Sprint_1.6B_1024px_teacher_d
 
 ### 3. Acquire the dataset shards
 
-The training script in this example uses specific `.parquet` shards from the `brivangl/midjourney-v6-llava` dataset instead of downloading the entire dataset automatically via `dataset_name`.
+The training script in this example uses specific `.parquet` shards from a randomly selected `brivangl/midjourney-v6-llava` dataset instead of downloading the entire dataset automatically via `dataset_name`.
 
 The script specifically uses these three files:
 *   `data/train_000.parquet`
