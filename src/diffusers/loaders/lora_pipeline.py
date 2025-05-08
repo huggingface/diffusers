@@ -644,6 +644,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
+        from .lora_base import LORA_ADAPTER_METADATA_KEY
+
+        print(f"{LORA_ADAPTER_METADATA_KEY in state_dict=} before UNet")
         self.load_lora_into_unet(
             state_dict,
             network_alphas=network_alphas,
@@ -653,6 +656,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
+        print(f"{LORA_ADAPTER_METADATA_KEY in state_dict=} before text encoder.")
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
@@ -664,6 +668,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
+        print(f"{LORA_ADAPTER_METADATA_KEY in state_dict=} before text encoder 2.")
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
@@ -732,6 +737,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -914,6 +920,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        unet_lora_adapter_metadata=None,
+        text_encoder_lora_adapter_metadata=None,
+        text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -939,8 +948,12 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            unet_lora_adapter_metadata: TODO
+            text_encoder_lora_adapter_metadata: TODO
+            text_encoder_2_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
@@ -956,6 +969,15 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         if text_encoder_2_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
+        if unet_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(cls.pack_weights(unet_lora_adapter_metadata, cls.unet_name))
+
+        if text_encoder_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(text_encoder_lora_adapter_metadata, cls.text_encoder_name))
+
+        if text_encoder_2_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(text_encoder_2_lora_adapter_metadata, "text_encoder_2"))
+
         cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
@@ -963,6 +985,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(

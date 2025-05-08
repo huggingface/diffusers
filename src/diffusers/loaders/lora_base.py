@@ -353,8 +353,11 @@ def _load_lora_into_text_encoder(
         raise ValueError("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`.")
 
     # Load the layers corresponding to text encoder and make necessary adjustments.
+    if LORA_ADAPTER_METADATA_KEY in state_dict:
+        metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
     if prefix is not None:
         state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+    state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
 
     if len(state_dict) > 0:
         logger.info(f"Loading {prefix}.")
@@ -382,7 +385,7 @@ def _load_lora_into_text_encoder(
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
             network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
-        lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False)
+        lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False, prefix=prefix)
 
         if "use_dora" in lora_config_kwargs:
             if lora_config_kwargs["use_dora"]:

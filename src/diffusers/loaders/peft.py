@@ -193,7 +193,7 @@ class PeftAdapterMixin:
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
 
-        from .lora_base import LORA_ADAPTER_METADATA_KEY
+        from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -234,15 +234,14 @@ class PeftAdapterMixin:
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        if LORA_ADAPTER_METADATA_KEY in state_dict:
+            metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
-            state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
-
-        metadata = state_dict.pop(LORA_ADAPTER_METADATA_KEY, None)
-        if metadata is not None:
-            state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
+            state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+        state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
