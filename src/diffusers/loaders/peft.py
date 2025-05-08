@@ -234,6 +234,7 @@ class PeftAdapterMixin:
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = None
         if LORA_ADAPTER_METADATA_KEY in state_dict:
             metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
         if network_alphas is not None and prefix is None:
@@ -241,7 +242,8 @@ class PeftAdapterMixin:
 
         if prefix is not None:
             state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
-        state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
+        if metadata is not None:
+            state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:

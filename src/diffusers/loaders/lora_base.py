@@ -353,11 +353,13 @@ def _load_lora_into_text_encoder(
         raise ValueError("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`.")
 
     # Load the layers corresponding to text encoder and make necessary adjustments.
+    metadata = None
     if LORA_ADAPTER_METADATA_KEY in state_dict:
         metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
     if prefix is not None:
         state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
-    state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
+    if metadata is not None:
+        state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
 
     if len(state_dict) > 0:
         logger.info(f"Loading {prefix}.")
