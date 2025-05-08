@@ -79,7 +79,9 @@ image = pipe("photo of a cute dog").images[0]
 
 This method allows for more granular control over the quantization specifications of individual 
 model-level components of a pipeline. It also allows for different quantization backends for
-different components. In the above example, you used a combination of Quanto and BitsandBytes.
+different components. In the above example, you used a combination of Quanto and BitsandBytes. However,
+one caveat of this method is that users need to know which components come from `transformers` to be able
+to import the right quantization config class.
 
 The other method is simpler in terms of experience but is
 less-flexible. Start by defining a `PipelineQuantizationConfig` but in a different way:
@@ -110,6 +112,15 @@ pipeline_quant_config = PipelineQuantizationConfig(
     components_to_quantize=["transformer"],
 )
 ```
+
+Below is a list of the supported quantization backends available in both `diffusers` and `transformers`:
+
+* `bitsandbytes_4bit` 
+* `bitsandbytes_8bit`
+* `gguf`
+* `quanto`
+* `torchao`
+
 
 Diffusion pipelines can have multiple text encoders. [`FluxPipeline`] has two, for example. It's
 recommended to quantize the text encoders that are memory-intensive. Some examples include T5,
