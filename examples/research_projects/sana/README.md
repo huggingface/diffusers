@@ -1,11 +1,11 @@
 # Training SANA Sprint Diffuser
 
-This README explains how to use the provided Bash script commands to download a pre-trained teacher diffuser model and train it on a specific dataset.
+This README explains how to use the provided bash script commands to download a pre-trained teacher diffuser model and train it on a specific dataset, following the [SANA Sprint methodology](https://arxiv.org/abs/2503.09641).
 
 
 ## Setup
 
-### 1. Define Your Local Paths
+### 1. Define the local paths
 
 Set a variable for your desired output directory. This directory will store the downloaded model and the training checkpoints/results.
 
@@ -14,7 +14,7 @@ your_local_path='output' # Or any other path you prefer
 mkdir -p $your_local_path # Create the directory if it doesn't exist
 ```
 
-### 2. Download the Pre-trained Model
+### 2. Download the pre-trained model
 
 Download the SANA Sprint teacher model from Hugging Face Hub. The script uses the 1.6B parameter model.
 
@@ -24,7 +24,7 @@ huggingface-cli download Efficient-Large-Model/SANA_Sprint_1.6B_1024px_teacher_d
 
 *(Optional: You can also download the 0.6B model by replacing the model name: `Efficient-Large-Model/Sana_Sprint_0.6B_1024px_teacher_diffusers`)*
 
-### 3. Acquire the Dataset Shards
+### 3. Acquire the dataset shards
 
 The training script in this example uses specific `.parquet` shards from the `brivangl/midjourney-v6-llava` dataset instead of downloading the entire dataset automatically via `dataset_name`.
 
@@ -71,7 +71,7 @@ python train_sana_sprint_diffusers.py \
     --resume_from_checkpoint="latest" \
 ```
 
-### Explanation of Parameters
+### Explanation of parameters
 
 *   `--pretrained_model_name_or_path`: Path to the downloaded pre-trained model directory.
 *   `--output_dir`: Directory where training logs, checkpoints, and the final model will be saved.
