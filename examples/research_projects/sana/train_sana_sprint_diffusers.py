@@ -87,6 +87,7 @@ COMPLEX_HUMAN_INSTRUCTION = [
     "User Prompt: ",
 ]
 
+
 class SanaVanillaAttnProcessor:
     r"""
     Processor for implementing scaled dot-product attention to support JVP calculation during training.
@@ -96,7 +97,8 @@ class SanaVanillaAttnProcessor:
         pass
 
     @staticmethod
-    def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None
+    def scaled_dot_product_attention(
+        query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None
     ) -> torch.Tensor:
         B, H, L, S = *query.size()[:-1], key.size(-2)
         scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
@@ -173,44 +175,42 @@ class Text2ImageDataset(Dataset):
     """
     A PyTorch Dataset class for loading text-image pairs from a HuggingFace dataset.
     This dataset is designed for text-to-image generation tasks.
-    
     Args:
-        hf_dataset (datasets.Dataset): A HuggingFace dataset containing 'image' (bytes) 
-                                      and 'llava' (text) fields. Note that 'llava' is the field name for text descriptions in this specific dataset - you may need to adjust this key if using a different HuggingFace dataset with a different text field name.
-        resolution (int, optional): Target resolution for image resizing. Defaults to 1024.
-    
+        hf_dataset (datasets.Dataset):
+            A HuggingFace dataset containing 'image' (bytes) and 'llava' (text) fields. Note that 'llava' is the field name for text descriptions in this specific dataset - you may need to adjust this key if using a different HuggingFace dataset with a different text field name.
+            resolution (int, optional): Target resolution for image resizing. Defaults to 1024.
     Returns:
         dict: A dictionary containing:
             - 'text': The text description (str)
             - 'image': The processed image tensor (torch.Tensor) of shape [3, resolution, resolution]
     """
+
     def __init__(self, hf_dataset, resolution=1024):
         self.dataset = hf_dataset
-        self.transform = T.Compose([
-        T.Lambda(lambda img: img.convert("RGB")),
-        T.Resize(resolution),  # Image.BICUBIC
-        T.CenterCrop(resolution),
-        T.ToTensor(),
-        T.Normalize([0.5], [0.5]),
-    ])
+        self.transform = T.Compose(
+            [
+                T.Lambda(lambda img: img.convert("RGB")),
+                T.Resize(resolution),  # Image.BICUBIC
+                T.CenterCrop(resolution),
+                T.ToTensor(),
+                T.Normalize([0.5], [0.5]),
+            ]
+        )
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
         item = self.dataset[idx]
-        text = item['llava']
-        image_bytes = item['image']
+        text = item["llava"]
+        image_bytes = item["image"]
 
         # Convert bytes to PIL Image
         image = Image.open(io.BytesIO(image_bytes))
 
         image_tensor = self.transform(image)
 
-        return {
-            'text': text,
-            'image': image_tensor
-        }
+        return {"text": text, "image": image_tensor}
 
 
 def save_model_card(
@@ -389,8 +389,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     # ----Image Processing----
-    parser.add_argument("--file_path", nargs='+', required=True,
-                       help="List of parquet files (space-separated)")
+    parser.add_argument("--file_path", nargs="+", required=True, help="List of parquet files (space-separated)")
     parser.add_argument(
         "--dataset_name",
         type=str,
@@ -524,21 +523,45 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--logit_std", type=float, default=1.6, help="std to use when using the `'logit_normal'` weighting scheme."
     )
-    parser.add_argument("--logit_mean_discriminator", type=float, default=-0.6, help="Logit mean for discriminator timestep sampling")
-    parser.add_argument("--logit_std_discriminator", type=float, default=1.0, help="Logit std for discriminator timestep sampling")
+    parser.add_argument(
+        "--logit_mean_discriminator", type=float, default=-0.6, help="Logit mean for discriminator timestep sampling"
+    )
+    parser.add_argument(
+        "--logit_std_discriminator", type=float, default=1.0, help="Logit std for discriminator timestep sampling"
+    )
     parser.add_argument("--ladd_multi_scale", action="store_true", help="Whether to use multi-scale discriminator")
-    parser.add_argument("--head_block_ids", type=int, nargs="+", default=[2, 8, 14, 19], help="Specify which transformer blocks to use for discriminator heads")
+    parser.add_argument(
+        "--head_block_ids",
+        type=int,
+        nargs="+",
+        default=[2, 8, 14, 19],
+        help="Specify which transformer blocks to use for discriminator heads",
+    )
     parser.add_argument("--adv_lambda", type=float, default=0.5, help="Weighting coefficient for adversarial loss")
     parser.add_argument("--scm_lambda", type=float, default=1.0, help="Weighting coefficient for SCM loss")
     parser.add_argument("--gradient_clip", type=float, default=0.1, help="Threshold for gradient clipping")
-    parser.add_argument("--sigma_data", type=float, default=0.5, help="Standard deviation of data distribution is supposed to be 0.5")
-    parser.add_argument("--tangent_warmup_steps", type=int, default=4000, help="Number of warmup steps for tangent vectors")
-    parser.add_argument("--guidance_embeds_scale", type=float, default=0.1, help="Scaling factor for guidance embeddings")
-    parser.add_argument("--scm_cfg_scale", type=float, nargs="+", default=[4, 4.5, 5], help="Range for classifier-free guidance scale")
-    parser.add_argument("--train_largest_timestep", action="store_true", help="Whether to enable special training for large timesteps")
+    parser.add_argument(
+        "--sigma_data", type=float, default=0.5, help="Standard deviation of data distribution is supposed to be 0.5"
+    )
+    parser.add_argument(
+        "--tangent_warmup_steps", type=int, default=4000, help="Number of warmup steps for tangent vectors"
+    )
+    parser.add_argument(
+        "--guidance_embeds_scale", type=float, default=0.1, help="Scaling factor for guidance embeddings"
+    )
+    parser.add_argument(
+        "--scm_cfg_scale", type=float, nargs="+", default=[4, 4.5, 5], help="Range for classifier-free guidance scale"
+    )
+    parser.add_argument(
+        "--train_largest_timestep", action="store_true", help="Whether to enable special training for large timesteps"
+    )
     parser.add_argument("--largest_timestep", type=float, default=1.57080, help="Maximum timestep value")
-    parser.add_argument("--largest_timestep_prob", type=float, default=0.5, help="Sampling probability for large timesteps")
-    parser.add_argument("--misaligned_pairs_D", action="store_true", help="Add misaligned sample pairs for discriminator")
+    parser.add_argument(
+        "--largest_timestep_prob", type=float, default=0.5, help="Sampling probability for large timesteps"
+    )
+    parser.add_argument(
+        "--misaligned_pairs_D", action="store_true", help="Add misaligned sample pairs for discriminator"
+    )
     parser.add_argument(
         "--optimizer",
         type=str,
@@ -663,11 +686,9 @@ def parse_args(input_args=None):
     else:
         args = parser.parse_args()
 
-
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
-
 
     return args
 
@@ -791,7 +812,13 @@ class SanaMSCMDiscriminator(nn.Module):
             if i in self.block_hooks:
                 hooks.append(block.register_forward_hook(get_features))
 
-        self.transformer(hidden_states=hidden_states, timestep=timestep, encoder_hidden_states=encoder_hidden_states, return_logvar=False, **kwargs)
+        self.transformer(
+            hidden_states=hidden_states,
+            timestep=timestep,
+            encoder_hidden_states=encoder_hidden_states,
+            return_logvar=False,
+            **kwargs,
+        )
 
         for hook in hooks:
             hook.remove()
@@ -825,6 +852,7 @@ class DiscHeadModel:
     def __getattr__(self, name):
         return getattr(self.disc, name)
 
+
 class SanaTrigFlow(SanaTransformer2DModel):
     def __init__(self, original_model, guidance=False):
         self.__dict__ = original_model.__dict__
@@ -836,7 +864,9 @@ class SanaTrigFlow(SanaTransformer2DModel):
             torch.nn.init.xavier_uniform_(self.logvar_linear.weight)
             torch.nn.init.constant_(self.logvar_linear.bias, 0)
 
-    def forward(self, hidden_states, encoder_hidden_states, timestep, guidance=None, jvp=False, return_logvar=False, **kwargs):
+    def forward(
+        self, hidden_states, encoder_hidden_states, timestep, guidance=None, jvp=False, return_logvar=False, **kwargs
+    ):
         batch_size = hidden_states.shape[0]
         latents = hidden_states
         prompt_embeds = encoder_hidden_states
@@ -858,17 +888,28 @@ class SanaTrigFlow(SanaTransformer2DModel):
 
         if jvp and self.gradient_checkpointing:
             self.gradient_checkpointing = False
-            model_out = super().forward(hidden_states=latent_model_input, encoder_hidden_states=prompt_embeds, timestep=flow_timestep, guidance=guidance, **kwargs)[0]
+            model_out = super().forward(
+                hidden_states=latent_model_input,
+                encoder_hidden_states=prompt_embeds,
+                timestep=flow_timestep,
+                guidance=guidance,
+                **kwargs,
+            )[0]
             self.gradient_checkpointing = True
         else:
-            model_out = super().forward(hidden_states=latent_model_input, encoder_hidden_states=prompt_embeds, timestep=flow_timestep, guidance=guidance, **kwargs)[0]
-
+            model_out = super().forward(
+                hidden_states=latent_model_input,
+                encoder_hidden_states=prompt_embeds,
+                timestep=flow_timestep,
+                guidance=guidance,
+                **kwargs,
+            )[0]
 
         # Flow --> TrigFlow Transformation
-        trigflow_model_out = ((1 - 2 * flow_timestep_expanded) * latent_model_input + (1 - 2 * flow_timestep_expanded + 2 * flow_timestep_expanded**2) * model_out) / torch.sqrt(
-            flow_timestep_expanded**2 + (1 - flow_timestep_expanded) ** 2
-        )
-
+        trigflow_model_out = (
+            (1 - 2 * flow_timestep_expanded) * latent_model_input
+            + (1 - 2 * flow_timestep_expanded + 2 * flow_timestep_expanded**2) * model_out
+        ) / torch.sqrt(flow_timestep_expanded**2 + (1 - flow_timestep_expanded) ** 2)
 
         if self.guidance and guidance is not None:
             timestep, embedded_timestep = self.time_embed(
@@ -883,15 +924,11 @@ class SanaTrigFlow(SanaTransformer2DModel):
             logvar = self.logvar_linear(embedded_timestep)
             return trigflow_model_out, logvar
 
-
         return (trigflow_model_out,)
 
 
-def compute_density_for_timestep_sampling_scm(
-    batch_size: int, logit_mean: float = None, logit_std: float = None
-):
-    """Compute the density for sampling the timesteps when doing Sana-Sprint training.
-    """
+def compute_density_for_timestep_sampling_scm(batch_size: int, logit_mean: float = None, logit_std: float = None):
+    """Compute the density for sampling the timesteps when doing Sana-Sprint training."""
     sigma = torch.randn(batch_size, device="cpu")
     sigma = (sigma * logit_std + logit_mean).exp()
     u = torch.atan(sigma / 0.5)  # TODO: 0.5 should be a hyper-parameter
@@ -980,23 +1017,31 @@ def main(args):
     )
 
     ori_transformer = SanaTransformer2DModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant,
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        revision=args.revision,
+        variant=args.variant,
         guidance_embeds=True,
     )
     ori_transformer.set_attn_processor(SanaVanillaAttnProcessor())
 
     ori_transformer_no_guide = SanaTransformer2DModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant,
-        guidance_embeds=False
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        revision=args.revision,
+        variant=args.variant,
+        guidance_embeds=False,
     )
 
-    original_state_dict = load_file(f"{args.pretrained_model_name_or_path}/transformer/diffusion_pytorch_model.safetensors")
+    original_state_dict = load_file(
+        f"{args.pretrained_model_name_or_path}/transformer/diffusion_pytorch_model.safetensors"
+    )
 
     param_mapping = {
-        'time_embed.emb.timestep_embedder.linear_1.weight': 'time_embed.timestep_embedder.linear_1.weight',
-        'time_embed.emb.timestep_embedder.linear_1.bias': 'time_embed.timestep_embedder.linear_1.bias',
-        'time_embed.emb.timestep_embedder.linear_2.weight': 'time_embed.timestep_embedder.linear_2.weight',
-        'time_embed.emb.timestep_embedder.linear_2.bias': 'time_embed.timestep_embedder.linear_2.bias',
+        "time_embed.emb.timestep_embedder.linear_1.weight": "time_embed.timestep_embedder.linear_1.weight",
+        "time_embed.emb.timestep_embedder.linear_1.bias": "time_embed.timestep_embedder.linear_1.bias",
+        "time_embed.emb.timestep_embedder.linear_2.weight": "time_embed.timestep_embedder.linear_2.weight",
+        "time_embed.emb.timestep_embedder.linear_2.bias": "time_embed.timestep_embedder.linear_2.bias",
     }
 
     for src_key, dst_key in param_mapping.items():
@@ -1009,13 +1054,13 @@ def main(args):
 
     target_device = accelerator.device
     param_w1 = guidance_embedder_module.linear_1.weight
-    zero_state_dict['linear_1.weight'] = torch.zeros(param_w1.shape, device=target_device)
+    zero_state_dict["linear_1.weight"] = torch.zeros(param_w1.shape, device=target_device)
     param_b1 = guidance_embedder_module.linear_1.bias
-    zero_state_dict['linear_1.bias'] = torch.zeros(param_b1.shape, device=target_device)
+    zero_state_dict["linear_1.bias"] = torch.zeros(param_b1.shape, device=target_device)
     param_w2 = guidance_embedder_module.linear_2.weight
-    zero_state_dict['linear_2.weight'] = torch.zeros(param_w2.shape, device=target_device)
+    zero_state_dict["linear_2.weight"] = torch.zeros(param_w2.shape, device=target_device)
     param_b2 = guidance_embedder_module.linear_2.bias
-    zero_state_dict['linear_2.bias'] = torch.zeros(param_b2.shape, device=target_device)
+    zero_state_dict["linear_2.bias"] = torch.zeros(param_b2.shape, device=target_device)
     guidance_embedder_module.load_state_dict(zero_state_dict, strict=False, assign=True)
 
     transformer = SanaTrigFlow(ori_transformer, guidance=True).train()
@@ -1098,10 +1143,7 @@ def main(args):
                     # Handle discriminator model (only save heads)
                     elif isinstance(unwrapped_model, type(unwrap_model(disc))):
                         # Save only the heads
-                        torch.save(
-                            unwrapped_model.heads.state_dict(),
-                            os.path.join(output_dir, "disc_heads.pt")
-                        )
+                        torch.save(unwrapped_model.heads.state_dict(), os.path.join(output_dir, "disc_heads.pt"))
                     else:
                         raise ValueError(f"unexpected save model: {unwrapped_model.__class__}")
 
@@ -1131,7 +1173,7 @@ def main(args):
             else:
                 # DeepSpeed case
                 transformer_ = SanaTransformer2DModel.from_pretrained(input_dir, subfolder="transformer")  # noqa: F841
-                disc_heads_state_dict = torch.load(os.path.join(input_dir, "disc_heads.pt"))
+                disc_heads_state_dict = torch.load(os.path.join(input_dir, "disc_heads.pt"))  # noqa: F841
                 # You'll need to handle how to load the heads in DeepSpeed case
 
         accelerator.register_save_state_pre_hook(save_model_hook)
@@ -1180,7 +1222,7 @@ def main(args):
     hf_dataset = load_dataset(
         args.dataset_name,
         data_files=args.file_path,
-        split='train',
+        split="train",
     )
 
     train_dataset = Text2ImageDataset(
@@ -1194,7 +1236,7 @@ def main(args):
         num_workers=args.dataloader_num_workers,
         pin_memory=True,
         persistent_workers=True,
-        shuffle=True
+        shuffle=True,
     )
 
     # Scheduler and math around the number of training steps.
@@ -1214,8 +1256,10 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    transformer, pretrained_model, disc, optimizer_G, optimizer_D, train_dataloader, lr_scheduler = accelerator.prepare(
-        transformer, pretrained_model, disc, optimizer_G, optimizer_D, train_dataloader, lr_scheduler
+    transformer, pretrained_model, disc, optimizer_G, optimizer_D, train_dataloader, lr_scheduler = (
+        accelerator.prepare(
+            transformer, pretrained_model, disc, optimizer_G, optimizer_D, train_dataloader, lr_scheduler
+        )
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -1230,8 +1274,7 @@ def main(args):
     if accelerator.is_main_process:
         tracker_name = "sana-sprint"
         config = {
-            k: str(v) if not isinstance(v, (int, float, str, bool, torch.Tensor)) else v
-            for k, v in vars(args).items()
+            k: str(v) if not isinstance(v, (int, float, str, bool, torch.Tensor)) else v for k, v in vars(args).items()
         }
         accelerator.init_trackers(tracker_name, config=config)
 
@@ -1285,7 +1328,7 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
-    phase = 'G'
+    phase = "G"
     vae_config_scaling_factor = vae.config.scaling_factor
     sigma_data = args.sigma_data
     negative_prompt = [""] * args.train_batch_size
@@ -1326,12 +1369,10 @@ def main(args):
                 logit_std=args.logit_std,
             ).to(accelerator.device)
 
-
             # Add noise according to TrigFlow.
             # zt = cos(t) * x + sin(t) * noise
             t = u.view(-1, 1, 1, 1)
             noisy_model_input = torch.cos(t) * model_input + torch.sin(t) * noise
-
 
             scm_cfg_scale = torch.tensor(
                 np.random.choice(args.scm_cfg_scale, size=bsz, replace=True),
@@ -1340,7 +1381,13 @@ def main(args):
 
             def model_wrapper(scaled_x_t, t):
                 pred, logvar = accelerator.unwrap_model(transformer)(
-                    hidden_states=scaled_x_t, timestep=t.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask, guidance=(scm_cfg_scale.flatten() * args.guidance_embeds_scale), jvp=True, return_logvar=True
+                    hidden_states=scaled_x_t,
+                    timestep=t.flatten(),
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=prompt_attention_mask,
+                    guidance=(scm_cfg_scale.flatten() * args.guidance_embeds_scale),
+                    jvp=True,
+                    return_logvar=True,
                 )
                 return pred, logvar
 
@@ -1355,9 +1402,11 @@ def main(args):
                         cfg_y = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
                         cfg_y_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-
                         cfg_pretrain_pred = pretrained_model(
-                            hidden_states=(cfg_x_t / sigma_data), timestep=cfg_t.flatten(), encoder_hidden_states=cfg_y, encoder_attention_mask=cfg_y_mask
+                            hidden_states=(cfg_x_t / sigma_data),
+                            timestep=cfg_t.flatten(),
+                            encoder_hidden_states=cfg_y,
+                            encoder_attention_mask=cfg_y_mask,
                         )[0]
 
                         cfg_dxt_dt = sigma_data * cfg_pretrain_pred
@@ -1367,10 +1416,8 @@ def main(args):
                         scm_cfg_scale = scm_cfg_scale.view(-1, 1, 1, 1)
                         dxt_dt = dxt_dt_uncond + scm_cfg_scale * (dxt_dt - dxt_dt_uncond)
 
-
                     v_x = torch.cos(t) * torch.sin(t) * dxt_dt / sigma_data
                     v_t = torch.cos(t) * torch.sin(t)
-
 
                     # Adapt from https://github.com/xandergos/sCM-mnist/blob/master/train_consistency.py
                     with torch.no_grad():
@@ -1378,16 +1425,14 @@ def main(args):
                             model_wrapper, (noisy_model_input / sigma_data, t), (v_x, v_t), has_aux=True
                         )
 
-
                     F_theta, logvar = transformer(
-                        hidden_states = (noisy_model_input / sigma_data),
+                        hidden_states=(noisy_model_input / sigma_data),
                         timestep=t.flatten(),
                         encoder_hidden_states=prompt_embeds,
                         encoder_attention_mask=prompt_attention_mask,
                         guidance=(scm_cfg_scale.flatten() * args.guidance_embeds_scale),
-                        return_logvar=True
+                        return_logvar=True,
                     )
-
 
                     logvar = logvar.view(-1, 1, 1, 1)
                     F_theta_grad = F_theta_grad.detach()
@@ -1417,9 +1462,7 @@ def main(args):
 
                     loss_no_logvar = weight * torch.square(F_theta - F_theta_minus - g)
                     loss_no_logvar = loss_no_logvar.mean()
-                    loss_no_weight = l2_loss.mean()
                     g_norm = g_norm.mean()
-
 
                     pred_x_0 = torch.cos(t) * noisy_model_input - torch.sin(t) * F_theta * sigma_data
 
@@ -1439,7 +1482,7 @@ def main(args):
                         x_t_new = torch.cos(t_new) * model_input + torch.sin(t_new) * z_new
 
                         F_theta = transformer(
-                            hidden_states = (x_t_new / sigma_data),
+                            hidden_states=(x_t_new / sigma_data),
                             timestep=t_new.flatten(),
                             encoder_hidden_states=prompt_embeds,
                             encoder_attention_mask=prompt_attention_mask,
@@ -1447,7 +1490,6 @@ def main(args):
                             return_logvar=False,
                             jvp=False,
                         )[0]
-
 
                         pred_x_0 = torch.cos(t_new) * x_t_new - torch.sin(t_new) * F_theta * sigma_data
 
@@ -1464,7 +1506,12 @@ def main(args):
                     noised_predicted_x0 = torch.cos(t_D) * pred_x_0 + torch.sin(t_D) * z_D
 
                     # Calculate adversarial loss
-                    pred_fake = disc(hidden_states=(noised_predicted_x0 / sigma_data), timestep=t_D.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask)
+                    pred_fake = disc(
+                        hidden_states=(noised_predicted_x0 / sigma_data),
+                        timestep=t_D.flatten(),
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
+                    )
                     adv_loss = -torch.mean(pred_fake)
 
                     # Total loss = sCM loss + LADD loss
@@ -1509,7 +1556,7 @@ def main(args):
                             noisy_model_input = torch.cos(t) * model_input + torch.sin(t) * z_new
                         # here
                         F_theta = transformer(
-                            hidden_states = (noisy_model_input / sigma_data),
+                            hidden_states=(noisy_model_input / sigma_data),
                             timestep=t.flatten(),
                             encoder_hidden_states=prompt_embeds,
                             encoder_attention_mask=prompt_attention_mask,
@@ -1557,11 +1604,20 @@ def main(args):
                         prompt_embeds = torch.cat([prompt_embeds, prompt_embeds], dim=0)
                         prompt_attention_mask = torch.cat([prompt_attention_mask, prompt_attention_mask], dim=0)
 
-
                     # Calculate D loss
 
-                    pred_fake = disc(hidden_states=(noised_predicted_x0 / sigma_data), timestep=t_D_fake.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask)
-                    pred_true = disc(hidden_states=(noised_latents / sigma_data), timestep=t_D_real.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask)
+                    pred_fake = disc(
+                        hidden_states=(noised_predicted_x0 / sigma_data),
+                        timestep=t_D_fake.flatten(),
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
+                    )
+                    pred_true = disc(
+                        hidden_states=(noised_latents / sigma_data),
+                        timestep=t_D_real.flatten(),
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
+                    )
 
                     # hinge loss
                     loss_real = torch.mean(F.relu(1.0 - pred_true))
@@ -1617,7 +1673,11 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            logs = {"scm_loss": loss.detach().item(), "adv_loss": adv_loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {
+                "scm_loss": loss.detach().item(),
+                "adv_loss": adv_loss.detach().item(),
+                "lr": lr_scheduler.get_last_lr()[0],
+            }
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
