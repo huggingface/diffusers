@@ -2,6 +2,8 @@ your_local_path='output'
 
 huggingface-cli download Efficient-Large-Model/SANA_Sprint_1.6B_1024px_teacher_diffusers  --local-dir $your_local_path/SANA_Sprint_1.6B_1024px_teacher_diffusers
 
+# or Sana_Sprint_0.6B_1024px_teacher_diffusers
+
 python train_sana_sprint_diffusers.py \
     --pretrained_model_name_or_path=$your_local_path/SANA_Sprint_1.6B_1024px_teacher_diffusers \
     --output_dir=$your_local_path \
