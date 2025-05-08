@@ -184,6 +184,23 @@ class BlockState:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+    def __getitem__(self, key: str):
+        # allows block_state["foo"]
+        return getattr(self, key, None)
+    
+    def __setitem__(self, key: str, value: Any):
+        # allows block_state["foo"] = "bar"
+        setattr(self, key, value)
+    
+    def as_dict(self):
+        """
+        Convert BlockState to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing all attributes of the BlockState
+        """
+        return {key: value for key, value in self.__dict__.items()}
+
     def __repr__(self):
         def format_value(v):
             # Handle tensors directly
@@ -523,8 +540,12 @@ def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> Li
     
     for block_name, inputs in named_input_lists:
         for input_param in inputs:
-            if input_param.name in combined_dict:
-                current_param = combined_dict[input_param.name]
+            if input_param.name is None and input_param.kwargs_type is not None:
+                input_name = "*_" + input_param.kwargs_type
+            else:
+                input_name = input_param.name
+            if input_name in combined_dict:
+                current_param = combined_dict[input_name]
                 if (current_param.default is not None and 
                     input_param.default is not None and 
                     current_param.default != input_param.default):
@@ -557,7 +578,7 @@ def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) ->
     
     for block_name, outputs in named_output_lists:
         for output_param in outputs:
-            if output_param.name not in combined_dict:
+            if (output_param.name not in combined_dict) or (combined_dict[output_param.name].kwargs_type is None and output_param.kwargs_type is not None):
                 combined_dict[output_param.name] = output_param
     
     return list(combined_dict.values())
@@ -919,6 +940,9 @@ class SequentialPipelineBlocks(ModularPipelineMixin):
     # YiYi TODO: add test for this
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
+        return self.get_inputs()
+
+    def get_inputs(self):
         named_inputs = [(name, block.inputs) for name, block in self.blocks.items()]
         combined_inputs = combine_inputs(*named_inputs)
         # mark Required inputs only if that input is required any of the blocks
@@ -931,6 +955,9 @@ class SequentialPipelineBlocks(ModularPipelineMixin):
 
     @property
     def intermediates_inputs(self) -> List[str]:
+        return self.get_intermediates_inputs()
+    
+    def get_intermediates_inputs(self):
         inputs = []
         outputs = set()
 
@@ -1169,7 +1196,262 @@ class SequentialPipelineBlocks(ModularPipelineMixin):
             expected_configs=self.expected_configs
         )
 
+#YiYi TODO: __repr__
+class LoopSequentialPipelineBlocks(ModularPipelineMixin):
+    """
+    A class that combines multiple pipeline block classes into a For Loop. When called, it will call each block in sequence.
+    """
 
+    model_name = None
+    block_classes = []
+    block_names = []
+    
+    @property
+    def description(self) -> str:
+        """Description of the block. Must be implemented by subclasses."""
+        raise NotImplementedError("description method must be implemented in subclasses")
+
+    @property
+    def loop_expected_components(self) -> List[ComponentSpec]:
+        return []
+    
+    @property
+    def loop_expected_configs(self) -> List[ConfigSpec]:
+        return []
+
+    @property
+    def loop_inputs(self) -> List[InputParam]:
+        """List of input parameters. Must be implemented by subclasses."""
+        return []
+
+    @property
+    def loop_intermediates_inputs(self) -> List[InputParam]:
+        """List of intermediate input parameters. Must be implemented by subclasses."""
+        return []
+
+    @property
+    def loop_intermediates_outputs(self) -> List[OutputParam]:
+        """List of intermediate output parameters. Must be implemented by subclasses."""
+        return []
+
+
+    @property
+    def loop_required_inputs(self) -> List[str]:
+        input_names = []
+        for input_param in self.loop_inputs:
+            if input_param.required:
+                input_names.append(input_param.name)
+        return input_names
+
+    @property
+    def loop_required_intermediates_inputs(self) -> List[str]:
+        input_names = []
+        for input_param in self.loop_intermediates_inputs:
+            if input_param.required:
+                input_names.append(input_param.name)
+        return input_names
+
+    # modified from SequentialPipelineBlocks to include loop_expected_components
+    @property
+    def expected_components(self):
+        expected_components = []
+        for block in self.blocks.values():
+            for component in block.expected_components:
+                if component not in expected_components:
+                    expected_components.append(component)
+        for component in self.loop_expected_components:
+            if component not in expected_components:
+                expected_components.append(component)
+        return expected_components
+
+    # modified from SequentialPipelineBlocks to include loop_expected_configs
+    @property
+    def expected_configs(self):
+        expected_configs = []
+        for block in self.blocks.values():
+            for config in block.expected_configs:
+                if config not in expected_configs:
+                    expected_configs.append(config)
+        for config in self.loop_expected_configs:
+            if config not in expected_configs:
+                expected_configs.append(config)
+        return expected_configs
+
+    # modified from SequentialPipelineBlocks to include loop_inputs
+    def get_inputs(self):
+        named_inputs = [(name, block.inputs) for name, block in self.blocks.items()]
+        named_inputs.append(("loop", self.loop_inputs))
+        combined_inputs = combine_inputs(*named_inputs)
+        # mark Required inputs only if that input is required any of the blocks
+        for input_param in combined_inputs:
+            if input_param.name in self.required_inputs:
+                input_param.required = True
+            else:
+                input_param.required = False
+        return combined_inputs
+
+    # Copied from SequentialPipelineBlocks
+    @property
+    def inputs(self):
+        return self.get_inputs()
+    
+    
+    # modified from SequentialPipelineBlocks to include loop_intermediates_inputs
+    @property
+    def intermediates_inputs(self):
+        intermediates = self.get_intermediates_inputs()
+        intermediate_names = [input.name for input in intermediates]
+        for loop_intermediate_input in self.loop_intermediates_inputs:
+            if loop_intermediate_input.name not in intermediate_names:
+                intermediates.append(loop_intermediate_input)
+        return intermediates
+
+
+    # Copied from SequentialPipelineBlocks
+    def get_intermediates_inputs(self):
+        inputs = []
+        outputs = set()
+
+        # Go through all blocks in order
+        for block in self.blocks.values():
+            # Add inputs that aren't in outputs yet
+            inputs.extend(input_name for input_name in block.intermediates_inputs if input_name.name not in outputs)
+
+            # Only add outputs if the block cannot be skipped
+            should_add_outputs = True
+            if hasattr(block, "block_trigger_inputs") and None not in block.block_trigger_inputs:
+                should_add_outputs = False
+            
+            if should_add_outputs:
+                # Add this block's outputs
+                block_intermediates_outputs = [out.name for out in block.intermediates_outputs]
+                outputs.update(block_intermediates_outputs)
+        return inputs
+
+
+    # modified from SequentialPipelineBlocks, if any additionan input required by the loop is required by the block
+    @property
+    def required_inputs(self) -> List[str]:
+        # Get the first block from the dictionary
+        first_block = next(iter(self.blocks.values()))
+        required_by_any = set(getattr(first_block, "required_inputs", set()))
+
+        required_by_loop = set(getattr(self, "loop_required_inputs", set()))
+        required_by_any.update(required_by_loop)
+
+        # Union with required inputs from all other blocks
+        for block in list(self.blocks.values())[1:]:
+            block_required = set(getattr(block, "required_inputs", set()))
+            required_by_any.update(block_required)
+        
+        return list(required_by_any)
+
+    # modified from SequentialPipelineBlocks, if any additional intermediate input required by the loop is required by the block
+    @property
+    def required_intermediates_inputs(self) -> List[str]:
+        required_intermediates_inputs = []
+        for input_param in self.intermediates_inputs:
+            if input_param.required:
+                required_intermediates_inputs.append(input_param.name)
+        for input_param in self.loop_intermediates_inputs:
+            if input_param.required:
+                required_intermediates_inputs.append(input_param.name)
+        return required_intermediates_inputs
+
+
+    # YiYi TODO: this need to be thought about more
+    # modified from SequentialPipelineBlocks to include loop_intermediates_outputs
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        named_outputs = [(name, block.intermediates_outputs) for name, block in self.blocks.items()]
+        combined_outputs = combine_outputs(*named_outputs)
+        for output in self.loop_intermediates_outputs:
+            if output.name not in set([output.name for output in combined_outputs]):
+                combined_outputs.append(output)
+        return combined_outputs
+    
+    # YiYi TODO: this need to be thought about more
+    # copied from SequentialPipelineBlocks
+    @property
+    def outputs(self) -> List[str]:
+        return next(reversed(self.blocks.values())).intermediates_outputs
+
+
+    def __init__(self):
+        blocks = OrderedDict()
+        for block_name, block_cls in zip(self.block_names, self.block_classes):
+            blocks[block_name] = block_cls()
+        self.blocks = blocks
+
+    def loop_step(self, components, state: PipelineState, **kwargs):
+
+        for block_name, block in self.blocks.items():
+            try:
+                components, state = block(components, state, **kwargs)
+            except Exception as e:
+                error_msg = (
+                    f"\nError in block: ({block_name}, {block.__class__.__name__})\n"
+                    f"Error details: {str(e)}\n"
+                    f"Traceback:\n{traceback.format_exc()}"
+                )
+                logger.error(error_msg)
+                raise
+        return components, state
+    
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
+    
+    
+    def get_block_state(self, state: PipelineState) -> dict:
+        """Get all inputs and intermediates in one dictionary"""
+        data = {}
+        
+        # Check inputs
+        for input_param in self.inputs:
+            if input_param.name:
+                value = state.get_input(input_param.name)
+                if input_param.required and value is None:
+                    raise ValueError(f"Required input '{input_param.name}' is missing")
+                elif value is not None or (value is None and input_param.name not in data):
+                    data[input_param.name] = value
+            elif input_param.kwargs_type:
+                # if kwargs_type is provided, get all inputs with matching kwargs_type
+                if input_param.kwargs_type not in data:
+                    data[input_param.kwargs_type] = {}
+                inputs_kwargs = state.get_inputs_kwargs(input_param.kwargs_type)
+                if inputs_kwargs:
+                    for k, v in inputs_kwargs.items():
+                        if v is not None:
+                            data[k] = v
+                            data[input_param.kwargs_type][k] = v
+
+        # Check intermediates
+        for input_param in self.intermediates_inputs:
+            if input_param.name:
+                value = state.get_intermediate(input_param.name)
+                if input_param.required and value is None:
+                    raise ValueError(f"Required intermediate input '{input_param.name}' is missing")
+                elif value is not None or (value is None and input_param.name not in data):
+                    data[input_param.name] = value
+            elif input_param.kwargs_type:
+                # if kwargs_type is provided, get all intermediates with matching kwargs_type
+                if input_param.kwargs_type not in data:
+                    data[input_param.kwargs_type] = {}
+                intermediates_kwargs = state.get_intermediates_kwargs(input_param.kwargs_type)
+                if intermediates_kwargs:
+                    for k, v in intermediates_kwargs.items():
+                        if v is not None:
+                            if k not in data:
+                                data[k] = v
+                            data[input_param.kwargs_type][k] = v
+        return BlockState(**data)
+    
+    def add_block_state(self, state: PipelineState, block_state: BlockState):
+        for output_param in self.intermediates_outputs:
+            if not hasattr(block_state, output_param.name):
+                raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")
+            param = getattr(block_state, output_param.name)
+            state.add_intermediate(output_param.name, param, output_param.kwargs_type)
 
 # YiYi TODO: 
 # 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
