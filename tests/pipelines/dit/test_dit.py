@@ -21,7 +21,15 @@ import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DiTTransformer2DModel, DPMSolverMultistepScheduler
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import backend_empty_cache, enable_full_determinism, load_numpy, nightly, require_torch_accelerator, require_torch_gpu, torch_device, numpy_cosine_similarity_distance
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    load_numpy,
+    nightly,
+    numpy_cosine_similarity_distance,
+    require_torch_accelerator,
+    torch_device,
+)
 
 from ..pipeline_params import (
     CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
