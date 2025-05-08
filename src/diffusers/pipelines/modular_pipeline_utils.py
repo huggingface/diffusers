@@ -322,7 +322,11 @@ def format_intermediates_short(intermediates_inputs, required_intermediates_inpu
         if inp.name in required_intermediates_inputs:
             input_parts.append(f"Required({inp.name})")
         else:
-            input_parts.append(inp.name)
+            if inp.name is None and inp.kwargs_type is not None:
+                inp_name = "*_" + inp.kwargs_type
+            else:
+                inp_name = inp.name
+            input_parts.append(inp_name)
     
     # Handle modified variables (appear in both inputs and outputs)
     inputs_set = {inp.name for inp in intermediates_inputs}
