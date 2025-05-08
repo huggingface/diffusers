@@ -39,6 +39,14 @@ Available models:
 
 Note: The recommended dtype is for the transformer component. The VAE and text encoders can be either `torch.float32`, `torch.bfloat16` or `torch.float16` but the recommended dtype is `torch.bfloat16` as used in the original repository.
 
+## Recommended settings for generation
+
+For the best results, it is recommended to follow the guidelines mentioned in the official LTX Video [repository](https://github.com/Lightricks/LTX-Video).
+
+- Some variants of LTX Video are guidance-distilled. For guidance-distilled models, `guidance_scale` must be set to `1.0`. For any other models, `guidance_scale` should be set higher (e.g., `5.0`) for good generation quality.
+- For variants with a timestep-aware VAE (LTXV 0.9.1 and above), it is recommended to set `decode_timestep` to `0.05` and `image_cond_noise_scale` to `0.025`.
+- For variants that support interpolation between multiple conditioning images and videos (LTXV 0.9.5 and above), it is recommended to use similar looking images/videos for the best results. High divergence between the conditionings may lead to abrupt transitions in the generated video.
+
 ## Using LTX Video 13B 0.9.7
 
 LTX Video 0.9.7 comes with a spatial latent upscaler and a 13B parameter transformer. The inference involves generating a low resolution video first, which is very fast, followed by upscaling and refining the generated video.
@@ -98,8 +106,8 @@ upscaled_latents = pipe_upsample(
 ).frames
 
 # Part 3. Denoise the upscaled video with few steps to improve texture (optional, but recommended)
-# No extra conditioning is passed, so this effectively is a low-step refinement of the upscaled video
 video = pipe(
+    conditions=[condition1],
     prompt=prompt,
     negative_prompt=negative_prompt,
     width=upscaled_width,
