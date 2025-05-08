@@ -86,6 +86,86 @@ COMPLEX_HUMAN_INSTRUCTION = [
     "User Prompt: ",
 ]
 
+class SanaVanillaAttnProcessor:
+    r"""
+    Processor for implementing scaled dot-product attention to support JVP calculation during training.
+    """
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None
+    ) -> torch.Tensor:
+        B, H, L, S = *query.size()[:-1], key.size(-2)
+        scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+        attn_bias = torch.zeros(B, H, L, S, dtype=query.dtype, device=query.device)
+
+        if attn_mask is not None:
+            if attn_mask.dtype == torch.bool:
+                attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+            else:
+                attn_bias += attn_mask
+        attn_weight = query @ key.transpose(-2, -1) * scale_factor
+        attn_weight += attn_bias
+        attn_weight = torch.softmax(attn_weight, dim=-1)
+        attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+        return attn_weight @ value
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        hidden_states = self.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
 
 
 class Text2ImageDataset(Dataset):
@@ -109,7 +189,6 @@ class Text2ImageDataset(Dataset):
         T.Lambda(lambda img: img.convert("RGB")),
         T.Resize(resolution),  # Image.BICUBIC
         T.CenterCrop(resolution),
-        # T.RandomHorizontalFlip(),
         T.ToTensor(),
         T.Normalize([0.5], [0.5]),
     ])
@@ -132,7 +211,7 @@ class Text2ImageDataset(Dataset):
             'image': image_tensor
         }
 
-# TODO here
+
 def save_model_card(
     repo_id: str,
     images=None,
@@ -807,7 +886,6 @@ class SanaTrigFlow(SanaTransformer2DModel):
         return (trigflow_model_out,)
 
 
-
 def compute_density_for_timestep_sampling_scm(
     batch_size: int, logit_mean: float = None, logit_std: float = None
 ):
@@ -818,7 +896,6 @@ def compute_density_for_timestep_sampling_scm(
     u = torch.atan(sigma / 0.5)  # TODO: 0.5 should be a hyper-parameter
 
     return u
-
 
 
 def main(args):
@@ -872,7 +949,6 @@ def main(args):
     if args.seed is not None:
         set_seed(args.seed)
 
-
     # Handle the repository creation
     if accelerator.is_main_process:
         if args.output_dir is not None:
@@ -904,8 +980,9 @@ def main(args):
 
     ori_transformer = SanaTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant,
-        guidance_embeds=True, cross_attention_type='vanilla'
+        guidance_embeds=True,
     )
+    ori_transformer.set_attn_processor(SanaVanillaAttnProcessor())
 
     ori_transformer_no_guide = SanaTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant,
@@ -929,7 +1006,6 @@ def main(args):
 
     zero_state_dict = {}
 
-
     target_device = accelerator.device
     param_w1 = guidance_embedder_module.linear_1.weight
     zero_state_dict['linear_1.weight'] = torch.zeros(param_w1.shape, device=target_device)
@@ -941,7 +1017,6 @@ def main(args):
     zero_state_dict['linear_2.bias'] = torch.zeros(param_b2.shape, device=target_device)
     guidance_embedder_module.load_state_dict(zero_state_dict, strict=False, assign=True)
 
-
     transformer = SanaTrigFlow(ori_transformer, guidance=True).train()
     pretrained_model = SanaTrigFlow(ori_transformer_no_guide, guidance=False).eval()
 
@@ -950,7 +1025,6 @@ def main(args):
         is_multiscale=args.ladd_multi_scale,
         head_block_ids=args.head_block_ids,
     ).train()
-
 
     transformer.requires_grad_(True)
     pretrained_model.requires_grad_(False)
@@ -1004,7 +1078,6 @@ def main(args):
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
-
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1063,7 +1136,6 @@ def main(args):
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
 
-
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32 and torch.cuda.is_available():
@@ -1086,7 +1158,6 @@ def main(args):
         optimizer_class = bnb.optim.AdamW8bit
     else:
         optimizer_class = torch.optim.AdamW
-
 
     # Optimization parameters
     optimizer_G = optimizer_class(
@@ -1391,11 +1462,9 @@ def main(args):
                     z_D = torch.randn_like(model_input) * sigma_data
                     noised_predicted_x0 = torch.cos(t_D) * pred_x_0 + torch.sin(t_D) * z_D
 
-
                     # Calculate adversarial loss
                     pred_fake = disc(hidden_states=(noised_predicted_x0 / sigma_data), timestep=t_D.flatten(), encoder_hidden_states=prompt_embeds, encoder_attention_mask=prompt_attention_mask)
                     adv_loss = -torch.mean(pred_fake)
-
 
                     # Total loss = sCM loss + LADD loss
 
@@ -1404,8 +1473,6 @@ def main(args):
                     total_loss = total_loss / args.gradient_accumulation_steps
 
                     accelerator.backward(total_loss)
-
-
 
                     if accelerator.sync_gradients:
                         grad_norm = accelerator.clip_grad_norm_(transformer.parameters(), args.gradient_clip)
@@ -1504,7 +1571,6 @@ def main(args):
 
                     accelerator.backward(loss_D)
 
-
                     if accelerator.sync_gradients:
                         grad_norm = accelerator.clip_grad_norm_(disc.parameters(), args.gradient_clip)
                         if torch.logical_or(grad_norm.isnan(), grad_norm.isinf()):
@@ -1518,7 +1584,6 @@ def main(args):
 
                         optimizer_D.step()
                         optimizer_D.zero_grad(set_to_none=True)
-
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -1583,7 +1648,6 @@ def main(args):
 
                 images = None
                 del pipeline
-
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
