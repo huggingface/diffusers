@@ -37,7 +37,6 @@ from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    require_torch_gpu,
     torch_device,
 )
 
