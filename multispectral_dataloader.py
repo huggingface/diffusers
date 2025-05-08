@@ -325,3 +325,107 @@ def test_worker_behavior(data_dir, test_images):
         # Verify batch consistency
         for i in range(len(batches)-1):
             assert batches[i].shape == batches[i+1].shape
+
+def test_explicit_caching_validation(data_dir, test_images):
+    """
+    Test explicit validation of the caching mechanism to ensure data integrity.
+    
+    This test verifies that:
+    -Tests that cached data is identical to original data
+    -Verifies tensor properties and normalization
+    -Checks channel independence 
+    -Simulates cache persistence by creating new dataset instances
+    
+    Note: Since caching is implemented in-memory within the same process,
+    we simulate cache persistence by creating new dataset instances.
+    """
+    # Create first dataset instance and load data
+    dataset1 = MultispectralDataset(data_dir, use_cache=True)
+    original_tensor = dataset1[0]  # This will be cached
+    
+    # Create second dataset instance to simulate fresh process
+    dataset2 = MultispectralDataset(data_dir, use_cache=True)
+    cached_tensor = dataset2[0]  # Should load from cache
+    
+    # Verify tensor properties
+    assert isinstance(cached_tensor, torch.Tensor)
+    assert cached_tensor.shape == (5, 512, 512)
+    assert cached_tensor.dtype == torch.float32
+    
+    # Verify data integrity
+    assert torch.allclose(original_tensor, cached_tensor, rtol=1e-5, atol=1e-5), \
+        "Cached tensor differs from original tensor"
+    
+    # Verify normalization is preserved
+    assert torch.all(cached_tensor >= 0) and torch.all(cached_tensor <= 1), \
+        "Cached tensor values outside [0,1] range"
+    
+    # Verify channel independence
+    for c in range(cached_tensor.shape[0]):
+        channel = cached_tensor[c]
+        assert torch.min(channel) == 0 or torch.max(channel) == 1, \
+            f"Channel {c} not properly normalized"
+
+def test_file_order_consistency(data_dir, test_images):
+    """
+    Test that file order remains consistent across dataloader instances.
+    
+    This test ensures reproducibility by verifying that:
+    1. File order is identical between dataloader instances
+    2. Order is preserved when shuffle=False
+    3. Order is deterministic across runs
+    
+    This is crucial for reproducible training in multispectral applications
+    where band order and data consistency are essential.
+    """
+    # Create first dataloader instance
+    dataloader1 = create_multispectral_dataloader(
+        data_dir,
+        batch_size=2,
+        num_workers=0,
+        use_cache=True,
+        shuffle=False  # Disable shuffling for order consistency
+    )
+    
+    # Get file order from first instance
+    dataset1 = dataloader1.dataset
+    first_order = dataset1.image_paths.copy()
+    
+    # Create second dataloader instance
+    dataloader2 = create_multispectral_dataloader(
+        data_dir,
+        batch_size=2,
+        num_workers=0,
+        use_cache=True,
+        shuffle=False  # Disable shuffling for order consistency
+    )
+    
+    # Get file order from second instance
+    dataset2 = dataloader2.dataset
+    second_order = dataset2.image_paths.copy()
+    
+    # Verify order consistency
+    assert len(first_order) == len(second_order), \
+        "Different number of files between dataloader instances"
+    
+    for i, (path1, path2) in enumerate(zip(first_order, second_order)):
+        assert path1 == path2, \
+            f"File order mismatch at index {i}: {path1} != {path2}"
+    
+    # Verify data consistency by loading full epoch
+    batches1 = []
+    batches2 = []
+    
+    for batch1, batch2 in zip(dataloader1, dataloader2):
+        batches1.append(batch1)
+        batches2.append(batch2)
+    
+    # Verify batch shapes and content
+    assert len(batches1) == len(batches2), \
+        "Different number of batches between dataloader instances"
+    
+    for i, (batch1, batch2) in enumerate(zip(batches1, batches2)):
+        assert batch1.shape == batch2.shape, \
+            f"Batch shape mismatch at index {i}"
+        assert torch.allclose(batch1, batch2, rtol=1e-5, atol=1e-5), \
+            f"Batch content mismatch at index {i}"

@@ -37,7 +37,7 @@ Test Design Decisions:
      for local testing but should be enabled for GPU training
 
 Usage:
-    python -m pytest test_multispectral_dataloader.py --data-dir "/path/to/multispectral/tiffs"
+    pytest test_multispectral_dataloader.py --data-dir "/Users/zina/Desktop/LDM4HSI/Project Files/Dataloader test/Output Testset Mango" -v
 
 Note:
     For local testing, worker-intensive features are disabled to ensure
@@ -56,6 +56,7 @@ import random
 from pathlib import Path
 import rasterio
 import torch.nn.functional as F
+import argparse
 from multispectral_dataloader import (
     MultispectralDataset,
     create_multispectral_dataloader
@@ -65,6 +66,19 @@ from multispectral_dataloader import (
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
+
+def pytest_addoption(parser):
+    parser.addoption("--data-dir", action="store", default=None,
+                     help="Directory containing multispectral TIFF files for testing")
+
+@pytest.fixture
+def data_dir(request):
+    data_dir = request.config.getoption("--data-dir")
+    if data_dir is None:
+        pytest.skip("--data-dir not specified")
+    if not os.path.exists(data_dir):
+        pytest.skip(f"Data directory {data_dir} does not exist")
+    return data_dir
 
 def get_test_images(data_dir, num_images=2):
     """Select a subset of images for testing."""
