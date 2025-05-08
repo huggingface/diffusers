@@ -14,11 +14,11 @@
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import PIL.Image
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from ...image_processor import VideoProcessor
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowUniPCMultistepScheduler
 from ...utils import (
@@ -32,21 +32,28 @@ from .pipeline_skyreels_v2_text_to_video import SkyReelsV2PipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
         >>> import PIL.Image
         >>> from diffusers import SkyReelsV2ImageToVideoPipeline
+        >>> from diffusers.utils import load_image, export_to_video
 
+        >>> # Load the pipeline
         >>> pipe = SkyReelsV2ImageToVideoPipeline.from_pretrained(
-        ...     "SkyworkAI/SkyReels-V2-DiffusionForcing-4.0B", torch_dtype=torch.float16
+        ...     "HF_placeholder/SkyReels-V2-I2V-14B-540P", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> image = PIL.Image.open("input_image.jpg").convert("RGB")
-        >>> prompt = "A beautiful view of mountains"
-        >>> video_frames = pipe(prompt, image=image, num_frames=16).frames[0]
+        >>> # Load the conditioning image
+        >>> image_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"  # Example image
+        >>> image = load_image(image_url)
+
+        >>> prompt = "A cat running across the grass"
+        >>> video_frames = pipe(prompt=prompt, image=image, num_frames=97).frames
+        >>> export_to_video(video_frames, "skyreels_v2_i2v.mp4")
         ```
 """
 
@@ -58,39 +65,99 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a specific device, etc.).
 
+    The pipeline is based on the Wan 2.1 architecture (WanTransformer3DModel, AutoencoderKLWan). It uses a
+    `CLIPVisionModelWithProjection` to encode the conditioning image. It expects checkpoints saved in the standard
+    diffusers format, typically including subfolders: `vae`, `text_encoder`, `tokenizer`, `image_encoder`,
+    `transformer`, `scheduler`.
+
     Args:
         vae ([`AutoencoderKLWan`]):
-            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
+            Variational Auto-Encoder (VAE) model capable of encoding and decoding videos in latent space.
         text_encoder ([`~transformers.CLIPTextModel`]):
-            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
+            Frozen text-encoder (e.g., CLIP).
         tokenizer ([`~transformers.CLIPTokenizer`]):
-            A `CLIPTokenizer` to tokenize text.
+            Tokenizer corresponding to the `text_encoder`.
+        image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
+            Frozen image encoder (e.g., CLIP Vision Model) to encode the conditioning image.
+        image_processor ([`~transformers.CLIPImageProcessor`]):
+            Image processor corresponding to the `image_encoder`.
         transformer ([`WanTransformer3DModel`]):
-            A SkyReels-V2 transformer model for diffusion.
+            The core diffusion transformer model that denoises latents based on text and image conditioning.
         scheduler ([`FlowUniPCMultistepScheduler`]):
-            A scheduler to be used in combination with the transformer to denoise the encoded video latents.
+            A scheduler compatible with the Flow Matching framework used by SkyReels-V2.
+        video_processor ([`VideoProcessor`]):
+            Processor for converting VAE output latents to standard video formats (np, tensor, pil).
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "image_embeds"]
 
     def __init__(
         self,
         vae: AutoencoderKLWan,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
+        image_encoder: CLIPVisionModelWithProjection,
+        image_processor: CLIPImageProcessor,
         transformer: WanTransformer3DModel,
         scheduler: FlowUniPCMultistepScheduler,
+        video_processor: VideoProcessor,
     ):
         super().__init__()
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
+            image_encoder=image_encoder,
+            image_processor=image_processor,
             transformer=transformer,
             scheduler=scheduler,
+            video_processor=video_processor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        # VaeImageProcessor is not needed here as CLIPImageProcessor handles image preprocessing.
+
+    def _encode_image(
+        self,
+        image: Union[torch.Tensor, PIL.Image.Image, List[PIL.Image.Image]],
+        device: torch.device,
+        num_videos_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """
+        Encodes the input image using the image encoder.
+
+        Args:
+            image (`torch.Tensor`, `PIL.Image.Image`, `List[PIL.Image.Image]`):
+                Image or batch of images to encode.
+            device (`torch.device`): Target device.
+            num_videos_per_prompt (`int`): Number of videos per prompt (for repeating embeddings).
+            do_classifier_free_guidance (`bool`): Whether to generate negative embeddings.
+            dtype (`torch.dtype`): Target data type for embeddings.
+
+        Returns:
+            `torch.Tensor`: Encoded image embeddings.
+        """
+        if isinstance(image, PIL.Image.Image):
+            image = [image]  # Processor expects a list
+
+        # Preprocess image(s)
+        image_pixels = self.image_processor(image, return_tensors="pt").pixel_values
+        image_pixels = image_pixels.to(device=device, dtype=dtype)
+
+        # Get image embeddings
+        image_embeds = self.image_encoder(image_pixels).image_embeds  # [batch_size, seq_len, embed_dim]
+
+        # Duplicate image embeddings for each generation per prompt
+        image_embeds = image_embeds.repeat_interleave(num_videos_per_prompt, dim=0)
+
+        # Get negative embeddings for CFG
+        if do_classifier_free_guidance:
+            negative_image_embeds = torch.zeros_like(image_embeds)
+            image_embeds = torch.cat([negative_image_embeds, image_embeds])
+
+        return image_embeds
 
     def enable_vae_slicing(self):
         r"""
@@ -131,8 +198,9 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: Optional[int] = None,
+        lora_scale: Optional[float] = None,
     ):
-        r"""
+        """
         Encodes the prompt into text encoder hidden states.
 
         Args:
@@ -156,7 +224,12 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             max_sequence_length (`int`, *optional*):
                 Maximum sequence length for input text when generating embeddings. If not provided, defaults to 77.
+            lora_scale (`float`, *optional*):
+                Scale for LoRA-based text embeddings.
         """
+        # Set LoRA scale
+        lora_scale = lora_scale or self.lora_scale
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -164,13 +237,10 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # Define tokenizer parameters
         if max_sequence_length is None:
             max_sequence_length = self.tokenizer.model_max_length
 
-        # Get prompt text embeddings
         if prompt_embeds is None:
-            # Text encoder expects tokens to be of shape (batch_size, context_length)
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -187,112 +257,55 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
             )
             prompt_embeds = prompt_embeds[0]
 
-        # Duplicate prompt embeddings for each generation per prompt
-        if prompt_embeds.shape[0] < batch_size * num_videos_per_prompt:
-            prompt_embeds = prompt_embeds.repeat_interleave(num_videos_per_prompt, dim=0)
+        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        bs_embed, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
 
-        # Get negative prompt embeddings
-        if do_classifier_free_guidance and negative_prompt_embeds is None:
-            if negative_prompt is None:
-                negative_prompt = [""] * batch_size
-            elif isinstance(negative_prompt, str):
-                negative_prompt = [negative_prompt] * batch_size
-            elif batch_size != len(negative_prompt):
-                raise ValueError(
-                    f"Batch size of `negative_prompt` should be {batch_size}, but is {len(negative_prompt)}"
-                )
-
-            negative_text_inputs = self.tokenizer(
-                negative_prompt,
-                padding="max_length",
-                max_length=max_sequence_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            negative_input_ids = negative_text_inputs.input_ids
-            negative_attention_mask = negative_text_inputs.attention_mask
-
-            negative_prompt_embeds = self.text_encoder(
-                negative_input_ids.to(device),
-                attention_mask=negative_attention_mask.to(device),
-            )
-            negative_prompt_embeds = negative_prompt_embeds[0]
-
-        # Duplicate negative prompt embeddings for each generation per prompt
-        if negative_prompt_embeds.shape[0] < batch_size * num_videos_per_prompt:
-            negative_prompt_embeds = negative_prompt_embeds.repeat_interleave(num_videos_per_prompt, dim=0)
-
-        # For classifier-free guidance, combine embeddings
         if do_classifier_free_guidance:
+            if negative_prompt_embeds is None:
+                if negative_prompt is None:
+                    negative_prompt = ""
+                if isinstance(negative_prompt, str) and negative_prompt == "":
+                    negative_prompt = [negative_prompt] * batch_size
+                elif isinstance(negative_prompt, str):
+                    negative_prompt = [negative_prompt]
+                if isinstance(negative_prompt, list) and batch_size != len(negative_prompt):
+                    raise ValueError("Negative prompt batch size mismatch")
+                uncond_input = self.tokenizer(
+                    negative_prompt,
+                    padding="max_length",
+                    max_length=max_sequence_length,
+                    truncation=True,
+                    return_tensors="pt",
+                )
+                negative_prompt_embeds = self.text_encoder(
+                    uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device)
+                )[0]
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            bs_embed, seq_len, _ = negative_prompt_embeds.shape
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-
         return prompt_embeds
 
-    def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
+    def _decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         """
         Decode the generated latent sample using the VAE to produce video frames.
 
         Args:
-            latents (`torch.Tensor`): Generated latent samples from the diffusion process.
+            latents (`torch.Tensor`):
+                Generated latent samples of shape (batch, channels, latent_frames, height, width).
 
         Returns:
-            `torch.Tensor`: Decoded video frames.
+            `torch.Tensor`: Decoded video frames of shape (batch, frames, channels, height, width) as a float tensor in
+            range [0, 1].
         """
-        video_length = latents.shape[2]
-
-        latents = 1 / self.vae.config.scaling_factor * latents  # scale latents
-
-        # Reshape latents from [batch, channels, frames, height, width] to [batch*frames, channels, height, width]
-        latents = latents.permute(0, 2, 1, 3, 4).reshape(
-            latents.shape[0] * latents.shape[2], latents.shape[1], latents.shape[3], latents.shape[4]
-        )
-
-        # Decode all frames
+        # AutoencoderKLWan expects B, C, F, H, W latents directly
         video = self.vae.decode(latents).sample
-
-        # Reshape back to [batch, frames, channels, height, width]
-        video = video.reshape(-1, video_length, video.shape[1], video.shape[2], video.shape[3])
-
-        # Rescale video from [-1, 1] to [0, 1]
+        video = video.permute(0, 2, 1, 3, 4)  # B, F, C, H, W
         video = (video / 2 + 0.5).clamp(0, 1)
-
-        # Rescale to pixel values
-        video = (video * 255).to(torch.uint8)
-
-        # Permute channels to [batch, frames, height, width, channels]
-        return video.permute(0, 1, 3, 4, 2)
-
-    def encode_image(self, image: Union[torch.Tensor, PIL.Image.Image]) -> torch.Tensor:
-        """
-        Encode the input image to latent space using VAE.
-
-        Args:
-            image (`torch.Tensor` or `PIL.Image.Image`): Input image to encode.
-
-        Returns:
-            `torch.Tensor`: Latent representation of the input image.
-        """
-        if isinstance(image, PIL.Image.Image):
-            # Convert PIL image to tensor
-            image = torch.from_numpy(np.array(image)).float() / 127.5 - 1.0
-            image = image.permute(2, 0, 1).unsqueeze(0)
-        elif isinstance(image, torch.Tensor) and image.ndim == 3:
-            # Add batch dimension for single image tensor
-            image = image.unsqueeze(0)
-        elif isinstance(image, torch.Tensor) and image.ndim == 4:
-            # Ensure input is in -1 to 1 range
-            if image.min() >= 0 and image.max() <= 1:
-                image = 2.0 * image - 1.0
-        else:
-            raise ValueError(f"Invalid image input type: {type(image)}")
-
-        image = image.to(device=self._execution_device, dtype=self.vae.dtype)
-
-        # Encode the image using VAE
-        latents = self.vae.encode(image).latent_dist.sample()
-        latents = latents * self.vae.config.scaling_factor
-
-        return latents
+        return video
 
     def prepare_latents(
         self,
@@ -305,86 +318,95 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
         device: torch.device,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-        image_latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Prepare latent variables from noise for the diffusion process, optionally incorporating image conditioning.
+        Prepare latent variables from noise for the diffusion process.
 
         Args:
-            batch_size (`int`): Number of samples to generate.
-            num_channels_latents (`int`): Number of channels in the latent space.
-            num_frames (`int`): Number of video frames to generate.
-            height (`int`): Height of the generated images in pixels.
-            width (`int`): Width of the generated images in pixels.
-            dtype (`torch.dtype`): Data type of the latent variables.
-            device (`torch.device`): Device to generate the latents on.
-            generator (`torch.Generator` or List[`torch.Generator`], *optional*): One or a list of generators.
-            latents (`torch.Tensor`, *optional*): Pre-generated noisy latent variables.
-            image_latents (`torch.Tensor`, *optional*): Latent representation of the conditioning image.
+            batch_size (`int`):
+                Number of samples to generate.
+            num_channels_latents (`int`):
+                Number of channels in the latent space.
+            num_frames (`int`):
+                Number of video frames to generate.
+            height (`int`):
+                Height of the generated video in pixels.
+            width (`int`):
+                Width of the generated video in pixels.
+            dtype (`torch.dtype`):
+                Data type of the latent variables.
+            device (`torch.device`):
+                Device to generate the latents on.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for video
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a random
+                noisy latent is generated.
 
         Returns:
             `torch.Tensor`: Prepared initial latent variables.
         """
-        shape = (
+        vae_scale_factor = self.vae_scale_factor
+        shape_spatial = (batch_size, num_channels_latents, height // vae_scale_factor, width // vae_scale_factor)
+        shape_spatial = (
             batch_size,
             num_channels_latents,
-            num_frames,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
 
+        if hasattr(self.vae.config, "temperal_downsample") and self.vae.config.temperal_downsample is not None:
+            num_true_temporal_downsamples = sum(1 for td in self.vae.config.temperal_downsample if td)
+            temporal_downsample_factor = 2**num_true_temporal_downsamples
+        else:
+            temporal_downsample_factor = 4
+            logger.warning(
+                "VAE config does not have 'temperal_downsample'. Using default temporal_downsample_factor=4."
+            )
+
+        num_latent_frames = (num_frames - 1) // temporal_downsample_factor + 1
+        shape = (shape_spatial[0], shape_spatial[1], num_latent_frames, shape_spatial[2], shape_spatial[3])
+
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
-                f"Must provide a list of generators of length {batch_size}, but list of length {len(generator)} was provided."
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
-        # Scale initial noise by the standard deviation
         latents = latents * self.scheduler.init_noise_sigma
-
-        # If we have image conditioning, incorporate it into the first frame
-        if image_latents is not None:
-            # Expand image latents to match the number of frames by repeating along frame dimension
-            # This helps provide a stronger image signal throughout the video
-            image_latents = image_latents.unsqueeze(2)
-            first_frame_latents = image_latents.expand(-1, -1, 1, -1, -1)
-
-            # Create a stronger conditioning for the first frame
-            # This helps ensure the video starts with the input image
-            alpha = 0.8  # Higher alpha means stronger image conditioning
-            latents[:, :, 0:1] = alpha * first_frame_latents + (1 - alpha) * latents[:, :, 0:1]
-
         return latents
 
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
-        num_frames: int = 16,
+        image: Optional[Union[torch.FloatTensor, PIL.Image.Image, List[PIL.Image.Image]]] = None,
+        num_frames: int = 97,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_inference_steps: int = 25,
-        guidance_scale: float = 5.0,
+        num_inference_steps: int = 30,
+        guidance_scale: float = 6.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
+        image_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: Optional[int] = None,
-        output_type: Optional[str] = "tensor",
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        custom_shift: Optional[float] = None,
+        custom_shift: Optional[float] = 8.0,
     ) -> Union[SkyReelsV2PipelineOutput, Tuple]:
         """
         The call function to the pipeline for generation.
@@ -394,7 +416,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             image (`torch.FloatTensor` or `PIL.Image.Image`, *optional*):
                 The image to use as the starting point for the video generation.
-            num_frames (`int`, *optional*, defaults to 16):
+            num_frames (`int`, *optional*, defaults to 97):
                 The number of video frames to generate.
             height (`int`, *optional*, defaults to None):
                 The height in pixels of the generated video frames. If not provided, height is automatically determined
@@ -402,10 +424,10 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
             width (`int`, *optional*, defaults to None):
                 The width in pixels of the generated video frames. If not provided, width is automatically determined
                 from the model configuration.
-            num_inference_steps (`int`, *optional*, defaults to 25):
+            num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to higher quality videos at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 5.0):
+            guidance_scale (`float`, *optional*, defaults to 6.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -428,7 +450,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             max_sequence_length (`int`, *optional*):
                 Maximum sequence length for input text when generating embeddings. If not provided, defaults to 77.
-            output_type (`str`, *optional*, defaults to `"tensor"`):
+            output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated video. Choose between `tensor` and `np` for `torch.Tensor` or
                 `numpy.array` output respectively.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -474,6 +496,8 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
         # 1. Check inputs
         self.check_inputs(
             prompt,
+            image,
+            height,
             num_frames,
             callback_steps,
             negative_prompt,
@@ -489,14 +513,25 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
-        else:
+        elif image is not None:
+            if isinstance(image, PIL.Image.Image):
+                batch_size = 1
+            elif isinstance(image, list) and all(isinstance(i, PIL.Image.Image) for i in image):
+                batch_size = len(image)
+            elif isinstance(image, torch.Tensor):
+                batch_size = image.shape[0]
+            else:
+                # Fallback or error if image type is not recognized for batch size inference
+                raise ValueError("Cannot determine batch size from the provided image type.")
+        elif prompt_embeds is not None:
             batch_size = prompt_embeds.shape[0]
-        device = self._execution_device
+        else:
+            raise ValueError("Either `prompt`, `image`, or `prompt_embeds` must be provided.")
 
-        # 3. Determine whether to apply classifier-free guidance
+        device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 4. Encode input prompt
+        # 3. Encode input prompt
         prompt_embeds = self.encode_prompt(
             prompt,
             device,
@@ -508,20 +543,18 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
         )
 
-        # 5. Encode the input image
-        image_latents = self.encode_image(image)
+        # 4. Encode input image
+        if image is None:
+            # This case should ideally be caught by check_inputs or initial ValueError
+            raise ValueError("`image` is a required argument for SkyReelsV2ImageToVideoPipeline.")
 
-        # Duplicate image latents for each batch and prompt
-        if isinstance(image, PIL.Image.Image) or (isinstance(image, torch.Tensor) and image.ndim < 4):
-            # For a single image to be duplicated
-            image_latents = image_latents.repeat(batch_size * num_videos_per_prompt, 1, 1, 1)
+        image_embeds = self._encode_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
 
-        # 6. Prepare timesteps
-        timestep_shift = None if custom_shift is None else {"shift": custom_shift}
-        self.scheduler.set_timesteps(num_inference_steps, device=device, **timestep_shift if timestep_shift else {})
+        # 5. Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device, shift=custom_shift)
         timesteps = self.scheduler.timesteps
 
-        # 7. Prepare latent variables
+        # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
@@ -529,59 +562,44 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline):
             num_frames,
             height,
             width,
-            prompt_embeds.dtype,
+            prompt_embeds.dtype,  # Use prompt_embeds.dtype, image_embeds could be different
             device,
             generator,
-            latents,
-            image_latents,
+            latents=latents,
         )
 
-        # 8. Denoising loop
+        # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # Expand latents for classifier-free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-
-                # Scale model input
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # Predict the noise residual
-                noise_pred = self.transformer(
+                model_pred = self.transformer(
                     latent_model_input,
-                    t,
+                    timestep=t,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_hidden_states_image=None,
+                    encoder_hidden_states_image=image_embeds,  # Pass image_embeds here
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
-                # Perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    model_pred_uncond, model_pred_text = model_pred.chunk(2)
+                    model_pred = model_pred_uncond + guidance_scale * (model_pred_text - model_pred_uncond)
 
-                # Update latents with the scheduler step
-                latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+                latents = self.scheduler.step(model_pred, t, latents).prev_sample
 
-                # Call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
-        # 9. Post-processing: decode latents
-        video = self.decode_latents(latents)
+        # 8. Post-processing
+        video_tensor = self.decode_latents(latents)
+        video = self.video_processor.postprocess_video(video_tensor, output_type=output_type)
 
-        # 10. Convert output format
-        if output_type == "np":
-            video = video.cpu().numpy()
-        elif output_type == "tensor":
-            video = video.cpu()
-
-        # 11. Offload all models
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (video,)

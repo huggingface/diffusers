@@ -30,6 +30,7 @@ _import_structure = {
     "ledits_pp": [],
     "marigold": [],
     "pag": [],
+    "skyreels_v2": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -361,6 +362,13 @@ else:
         "WuerstchenPriorPipeline",
     ]
     _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline"]
+    _import_structure["skyreels_v2"].extend(
+        [
+            "SkyReelsV2DiffusionForcingPipeline",
+            "SkyReelsV2ImageToVideoPipeline",
+            "SkyReelsV2TextToVideoPipeline",
+        ]
+    )
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -822,6 +830,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 MidiProcessor,
                 SpectrogramDiffusionPipeline,
             )
+
+        from .skyreels_v2 import (
+            SkyReelsV2DiffusionForcingPipeline,
+            SkyReelsV2ImageToVideoPipeline,
+            SkyReelsV2TextToVideoPipeline,
+        )
 
 else:
     import sys

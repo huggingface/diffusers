@@ -19,6 +19,7 @@ import PIL.Image
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...image_processor import VideoProcessor
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowUniPCMultistepScheduler
 from ...utils import (
@@ -32,25 +33,51 @@ from .pipeline_skyreels_v2_text_to_video import SkyReelsV2PipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-EXAMPLE_DOC_STRING = """
+
+EXAMPLE_DOC_STRING = """\
     Examples:
         ```py
         >>> import torch
         >>> import PIL.Image
         >>> from diffusers import SkyReelsV2DiffusionForcingPipeline
+        >>> from diffusers.utils import export_to_video, load_image
 
         >>> # Load the pipeline
         >>> pipe = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
-        ...     "SkyworkAI/SkyReels-V2-DiffusionForcing-4.0B", torch_dtype=torch.float16
+        ...     "HF_placeholder/SkyReels-V2-DF-1.3B-540P", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> # Prepare conditioning frames (list of PIL Images or a tensor of shape [frames, height, width, channels])
-        >>> frames = [PIL.Image.open(f"frame_{i}.jpg").convert("RGB") for i in range(5)]
+        >>> # Prepare conditioning frames (list of PIL Images)
+        >>> # Example: Condition on frames 0, 24, 48, 72 for a 97-frame video
+        >>> frame_0 = load_image("./frame_0.png")  # Placeholder paths
+        >>> frame_24 = load_image("./frame_24.png")
+        >>> frame_48 = load_image("./frame_48.png")
+        >>> frame_72 = load_image("./frame_72.png")
+        >>> conditioning_frames = [frame_0, frame_24, frame_48, frame_72]
+
         >>> # Create mask: 1 for conditioning frames, 0 for frames to generate
-        >>> mask = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+        >>> num_frames = 97  # Match the default
+        >>> conditioning_frame_mask = [0] * num_frames
+        >>> # Example conditioning indices for a 97-frame video
+        >>> conditioning_indices = [0, 24, 48, 72]
+        >>> for idx in conditioning_indices:
+        ...     if idx < num_frames:  # Check bounds
+        ...         conditioning_frame_mask[idx] = 1
+
         >>> prompt = "A person walking in the park"
-        >>> video = pipe(prompt, conditioning_frames=frames, conditioning_frame_mask=mask, num_frames=16).frames[0]
+        >>> video = pipe(
+        ...     prompt=prompt,
+        ...     conditioning_frames=conditioning_frames,
+        ...     conditioning_frame_mask=conditioning_frame_mask,
+        ...     num_frames=num_frames,
+        ...     height=544,
+        ...     width=960,
+        ...     num_inference_steps=30,
+        ...     guidance_scale=6.0,
+        ...     custom_shift=8.0,
+        ... ).frames
+        >>> export_to_video(video, "skyreels_v2_df.mp4")
         ```
 """
 
@@ -73,6 +100,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
             A SkyReels-V2 transformer model for diffusion with diffusion forcing capability.
         scheduler ([`FlowUniPCMultistepScheduler`]):
             A scheduler to be used in combination with the transformer to denoise the encoded video latents.
+        video_processor ([`VideoProcessor`]):
+            Processor for post-processing generated videos (e.g., tensor to numpy array).
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -85,6 +114,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         transformer: WanTransformer3DModel,
         scheduler: FlowUniPCMultistepScheduler,
+        video_processor: VideoProcessor,
     ):
         super().__init__()
         self.register_modules(
@@ -93,6 +123,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
             scheduler=scheduler,
+            video_processor=video_processor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
@@ -232,111 +263,61 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
-        """
-        Decode the generated latent sample using the VAE to produce video frames.
-
-        Args:
-            latents (`torch.Tensor`): Generated latent samples from the diffusion process.
-
-        Returns:
-            `torch.Tensor`: Decoded video frames.
-        """
-        video_length = latents.shape[2]
-
-        latents = 1 / self.vae.config.scaling_factor * latents  # scale latents
-
-        # Reshape latents from [batch, channels, frames, height, width] to [batch*frames, channels, height, width]
-        latents = latents.permute(0, 2, 1, 3, 4).reshape(
-            latents.shape[0] * latents.shape[2], latents.shape[1], latents.shape[3], latents.shape[4]
-        )
-
-        # Decode all frames
+    def _decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
+        # AutoencoderKLWan expects B, C, F, H, W latents directly
         video = self.vae.decode(latents).sample
-
-        # Reshape back to [batch, frames, channels, height, width]
-        video = video.reshape(-1, video_length, video.shape[1], video.shape[2], video.shape[3])
-
-        # Rescale video from [-1, 1] to [0, 1]
+        video = video.permute(0, 2, 1, 3, 4)
         video = (video / 2 + 0.5).clamp(0, 1)
+        return video
 
-        # Rescale to pixel values
-        video = (video * 255).to(torch.uint8)
-
-        # Permute channels to [batch, frames, height, width, channels]
-        return video.permute(0, 1, 3, 4, 2)
-
-    def encode_frames(self, frames: Union[List[PIL.Image.Image], torch.Tensor, np.ndarray]) -> torch.Tensor:
+    def encode_frames(self, frames: Union[List[PIL.Image.Image], torch.Tensor]) -> torch.Tensor:
         """
-        Encode the conditioning frames to latent space using VAE.
+        Encodes conditioning frames into VAE latent space.
 
         Args:
-            frames (`List[PIL.Image.Image]` or `torch.Tensor` or `np.ndarray`):
-                List of frames or tensor/array containing frames to encode.
+            frames (`List[PIL.Image.Image]` or `torch.Tensor`):
+                The conditioning frames (batch, frames, channels, height, width) or list of PIL images. Assumes frames
+                are already preprocessed (e.g., correct size, range [-1, 1] if tensor).
 
         Returns:
-            `torch.Tensor`: Latent representation of the input frames.
+            `torch.Tensor`: Latent representations of the frames (batch, channels, latent_frames, height, width).
         """
-        device = self._execution_device
-        dtype = self.vae.dtype
-
         if isinstance(frames, list):
-            # Convert list of PIL Images to tensor [frames, channels, height, width]
-            processed_frames = []
-            for frame in frames:
-                if isinstance(frame, PIL.Image.Image):
-                    frame = np.array(frame).astype(np.float32) / 127.5 - 1.0
-                    frame = torch.from_numpy(frame).permute(2, 0, 1)
-                processed_frames.append(frame)
-            frames_tensor = torch.stack(processed_frames)
-
-        elif isinstance(frames, np.ndarray):
-            # Convert numpy array to tensor
-            if frames.ndim == 4:  # [frames, height, width, channels]
-                frames = frames.astype(np.float32) / 127.5 - 1.0
-                frames_tensor = torch.from_numpy(frames).permute(0, 3, 1, 2)  # [frames, channels, height, width]
-            else:
-                raise ValueError(
-                    f"Unexpected numpy array shape: {frames.shape}, expected [frames, height, width, channels]"
-                )
-
+            # Assume list of PIL Images, needs preprocessing similar to VAE requirements
+            # Note: This uses a basic preprocessing, might need alignment with VaeImageProcessor
+            frames_np = np.stack([np.array(frame.convert("RGB")) for frame in frames])
+            frames_tensor = torch.from_numpy(frames_np).float() / 127.5 - 1.0  # Range [-1, 1]
+            frames_tensor = frames_tensor.permute(
+                0, 3, 1, 2
+            )  # -> (batch*frames, channels, H, W) if flattened? No, needs batch dim.
+            # Let's assume the input list is for a SINGLE batch item's frames.
+            # Needs shape (batch=1, frames, channels, H, W) -> permute to (batch=1, channels, frames, H, W)
+            frames_tensor = frames_tensor.unsqueeze(0).permute(0, 2, 1, 3, 4)
         elif isinstance(frames, torch.Tensor):
-            if frames.ndim == 4:
-                if frames.shape[1] == 3:  # [frames, channels, height, width]
-                    frames_tensor = frames
-                elif frames.shape[3] == 3:  # [frames, height, width, channels]
-                    frames_tensor = frames.permute(0, 3, 1, 2)
-                else:
-                    raise ValueError(f"Unexpected tensor shape: {frames.shape}, cannot determine channel dimension")
+            # Assume input tensor is already preprocessed and has shape (batch, frames, channels, H, W) or similar
+            # Ensure range [-1, 1]
+            if frames.min() >= 0.0 and frames.max() <= 1.0:
+                frames = 2.0 * frames - 1.0
+            # Permute to (batch, channels, frames, H, W)
+            if frames.ndim == 5 and frames.shape[2] == 3:  # Check if channels is dim 2
+                frames_tensor = frames.permute(0, 2, 1, 3, 4)
+            elif frames.ndim == 5 and frames.shape[1] == 3:  # Check if channels is dim 1
+                frames_tensor = frames  # Already in correct channel order
             else:
-                raise ValueError(f"Unexpected tensor shape: {frames.shape}, expected 4D tensor")
-
-            # Ensure pixel values are in range [-1, 1]
-            if frames_tensor.min() >= 0 and frames_tensor.max() <= 1:
-                frames_tensor = 2.0 * frames_tensor - 1.0
-            elif frames_tensor.min() >= 0 and frames_tensor.max() <= 255:
-                frames_tensor = frames_tensor / 127.5 - 1.0
+                raise ValueError("Input tensor shape not recognized. Expected (B, F, C, H, W) or (B, C, F, H, W).")
         else:
-            raise ValueError(f"Unsupported frame input type: {type(frames)}")
+            raise TypeError("`conditioning_frames` must be a list of PIL Images or a torch Tensor.")
 
-        # Move to device and correct dtype
-        frames_tensor = frames_tensor.to(device=device, dtype=dtype)
+        frames_tensor = frames_tensor.to(device=self.device, dtype=self.vae.dtype)
 
-        # Process in batches if there are many frames, to avoid OOM
-        batch_size = 8  # reasonable batch size for VAE encoding
-        latents = []
+        # Encode frames using VAE
+        # Note: VAE encode expects (batch, channels, frames, height, width)? Check AutoencoderKLWan docs/code
+        # AutoencoderKLWan._encode takes (B, C, F, H, W)
+        conditioning_latents = self.vae.encode(frames_tensor).latent_dist.sample()
+        conditioning_latents = conditioning_latents * self.vae.config.scaling_factor
 
-        for i in range(0, frames_tensor.shape[0], batch_size):
-            batch = frames_tensor[i : i + batch_size]
-            with torch.no_grad():
-                batch_latents = self.vae.encode(batch).latent_dist.sample()
-                batch_latents = batch_latents * self.vae.config.scaling_factor
-                latents.append(batch_latents)
-
-        # Concatenate all batches
-        latents = torch.cat(latents, dim=0)
-
-        return latents
+        # Expected output shape: (batch, channels, latent_frames, latent_height, latent_width)
+        return conditioning_latents
 
     def prepare_latents_with_forcing(
         self,
@@ -349,138 +330,169 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
         device: torch.device,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-        conditioning_latents: Optional[torch.Tensor] = None,
+        conditioning_latents_sparse: Optional[torch.Tensor] = None,
         conditioning_frame_mask: Optional[List[int]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Prepare latent variables for diffusion forcing.
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[bool]]:
+        r"""
+        Prepare latent variables, incorporating conditioning frames based on the mask.
 
         Args:
             batch_size (`int`): Number of samples to generate.
             num_channels_latents (`int`): Number of channels in the latent space.
-            num_frames (`int`): Number of video frames to generate.
-            height (`int`): Height of the generated images in pixels.
-            width (`int`): Width of the generated images in pixels.
+            num_frames (`int`): Total number of video frames to generate.
+            height (`int`): Height of the generated video in pixels.
+            width (`int`): Width of the generated video in pixels.
             dtype (`torch.dtype`): Data type of the latent variables.
             device (`torch.device`): Device to generate the latents on.
-            generator (`torch.Generator` or List[`torch.Generator`], *optional*): One or a list of generators.
-            latents (`torch.Tensor`, *optional*): Pre-generated noisy latent variables.
-            conditioning_latents (`torch.Tensor`, *optional*): Latent representations of conditioning frames.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*): Generator(s) for noise.
+            latents (`torch.Tensor`, *optional*): Pre-generated noisy latents.
+            conditioning_latents_sparse (`torch.Tensor`, *optional*): Latent representations of conditioning frames.
+                 Shape: (batch, channels, num_cond_latent_frames, latent_H, latent_W).
             conditioning_frame_mask (`List[int]`, *optional*):
-                Binary mask indicating which frames are conditioning frames.
+                Mask indicating which output frames are conditioned (1) or generated (0). Length must match
+                `num_frames`.
 
         Returns:
-            `Tuple[torch.Tensor, torch.Tensor]`: Prepared initial latent variables and forcing frame mask.
+            `Tuple[torch.Tensor, torch.Tensor, List[bool]]`:
+                - Prepared initial latent variables (noise).
+                - Mask tensor in latent space indicating regions to generate (True) vs conditioned (False).
+                - Boolean list representing the mask at the latent frame level (True=Conditioned).
         """
-        # Check if we have all required inputs for diffusion forcing
-        if conditioning_frame_mask is None:
-            raise ValueError("conditioning_frame_mask is required for diffusion forcing")
-
-        if conditioning_latents is None:
-            raise ValueError("conditioning_latents are required for diffusion forcing")
-
-        # Ensure mask has the right length
-        if len(conditioning_frame_mask) != num_frames:
-            raise ValueError(
-                f"conditioning_frame_mask length ({len(conditioning_frame_mask)}) must match num_frames ({num_frames})"
-            )
-
-        # Count conditioning frames in the mask
-        num_cond_frames = sum(conditioning_frame_mask)
-
-        # Check if conditioning_latents has correct number of frames
-        if conditioning_latents.shape[0] != num_cond_frames:
-            raise ValueError(
-                f"Number of conditioning frames ({conditioning_latents.shape[0]}) must match "
-                f"number of 1s in conditioning_frame_mask ({num_cond_frames})"
-            )
-
-        # Shape for full video latents
-        shape = (
+        # Calculate latent spatial shape
+        shape_spatial = (
             batch_size,
             num_channels_latents,
-            num_frames,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
 
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"Must provide a list of generators of length {batch_size}, but list of length {len(generator)} was provided."
+        # Calculate temporal downsampling factor
+        if hasattr(self.vae.config, "temperal_downsample") and self.vae.config.temperal_downsample is not None:
+            num_true_temporal_downsamples = sum(1 for td in self.vae.config.temperal_downsample if td)
+            temporal_downsample_factor = 2**num_true_temporal_downsamples
+        else:
+            temporal_downsample_factor = 4
+            logger.warning(
+                "VAE config does not have 'temperal_downsample'. Using default temporal_downsample_factor=4."
             )
 
-        # Generate or use provided latents
+        # Calculate number of latent frames required for the full output sequence
+        num_latent_frames = (num_frames - 1) // temporal_downsample_factor + 1
+        shape = (shape_spatial[0], shape_spatial[1], num_latent_frames, shape_spatial[2], shape_spatial[3])
+
+        # Create initial noise latents
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            initial_latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
-            latents = latents.to(device)
+            initial_latents = latents.to(device)
 
-        # Scale initial noise by the standard deviation
-        latents = latents * self.scheduler.init_noise_sigma
+        # Create latent mask
+        latent_mask_list_bool = [False] * num_latent_frames  # Default: All False (generate)
+        if conditioning_latents_sparse is not None and conditioning_frame_mask is not None:
+            if len(conditioning_frame_mask) != num_frames:
+                raise ValueError("Length of conditioning_frame_mask must equal num_frames.")
 
-        # Create forcing mask tensor [batch, 1, frames, 1, 1]
-        forcing_mask = torch.tensor(conditioning_frame_mask, device=device, dtype=dtype)
-        forcing_mask = forcing_mask.view(1, 1, num_frames, 1, 1).expand(batch_size, 1, -1, 1, 1)
-
-        # Insert conditioning latents at the correct positions based on mask
-        cond_idx = 0
-        for frame_idx, is_cond in enumerate(conditioning_frame_mask):
-            if is_cond:
-                # Replace the random noise with the encoded conditioning frame
-                latents[:, :, frame_idx : frame_idx + 1] = (
-                    conditioning_latents[cond_idx : cond_idx + 1].unsqueeze(0).expand(batch_size, -1, -1, -1, -1)
+            # Correct mapping from frame mask to latent frame mask
+            num_conditioned_latents_expected = 0
+            for j in range(num_latent_frames):
+                start_frame_idx = j * temporal_downsample_factor
+                end_frame_idx = min(start_frame_idx + temporal_downsample_factor, num_frames)
+                # Check if any original frame corresponding to this latent frame is a conditioning frame (mask=1)
+                is_latent_conditioned = any(
+                    conditioning_frame_mask[k] == 1 for k in range(start_frame_idx, end_frame_idx)
                 )
-                cond_idx += 1
+                latent_mask_list_bool[j] = (
+                    is_latent_conditioned  # True if this latent frame corresponds to a conditioned frame
+                )
+                if is_latent_conditioned:
+                    num_conditioned_latents_expected += 1
 
-        return latents, forcing_mask
+            # Validate the number of conditioning latents provided vs expected
+            if conditioning_latents_sparse.shape[2] != num_conditioned_latents_expected:
+                logger.warning(
+                    f"Number of provided conditioning latents (frame dim: {conditioning_latents_sparse.shape[2]}) does not match "
+                    f"the number of latent frames marked for conditioning ({num_conditioned_latents_expected}) based on the mask and stride. "
+                    f"Ensure encode_frames provides latents only for the necessary frames."
+                )
+                # This indicates a potential mismatch that could cause errors later.
+
+            # Create the tensor mask for computations
+            # latent_mask_list_bool is True for conditioned frames
+            # We need a mask where True means GENERATE (inpaint area)
+            latent_mask_tensor_cond = torch.tensor(
+                latent_mask_list_bool, device=device, dtype=torch.bool
+            )  # True=Conditioned
+            latent_mask = ~latent_mask_tensor_cond.reshape(1, 1, num_latent_frames, 1, 1).expand_as(
+                initial_latents
+            )  # True = Generate
+        else:
+            # No conditioning, generate everything. Mask is all True (generate).
+            latent_mask = torch.ones_like(initial_latents, dtype=torch.bool)
+            latent_mask_list_bool = [False] * num_latent_frames  # No frames are conditioned
+
+        # Scale the initial noise by the standard deviation required by the scheduler
+        initial_latents = initial_latents * self.scheduler.init_noise_sigma
+
+        # Return initial noise, mask (True=Generate), and boolean list (True=Conditioned)
+        return initial_latents, latent_mask, latent_mask_list_bool
 
     def check_conditioning_inputs(
         self,
-        conditioning_frames: Union[List[PIL.Image.Image], torch.Tensor, np.ndarray],
-        conditioning_frame_mask: List[int],
+        conditioning_frames: Optional[Union[List[PIL.Image.Image], torch.Tensor]],
+        conditioning_frame_mask: Optional[List[int]],
         num_frames: int,
     ):
-        """Check validity of conditioning inputs."""
-        # Validate mask length
-        if len(conditioning_frame_mask) != num_frames:
-            raise ValueError(
-                f"conditioning_frame_mask length ({len(conditioning_frame_mask)}) must match num_frames ({num_frames})"
-            )
+        if conditioning_frames is None and conditioning_frame_mask is not None:
+            raise ValueError("`conditioning_frame_mask` provided without `conditioning_frames`.")
+        if conditioning_frames is not None and conditioning_frame_mask is None:
+            raise ValueError("`conditioning_frames` provided without `conditioning_frame_mask`.")
 
-        # Validate mask values
-        if not all(x in [0, 1] for x in conditioning_frame_mask):
-            raise ValueError("conditioning_frame_mask must only contain 0s and 1s")
-
-        # Count conditioning frames
-        num_conditioning_frames = sum(conditioning_frame_mask)
-
-        # Validate number of conditioning frames
-        if isinstance(conditioning_frames, list):
-            if len(conditioning_frames) != num_conditioning_frames:
+        if conditioning_frames is not None:
+            if not isinstance(conditioning_frame_mask, list) or not all(
+                isinstance(i, int) for i in conditioning_frame_mask
+            ):
+                raise TypeError("`conditioning_frame_mask` must be a list of integers (0 or 1).")
+            if len(conditioning_frame_mask) != num_frames:
                 raise ValueError(
-                    f"Number of conditioning frames ({len(conditioning_frames)}) must match "
-                    f"number of 1s in conditioning_frame_mask ({num_conditioning_frames})"
+                    f"`conditioning_frame_mask` length ({len(conditioning_frame_mask)}) must equal `num_frames` ({num_frames})."
                 )
-        elif isinstance(conditioning_frames, (torch.Tensor, np.ndarray)):
-            if conditioning_frames.shape[0] != num_conditioning_frames:
-                raise ValueError(
-                    f"Number of conditioning frames ({conditioning_frames.shape[0]}) must match "
-                    f"number of 1s in conditioning_frame_mask ({num_conditioning_frames})"
-                )
+            if not all(m in [0, 1] for m in conditioning_frame_mask):
+                raise ValueError("`conditioning_frame_mask` must only contain 0s and 1s.")
+
+            num_masked_frames = sum(conditioning_frame_mask)
+
+            if isinstance(conditioning_frames, list):
+                if not all(isinstance(f, PIL.Image.Image) for f in conditioning_frames):
+                    raise TypeError("If `conditioning_frames` is a list, it must contain only PIL Images.")
+                if len(conditioning_frames) != num_masked_frames:
+                    raise ValueError(
+                        f"Number of `conditioning_frames` ({len(conditioning_frames)}) must equal the number of 1s in `conditioning_frame_mask` ({num_masked_frames})."
+                    )
+            elif isinstance(conditioning_frames, torch.Tensor):
+                # Assuming tensor shape is (num_masked_frames, C, H, W) or (B, num_masked_frames, C, H, W) etc.
+                # A simple check on the frame dimension assuming it's the first or second dim after batch
+                if not (
+                    conditioning_frames.shape[0] == num_masked_frames
+                    or (conditioning_frames.ndim > 1 and conditioning_frames.shape[1] == num_masked_frames)
+                ):
+                    # This check is basic and might need refinement based on expected tensor layout
+                    logger.warning(
+                        f"Number of frames in `conditioning_frames` tensor ({conditioning_frames.shape}) does not seem to match the number of 1s in `conditioning_frame_mask` ({num_masked_frames}). Ensure tensor shape is correct."
+                    )
+            else:
+                raise TypeError("`conditioning_frames` must be a List[PIL.Image.Image] or torch.Tensor.")
 
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        conditioning_frames: Optional[Union[List[PIL.Image.Image], torch.Tensor, np.ndarray]] = None,
+        conditioning_frames: Optional[Union[List[PIL.Image.Image], torch.Tensor]] = None,
         conditioning_frame_mask: Optional[List[int]] = None,
-        num_frames: int = 16,
+        num_frames: int = 97,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_inference_steps: int = 25,
-        guidance_scale: float = 5.0,
+        num_inference_steps: int = 30,
+        guidance_scale: float = 6.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -488,221 +500,217 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: Optional[int] = None,
-        output_type: Optional[str] = "tensor",
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        custom_shift: Optional[float] = None,
+        custom_shift: Optional[float] = 8.0,
     ) -> Union[SkyReelsV2PipelineOutput, Tuple]:
-        """
-        The call function to the pipeline for generation with diffusion forcing.
+        r"""
+        Generate video frames conditioned on text prompts and optionally on specific input frames (diffusion forcing).
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            conditioning_frames (`List[PIL.Image.Image]` or `torch.Tensor` or `np.ndarray`, *optional*):
-                Frames to use as conditioning points during video generation. Should be provided as a list of PIL
-                images, or as a tensor/array of shape [num_cond_frames, height, width, channels] or [num_cond_frames,
-                channels, height, width].
+                The prompt or prompts to guide video generation. If not defined, prompt_embeds must be.
+            conditioning_frames (`List[PIL.Image.Image]` or `torch.Tensor`, *optional*):
+                Frames to condition on. Must be provided if `conditioning_frame_mask` is provided. If a list, should
+                contain PIL Images. If a Tensor, assumes shape compatible with VAE input after batching.
             conditioning_frame_mask (`List[int]`, *optional*):
-                Binary mask indicating which frames are conditioning frames (1) and which are to be generated (0). Must
-                have the same length as num_frames and the same number of 1s as the number of conditioning_frames.
-            num_frames (`int`, *optional*, defaults to 16):
-                The number of video frames to generate.
-            height (`int`, *optional*, defaults to None):
-                The height in pixels of the generated video frames. If not provided, height is automatically determined
-                from the model configuration.
-            width (`int`, *optional*, defaults to None):
-                The width in pixels of the generated video frames. If not provided, width is automatically determined
-                from the model configuration.
-            num_inference_steps (`int`, *optional*, defaults to 25):
-                The number of denoising steps. More denoising steps usually lead to higher quality videos at the
-                expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 5.0):
-                A higher guidance scale value encourages the model to generate images closely linked to the text
-                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
+                A list of 0s and 1s with length `num_frames`. 1 indicates a conditioning frame, 0 indicates a frame to
+                generate.
+            num_frames (`int`, *optional*, defaults to 97):
+                The total number of frames to generate in the video sequence.
+            height (`int`, *optional*, defaults to `self.transformer.config.sample_size * self.vae_scale_factor`):
+                The height in pixels of the generated video.
+            width (`int`, *optional*, defaults to `self.transformer.config.sample_size * self.vae_scale_factor`):
+                The width in pixels of the generated video.
+            num_inference_steps (`int`, *optional*, defaults to 30):
+                The number of denoising steps.
+            guidance_scale (`float`, *optional*, defaults to 6.0):
+                Guidance scale for classifier-free guidance. Enabled when > 1.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide what to not include in image generation. If not defined, you need to
-                pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
+                Negative prompts for CFG.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
-                The number of videos to generate per prompt.
+                Number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
-                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
-                generation deterministic.
+                PyTorch Generator object(s) for deterministic generation.
             latents (`torch.Tensor`, *optional*):
-                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for video
-                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor is generated by sampling using the supplied random `generator`.
+                Pre-generated initial latents (noise). If provided, shape should match expected latent shape.
             prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
-                provided, text embeddings are generated from the `prompt` input argument.
+                Pre-generated text embeddings.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
-                not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+                Pre-generated negative text embeddings.
             max_sequence_length (`int`, *optional*):
-                Maximum sequence length for input text when generating embeddings. If not provided, defaults to 77.
-            output_type (`str`, *optional*, defaults to `"tensor"`):
-                The output format of the generated video. Choose between `tensor` and `np` for `torch.Tensor` or
-                `numpy.array` output respectively.
+                Maximum sequence length for tokenizer. Defaults to model max length (e.g., 77).
+            output_type (`str`, *optional*, defaults to `"np"`):
+                Output format: `"tensor"` (torch.Tensor) or `"np"` (list of np.ndarray).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.SkyReelsV2PipelineOutput`] instead of a plain tuple.
+                Whether to return `SkyReelsV2PipelineOutput` or a tuple.
             callback (`Callable`, *optional*):
-                A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
+                Callback function called every `callback_steps` steps.
             callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function is called. If not specified, the callback is called at
-                every step.
+                Frequency of callback calls.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined in
-                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+                Keyword arguments passed to the attention processor.
             custom_shift (`float`, *optional*):
-                Custom shifting factor to use in the flow matching framework.
-
-        Examples:
-            ```py
-            >>> import torch
-            >>> import PIL.Image
-            >>> from diffusers import SkyReelsV2DiffusionForcingPipeline
-
-            >>> # Load the pipeline
-            >>> pipe = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
-            ...     "SkyworkAI/SkyReels-V2-DiffusionForcing-4.0B", torch_dtype=torch.float16
-            ... )
-            >>> pipe = pipe.to("cuda")
-
-            >>> # Prepare conditioning frames (list of PIL Images or a tensor of shape [frames, height, width, channels])
-            >>> frames = [PIL.Image.open(f"frame_{i}.jpg").convert("RGB") for i in range(5)]
-            >>> # Create mask: 1 for conditioning frames, 0 for frames to generate
-            >>> mask = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
-            >>> prompt = "A person walking in the park"
-            >>> video = pipe(prompt, conditioning_frames=frames, conditioning_frame_mask=mask, num_frames=16).frames[0]
-            ```
+                Shift parameter for the `FlowUniPCMultistepScheduler`.
 
         Returns:
-            [`~pipelines.SkyReelsV2PipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.SkyReelsV2PipelineOutput`] is returned, otherwise a tuple is
-                returned where the first element is a list with the generated frames.
+            [`~pipelines.skyreels_v2.pipeline_skyreels_v2_text_to_video.SkyReelsV2PipelineOutput`] or `tuple`.
         """
-        # 0. Default height and width to transformer dimensions
-        height = height or self.transformer.config.patch_size[1] * 112  # Default from SkyReels-V2: 224
-        width = width or self.transformer.config.patch_size[2] * 112  # Default from SkyReels-V2: 224
+        # 0. Default height and width
+        height = height or self.transformer.config.sample_size * self.vae_scale_factor
+        width = width or self.transformer.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs
         self.check_inputs(
-            prompt,
-            num_frames,
-            callback_steps,
-            negative_prompt,
-            prompt_embeds,
-            negative_prompt_embeds,
+            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
-
-        # Check diffusion forcing inputs
-        if conditioning_frames is None or conditioning_frame_mask is None:
-            raise ValueError("For diffusion forcing, conditioning_frames and conditioning_frame_mask must be provided")
-
         self.check_conditioning_inputs(conditioning_frames, conditioning_frame_mask, num_frames)
+        has_conditioning = conditioning_frames is not None
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
-        else:
+        elif prompt_embeds is not None:
             batch_size = prompt_embeds.shape[0]
-        device = self._execution_device
+        elif isinstance(conditioning_frames, list) or isinstance(conditioning_frames, torch.Tensor):
+            batch_size = 1  # Assuming single batch item from frames for now
+        else:
+            raise ValueError("Cannot determine batch size.")
+        if has_conditioning and batch_size > 1:
+            logger.warning("Batch size > 1 not fully tested with diffusion forcing.")
+            batch_size = 1
 
-        # 3. Determine whether to apply classifier-free guidance
+        device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 4. Encode input prompt
+        # 3. Encode input prompt
         prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_videos_per_prompt,
             do_classifier_free_guidance,
             negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            max_sequence_length=max_sequence_length,
+            prompt_embeds,
+            negative_prompt_embeds,
+            max_sequence_length,
         )
+        prompt_dtype = prompt_embeds.dtype
 
-        # 5. Encode conditioning frames
-        conditioning_latents = self.encode_frames(conditioning_frames)
+        # 4. Encode conditioning frames if provided
+        conditioning_latents_sparse = None
+        if has_conditioning:
+            conditioning_latents_sparse = self.encode_frames(conditioning_frames)
+            conditioning_latents_sparse = conditioning_latents_sparse.to(device=device, dtype=prompt_dtype)
+            # Repeat for num_videos_per_prompt
+            if conditioning_latents_sparse.shape[0] != batch_size * num_videos_per_prompt:
+                conditioning_latents_sparse = conditioning_latents_sparse.repeat_interleave(
+                    num_videos_per_prompt, dim=0
+                )
 
-        # 6. Prepare timesteps
-        timestep_shift = None if custom_shift is None else {"shift": custom_shift}
-        self.scheduler.set_timesteps(num_inference_steps, device=device, **timestep_shift if timestep_shift else {})
+        # 5. Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device, shift=custom_shift)
         timesteps = self.scheduler.timesteps
 
-        # 7. Prepare latent variables with forcing
+        # 6. Prepare latent variables and mask
         num_channels_latents = self.vae.config.latent_channels
-        latents, forcing_mask = self.prepare_latents_with_forcing(
+        # Pass conditioning_latents_sparse to prepare_latents only for validation checks if needed
+        latents, latent_mask, latent_mask_list_bool = self.prepare_latents_with_forcing(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             num_frames,
             height,
             width,
-            prompt_embeds.dtype,
+            prompt_dtype,
             device,
             generator,
-            latents,
-            conditioning_latents,
-            conditioning_frame_mask,
+            latents=latents,
+            conditioning_latents_sparse=conditioning_latents_sparse,
+            conditioning_frame_mask=conditioning_frame_mask,
         )
+        # latents = initial noise; latent_mask = True means generate; latent_mask_list_bool = True means conditioned
 
-        # 8. Denoising loop
+        # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # Expand latents for classifier-free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                # Prepare the known conditioned part (noised)
+                noised_conditioning_latents_full = None
+                if has_conditioning:
+                    # Create a full-shaped tensor for the noised conditioning latents
+                    full_conditioning_latents = torch.zeros_like(latents)
+                    sparse_idx_counter = 0
+                    for latent_idx, is_conditioned in enumerate(latent_mask_list_bool):
+                        if is_conditioned:  # True means it *was* a conditioning frame
+                            if sparse_idx_counter < conditioning_latents_sparse.shape[2]:
+                                full_conditioning_latents[:, :, latent_idx, :, :] = conditioning_latents_sparse[
+                                    :, :, sparse_idx_counter, :, :
+                                ]
+                                sparse_idx_counter += 1
+                            # else: warning already issued in prepare_latents
 
-                # Scale model input
+                    noise = randn_tensor(
+                        full_conditioning_latents.shape, generator=generator, device=device, dtype=prompt_dtype
+                    )
+                    # Noise the 'clean' conditioning latents appropriate for this timestep t
+                    noised_conditioning_latents_full = self.scheduler.add_noise(full_conditioning_latents, noise, t)
+
+                    # Combine current latents with noised conditioning latents using the mask
+                    # latent_mask is True for generated regions, False for conditioned regions
+                    model_input = torch.where(latent_mask, latents, noised_conditioning_latents_full)
+                else:
+                    model_input = latents
+
+                # Expand for CFG
+                latent_model_input = torch.cat([model_input] * 2) if do_classifier_free_guidance else model_input
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # Predict the noise residual using Diffusion Forcing
-                # Use standard forward pass; forcing logic is applied outside the model
-                noise_pred = self.transformer(
+                # Predict noise
+                # Note: Transformer sees the combined input (noise in generated areas, noised known in conditioned areas)
+                model_pred = self.transformer(
                     latent_model_input,
-                    t,
+                    timestep=t,
                     encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states_image=None,
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
-                # Perform guidance
+                # CFG
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    model_pred_uncond, model_pred_text = model_pred.chunk(2)
+                    model_pred = model_pred_uncond + guidance_scale * (model_pred_text - model_pred_uncond)
 
-                # Update latents with the scheduler step
-                latents_input = latents
-                latents_updated = self.scheduler.step(noise_pred, t, latents_input).prev_sample
+                # Scheduler step (operates on the full latents)
+                step_output = self.scheduler.step(model_pred, t, latents)
+                current_latents = step_output.prev_sample
 
-                # Apply forcing: use original latents for conditioning frames, updated latents for frames to generate
-                # forcing_mask is 1 for conditioning frames, 0 for frames to generate
-                latents = torch.where(forcing_mask, latents_input, latents_updated)
+                # Re-apply known conditioning information using the mask
+                # Ensures the conditioned areas stay consistent with their noised versions
+                if has_conditioning:
+                    # Use the same noised_conditioning_latents_full calculated for timestep t
+                    latents = torch.where(latent_mask, current_latents, noised_conditioning_latents_full)
+                else:
+                    latents = current_latents
 
-                # Call the callback, if provided
+                # Callback
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
-        # 9. Post-processing: decode latents
-        video = self.decode_latents(latents)
+        # 8. Post-processing
+        video_tensor = self._decode_latents(latents)
+        # video_tensor shape should be (batch, frames, channels, height, width) float [0,1]
 
-        # 10. Convert output format
-        if output_type == "np":
-            video = video.cpu().numpy()
-        elif output_type == "tensor":
-            video = video.cpu()
+        # Use VideoProcessor for standard output formats
+        video = self.video_processor.postprocess_video(video_tensor, output_type=output_type)
 
-        # 11. Offload all models
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (video,)
