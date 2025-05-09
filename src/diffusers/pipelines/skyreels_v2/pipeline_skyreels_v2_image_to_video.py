@@ -24,7 +24,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
-from ...schedulers import FlowUniPCMultistepScheduler
+from ...schedulers import FlowMatchUniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -145,7 +145,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             variant.
         transformer ([`WanTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
-        scheduler ([`FlowUniPCMultistepScheduler`]):
+        scheduler ([`FlowMatchUniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
@@ -162,7 +162,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image_processor: CLIPImageProcessor,
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowUniPCMultistepScheduler,
+        scheduler: FlowMatchUniPCMultistepScheduler,
     ):
         super().__init__()
 

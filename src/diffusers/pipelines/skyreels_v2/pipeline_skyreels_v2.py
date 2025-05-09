@@ -22,7 +22,7 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
-from ...schedulers import FlowUniPCMultistepScheduler
+from ...schedulers import FlowMatchUniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
         >>> pipe = SkyReelsV2Pipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> flow_shift = 5.0  # 5.0 for 720P, 3.0 for 480P
-        >>> pipe.scheduler = FlowUniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
+        >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
         >>> pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
@@ -108,7 +108,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
         transformer ([`WanTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
-        scheduler ([`FlowUniPCMultistepScheduler`]):
+        scheduler ([`FlowMatchUniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
@@ -123,7 +123,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder: UMT5EncoderModel,
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowUniPCMultistepScheduler,
+        scheduler: FlowMatchUniPCMultistepScheduler,
     ):
         super().__init__()
 
