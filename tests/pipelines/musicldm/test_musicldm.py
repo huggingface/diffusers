@@ -39,7 +39,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import backend_empty_cache, enable_full_determinism, nightly, require_torch_accelerator, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    nightly,
+    require_torch_accelerator,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin

@@ -29,7 +29,6 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     require_torch_accelerator,
-    require_torch_gpu,
     torch_device,
 )
 
