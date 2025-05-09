@@ -102,8 +102,8 @@ class PipelineQuantizationConfig:
         if init_kwargs_transformers != init_kwargs_diffusers:
             raise ValueError(
                 "The signatures of the __init__ methods of the quantization config classes in `diffusers` and `transformers` don't match. "
-                f"Please provide a `quant_mapping` instead, in the {self.__class__.__name__} class. Refer to the docs to learn more about how "
-                "this mapping would look like: TODO."
+                f"Please provide a `quant_mapping` instead, in the {self.__class__.__name__} class. Refer to [the docs](https://huggingface.co/docs/diffusers/main/en/quantization/overview#pipeline-level-quantization) to learn more about how "
+                "this mapping would look like."
             )
 
     def _validate_quant_mapping_args(self):
