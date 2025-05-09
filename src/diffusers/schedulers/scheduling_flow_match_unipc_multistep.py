@@ -115,7 +115,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if not use_dynamic_shifting:
             # when use_dynamic_shifting is True, we apply the timestep shifting on the fly based on the image resolution
-            sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)  # pyright: ignore
+            sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
 
         self.sigmas = sigmas
         self.timesteps = sigmas * num_train_timesteps
@@ -158,7 +158,6 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    # Modified from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler.set_timesteps
     def set_timesteps(
         self,
         num_inference_steps: Union[int, None] = None,
@@ -187,14 +186,14 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("you have to pass a value for `mu` when `use_dynamic_shifting` is set to be `True`")
 
         if sigmas is None:
-            sigmas = np.linspace(self.sigma_max, self.sigma_min, num_inference_steps + 1).copy()[:-1]  # pyright: ignore
+            sigmas = np.linspace(self.sigma_max, self.sigma_min, num_inference_steps + 1).copy()[:-1]
 
         if self.config.use_dynamic_shifting:
-            sigmas = self.time_shift(mu, 1.0, sigmas)  # pyright: ignore
+            sigmas = self.time_shift(mu, 1.0, sigmas)
         else:
             if shift is None:
                 shift = self.config.shift
-            sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)  # pyright: ignore
+            sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
 
         if self.config.final_sigmas_type == "sigma_min":
             sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
@@ -206,7 +205,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             )
 
         timesteps = sigmas * self.config.num_train_timesteps
-        sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)  # pyright: ignore
+        sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
@@ -346,7 +345,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         *args,
         sample: torch.Tensor = None,
-        order: int = None,  # pyright: ignore
+        order: int = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -393,7 +392,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             x_t = self.solver_p.step(model_output, s0, x).prev_sample
             return x_t
 
-        sigma_t, sigma_s0 = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]  # pyright: ignore
+        sigma_t, sigma_s0 = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
 
@@ -406,13 +405,13 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         rks = []
         D1s = []
         for i in range(1, order):
-            si = self.step_index - i  # pyright: ignore
+            si = self.step_index - i
             mi = model_output_list[-(i + 1)]
             alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si])
             lambda_si = torch.log(alpha_si) - torch.log(sigma_si)
             rk = (lambda_si - lambda_s0) / h
             rks.append(rk)
-            D1s.append((mi - m0) / rk)  # pyright: ignore
+            D1s.append((mi - m0) / rk)
 
         rks.append(1.0)
         rks = torch.tensor(rks, device=device)
@@ -455,14 +454,14 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.predict_x0:
             x_t_ = sigma_t / sigma_s0 * x - alpha_t * h_phi_1 * m0
             if D1s is not None:
-                pred_res = torch.einsum("k,bkc...->bc...", rhos_p, D1s)  # pyright: ignore
+                pred_res = torch.einsum("k,bkc...->bc...", rhos_p, D1s)
             else:
                 pred_res = 0
             x_t = x_t_ - alpha_t * B_h * pred_res
         else:
             x_t_ = alpha_t / alpha_s0 * x - sigma_t * h_phi_1 * m0
             if D1s is not None:
-                pred_res = torch.einsum("k,bkc...->bc...", rhos_p, D1s)  # pyright: ignore
+                pred_res = torch.einsum("k,bkc...->bc...", rhos_p, D1s)
             else:
                 pred_res = 0
             x_t = x_t_ - sigma_t * B_h * pred_res
@@ -476,7 +475,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         *args,
         last_sample: torch.Tensor = None,
         this_sample: torch.Tensor = None,
-        order: int = None,  # pyright: ignore
+        order: int = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -528,7 +527,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         x_t = this_sample
         model_t = this_model_output
 
-        sigma_t, sigma_s0 = self.sigmas[self.step_index], self.sigmas[self.step_index - 1]  # pyright: ignore
+        sigma_t, sigma_s0 = self.sigmas[self.step_index], self.sigmas[self.step_index - 1]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
 
@@ -541,13 +540,13 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         rks = []
         D1s = []
         for i in range(1, order):
-            si = self.step_index - (i + 1)  # pyright: ignore
+            si = self.step_index - (i + 1)
             mi = model_output_list[-(i + 1)]
             alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si])
             lambda_si = torch.log(alpha_si) - torch.log(sigma_si)
             rk = (lambda_si - lambda_s0) / h
             rks.append(rk)
-            D1s.append((mi - m0) / rk)  # pyright: ignore
+            D1s.append((mi - m0) / rk)
 
         rks.append(1.0)
         rks = torch.tensor(rks, device=device)
@@ -671,7 +670,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             self._init_step_index(timestep)
 
         use_corrector = (
-            self.step_index > 0 and self.step_index - 1 not in self.disable_corrector and self.last_sample is not None  # pyright: ignore
+            self.step_index > 0 and self.step_index - 1 not in self.disable_corrector and self.last_sample is not None
         )
 
         model_output_convert = self.convert_model_output(model_output, sample=sample)
@@ -688,10 +687,10 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.timestep_list[i] = self.timestep_list[i + 1]
 
         self.model_outputs[-1] = model_output_convert
-        self.timestep_list[-1] = timestep  # pyright: ignore
+        self.timestep_list[-1] = timestep
 
         if self.config.lower_order_final:
-            this_order = min(self.config.solver_order, len(self.timesteps) - self.step_index)  # pyright: ignore
+            this_order = min(self.config.solver_order, len(self.timesteps) - self.step_index)
         else:
             this_order = self.config.solver_order
 
@@ -709,7 +708,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.lower_order_nums += 1
 
         # upon completion increase step index by one
-        self._step_index += 1  # pyright: ignore
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
