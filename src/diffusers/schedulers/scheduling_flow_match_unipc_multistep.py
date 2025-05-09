@@ -189,7 +189,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.linspace(self.sigma_max, self.sigma_min, num_inference_steps + 1).copy()[:-1]
 
         if self.config.use_dynamic_shifting:
-            sigmas = self.time_shift(mu, 1.0, sigmas)
+            sigmas = self._time_shift_exponential(mu, 1.0, sigmas)
         else:
             if shift is None:
                 shift = self.config.shift
@@ -266,8 +266,8 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     def _sigma_to_alpha_sigma_t(self, sigma):
         return 1 - sigma, sigma
 
-    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.set_timesteps
-    def time_shift(self, mu: float, sigma: float, t: torch.Tensor):
+    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler._time_shift_exponential
+    def _time_shift_exponential(self, mu: float, sigma: float, t: torch.Tensor):
         return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
 
     def convert_model_output(
