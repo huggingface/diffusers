@@ -1060,7 +1060,7 @@ class ModelTesterMixin:
     @parameterized.expand([True, False])
     @torch.no_grad()
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_save_load_lora_adapter(self, use_dora=False):
+    def test_lora_save_load_adapter(self, use_dora=False):
         import safetensors
         from peft import LoraConfig
         from peft.utils import get_peft_model_state_dict
@@ -1117,7 +1117,7 @@ class ModelTesterMixin:
         self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
 
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_wrong_adapter_name_raises_error(self):
+    def test_lora_wrong_adapter_name_raises_error(self):
         from peft import LoraConfig
 
         from diffusers.loaders.peft import PeftAdapterMixin
