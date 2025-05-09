@@ -28,13 +28,15 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
+    torch_device,
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -226,19 +228,19 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_kandinsky_controlnet(self):
         expected_image = load_numpy(

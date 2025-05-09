@@ -20,7 +20,14 @@ import numpy as np
 import torch
 
 from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    nightly,
+    require_torch_accelerator,
+    skip_mps,
+    torch_device,
+)
 
 from ..pipeline_params import UNCONDITIONAL_AUDIO_GENERATION_BATCH_PARAMS, UNCONDITIONAL_AUDIO_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -116,19 +123,19 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_dance_diffusion(self):
         device = torch_device
