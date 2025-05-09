@@ -38,6 +38,7 @@ from .import_utils import (
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
+    is_optimum_quanto_available,
     is_peft_available,
     is_timm_available,
     is_torch_available,
@@ -484,6 +485,13 @@ def require_bitsandbytes(test_case):
     Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
     """
     return unittest.skipUnless(is_bitsandbytes_available(), "test requires bitsandbytes")(test_case)
+
+
+def require_quanto(test_case):
+    """
+    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
+    """
+    return unittest.skipUnless(is_optimum_quanto_available(), "test requires quanto")(test_case)
 
 
 def require_accelerate(test_case):
