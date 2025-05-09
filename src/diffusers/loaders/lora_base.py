@@ -412,7 +412,7 @@ def _load_lora_into_text_encoder(
             try:
                 lora_config = LoraConfig(**lora_config_kwargs)
             except TypeError as e:
-                logger.error(f"`LoraConfig` class could not be instantiated:\n{e}.")
+                raise TypeError(f"`LoraConfig` class could not be instantiated:\n{e}.")
 
         # adapter_name
         if adapter_name is None:
