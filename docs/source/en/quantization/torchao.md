@@ -26,13 +26,13 @@ The example below only quantizes the weights to int8.
 
 ```python
 import torch
-from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
+from diffusers import FluxPipeline, AutoModel, TorchAoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
 dtype = torch.bfloat16
 
 quantization_config = TorchAoConfig("int8wo")
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -85,7 +85,7 @@ The quantization methods supported are as follows:
 | **Category** | **Full Function Names** | **Shorthands** |
 |--------------|-------------------------|----------------|
 | **Integer quantization** | `int4_weight_only`, `int8_dynamic_activation_int4_weight`, `int8_weight_only`, `int8_dynamic_activation_int8_weight` | `int4wo`, `int4dq`, `int8wo`, `int8dq` |
-| **Floating point 8-bit quantization** | `float8_weight_only`, `float8_dynamic_activation_float8_weight`, `float8_static_activation_float8_weight` | `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`, `float8_e4m3_tensor`, `float8_e4m3_row` |
+| **Floating point 8-bit quantization** | `float8_weight_only`, `float8_dynamic_activation_float8_weight`, `float8_static_activation_float8_weight` | `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`, `float8dq_e4m3_tensor`, `float8dq_e4m3_row` |
 | **Floating point X-bit quantization** | `fpx_weight_only` | `fpX_eAwB` where `X` is the number of bits (1-7), `A` is exponent bits, and `B` is mantissa bits. Constraint: `X == A + B + 1` |
 | **Unsigned Integer quantization** | `uintx_weight_only` | `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo` |
 
@@ -99,10 +99,10 @@ To serialize a quantized model in a given dtype, first load the model with the d
 
 ```python
 import torch
-from diffusers import FluxTransformer2DModel, TorchAoConfig
+from diffusers import AutoModel, TorchAoConfig
 
 quantization_config = TorchAoConfig("int8wo")
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -115,9 +115,9 @@ To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] me
 
 ```python
 import torch
-from diffusers import FluxPipeline, FluxTransformer2DModel
+from diffusers import FluxPipeline, AutoModel
 
-transformer = FluxTransformer2DModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
+transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
 pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
@@ -131,10 +131,10 @@ If you are using `torch<=2.6.0`, some quantization methods, such as `uint4wo`, c
 ```python
 import torch
 from accelerate import init_empty_weights
-from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
+from diffusers import FluxPipeline, AutoModel, TorchAoConfig
 
 # Serialize the model
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=TorchAoConfig("uint4wo"),
@@ -146,9 +146,12 @@ transformer.save_pretrained("/path/to/flux_uint4wo", safe_serialization=False, m
 # Load the model
 state_dict = torch.load("/path/to/flux_uint4wo/diffusion_pytorch_model.bin", weights_only=False, map_location="cpu")
 with init_empty_weights():
-    transformer = FluxTransformer2DModel.from_config("/path/to/flux_uint4wo/config.json")
+    transformer = AutoModel.from_config("/path/to/flux_uint4wo/config.json")
 transformer.load_state_dict(state_dict, strict=True, assign=True)
 ```
+
+> [!TIP]
+> The [`AutoModel`] API is supported for PyTorch >= 2.6 as shown in the examples below.
 
 ## Resources
 

@@ -284,7 +284,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
                 )
         else:
             raise AssertionError(
-                f"Expected 'image' or 'image_embeddings' to be not None with types List[PIL.Image] or torch.Tensor respectively. Received {type(image)} and {type(image_embeddings)} repsectively"
+                f"Expected 'image' or 'image_embeddings' to be not None with types List[PIL.Image] or torch.Tensor respectively. Received {type(image)} and {type(image_embeddings)} respectively"
             )
 
         original_image_embeddings = self._encode_image(

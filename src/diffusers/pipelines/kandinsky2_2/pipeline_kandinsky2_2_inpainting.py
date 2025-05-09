@@ -386,7 +386,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
                 "As of diffusers==0.19.0 this behavior has been inverted. Now white pixels are repainted and black pixels are preserved. "
                 "This way, Kandinsky's masking behavior is aligned with Stable Diffusion. "
                 "THIS means that you HAVE to invert the input mask to have the same behavior as before as explained in https://github.com/huggingface/diffusers/pull/4207. "
-                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.23.0"
+                "This warning will be suppressed after the first inference call and will be removed in diffusers>0.23.0"
             )
             self._warn_has_been_called = True
 

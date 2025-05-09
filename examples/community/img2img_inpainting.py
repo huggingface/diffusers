@@ -161,7 +161,7 @@ class ImageToImageInpaintingPipeline(DiffusionPipeline):
                 `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
                 be masked out with `mask_image` and repainted according to `prompt`.
             inner_image (`torch.Tensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be overlayed onto `image`. Non-transparent
+                `Image`, or tensor representing an image batch which will be overlaid onto `image`. Non-transparent
                 regions of `inner_image` must fit inside white pixels in `mask_image`. Expects four channels, with
                 the last channel representing the alpha channel, which will be used to blend `inner_image` with
                 `image`. If not provided, it will be forcibly cast to RGBA.
@@ -362,7 +362,7 @@ class ImageToImageInpaintingPipeline(DiffusionPipeline):
                 f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                 f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
                 f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                f" = {num_channels_latents + num_channels_masked_image + num_channels_mask}. Please verify the config of"
                 " `pipeline.unet` or your `mask_image` or `image` input."
             )
 

@@ -52,9 +52,11 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HunyuanVideoTransformer3DModel": lambda model_cls, weights: weights,
     "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
+    "AuraFlowTransformer2DModel": lambda model_cls, weights: weights,
     "Lumina2Transformer2DModel": lambda model_cls, weights: weights,
     "WanTransformer3DModel": lambda model_cls, weights: weights,
     "CogView4Transformer2DModel": lambda model_cls, weights: weights,
+    "HiDreamImageTransformer2DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -228,7 +230,7 @@ class PeftAdapterMixin:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
-            state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+            state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
@@ -259,7 +261,9 @@ class PeftAdapterMixin:
 
             if network_alphas is not None and len(network_alphas) >= 1:
                 alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
-                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+                network_alphas = {
+                    k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
+                }
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
             _maybe_raise_error_for_ambiguity(lora_config_kwargs)
@@ -328,7 +332,7 @@ class PeftAdapterMixin:
                         new_sd[k] = v
                     return new_sd
 
-            # To handle scenarios where we cannot successfully set state dict. If it's unsucessful,
+            # To handle scenarios where we cannot successfully set state dict. If it's unsuccessful,
             # we should also delete the `peft_config` associated to the `adapter_name`.
             try:
                 if hotswap:
@@ -342,7 +346,7 @@ class PeftAdapterMixin:
                             config=lora_config,
                         )
                     except Exception as e:
-                        logger.error(f"Hotswapping {adapter_name} was unsucessful with the following error: \n{e}")
+                        logger.error(f"Hotswapping {adapter_name} was unsuccessful with the following error: \n{e}")
                         raise
                     # the hotswap function raises if there are incompatible keys, so if we reach this point we can set
                     # it to None
@@ -377,7 +381,7 @@ class PeftAdapterMixin:
                                     module.delete_adapter(adapter_name)
 
                     self.peft_config.pop(adapter_name)
-                logger.error(f"Loading {adapter_name} was unsucessful with the following error: \n{e}")
+                logger.error(f"Loading {adapter_name} was unsuccessful with the following error: \n{e}")
                 raise
 
             warn_msg = ""
@@ -710,7 +714,7 @@ class PeftAdapterMixin:
             if self.lora_scale != 1.0:
                 module.scale_layer(self.lora_scale)
 
-            # For BC with prevous PEFT versions, we need to check the signature
+            # For BC with previous PEFT versions, we need to check the signature
             # of the `merge` method to see if it supports the `adapter_names` argument.
             supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
             if "adapter_names" in supported_merge_kwargs:

@@ -38,6 +38,7 @@ from .import_utils import (
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
+    is_optimum_quanto_available,
     is_peft_available,
     is_timm_available,
     is_torch_available,
@@ -486,6 +487,13 @@ def require_bitsandbytes(test_case):
     return unittest.skipUnless(is_bitsandbytes_available(), "test requires bitsandbytes")(test_case)
 
 
+def require_quanto(test_case):
+    """
+    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
+    """
+    return unittest.skipUnless(is_optimum_quanto_available(), "test requires quanto")(test_case)
+
+
 def require_accelerate(test_case):
     """
     Decorator marking a test that requires accelerate. These tests are skipped when accelerate isn't installed.
@@ -882,7 +890,7 @@ def pytest_terminal_summary_main(tr, id):
             f.write("slowest durations\n")
             for i, rep in enumerate(dlist):
                 if rep.duration < durations_min:
-                    f.write(f"{len(dlist)-i} durations < {durations_min} secs were omitted")
+                    f.write(f"{len(dlist) - i} durations < {durations_min} secs were omitted")
                     break
                 f.write(f"{rep.duration:02.2f}s {rep.when:<8} {rep.nodeid}\n")
 
@@ -1027,7 +1035,7 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
     process.join(timeout=timeout)
 
     if results["error"] is not None:
-        test_case.fail(f'{results["error"]}')
+        test_case.fail(f"{results['error']}")
 
 
 class CaptureLogger:
@@ -1186,6 +1194,13 @@ if is_torch_available():
         "mps": 0,
         "default": 0,
     }
+    BACKEND_SYNCHRONIZE = {
+        "cuda": torch.cuda.synchronize,
+        "xpu": getattr(torch.xpu, "synchronize", None),
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
@@ -1206,6 +1221,10 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 # These are callables which automatically dispatch the function specific to the accelerator
 def backend_manual_seed(device: str, seed: int):
     return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+
+
+def backend_synchronize(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
 
 
 def backend_empty_cache(device: str):

@@ -83,4 +83,8 @@ Happy exploring, and thank you for being part of the Diffusers community!
     <td><a href="https://github.com/suzukimain/auto_diffusers"> Model Search </a></td>
     <td>Search models on Civitai and Hugging Face</td>
   </tr>
+  <tr style="border-top: 2px solid black">
+    <td><a href="https://github.com/beinsezii/skrample"> Skrample </a></td>
+    <td>Fully modular scheduler functions with 1st class diffusers integration.</td>
+  </tr>
 </table>

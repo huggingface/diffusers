@@ -24,7 +24,7 @@
 
 ## Generating Videos with Wan 2.1
 
-We will first need to install some addtional dependencies.
+We will first need to install some additional dependencies.
 
 ```shell
 pip install -u ftfy imageio-ffmpeg imageio
@@ -133,6 +133,60 @@ output = pipe(
 export_to_video(output, "wan-i2v.mp4", fps=16)
 ```
 
+### First and Last Frame Interpolation
+
+```python
+import numpy as np
+import torch
+import torchvision.transforms.functional as TF
+from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
+from diffusers.utils import export_to_video, load_image
+from transformers import CLIPVisionModel
+
+
+model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers"
+image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+pipe = WanImageToVideoPipeline.from_pretrained(
+    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
+last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
+
+def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
+    aspect_ratio = image.height / image.width
+    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+    image = image.resize((width, height))
+    return image, height, width
+
+def center_crop_resize(image, height, width):
+    # Calculate resize ratio to match first frame dimensions
+    resize_ratio = max(width / image.width, height / image.height)
+    
+    # Resize the image
+    width = round(image.width * resize_ratio)
+    height = round(image.height * resize_ratio)
+    size = [width, height]
+    image = TF.center_crop(image, size)
+    
+    return image, height, width
+
+first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
+if last_frame.size != first_frame.size:
+    last_frame, _, _ = center_crop_resize(last_frame, height, width)
+
+prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+
+output = pipe(
+    image=first_frame, last_image=last_frame, prompt=prompt, height=height, width=width, guidance_scale=5.5
+).frames[0]
+export_to_video(output, "output.mp4", fps=16)
+```
+
 ### Video to Video Generation
 
 ```python
@@ -231,7 +285,7 @@ pipe = WanImageToVideoPipeline.from_pretrained(
     image_encoder=image_encoder,
     torch_dtype=torch.bfloat16
 )
-# Since we've offloaded the larger models alrady, we can move the rest of the model components to GPU
+# Since we've offloaded the larger models already, we can move the rest of the model components to GPU
 pipe.to("cuda")
 
 image = load_image(
@@ -314,7 +368,7 @@ pipe = WanImageToVideoPipeline.from_pretrained(
     image_encoder=image_encoder,
     torch_dtype=torch.bfloat16
 )
-# Since we've offloaded the larger models alrady, we can move the rest of the model components to GPU
+# Since we've offloaded the larger models already, we can move the rest of the model components to GPU
 pipe.to("cuda")
 
 image = load_image(

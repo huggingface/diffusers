@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from contextlib import contextmanager, nullcontext
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import torch
 
@@ -55,9 +55,9 @@ class ModuleGroup:
         parameters: Optional[List[torch.nn.Parameter]] = None,
         buffers: Optional[List[torch.Tensor]] = None,
         non_blocking: bool = False,
-        stream: Optional[torch.cuda.Stream] = None,
+        stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
         record_stream: Optional[bool] = False,
-        low_cpu_mem_usage=False,
+        low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
     ) -> None:
         self.modules = modules
@@ -115,8 +115,13 @@ class ModuleGroup:
 
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
-        context = nullcontext() if self.stream is None else torch.cuda.stream(self.stream)
-        current_stream = torch.cuda.current_stream() if self.record_stream else None
+        torch_accelerator_module = (
+            getattr(torch, torch.accelerator.current_accelerator().type)
+            if hasattr(torch, "accelerator")
+            else torch.cuda
+        )
+        context = nullcontext() if self.stream is None else torch_accelerator_module.stream(self.stream)
+        current_stream = torch_accelerator_module.current_stream() if self.record_stream else None
 
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -162,9 +167,15 @@ class ModuleGroup:
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
+
+        torch_accelerator_module = (
+            getattr(torch, torch.accelerator.current_accelerator().type)
+            if hasattr(torch, "accelerator")
+            else torch.cuda
+        )
         if self.stream is not None:
             if not self.record_stream:
-                torch.cuda.current_stream().synchronize()
+                torch_accelerator_module.current_stream().synchronize()
             for group_module in self.modules:
                 for param in group_module.parameters():
                     param.data = self.cpu_param_dict[param]
@@ -232,7 +243,7 @@ class GroupOffloadingHook(ModelHook):
 
 class LazyPrefetchGroupOffloadingHook(ModelHook):
     r"""
-    A hook, used in conjuction with GroupOffloadingHook, that applies lazy prefetching to groups of torch.nn.Module.
+    A hook, used in conjunction with GroupOffloadingHook, that applies lazy prefetching to groups of torch.nn.Module.
     This hook is used to determine the order in which the layers are executed during the forward pass. Once the layer
     invocation order is known, assignments of the next_group attribute for prefetching can be made, which allows
     prefetching groups in the correct order.
@@ -429,8 +440,10 @@ def apply_group_offloading(
     if use_stream:
         if torch.cuda.is_available():
             stream = torch.cuda.Stream()
+        elif hasattr(torch, "xpu") and torch.xpu.is_available():
+            stream = torch.Stream()
         else:
-            raise ValueError("Using streams for data transfer requires a CUDA device.")
+            raise ValueError("Using streams for data transfer requires a CUDA device, or an Intel XPU device.")
 
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
 
@@ -468,7 +481,7 @@ def _apply_group_offloading_block_level(
     offload_device: torch.device,
     onload_device: torch.device,
     non_blocking: bool,
-    stream: Optional[torch.cuda.Stream] = None,
+    stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
     record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
 ) -> None:
@@ -486,7 +499,7 @@ def _apply_group_offloading_block_level(
         non_blocking (`bool`):
             If True, offloading and onloading is done asynchronously. This can be useful for overlapping computation
             and data transfer.
-        stream (`torch.cuda.Stream`, *optional*):
+        stream (`torch.cuda.Stream`or `torch.Stream`, *optional*):
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
         record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
@@ -498,6 +511,11 @@ def _apply_group_offloading_block_level(
             option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
             the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
+    if stream is not None and num_blocks_per_group != 1:
+        logger.warning(
+            f"Using streams is only supported for num_blocks_per_group=1. Got {num_blocks_per_group=}. Setting it to 1."
+        )
+        num_blocks_per_group = 1
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -521,7 +539,7 @@ def _apply_group_offloading_block_level(
                 stream=stream,
                 record_stream=record_stream,
                 low_cpu_mem_usage=low_cpu_mem_usage,
-                onload_self=stream is None,
+                onload_self=True,
             )
             matched_module_groups.append(group)
             for j in range(i, i + len(current_modules)):
@@ -529,12 +547,8 @@ def _apply_group_offloading_block_level(
 
     # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):
-        next_group = (
-            matched_module_groups[i + 1] if i + 1 < len(matched_module_groups) and stream is not None else None
-        )
-
         for group_module in group.modules:
-            _apply_group_offloading_hook(group_module, group, next_group)
+            _apply_group_offloading_hook(group_module, group, None)
 
     # Parameters and Buffers of the top-level module need to be offloaded/onloaded separately
     # when the forward pass of this module is called. This is because the top-level module is not
@@ -560,8 +574,10 @@ def _apply_group_offloading_block_level(
         record_stream=False,
         onload_self=True,
     )
-    next_group = matched_module_groups[0] if len(matched_module_groups) > 0 else None
-    _apply_group_offloading_hook(module, unmatched_group, next_group)
+    if stream is None:
+        _apply_group_offloading_hook(module, unmatched_group, None)
+    else:
+        _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 
 
 def _apply_group_offloading_leaf_level(
@@ -569,7 +585,7 @@ def _apply_group_offloading_leaf_level(
     offload_device: torch.device,
     onload_device: torch.device,
     non_blocking: bool,
-    stream: Optional[torch.cuda.Stream] = None,
+    stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
     record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
 ) -> None:
@@ -589,7 +605,7 @@ def _apply_group_offloading_leaf_level(
         non_blocking (`bool`):
             If True, offloading and onloading is done asynchronously. This can be useful for overlapping computation
             and data transfer.
-        stream (`torch.cuda.Stream`, *optional*):
+        stream (`torch.cuda.Stream` or `torch.Stream`, *optional*):
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
         record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
