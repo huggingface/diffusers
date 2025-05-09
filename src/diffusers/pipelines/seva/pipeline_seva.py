@@ -695,7 +695,7 @@ class SevaPipeline(DiffusionPipeline):
             )  # decode into dict
             extend_dict(all_samples, samples)
             all_prior_inds.extend(chunk_prior_inds)
-        
+        return all_samples, curr_prior_sels
 
     def second_pass(
         self,
@@ -715,6 +715,8 @@ class SevaPipeline(DiffusionPipeline):
         version_dict,
         task,
         samplers,
+        all_samples,
+        curr_prior_sels,
     ):
         T_second_pass = (
             version_dict["T"][1]
@@ -841,6 +843,7 @@ class SevaPipeline(DiffusionPipeline):
         all_samples = {
             key: value[torch.argsort(all_test_inds)] for key, value in all_samples.items()
         }
+        return all_samples
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -945,6 +948,7 @@ class SevaPipeline(DiffusionPipeline):
             num_targets=all_c2ws.shape[0] - input_imgs.shape[0],
         )
 
+        VERSION_DICT["options"] = options
         imgs = []
         for i, (img, K) in enumerate(zip(image_cond["img"], camera_cond["K"])):
             img = img.unsqueeze(0)
@@ -1000,7 +1004,7 @@ class SevaPipeline(DiffusionPipeline):
             VERSION_DICT["options"]["cfg_min"],
         )
 
-        self.first_pass(
+        all_samples, curr_prior_sels = self.first_pass(
             input_indices,
             input_imgs,
             input_c2ws,
@@ -1015,7 +1019,7 @@ class SevaPipeline(DiffusionPipeline):
             samplers
         )
         
-        self.second_pass(
+        all_samples = self.second_pass(
             self,
             input_indices,
             input_imgs,
@@ -1033,6 +1037,8 @@ class SevaPipeline(DiffusionPipeline):
             VERSION_DICT,
             task,
             samplers,
+            all_samples,
+            curr_prior_sels
         )
         
 
