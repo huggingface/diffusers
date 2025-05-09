@@ -481,8 +481,10 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            unet_lora_adapter_metadata: TODO
-            text_encoder_lora_adapter_metadata: TODO
+            unet_lora_adapter_metadata:
+                LoRA adapter metadata associated with the unet to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -959,9 +961,12 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            unet_lora_adapter_metadata: TODO
-            text_encoder_lora_adapter_metadata: TODO
-            text_encoder_2_lora_adapter_metadata: TODO
+            unet_lora_adapter_metadata:
+                LoRA adapter metadata associated with the unet to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
+            text_encoder_2_lora_adapter_metadata:
+                LoRA adapter metadata associated with the second text encoder to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -1394,9 +1399,12 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
-            text_encoder_lora_adapter_metadata: TODO
-            text_encoder_2_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
+            text_encoder_2_lora_adapter_metadata:
+                LoRA adapter metadata associated with the second text encoder to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -1738,7 +1746,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -2291,8 +2300,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
-            text_encoder_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -3074,7 +3085,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -3397,7 +3409,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -3722,7 +3735,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -4047,7 +4061,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -4375,7 +4390,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -4704,7 +4720,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -5062,7 +5079,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -5387,7 +5405,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}
@@ -5712,7 +5731,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata: TODO
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
         lora_adapter_metadata = {}

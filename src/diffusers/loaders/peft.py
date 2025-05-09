@@ -116,11 +116,7 @@ class PeftAdapterMixin:
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
     def load_lora_adapter(
-        self,
-        pretrained_model_name_or_path_or_dict,
-        prefix="transformer",
-        hotswap: bool = False,
-        **kwargs,
+        self, pretrained_model_name_or_path_or_dict, prefix="transformer", hotswap: bool = False, **kwargs
     ):
         r"""
         Loads a LoRA adapter into the underlying model.
@@ -309,7 +305,7 @@ class PeftAdapterMixin:
             try:
                 lora_config = LoraConfig(**lora_config_kwargs)
             except TypeError as e:
-                logger.error(f"`LoraConfig` class could not be instantiated with the following trace: {e}.")
+                logger.error(f"`LoraConfig` class could not be instantiated:\n{e}.")
 
             # adapter_name
             if adapter_name is None:

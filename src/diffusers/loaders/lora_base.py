@@ -409,7 +409,10 @@ def _load_lora_into_text_encoder(
                 if is_peft_version("<=", "0.13.2"):
                     lora_config_kwargs.pop("lora_bias")
 
-        lora_config = LoraConfig(**lora_config_kwargs)
+            try:
+                lora_config = LoraConfig(**lora_config_kwargs)
+            except TypeError as e:
+                logger.error(f"`LoraConfig` class could not be instantiated:\n{e}.")
 
         # adapter_name
         if adapter_name is None:
