@@ -363,6 +363,7 @@ device = "cuda"
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
     torch_dtype=torch.float16,
+    variant="fp16"
 )
 pipeline = pipeline.to(device)
 
