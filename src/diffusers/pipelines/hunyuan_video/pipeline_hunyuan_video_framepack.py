@@ -65,7 +65,7 @@ EXAMPLE_DOC_STRING = """
         ...     "lllyasviel/FramePackI2V_HY", torch_dtype=torch.bfloat16
         ... )
         >>> feature_extractor = SiglipImageProcessor.from_pretrained(
-        ...     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
+        ...     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"m
         ... )
         >>> image_encoder = SiglipVisionModel.from_pretrained(
         ...     "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
@@ -92,6 +92,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=30,
         ...     guidance_scale=9.0,
         ...     generator=torch.Generator().manual_seed(0),
+        ...     sampling_type="inverted_anti_drifting",
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=30)
         ```
@@ -139,6 +140,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=30,
         ...     guidance_scale=9.0,
         ...     generator=torch.Generator().manual_seed(0),
+        ...     sampling_type="inverted_anti_drifting",
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=30)
         ```
@@ -233,7 +235,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FramepackInferenceType(str, Enum):
+class FramepackSamplingType(str, Enum):
     VANILLA = "vanilla"
     INVERTED_ANTI_DRIFTING = "inverted_anti_drifting"
 
@@ -465,7 +467,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         image_latents=None,
         last_image=None,
         last_image_latents=None,
-        inference_type=None,
+        sampling_type=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -504,15 +506,15 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                     f"`prompt_template` has to contain a key `template` but only found {prompt_template.keys()}"
                 )
 
-        inference_types = [x.value for x in FramepackInferenceType.__members__.values()]
-        if inference_type not in inference_types:
-            raise ValueError(f"`inference_type` has to be one of '{inference_types}' but is '{inference_type}'")
+        sampling_types = [x.value for x in FramepackSamplingType.__members__.values()]
+        if sampling_type not in sampling_types:
+            raise ValueError(f"`sampling_type` has to be one of '{sampling_types}' but is '{sampling_type}'")
 
         if image is not None and image_latents is not None:
             raise ValueError("Only one of `image` or `image_latents` can be passed.")
         if last_image is not None and last_image_latents is not None:
             raise ValueError("Only one of `last_image` or `last_image_latents` can be passed.")
-        if inference_type != FramepackInferenceType.INVERTED_ANTI_DRIFTING and (
+        if sampling_type != FramepackSamplingType.INVERTED_ANTI_DRIFTING and (
             last_image is not None or last_image_latents is not None
         ):
             raise ValueError(
@@ -649,7 +651,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         prompt_template: Dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         max_sequence_length: int = 256,
-        inference_type: FramepackInferenceType = FramepackInferenceType.INVERTED_ANTI_DRIFTING,
+        sampling_type: FramepackSamplingType = FramepackSamplingType.INVERTED_ANTI_DRIFTING,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -766,7 +768,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             image_latents,
             last_image,
             last_image_latents,
-            inference_type,
+            sampling_type,
         )
 
         has_neg_prompt = negative_prompt is not None or (
@@ -853,7 +855,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         #   - https://huggingface.co/lllyasviel/FramePackI2V_HY
         #   - https://huggingface.co/lllyasviel/FramePack_F1_I2V_HY_20250503
         # TODO: find a more generic way in future if there are more checkpoints
-        if inference_type == FramepackInferenceType.INVERTED_ANTI_DRIFTING:
+        if sampling_type == FramepackSamplingType.INVERTED_ANTI_DRIFTING:
             history_sizes = [1, 2, 16]
             history_latents = torch.zeros(
                 batch_size,
@@ -865,7 +867,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 dtype=torch.float32,
             )
 
-        elif inference_type == FramepackInferenceType.VANILLA:
+        elif sampling_type == FramepackSamplingType.VANILLA:
             history_sizes = [16, 2, 1]
             history_latents = torch.zeros(
                 batch_size,
@@ -887,7 +889,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
         # 7. Denoising loop
         for k in range(num_latent_sections):
-            if inference_type == FramepackInferenceType.INVERTED_ANTI_DRIFTING:
+            if sampling_type == FramepackSamplingType.INVERTED_ANTI_DRIFTING:
                 latent_paddings = list(reversed(range(num_latent_sections)))
                 if num_latent_sections > 4:
                     latent_paddings = [3] + [2] * (num_latent_sections - 3) + [1, 0]
@@ -916,7 +918,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                     latents_history_1x = last_image_latents
                 latents_clean = torch.cat([latents_prefix, latents_history_1x], dim=2)
 
-            elif inference_type == FramepackInferenceType.VANILLA:
+            elif sampling_type == FramepackSamplingType.VANILLA:
                 indices = torch.arange(0, sum([1, *history_sizes, latent_window_size]))
                 (
                     indices_prefix,
@@ -929,7 +931,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
                 latents_prefix = image_latents
                 latents_history_4x, latents_history_2x, latents_history_1x = history_latents[
-                    :, :, : -sum(history_sizes)
+                    :, :, -sum(history_sizes) :
                 ].split(history_sizes, dim=2)
                 latents_clean = torch.cat([latents_prefix, latents_history_1x], dim=2)
 
@@ -1034,13 +1036,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-                if is_last_section:
-                    latents = torch.cat([image_latents, latents], dim=2)
-
-                total_generated_latent_frames += latents.shape[2]
-                overlapped_frames = (latent_window_size - 1) * self.vae_scale_factor_temporal + 1
-
-                if inference_type == FramepackInferenceType.INVERTED_ANTI_DRIFTING:
+                if sampling_type == FramepackSamplingType.INVERTED_ANTI_DRIFTING:
+                    if is_last_section:
+                        latents = torch.cat([image_latents, latents], dim=2)
+                    total_generated_latent_frames += latents.shape[2]
                     history_latents = torch.cat([latents, history_latents], dim=2)
                     real_history_latents = history_latents[:, :, :total_generated_latent_frames]
                     section_latent_frames = (
@@ -1048,7 +1047,8 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                     )
                     index_slice = (slice(None), slice(None), slice(0, section_latent_frames))
 
-                elif inference_type == FramepackInferenceType.VANILLA:
+                elif sampling_type == FramepackSamplingType.VANILLA:
+                    total_generated_latent_frames += latents.shape[2]
                     history_latents = torch.cat([history_latents, latents], dim=2)
                     real_history_latents = history_latents[:, :, -total_generated_latent_frames:]
                     section_latent_frames = latent_window_size * 2
@@ -1065,14 +1065,15 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                         history_video = [real_history_latents]
                 else:
                     if not output_type == "latent":
+                        overlapped_frames = (latent_window_size - 1) * self.vae_scale_factor_temporal + 1
                         current_latents = (
                             real_history_latents[index_slice].to(vae_dtype) / self.vae.config.scaling_factor
                         )
                         current_video = self.vae.decode(current_latents, return_dict=False)[0]
 
-                        if inference_type == FramepackInferenceType.INVERTED_ANTI_DRIFTING:
+                        if sampling_type == FramepackSamplingType.INVERTED_ANTI_DRIFTING:
                             history_video = self._soft_append(current_video, history_video, overlapped_frames)
-                        elif inference_type == FramepackInferenceType.VANILLA:
+                        elif sampling_type == FramepackSamplingType.VANILLA:
                             history_video = self._soft_append(history_video, current_video, overlapped_frames)
                         else:
                             assert False
