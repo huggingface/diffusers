@@ -156,6 +156,8 @@ else:
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
+    _import_structure["consisid"] = ["ConsisIDPipeline"]
+    _import_structure["cosmos"] = ["CosmosTextToWorldPipeline", "CosmosVideoToWorldPipeline"]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -227,6 +229,7 @@ else:
         "HunyuanVideoPipeline",
         "HunyuanSkyreelsImageToVideoPipeline",
         "HunyuanVideoImageToVideoPipeline",
+        "HunyuanVideoFramepackPipeline",
     ]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
@@ -545,6 +548,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
         )
+        from .cosmos import CosmosTextToWorldPipeline, CosmosVideoToWorldPipeline
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
@@ -589,6 +593,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_video import (
             HunyuanSkyreelsImageToVideoPipeline,
+            HunyuanVideoFramepackPipeline,
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
         )
