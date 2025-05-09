@@ -24,11 +24,7 @@ from diffusers import (
     WanPipeline,
     WanTransformer3DModel,
 )
-from diffusers.utils.testing_utils import (
-    floats_tensor,
-    require_peft_backend,
-    skip_mps,
-)
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
@@ -37,7 +33,7 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-@skip_mps
+# @skip_mps
 class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
