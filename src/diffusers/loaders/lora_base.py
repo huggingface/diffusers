@@ -465,7 +465,7 @@ class LoraBaseMixin:
     """Utility class for handling LoRAs."""
 
     _lora_loadable_modules = []
-    num_fused_loras = 0
+    _merged_adapters = set()
 
     def load_lora_weights(self, **kwargs):
         raise NotImplementedError("`load_lora_weights()` is not implemented.")
@@ -592,6 +592,9 @@ class LoraBaseMixin:
         if len(components) == 0:
             raise ValueError("`components` cannot be an empty list.")
 
+        # Need to retrieve the names as `adapter_names` can be None. So we cannot directly use it
+        # in `self._merged_adapters = self._merged_adapters | merged_adapter_names`.
+        merged_adapter_names = set()
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
@@ -601,13 +604,19 @@ class LoraBaseMixin:
                 # check if diffusers model
                 if issubclass(model.__class__, ModelMixin):
                     model.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
+                    for module in model.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            merged_adapter_names.update(set(module.merged_adapters))
                 # handle transformers models.
                 if issubclass(model.__class__, PreTrainedModel):
                     fuse_text_encoder_lora(
                         model, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
                     )
+                    for module in model.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            merged_adapter_names.update(set(module.merged_adapters))
 
-        self.num_fused_loras += 1
+        self._merged_adapters = self._merged_adapters | merged_adapter_names
 
     def unfuse_lora(self, components: List[str] = [], **kwargs):
         r"""
@@ -661,9 +670,18 @@ class LoraBaseMixin:
                 if issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
+                            for adapter in set(module.merged_adapters):
+                                if adapter and adapter in self._merged_adapters:
+                                    self._merged_adapters = self._merged_adapters - {adapter}
                             module.unmerge()
 
-        self.num_fused_loras -= 1
+    @property
+    def num_fused_loras(self):
+        return len(self._merged_adapters)
+
+    @property
+    def fused_loras(self):
+        return self._merged_adapters
 
     def set_adapters(
         self,
