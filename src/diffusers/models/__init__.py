@@ -96,6 +96,7 @@ if is_torch_available():
     _import_structure["unets.unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
     _import_structure["unets.unet_stable_cascade"] = ["StableCascadeUNet"]
     _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
+    _import_structure["unets.unet_seva"] = ["SevaUnet"]
 
 if is_flax_available():
     _import_structure["controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
@@ -177,6 +178,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             I2VGenXLUNet,
             Kandinsky3UNet,
             MotionAdapter,
+            SevaUnet,
             StableCascadeUNet,
             UNet1DModel,
             UNet2DConditionModel,
