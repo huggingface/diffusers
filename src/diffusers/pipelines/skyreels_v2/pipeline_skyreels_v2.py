@@ -441,8 +441,8 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Returns:
             [`~SkyReelsV2PipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`SkyReelsV2PipelineOutput`] is returned, otherwise a `tuple` is returned where the
-                first element is a list with the generated images and the second element is a list of `bool`s
+                If `return_dict` is `True`, [`SkyReelsV2PipelineOutput`] is returned, otherwise a `tuple` is returned
+                where the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
 
