@@ -15,18 +15,13 @@
 # limitations under the License.
 
 import math
-from typing import List
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from diffusers.configuration_utils import ConfigMixin
-from diffusers.configuration_utils import register_to_config
-from diffusers.schedulers.scheduling_utils import KarrasDiffusionSchedulers
-from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.schedulers.scheduling_utils import SchedulerOutput
+
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.schedulers.scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 from diffusers.utils import deprecate
 
 
@@ -105,7 +100,6 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         steps_offset: int = 0,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
     ):
-
         if solver_type not in ["bh1", "bh2"]:
             if solver_type in ["midpoint", "heun", "logrho"]:
                 self.register_to_config(solver_type="bh2")
@@ -677,9 +671,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             self._init_step_index(timestep)
 
         use_corrector = (
-            self.step_index > 0
-            and self.step_index - 1 not in self.disable_corrector
-            and self.last_sample is not None  # pyright: ignore
+            self.step_index > 0 and self.step_index - 1 not in self.disable_corrector and self.last_sample is not None  # pyright: ignore
         )
 
         model_output_convert = self.convert_model_output(model_output, sample=sample)

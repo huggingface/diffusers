@@ -12,33 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
-import numpy as np
-import PIL.Image
-import torch
-import ftfy
 import html
 import re
-from transformers import CLIPVisionModel, CLIPImageProcessor, AutoTokenizer, UMT5EncoderModel
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import ftfy
+import PIL.Image
+import torch
+from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...video_processor import VideoProcessor
+from ...image_processor import PipelineImageInput
+from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowMatchUniPCMultistepScheduler
-from ...utils import (
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from ...loaders import WanLoraLoaderMixin
-from ...image_processor import PipelineImageInput
 from .pipeline_output import SkyReelsV2PipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+if is_ftfy_available():
+    import ftfy
 
 
 EXAMPLE_DOC_STRING = """\
@@ -55,7 +60,7 @@ EXAMPLE_DOC_STRING = """\
         ... )
         >>> pipe = pipe.to("cuda")
 
-        ... ...
+        >>> ...
         ```
 """
 
@@ -76,6 +81,7 @@ def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -92,9 +98,9 @@ def retrieve_latents(
 
 class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     """
-    Pipeline for video generation with diffusion forcing using SkyReels-V2.
-    This pipeline supports two main tasks: Text-to-Video (t2v) and Image-to-Video (i2v)
-    
+    Pipeline for video generation with diffusion forcing using SkyReels-V2. This pipeline supports two main tasks:
+    Text-to-Video (t2v) and Image-to-Video (i2v)
+
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a specific device, etc.).
 
@@ -437,7 +443,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     @property
     def attention_kwargs(self):
         return self._attention_kwargs
-    
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -546,11 +552,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Returns:
             [`~SkyReelsV2PipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`SkyReelsV2PipelineOutput`] is returned, otherwise a `tuple` is returned where
-                the first element is a list with the generated images and the second element is a list of `bool`s
+                If `return_dict` is `True`, [`SkyReelsV2PipelineOutput`] is returned, otherwise a `tuple` is returned
+                where the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
-
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs

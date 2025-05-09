@@ -420,7 +420,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`SkyReelsOutput`] instead of a plain tuple.
+                Whether or not to return a [`SkyReelsV2PipelineOutput`] instead of a plain tuple.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -440,9 +440,9 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         Examples:
 
         Returns:
-            [`~SkyReelsOutput`] or `tuple`:
-                If `return_dict` is `True`, [`SkyReelsOutput`] is returned, otherwise a `tuple` is returned where
-                the first element is a list with the generated images and the second element is a list of `bool`s
+            [`~SkyReelsV2PipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`SkyReelsV2PipelineOutput`] is returned, otherwise a `tuple` is returned where the
+                first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
 
