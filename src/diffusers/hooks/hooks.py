@@ -43,9 +43,9 @@ class ModelHook:
         """
         return module
 
-    def deinitalize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
+    def deinitialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
-        Hook that is executed when a model is deinitalized.
+        Hook that is executed when a model is deinitialized.
 
         Args:
             module (`torch.nn.Module`):
@@ -192,7 +192,7 @@ class HookRegistry:
             else:
                 self._fn_refs[index + 1].forward = old_forward
 
-            self._module_ref = hook.deinitalize_hook(self._module_ref)
+            self._module_ref = hook.deinitialize_hook(self._module_ref)
             del self.hooks[name]
             self._hook_order.pop(index)
             self._fn_refs.pop(index)

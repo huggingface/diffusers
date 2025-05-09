@@ -246,7 +246,7 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe(input_image, "anime turle", generator=generator, output_type="np")
+        output = pipe(input_image, "anime turtle", generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -273,7 +273,7 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe(input_image, "anime turle", generator=generator, output_type="np")
+        output = pipe(input_image, "anime turtle", generator=generator, output_type="np")
 
         image = output.images[0]
 
