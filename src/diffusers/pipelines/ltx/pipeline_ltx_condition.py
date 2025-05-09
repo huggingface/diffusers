@@ -1067,7 +1067,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         timesteps = sigmas * 1000
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-        self._num_timesteps = len(timesteps)
 
         latent_sigma = None
         if denoise_strength < 1:
@@ -1075,6 +1074,8 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                 sigmas, timesteps, num_inference_steps, denoise_strength
             )
             latent_sigma = sigmas[:1].repeat(batch_size * num_videos_per_prompt)
+
+        self._num_timesteps = len(timesteps)
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
