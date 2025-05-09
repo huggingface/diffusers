@@ -637,7 +637,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
-            unet_config=self.unet.config,
+            unet_config=self.unet.config if hasattr(self, "unet") else None,
             **kwargs,
         )
 
@@ -645,37 +645,40 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_unet(
-            state_dict,
-            network_alphas=network_alphas,
-            unet=self.unet,
-            adapter_name=adapter_name,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
-        self.load_lora_into_text_encoder(
-            state_dict,
-            network_alphas=network_alphas,
-            text_encoder=self.text_encoder,
-            prefix=self.text_encoder_name,
-            lora_scale=self.lora_scale,
-            adapter_name=adapter_name,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
-        self.load_lora_into_text_encoder(
-            state_dict,
-            network_alphas=network_alphas,
-            text_encoder=self.text_encoder_2,
-            prefix=f"{self.text_encoder_name}_2",
-            lora_scale=self.lora_scale,
-            adapter_name=adapter_name,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        if hasattr(self, "unet"):
+            self.load_lora_into_unet(
+                state_dict,
+                network_alphas=network_alphas,
+                unet=self.unet,
+                adapter_name=adapter_name,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+        if hasattr(self, "text_encoder"):
+            self.load_lora_into_text_encoder(
+                state_dict,
+                network_alphas=network_alphas,
+                text_encoder=self.text_encoder,
+                prefix=self.text_encoder_name,
+                lora_scale=self.lora_scale,
+                adapter_name=adapter_name,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+        if hasattr(self, "text_encoder_2"):
+            self.load_lora_into_text_encoder(
+                state_dict,
+                network_alphas=network_alphas,
+                text_encoder=self.text_encoder_2,
+                prefix=f"{self.text_encoder_name}_2",
+                lora_scale=self.lora_scale,
+                adapter_name=adapter_name,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
 
     @classmethod
     @validate_hf_hub_args
