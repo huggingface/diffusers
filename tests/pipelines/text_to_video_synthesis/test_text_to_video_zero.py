@@ -19,7 +19,13 @@ import unittest
 import torch
 
 from diffusers import DDIMScheduler, TextToVideoZeroPipeline
-from diffusers.utils.testing_utils import backend_empty_cache, load_pt, nightly, require_torch_accelerator, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    load_pt,
+    nightly,
+    require_torch_accelerator,
+    torch_device,
+)
 
 from ..test_pipelines_common import assert_mean_pixel_difference
 

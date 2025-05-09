@@ -20,7 +20,13 @@ import numpy as np
 import torch
 
 from diffusers import StableDiffusionKDiffusionPipeline
-from diffusers.utils.testing_utils import backend_empty_cache, enable_full_determinism, nightly, require_torch_accelerator, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    nightly,
+    require_torch_accelerator,
+    torch_device,
+)
 
 
 enable_full_determinism()

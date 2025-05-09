@@ -29,7 +29,13 @@ from diffusers import (
     StableDiffusionSAGPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import backend_empty_cache, enable_full_determinism, nightly, require_torch_accelerator, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    nightly,
+    require_torch_accelerator,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
