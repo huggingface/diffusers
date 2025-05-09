@@ -186,7 +186,7 @@ class BaseGuidance:
                     # We've already checked that value is a string or a tuple of strings with length 2
                     pass
             except AttributeError:
-                logger.warning(f"`data` does not have attribute(s) {value}, skipping.")
+                logger.debug(f"`data` does not have attribute(s) {value}, skipping.")
         data_batch[cls._identifier_key] = identifier
         return BlockState(**data_batch)
 
