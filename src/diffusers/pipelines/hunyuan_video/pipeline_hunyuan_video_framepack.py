@@ -65,7 +65,7 @@ EXAMPLE_DOC_STRING = """
         ...     "lllyasviel/FramePackI2V_HY", torch_dtype=torch.bfloat16
         ... )
         >>> feature_extractor = SiglipImageProcessor.from_pretrained(
-        ...     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"m
+        ...     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
         ... )
         >>> image_encoder = SiglipVisionModel.from_pretrained(
         ...     "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
