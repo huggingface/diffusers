@@ -285,27 +285,6 @@ class KDownsample2D(nn.Module):
         return F.conv2d(inputs, weight, stride=2)
 
 
-class VidTokDownsample2D(nn.Module):
-    r"""A 2D downsampling layer used in [VidTok](https://arxiv.org/pdf/2412.13061) by MSRA & Shanghai Jiao Tong University
-
-    Args:
-        in_channels (`int`):
-            Number of channels of the input feature.
-    """
-
-    def __init__(self, in_channels: int):
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=0)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        pad = (0, 1, 0, 1)
-        x = F.pad(x, pad, mode="constant", value=0)
-        x = self.conv(x)
-        return x
-
-
 class CogVideoXDownsample3D(nn.Module):
     # Todo: Wait for paper release.
     r"""

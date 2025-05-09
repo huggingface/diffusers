@@ -356,26 +356,6 @@ class KUpsample2D(nn.Module):
         return F.conv_transpose2d(inputs, weight, stride=2, padding=self.pad * 2 + 1)
 
 
-class VidTokUpsample2D(nn.Module):
-    r"""A 2D upsampling layer used in [VidTok](https://arxiv.org/pdf/2412.13061) by MSRA & Shanghai Jiao Tong University
-
-    Args:
-        in_channels (`int`):
-            Number of channels of the input feature.
-    """
-
-    def __init__(self, in_channels: int):
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.interpolate(x.to(torch.float32), scale_factor=2.0, mode="nearest").to(x.dtype)
-        x = self.conv(x)
-        return x
-
-
 class CogVideoXUpsample3D(nn.Module):
     r"""
     A 3D Upsample layer using in CogVideoX by Tsinghua University & ZhipuAI # Todo: Wait for paper release.

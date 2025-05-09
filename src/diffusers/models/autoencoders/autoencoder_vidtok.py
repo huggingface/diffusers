@@ -14,77 +14,255 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import pack, rearrange, unpack
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
-from ..downsampling import VidTokDownsample2D
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import VidTokLayerNorm
-from ..upsampling import VidTokUpsample2D
-from .vae import DecoderOutput, DiagonalGaussianDistribution, FSQRegularizer
+from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def spatial_temporal_resblk(
-    x: torch.Tensor, block_s: nn.Module, block_t: nn.Module, temb: Optional[torch.Tensor], use_checkpoint: bool = False
-) -> torch.Tensor:
-    r"""Pass through spatial and temporal blocks respectively."""
-    assert len(x.shape) == 5, "input should be 5D tensor, but got {}D tensor".format(len(x.shape))
-    B, C, T, H, W = x.shape
-    x = rearrange(x, "b c t h w -> (b t) c h w")
-    if not use_checkpoint:
-        x = block_s(x, temb)
-    else:
-        x = torch.utils.checkpoint.checkpoint(block_s, x, temb)
-    x = rearrange(x, "(b t) c h w -> b c t h w", b=B, t=T)
-    x = rearrange(x, "b c t h w -> (b h w) c t")
-    if not use_checkpoint:
-        x = block_t(x, temb)
-    else:
-        x = torch.utils.checkpoint.checkpoint(block_t, x, temb)
-    x = rearrange(x, "(b h w) c t -> b c t h w", b=B, h=H, w=W)
-    return x
+class FSQRegularizer(nn.Module):
+    r"""
+    Finite Scalar Quantization: VQ-VAE Made Simple - https://arxiv.org/abs/2309.15505 Code adapted from
+    https://github.com/lucidrains/vector-quantize-pytorch/blob/master/vector_quantize_pytorch/finite_scalar_quantization.py
+
+    Args:
+        levels (`List[int]`):
+            A list of quantization levels.
+        dim (`int`, *optional*, defaults to `None`):
+            The dimension of latent codes.
+        num_codebooks (`int`, defaults to 1):
+            The number of codebooks.
+        keep_num_codebooks_dim (`bool`, *optional*, defaults to `None`):
+            Whether to keep the number of codebook dim.
+    """
+
+    def __init__(
+        self,
+        levels: List[int],
+        dim: Optional[int] = None,
+        num_codebooks: int = 1,
+        keep_num_codebooks_dim: Optional[bool] = None,
+    ):
+        super().__init__()
+
+        _levels = torch.tensor(levels, dtype=torch.int32)
+        self.register_buffer("_levels", _levels, persistent=False)
+
+        _basis = torch.cumprod(torch.tensor([1] + levels[:-1]), dim=0, dtype=torch.int32)
+        self.register_buffer("_basis", _basis, persistent=False)
+
+        codebook_dim = len(levels)
+        self.codebook_dim = codebook_dim
+
+        effective_codebook_dim = codebook_dim * num_codebooks
+        self.num_codebooks = num_codebooks
+        self.effective_codebook_dim = effective_codebook_dim
+
+        keep_num_codebooks_dim = self.default(keep_num_codebooks_dim, num_codebooks > 1)
+        assert not (num_codebooks > 1 and not keep_num_codebooks_dim)
+        self.keep_num_codebooks_dim = keep_num_codebooks_dim
+
+        self.dim = self.default(dim, len(_levels) * num_codebooks)
+
+        has_projections = self.dim != effective_codebook_dim
+        self.project_in = nn.Linear(self.dim, effective_codebook_dim) if has_projections else nn.Identity()
+        self.project_out = nn.Linear(effective_codebook_dim, self.dim) if has_projections else nn.Identity()
+        self.has_projections = has_projections
+
+        self.codebook_size = self._levels.prod().item()
+
+        implicit_codebook = self.indices_to_codes(torch.arange(self.codebook_size), project_out=False)
+        self.register_buffer("implicit_codebook", implicit_codebook, persistent=False)
+        self.register_buffer("zero", torch.tensor(0.0), persistent=False)
+
+        self.global_codebook_usage = torch.zeros([2**self.codebook_dim, self.num_codebooks], dtype=torch.long)
+
+    @staticmethod
+    def default(*args) -> Any:
+        for arg in args:
+            if arg is not None:
+                return arg
+        return None
+
+    @staticmethod
+    def round_ste(z: torch.Tensor) -> torch.Tensor:
+        r"""Round with straight through gradients."""
+        zhat = z.round()
+        return z + (zhat - z).detach()
+
+    def get_trainable_parameters(self) -> Any:
+        return self.parameters()
+
+    def bound(self, z: torch.Tensor, eps: float = 1e-3) -> torch.Tensor:
+        r"""Bound `z`, an array of shape (..., d)."""
+        half_l = (self._levels - 1) * (1 + eps) / 2
+        offset = torch.where(self._levels % 2 == 0, 0.5, 0.0)
+        shift = (offset / half_l).atanh()
+        return (z + shift).tanh() * half_l - offset
+
+    def quantize(self, z: torch.Tensor) -> torch.Tensor:
+        r"""Quantizes z, returns quantized zhat, same shape as z."""
+        quantized = self.round_ste(self.bound(z))
+        half_width = self._levels // 2
+        return quantized / half_width
+
+    def _scale_and_shift(self, zhat_normalized: torch.Tensor) -> torch.Tensor:
+        half_width = self._levels // 2
+        return (zhat_normalized * half_width) + half_width
+
+    def _scale_and_shift_inverse(self, zhat: torch.Tensor) -> torch.Tensor:
+        half_width = self._levels // 2
+        return (zhat - half_width) / half_width
+
+    def codes_to_indices(self, zhat: torch.Tensor) -> torch.Tensor:
+        r"""Converts a `code` to an index in the codebook."""
+        assert zhat.shape[-1] == self.codebook_dim
+        zhat = self._scale_and_shift(zhat)
+        return (zhat * self._basis).sum(dim=-1).to(torch.int32)
+
+    def indices_to_codes(self, indices: torch.Tensor, project_out: bool = True) -> torch.Tensor:
+        r"""Inverse of `codes_to_indices`."""
+        is_img_or_video = indices.ndim >= (3 + int(self.keep_num_codebooks_dim))
+        indices = indices.unsqueeze(-1)
+        codes_non_centered = (indices // self._basis) % self._levels
+        codes = self._scale_and_shift_inverse(codes_non_centered)
+        if self.keep_num_codebooks_dim:
+            codes = codes.reshape(*codes.shape[:-2], -1)
+        if project_out:
+            codes = self.project_out(codes)
+        if is_img_or_video:
+            codes = codes.permute(0, -1, *range(1, codes.dim() - 1))
+        return codes
+
+    @torch.cuda.amp.autocast(enabled=False)
+    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        r"""
+        einstein notation b - batch n - sequence (or flattened spatial dimensions) d - feature dimension c - number of
+        codebook dim
+        """
+        is_img_or_video = z.ndim >= 4
+
+        if is_img_or_video:
+            if z.ndim == 5:
+                b, d, t, h, w = z.shape
+                is_video = True
+            else:
+                b, d, h, w = z.shape
+                is_video = False
+            z = z.reshape(b, d, -1).permute(0, 2, 1)
+
+        assert z.shape[-1] == self.dim, f"expected dimension of {self.dim} but found dimension of {z.shape[-1]}"
+
+        z = self.project_in(z)
+        b, n, _ = z.shape
+        z = z.reshape(b, n, self.num_codebooks, -1)
+
+        with torch.autocast("cuda", enabled=False):
+            orig_dtype = z.dtype
+            z = z.float()
+            codes = self.quantize(z)
+            indices = self.codes_to_indices(codes)
+            codes = codes.type(orig_dtype)
+
+        codes = codes.reshape(b, n, -1)
+        out = self.project_out(codes)
+
+        # reconstitute image or video dimensions
+        if is_img_or_video:
+            if is_video:
+                out = out.reshape(b, t, h, w, d).permute(0, 4, 1, 2, 3)
+                indices = indices.reshape(b, t, h, w, 1)
+            else:
+                out = out.reshape(b, h, w, d).permute(0, 3, 1, 2)
+                indices = indices.reshape(b, h, w, 1)
+
+        if not self.keep_num_codebooks_dim:
+            indices = indices.squeeze(-1)
+
+        return out, indices
 
 
-def nonlinearity(x: torch.Tensor) -> torch.Tensor:
-    r"""Nonlinear function."""
-    return x * torch.sigmoid(x)
+class VidTokDownsample2D(nn.Module):
+    r"""A 2D downsampling layer used in VidTok Model."""
+
+    def __init__(self, in_channels: int):
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        pad = (0, 1, 0, 1)
+        x = F.pad(x, pad, mode="constant", value=0)
+        x = self.conv(x)
+        return x
+
+
+class VidTokUpsample2D(nn.Module):
+    r"""A 2D upsampling layer used in VidTok Model."""
+
+    def __init__(self, in_channels: int):
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.interpolate(x.to(torch.float32), scale_factor=2.0, mode="nearest").to(x.dtype)
+        x = self.conv(x)
+        return x
+
+
+class VidTokLayerNorm(nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+
+        self.norm = nn.LayerNorm(dim, eps=eps, elementwise_affine=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 5:
+            x = x.permute(0, 2, 3, 4, 1)
+            x = self.norm(x)
+            x = x.permute(0, 4, 1, 2, 3)
+        elif x.dim() == 4:
+            x = x.permute(0, 2, 3, 1)
+            x = self.norm(x)
+            x = x.permute(0, 3, 1, 2)
+        else:
+            x = x.permute(0, 2, 1)
+            x = self.norm(x)
+            x = x.permute(0, 2, 1)
+        return x
 
 
 class VidTokCausalConv1d(nn.Module):
-    r"""
-    A 1D causal convolution layer that pads the input tensor to ensure causality in VidTok Model.
+    r"""A 1D causal convolution layer that pads the input tensor to ensure causality in VidTok Model."""
 
-    Args:
-        in_channels (`int`): Number of channels in the input tensor.
-        out_channels (`int`): Number of output channels produced by the convolution.
-        kernel_size (`int`): Kernel size of the convolutional kernel.
-        pad_mode (`str`, defaults to `"constant"`): Padding mode.
-    """
-
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, pad_mode: str = "constant", **kwargs):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        dilation: int = 1,
+        padding: int = 0,
+    ):
         super().__init__()
 
-        dilation = kwargs.pop("dilation", 1)
-        stride = kwargs.pop("stride", 1)
-        if "padding" in kwargs:
-            _ = kwargs.pop("padding", 0)
-
-        self.pad_mode = pad_mode
         self.time_pad = dilation * (kernel_size - 1) + (1 - stride)
 
-        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size, stride=stride, dilation=dilation, **kwargs)
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size, stride=stride, dilation=dilation)
 
         self.is_first_chunk = True
         self.causal_cache = None
@@ -109,37 +287,25 @@ class VidTokCausalConv1d(nn.Module):
 
 
 class VidTokCausalConv3d(nn.Module):
-    r"""
-    A 3D causal convolution layer that pads the input tensor to ensure causality in VidTok Model.
-
-    Args:
-        in_channels (`int`): Number of channels in the input tensor.
-        out_channels (`int`): Number of output channels produced by the convolution.
-        kernel_size (`int` or `Tuple[int, int, int]`): Kernel size of the convolutional kernel.
-        pad_mode (`str`, defaults to `"constant"`): Padding mode.
-    """
+    r"""A 3D causal convolution layer that pads the input tensor to ensure causality in VidTok Model."""
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         kernel_size: Union[int, Tuple[int, int, int]],
+        stride: Union[int, Tuple[int, int, int]] = 1,
+        dilation: Union[int, Tuple[int, int, int]] = 1,
+        padding: Union[int, Tuple[int, int, int]] = 0,
         pad_mode: str = "constant",
-        **kwargs,
     ):
         super().__init__()
-
-        kernel_size = self.cast_tuple(kernel_size, 3)
-        dilation = kwargs.pop("dilation", 1)
-        stride = kwargs.pop("stride", 1)
-        if "padding" in kwargs:
-            _ = kwargs.pop("padding", 0)
-
-        dilation = self.cast_tuple(dilation, 3)
-        stride = self.cast_tuple(stride, 3)
-
-        time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
         self.pad_mode = pad_mode
+
+        kernel_size = self._cast_tuple(kernel_size, 3)
+        dilation = self._cast_tuple(dilation, 3)
+        stride = self._cast_tuple(stride, 3)
+        time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
         time_pad = dilation[0] * (time_kernel_size - 1) + (1 - stride[0])
         height_pad = dilation[1] * (height_kernel_size - 1) + (1 - stride[1])
         width_pad = dilation[2] * (width_kernel_size - 1) + (1 - stride[2])
@@ -153,14 +319,14 @@ class VidTokCausalConv3d(nn.Module):
             0,
             0,
         )
-        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size, stride=stride, dilation=dilation, **kwargs)
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size, stride=stride, dilation=dilation)
 
         self.is_first_chunk = True
         self.causal_cache = None
         self.cache_offset = 0
 
     @staticmethod
-    def cast_tuple(t: Union[Tuple[int], int], length: int = 1) -> Tuple[int]:
+    def _cast_tuple(t: Union[Tuple[int], int], length: int = 1) -> Tuple[int]:
         r"""Cast `int` to `Tuple[int]`."""
         return t if isinstance(t, tuple) else ((t,) * length)
 
@@ -184,26 +350,15 @@ class VidTokCausalConv3d(nn.Module):
 
 
 class VidTokDownsample3D(nn.Module):
-    r"""
-    A 3D downsampling layer used in VidTok Model.
-
-    Args:
-        in_channels (`int`): Number of channels in the input tensor.
-        out_channels (`int`): Number of channels in the output tensor.
-        mix_factor (`float`, defaults to 2.0): The mixing factor of two inputs.
-        is_causal (`bool`, defaults to `True`): Whether it is a causal module.
-    """
+    r"""A 3D downsampling layer used in VidTok Model."""
 
     def __init__(self, in_channels: int, out_channels: int, mix_factor: float = 2.0, is_causal: bool = True):
         super().__init__()
         self.is_causal = is_causal
         self.kernel_size = (3, 3, 3)
         self.avg_pool = nn.AvgPool3d((3, 1, 1), stride=(2, 1, 1))
-        self.conv = (
-            VidTokCausalConv3d(in_channels, out_channels, 3, stride=(2, 1, 1), padding=0)
-            if self.is_causal
-            else nn.Conv3d(in_channels, out_channels, 3, stride=(2, 1, 1), padding=(0, 1, 1))
-        )
+        make_conv_cls = VidTokCausalConv3d if self.is_causal else nn.Conv3d
+        self.conv = make_conv_cls(in_channels, out_channels, 3, stride=(2, 1, 1), padding=(0, 1, 1))
         self.mix_factor = nn.Parameter(torch.Tensor([mix_factor]))
         if self.is_causal:
             self.is_first_chunk = True
@@ -229,16 +384,7 @@ class VidTokDownsample3D(nn.Module):
 
 
 class VidTokUpsample3D(nn.Module):
-    r"""
-    A 3D upsampling layer used in VidTok Model.
-
-    Args:
-        in_channels (`int`): Number of channels in the input tensor.
-        out_channels (`int`): Number of channels in the output tensor.
-        mix_factor (`float`, defaults to 2.0): The mixing factor of two inputs.
-        num_temp_upsample (`int`, defaults to 1): The number of temporal upsample ratio.
-        is_causal (`bool`, defaults to `True`): Whether it is a causal module.
-    """
+    r"""A 3D upsampling layer used in VidTok Model."""
 
     def __init__(
         self,
@@ -249,11 +395,8 @@ class VidTokUpsample3D(nn.Module):
         is_causal: bool = True,
     ):
         super().__init__()
-        self.conv = (
-            VidTokCausalConv3d(in_channels, out_channels, 3, padding=0)
-            if is_causal
-            else nn.Conv3d(in_channels, out_channels, 3, padding=1)
-        )
+        make_conv_cls = VidTokCausalConv3d if is_causal else nn.Conv3d
+        self.conv = make_conv_cls(in_channels, out_channels, 3, padding=1)
         self.mix_factor = nn.Parameter(torch.Tensor([mix_factor]))
 
         self.is_causal = is_causal
@@ -306,12 +449,7 @@ class VidTokUpsample3D(nn.Module):
 
 
 class VidTokAttnBlock(nn.Module):
-    r"""
-    A 2D self-attention block used in VidTok Model.
-
-    Args:
-        in_channels (`int`): Number of channels in the input tensor.
-    """
+    r"""A 2D self-attention block used in VidTok Model."""
 
     def __init__(self, in_channels: int):
         super().__init__()
@@ -322,33 +460,27 @@ class VidTokAttnBlock(nn.Module):
         self.v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.proj_out = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
 
-    def attention(self, h_: torch.Tensor) -> torch.Tensor:
+    def attention(self, hidden_states: torch.Tensor) -> torch.Tensor:
         r"""Implement self-attention."""
-        h_ = self.norm(h_)
-        q = self.q(h_)
-        k = self.k(h_)
-        v = self.v(h_)
+        hidden_states = self.norm(hidden_states)
+        q = self.q(hidden_states)
+        k = self.k(hidden_states)
+        v = self.v(hidden_states)
         b, c, h, w = q.shape
-        q, k, v = [rearrange(x, "b c h w -> b 1 (h w) c").contiguous() for x in [q, k, v]]
-        h_ = F.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
-        return rearrange(h_, "b 1 (h w) c -> b c h w", h=h, w=w, c=c, b=b)
+        q, k, v = [x.permute(0, 2, 3, 1).reshape(b, -1, c).unsqueeze(1).contiguous() for x in [q, k, v]]
+        hidden_states = F.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
+        return hidden_states.squeeze(1).reshape(b, h, w, c).permute(0, 3, 1, 2)
 
-    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `VidTokAttnBlock` class."""
-        h_ = x
-        h_ = self.attention(h_)
-        h_ = self.proj_out(h_)
-        return x + h_
+        hidden_states = x
+        hidden_states = self.attention(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+        return x + hidden_states
 
 
 class VidTokAttnBlockWrapper(VidTokAttnBlock):
-    r"""
-    A 3D self-attention block used in VidTok Model.
-
-    Args:
-        in_channels (`int`): Number of channels in the input tensor.
-        is_causal (`bool`, defaults to `True`): Whether it is a causal module.
-    """
+    r"""A 3D self-attention block used in VidTok Model."""
 
     def __init__(self, in_channels: int, is_causal: bool = True):
         super().__init__(in_channels)
@@ -358,46 +490,27 @@ class VidTokAttnBlockWrapper(VidTokAttnBlock):
         self.v = make_conv_cls(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.proj_out = make_conv_cls(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
 
-    def attention(self, h_: torch.Tensor) -> torch.Tensor:
+    def attention(self, hidden_states: torch.Tensor) -> torch.Tensor:
         r"""Implement self-attention."""
-        h_ = self.norm(h_)
-        q = self.q(h_)
-        k = self.k(h_)
-        v = self.v(h_)
+        hidden_states = self.norm(hidden_states)
+        q = self.q(hidden_states)
+        k = self.k(hidden_states)
+        v = self.v(hidden_states)
         b, c, t, h, w = q.shape
-        q, k, v = [rearrange(x, "b c t h w -> b t (h w) c").contiguous() for x in [q, k, v]]
-        h_ = F.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
-        return rearrange(h_, "b t (h w) c -> b c t h w", h=h, w=w, c=c, b=b)
+        q, k, v = [x.permute(0, 2, 3, 4, 1).reshape(b, t, -1, c).contiguous() for x in [q, k, v]]
+        hidden_states = F.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
+        return hidden_states.reshape(b, t, h, w, c).permute(0, 4, 1, 2, 3)
 
 
 class VidTokResnetBlock(nn.Module):
-    r"""
-    A versatile ResNet block used in VidTok Model.
-
-    Args:
-        in_channels (`int`):
-            Number of channels in the input tensor.
-        out_channels (`int`, *Optional*, defaults to `None`):
-            Number of channels in the output tensor.
-        conv_shortcut (`bool`, defaults to `False`):
-            Whether or not to use a convolution shortcut.
-        dropout (`float`):
-            Dropout rate.
-        temb_channels (`int`, defaults to 512):
-            Number of time embedding channels.
-        btype (`str`, defaults to `"3d"`):
-            The type of this module. Supported btype: ["1d", "2d", "3d"].
-        is_causal (`bool`, defaults to `True`):
-            Whether it is a causal module.
-    """
+    r"""A versatile ResNet block used in VidTok Model."""
 
     def __init__(
         self,
-        *,
         in_channels: int,
         out_channels: Optional[int] = None,
         conv_shortcut: bool = False,
-        dropout: float,
+        dropout: float = 0.0,
         temb_channels: int = 512,
         btype: str = "3d",
         is_causal: bool = True,
@@ -415,6 +528,7 @@ class VidTokResnetBlock(nn.Module):
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
+        self.nonlinearity = nn.SiLU()
 
         self.norm1 = VidTokLayerNorm(dim=in_channels, eps=1e-6)
         self.conv1 = make_conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
@@ -431,25 +545,25 @@ class VidTokResnetBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, temb: Optional[torch.Tensor]) -> torch.Tensor:
         r"""The forward method of the `VidTokResnetBlock` class."""
-        h = x
-        h = self.norm1(h)
-        h = nonlinearity(h)
-        h = self.conv1(h)
+        hidden_states = x
+        hidden_states = self.norm1(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
+        hidden_states = self.conv1(hidden_states)
 
         if temb is not None:
-            h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None]
+            hidden_states = hidden_states + self.temb_proj(self.nonlinearity(temb))[:, :, None, None]
 
-        h = self.norm2(h)
-        h = nonlinearity(h)
-        h = self.dropout(h)
-        h = self.conv2(h)
+        hidden_states = self.norm2(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.conv2(hidden_states)
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
                 x = self.conv_shortcut(x)
             else:
                 x = self.nin_shortcut(x)
-        return x + h
+        return x + hidden_states
 
 
 class VidTokEncoder3D(nn.Module):
@@ -463,38 +577,34 @@ class VidTokEncoder3D(nn.Module):
             The number of the basic channel.
         ch_mult (`List[int]`, defaults to `[1, 2, 4, 8]`):
             The multiple of the basic channel for each block.
-        num_res_blocks (`int`):
+        num_res_blocks (`int`, defaults to 2):
             The number of resblocks.
         dropout (`float`, defaults to 0.0):
             Dropout rate.
-        z_channels (`int`):
+        z_channels (`int`, defaults to 4):
             The number of latent channels.
         double_z (`bool`, defaults to `True`):
             Whether or not to double the z_channels.
-        spatial_ds (`List`):
+        spatial_ds (`List`, *optional*, defaults to `None`):
             Spatial downsample layers.
-        tempo_ds (`List`):
+        tempo_ds (`List`, *optional*, defaults to `None`):
             Temporal downsample layers.
         is_causal (`bool`, defaults to `True`):
             Whether it is a causal module.
     """
 
-    _supports_gradient_checkpointing = True
-
     def __init__(
         self,
-        *,
         in_channels: int,
         ch: int,
         ch_mult: List[int] = [1, 2, 4, 8],
-        num_res_blocks: int,
+        num_res_blocks: int = 2,
         dropout: float = 0.0,
-        z_channels: int,
+        z_channels: int = 4,
         double_z: bool = True,
         spatial_ds: Optional[List] = None,
         tempo_ds: Optional[List] = None,
         is_causal: bool = True,
-        **ignore_kwargs,
     ):
         super().__init__()
         self.is_causal = is_causal
@@ -504,6 +614,7 @@ class VidTokEncoder3D(nn.Module):
         self.num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
         self.in_channels = in_channels
+        self.nonlinearity = nn.SiLU()
 
         make_conv_cls = VidTokCausalConv3d if self.is_causal else nn.Conv3d
 
@@ -601,71 +712,72 @@ class VidTokEncoder3D(nn.Module):
         hs = [self.conv_in(x)]
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module.downsample(*inputs)
-
-                return custom_forward
-
             for i_level in range(self.num_resolutions):
                 for i_block in range(self.num_res_blocks):
-                    h = spatial_temporal_resblk(
-                        hs[-1],
-                        self.down[i_level].block[i_block],
-                        self.down_temporal[i_level].block[i_block],
-                        temb,
-                        use_checkpoint=True,
+                    hidden_states = hs[-1].permute(0, 2, 1, 3, 4).reshape(B * T, -1, H, W)
+                    hidden_states = self._gradient_checkpointing_func(
+                        self.down[i_level].block[i_block], hidden_states, temb
                     )
-                    hs.append(h)
+                    hidden_states = (
+                        hidden_states.reshape(B, T, -1, H, W).permute(0, 3, 4, 2, 1).reshape(B * H * W, -1, T)
+                    )
+                    hidden_states = self._gradient_checkpointing_func(
+                        self.down_temporal[i_level].block[i_block], hidden_states, temb
+                    )
+                    hidden_states = hidden_states.reshape(B, H, W, -1, T).permute(0, 3, 4, 1, 2)
+                    hs.append(hidden_states)
 
                 if i_level in self.spatial_ds:
                     # spatial downsample
-                    htmp = rearrange(hs[-1], "b c t h w -> (b t) c h w")
-                    htmp = torch.utils.checkpoint.checkpoint(create_custom_forward(self.down[i_level]), htmp)
-                    htmp = rearrange(htmp, "(b t) c h w -> b c t h w", b=B, t=T)
+                    hidden_states = hs[-1].permute(0, 2, 1, 3, 4).reshape(B * T, -1, H, W)
+                    hidden_states = self._gradient_checkpointing_func(self.down[i_level].downsample, hidden_states)
+                    hidden_states = hidden_states.reshape(B, T, -1, *hidden_states.shape[-2:]).permute(0, 2, 1, 3, 4)
                     if i_level in self.tempo_ds:
                         # temporal downsample
-                        htmp = torch.utils.checkpoint.checkpoint(
-                            create_custom_forward(self.down_temporal[i_level]), htmp
+                        hidden_states = self._gradient_checkpointing_func(
+                            self.down_temporal[i_level].downsample, hidden_states
                         )
-                    hs.append(htmp)
-                    B, _, T, H, W = htmp.shape
+                    hs.append(hidden_states)
+                    B, _, T, H, W = hidden_states.shape
             # middle
-            h = hs[-1]
-            h = torch.utils.checkpoint.checkpoint(self.mid.block_1, h, temb)
-            h = torch.utils.checkpoint.checkpoint(self.mid.attn_1, h)
-            h = torch.utils.checkpoint.checkpoint(self.mid.block_2, h, temb)
+            hidden_states = hs[-1]
+            hidden_states = self._gradient_checkpointing_func(self.mid.block_1, hidden_states, temb)
+            hidden_states = self._gradient_checkpointing_func(self.mid.attn_1, hidden_states)
+            hidden_states = self._gradient_checkpointing_func(self.mid.block_2, hidden_states, temb)
 
         else:
             for i_level in range(self.num_resolutions):
                 for i_block in range(self.num_res_blocks):
-                    h = spatial_temporal_resblk(
-                        hs[-1], self.down[i_level].block[i_block], self.down_temporal[i_level].block[i_block], temb
+                    hidden_states = hs[-1].permute(0, 2, 1, 3, 4).reshape(B * T, -1, H, W)
+                    hidden_states = self.down[i_level].block[i_block](hidden_states, temb)
+                    hidden_states = (
+                        hidden_states.reshape(B, T, -1, H, W).permute(0, 3, 4, 2, 1).reshape(B * H * W, -1, T)
                     )
-                    hs.append(h)
+                    hidden_states = self.down_temporal[i_level].block[i_block](hidden_states, temb)
+                    hidden_states = hidden_states.reshape(B, H, W, -1, T).permute(0, 3, 4, 1, 2)
+                    hs.append(hidden_states)
 
                 if i_level in self.spatial_ds:
                     # spatial downsample
-                    htmp = rearrange(hs[-1], "b c t h w -> (b t) c h w")
-                    htmp = self.down[i_level].downsample(htmp)
-                    htmp = rearrange(htmp, "(b t) c h w -> b c t h w", b=B, t=T)
+                    hidden_states = hs[-1].permute(0, 2, 1, 3, 4).reshape(B * T, -1, H, W)
+                    hidden_states = self.down[i_level].downsample(hidden_states)
+                    hidden_states = hidden_states.reshape(B, T, -1, *hidden_states.shape[-2:]).permute(0, 2, 1, 3, 4)
                     if i_level in self.tempo_ds:
                         # temporal downsample
-                        htmp = self.down_temporal[i_level].downsample(htmp)
-                    hs.append(htmp)
-                    B, _, T, H, W = htmp.shape
+                        hidden_states = self.down_temporal[i_level].downsample(hidden_states)
+                    hs.append(hidden_states)
+                    B, _, T, H, W = hidden_states.shape
             # middle
-            h = hs[-1]
-            h = self.mid.block_1(h, temb)
-            h = self.mid.attn_1(h)
-            h = self.mid.block_2(h, temb)
+            hidden_states = hs[-1]
+            hidden_states = self.mid.block_1(hidden_states, temb)
+            hidden_states = self.mid.attn_1(hidden_states)
+            hidden_states = self.mid.block_2(hidden_states, temb)
 
         # end
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h)
-        return h
+        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
+        hidden_states = self.conv_out(hidden_states)
+        return hidden_states
 
 
 class VidTokDecoder3D(nn.Module):
@@ -678,37 +790,33 @@ class VidTokDecoder3D(nn.Module):
             The number of the basic channel.
         ch_mult (`List[int]`, defaults to `[1, 2, 4, 8]`):
             The multiple of the basic channel for each block.
-        num_res_blocks (`int`):
+        num_res_blocks (`int`, defaults to 2):
             The number of resblocks.
         dropout (`float`, defaults to 0.0):
             Dropout rate.
-        z_channels (`int`):
+        z_channels (`int`, defaults to 4):
             The number of latent channels.
-        out_channels (`int`):
+        out_channels (`int`, defaults to 3):
             The number of output channels.
-        spatial_us (`List`):
+        spatial_us (`List`, *optional*, defaults to `None`):
             Spatial upsample layers.
-        tempo_us (`List`):
+        tempo_us (`List`, *optional*, defaults to `None`):
             Temporal upsample layers.
         is_causal (`bool`, defaults to `True`):
             Whether it is a causal module.
     """
 
-    _supports_gradient_checkpointing = True
-
     def __init__(
         self,
-        *,
         ch: int,
         ch_mult: List[int] = [1, 2, 4, 8],
-        num_res_blocks: int,
+        num_res_blocks: int = 2,
         dropout: float = 0.0,
-        z_channels: int,
-        out_channels: int,
+        z_channels: int = 4,
+        out_channels: int = 3,
         spatial_us: Optional[List] = None,
         tempo_us: Optional[List] = None,
         is_causal: bool = True,
-        **ignorekwargs,
     ):
         super().__init__()
 
@@ -717,6 +825,7 @@ class VidTokDecoder3D(nn.Module):
         self.temb_ch = 0
         self.num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
+        self.nonlinearity = nn.SiLU()
 
         block_in = ch * ch_mult[self.num_resolutions - 1]
 
@@ -807,75 +916,78 @@ class VidTokDecoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, z: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `VidTokDecoder3D` class."""
         temb = None
         B, _, T, H, W = z.shape
-        h = self.conv_in(z)
+        hidden_states = self.conv_in(z)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module.upsample(*inputs)
-
-                return custom_forward
-
             # middle
-            h = torch.utils.checkpoint.checkpoint(self.mid.block_1, h, temb, **kwargs)
-            h = torch.utils.checkpoint.checkpoint(self.mid.attn_1, h, **kwargs)
-            h = torch.utils.checkpoint.checkpoint(self.mid.block_2, h, temb, **kwargs)
+            hidden_states = self._gradient_checkpointing_func(self.mid.block_1, hidden_states, temb)
+            hidden_states = self._gradient_checkpointing_func(self.mid.attn_1, hidden_states)
+            hidden_states = self._gradient_checkpointing_func(self.mid.block_2, hidden_states, temb)
 
             for i_level in reversed(range(self.num_resolutions)):
                 for i_block in range(self.num_res_blocks + 1):
-                    h = spatial_temporal_resblk(
-                        h,
-                        self.up[i_level].block[i_block],
-                        self.up_temporal[i_level].block[i_block],
-                        temb,
-                        use_checkpoint=True,
+                    hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(B * T, -1, H, W)
+                    hidden_states = self._gradient_checkpointing_func(
+                        self.up[i_level].block[i_block], hidden_states, temb
                     )
+                    hidden_states = (
+                        hidden_states.reshape(B, T, -1, H, W).permute(0, 3, 4, 2, 1).reshape(B * H * W, -1, T)
+                    )
+                    hidden_states = self._gradient_checkpointing_func(
+                        self.up_temporal[i_level].block[i_block], hidden_states, temb
+                    )
+                    hidden_states = hidden_states.reshape(B, H, W, -1, T).permute(0, 3, 4, 1, 2)
 
                 if i_level in self.spatial_us:
                     # spatial upsample
-                    h = rearrange(h, "b c t h w -> (b t) c h w")
-                    h = torch.utils.checkpoint.checkpoint(create_custom_forward(self.up[i_level]), h)
-                    h = rearrange(h, "(b t) c h w -> b c t h w", b=B, t=T)
+                    hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(B * T, -1, H, W)
+                    hidden_states = self._gradient_checkpointing_func(self.up[i_level].upsample, hidden_states)
+                    hidden_states = hidden_states.reshape(B, T, -1, *hidden_states.shape[-2:]).permute(0, 2, 1, 3, 4)
                     if i_level in self.tempo_us:
                         # temporal upsample
-                        h = torch.utils.checkpoint.checkpoint(create_custom_forward(self.up_temporal[i_level]), h)
-                    B, _, T, H, W = h.shape
+                        hidden_states = self._gradient_checkpointing_func(
+                            self.up_temporal[i_level].upsample, hidden_states
+                        )
+                    B, _, T, H, W = hidden_states.shape
 
         else:
             # middle
-            h = self.mid.block_1(h, temb, **kwargs)
-            h = self.mid.attn_1(h, **kwargs)
-            h = self.mid.block_2(h, temb, **kwargs)
+            hidden_states = self.mid.block_1(hidden_states, temb)
+            hidden_states = self.mid.attn_1(hidden_states)
+            hidden_states = self.mid.block_2(hidden_states, temb)
 
             for i_level in reversed(range(self.num_resolutions)):
                 for i_block in range(self.num_res_blocks + 1):
-                    h = spatial_temporal_resblk(
-                        h, self.up[i_level].block[i_block], self.up_temporal[i_level].block[i_block], temb
+                    hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(B * T, -1, H, W)
+                    hidden_states = self.up[i_level].block[i_block](hidden_states, temb)
+                    hidden_states = (
+                        hidden_states.reshape(B, T, -1, H, W).permute(0, 3, 4, 2, 1).reshape(B * H * W, -1, T)
                     )
+                    hidden_states = self.up_temporal[i_level].block[i_block](hidden_states, temb)
+                    hidden_states = hidden_states.reshape(B, H, W, -1, T).permute(0, 3, 4, 1, 2)
 
                 if i_level in self.spatial_us:
                     # spatial upsample
-                    h = rearrange(h, "b c t h w -> (b t) c h w")
-                    h = self.up[i_level].upsample(h)
-                    h = rearrange(h, "(b t) c h w -> b c t h w", b=B, t=T)
+                    hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(B * T, -1, H, W)
+                    hidden_states = self.up[i_level].upsample(hidden_states)
+                    hidden_states = hidden_states.reshape(B, T, -1, *hidden_states.shape[-2:]).permute(0, 2, 1, 3, 4)
                     if i_level in self.tempo_us:
                         # temporal upsample
-                        h = self.up_temporal[i_level].upsample(h)
-                    B, _, T, H, W = h.shape
+                        hidden_states = self.up_temporal[i_level].upsample(hidden_states)
+                    B, _, T, H, W = hidden_states.shape
 
         # end
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h, **kwargs)
-        return h
+        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
+        out = self.conv_out(hidden_states)
+        return out
 
 
-class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderVidTok(ModelMixin, ConfigMixin):
     r"""
     A VAE model for encoding videos into latents and decoding latent representations into videos, supporting both
     continuous and discrete latent representations. Used in [VidTok](https://github.com/microsoft/VidTok).
@@ -883,7 +995,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
 
-    Parameters:
+    Args:
         in_channels (`int`, defaults to 3):
             The number of input channels.
         out_channels (`int`, defaults to 3):
@@ -898,13 +1010,13 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             Whether or not to double the z_channels.
         num_res_blocks (`int`, defaults to 2):
             The number of resblocks.
-        spatial_ds (`List`):
+        spatial_ds (`List`, *optional*, defaults to `None`):
             Spatial downsample layers.
-        spatial_us (`List`):
+        spatial_us (`List`, *optional*, defaults to `None`):
             Spatial upsample layers.
-        tempo_ds (`List`):
+        tempo_ds (`List`, *optional*, defaults to `None`):
             Temporal downsample layers.
-        tempo_us (`List`):
+        tempo_us (`List`, *optional*, defaults to `None`):
             Temporal upsample layers.
         dropout (`float`, defaults to 0.0):
             Dropout rate.
@@ -988,7 +1100,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_overlap_factor_width = 0.0  # 1 / 8
 
     @staticmethod
-    def pad_at_dim(
+    def _pad_at_dim(
         t: torch.Tensor, pad: Tuple[int], dim: int = -1, pad_mode: str = "constant", value: float = 0.0
     ) -> torch.Tensor:
         r"""Pad function. Supported pad_mode: `constant`, `replicate`, `reflect`."""
@@ -1011,15 +1123,15 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         processing larger images.
 
         Args:
-            tile_sample_min_height (`int`, *optional*):
+            tile_sample_min_height (`int`, *optional*, defaults to `None`):
                 The minimum height required for a sample to be separated into tiles across the height dimension.
-            tile_sample_min_width (`int`, *optional*):
+            tile_sample_min_width (`int`, *optional*, defaults to `None`):
                 The minimum width required for a sample to be separated into tiles across the width dimension.
-            tile_overlap_factor_height (`int`, *optional*):
+            tile_overlap_factor_height (`float`, *optional*, defaults to `None`):
                 The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
                 no tiling artifacts produced across the height dimension. Must be between 0 and 1. Setting a higher
                 value might cause more tiles to be processed leading to slow down of the decoding process.
-            tile_overlap_factor_width (`int`, *optional*):
+            tile_overlap_factor_width (`float`, *optional*, defaults to `None`):
                 The minimum amount of overlap between two consecutive horizontal tiles. This is to ensure that there
                 are no tiling artifacts produced across the width dimension. Must be between 0 and 1. Setting a higher
                 value might cause more tiles to be processed leading to slow down of the decoding process.
@@ -1176,7 +1288,8 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     submodule.cache_offset = cache_offset
 
     def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
-        r"""Encode a batch of images using a tiled encoder.
+        r"""
+        Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
         steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is
@@ -1246,14 +1359,12 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         Returns:
             `torch.Tensor`: Latent code corresponding to the input token indices.
         """
-        token_indices = rearrange(token_indices, "... -> ... 1")
-        token_indices, ps = pack([token_indices], "b * d")
+        b, t, h, w = token_indices.shape
+        token_indices = token_indices.unsqueeze(-1).reshape(b, -1, 1)
         codes = self.regularization.indices_to_codes(token_indices)
-        codes = rearrange(codes, "b d n c -> b n (c d)")
+        codes = codes.permute(0, 2, 3, 1).reshape(b, codes.shape[2], -1)
         z = self.regularization.project_out(codes)
-        z = unpack(z, ps, "b * d")[0]
-        z = rearrange(z, "b ... d -> b d ...")
-        return z
+        return z.reshape(b, t, h, w, -1).permute(0, 4, 1, 2, 3)
 
     def tile_indices_to_latent(self, token_indices: torch.Tensor) -> torch.Tensor:
         r"""
@@ -1379,7 +1490,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if self.is_causal:
             if x.shape[2] % self.temporal_compression_ratio != res:
                 time_padding = self.temporal_compression_ratio - x.shape[2] % self.temporal_compression_ratio + res
-                x = self.pad_at_dim(x, (0, time_padding), dim=2, pad_mode="replicate")
+                x = self._pad_at_dim(x, (0, time_padding), dim=2, pad_mode="replicate")
             else:
                 time_padding = 0
         else:
@@ -1388,7 +1499,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     time_padding = (
                         self.num_sample_frames_batch_size - x.shape[2] % self.num_sample_frames_batch_size + res
                     )
-                    x = self.pad_at_dim(x, (0, time_padding), dim=2, pad_mode="replicate")
+                    x = self._pad_at_dim(x, (0, time_padding), dim=2, pad_mode="replicate")
                 else:
                     assert (
                         x.shape[2] >= self.num_sample_frames_batch_size
@@ -1398,7 +1509,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 time_padding = 0
 
         if self.is_causal:
-            x = self.pad_at_dim(x, (self.temporal_compression_ratio - 1, 0), dim=2, pad_mode="replicate")
+            x = self._pad_at_dim(x, (self.temporal_compression_ratio - 1, 0), dim=2, pad_mode="replicate")
 
         if self.regularizer == "kl":
             posterior = self.encode(x).latent_dist
