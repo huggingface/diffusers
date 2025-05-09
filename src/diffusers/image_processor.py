@@ -645,6 +645,7 @@ class VaeImageProcessor(ConfigMixin):
                 The preprocessed image.
         """
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
+
         # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
         if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
             if isinstance(image, torch.Tensor):
@@ -1316,4 +1317,3 @@ class PixArtImageProcessor(VaeImageProcessor):
             samples = samples[:, :, start_y:end_y, start_x:end_x]
 
         return samples
-    
