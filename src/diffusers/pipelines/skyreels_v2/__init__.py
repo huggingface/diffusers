@@ -13,6 +13,7 @@ from ...utils import (
 _dummy_objects = {}
 _import_structure = {}
 
+
 try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
@@ -21,21 +22,20 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["pipeline_skyreels_v2"] = ["SkyReelsV2Pipeline"]
     _import_structure["pipeline_skyreels_v2_diffusion_forcing"] = ["SkyReelsV2DiffusionForcingPipeline"]
     _import_structure["pipeline_skyreels_v2_image_to_video"] = ["SkyReelsV2ImageToVideoPipeline"]
-    _import_structure["pipeline_skyreels_v2_text_to_video"] = ["SkyReelsV2TextToVideoPipeline"]
-
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
 
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+        from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .pipeline_skyreels_v2 import SkyReelsV2Pipeline
         from .pipeline_skyreels_v2_diffusion_forcing import SkyReelsV2DiffusionForcingPipeline
         from .pipeline_skyreels_v2_image_to_video import SkyReelsV2ImageToVideoPipeline
-        from .pipeline_skyreels_v2_text_to_video import SkyReelsV2TextToVideoPipeline
 
 else:
     import sys
@@ -49,4 +49,3 @@ else:
 
     for name, value in _dummy_objects.items():
         setattr(sys.modules[__name__], name, value)
-    del _dummy_objects

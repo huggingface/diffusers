@@ -60,7 +60,7 @@ EXAMPLE_DOC_STRING = """\
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> ...
+        >>> # TODO
         ```
 """
 

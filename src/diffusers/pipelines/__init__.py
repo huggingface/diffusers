@@ -366,7 +366,7 @@ else:
         [
             "SkyReelsV2DiffusionForcingPipeline",
             "SkyReelsV2ImageToVideoPipeline",
-            "SkyReelsV2TextToVideoPipeline",
+            "SkyReelsV2Pipeline",
         ]
     )
 try:
@@ -834,7 +834,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .skyreels_v2 import (
             SkyReelsV2DiffusionForcingPipeline,
             SkyReelsV2ImageToVideoPipeline,
-            SkyReelsV2TextToVideoPipeline,
+            SkyReelsV2Pipeline,
         )
 
 else:
