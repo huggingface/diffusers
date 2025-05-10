@@ -1006,13 +1006,12 @@ class FluxFillPipeline(
             masked_image_latents = masked_image_latents.to(latents.device)
         else:
             mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
-            print(f'mask_image shape = {mask_image.shape}')
-
+        
             mask_gradient  = mask_gradienting(mask_image.squeeze(), iterations=iterations)
             mask_gradient = torch.from_numpy(mask_gradient)
             mask_gradient = mask_gradient.unsqueeze(0)
             mask_gradient = mask_gradient.unsqueeze(0)
-            print(f'mask_gradient shape = {mask_gradient.shape}')
+        
             mask_image = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
 
             masked_image = init_image * (1 - mask_image)
