@@ -24,7 +24,10 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_skyreels_v2"] = ["SkyReelsV2Pipeline"]
     _import_structure["pipeline_skyreels_v2_diffusion_forcing"] = ["SkyReelsV2DiffusionForcingPipeline"]
-    _import_structure["pipeline_skyreels_v2_image_to_video"] = ["SkyReelsV2ImageToVideoPipeline"]
+    _import_structure["pipeline_skyreels_v2_diffusion_forcing_i2v"] = [
+        "SkyReelsV2DiffusionForcingImageToVideoPipeline"
+    ]
+    _import_structure["pipeline_skyreels_v2_i2v"] = ["SkyReelsV2ImageToVideoPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -35,7 +38,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_skyreels_v2 import SkyReelsV2Pipeline
         from .pipeline_skyreels_v2_diffusion_forcing import SkyReelsV2DiffusionForcingPipeline
-        from .pipeline_skyreels_v2_image_to_video import SkyReelsV2ImageToVideoPipeline
+        from .pipeline_skyreels_v2_diffusion_forcing_i2v import SkyReelsV2DiffusionForcingImageToVideoPipeline
+        from .pipeline_skyreels_v2_i2v import SkyReelsV2ImageToVideoPipeline
 
 else:
     import sys

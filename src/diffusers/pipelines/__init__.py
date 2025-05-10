@@ -365,6 +365,7 @@ else:
     _import_structure["skyreels_v2"].extend(
         [
             "SkyReelsV2DiffusionForcingPipeline",
+            "SkyReelsV2DiffusionForcingImageToVideoPipeline",
             "SkyReelsV2ImageToVideoPipeline",
             "SkyReelsV2Pipeline",
         ]
@@ -832,6 +833,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             )
 
         from .skyreels_v2 import (
+            SkyReelsV2DiffusionForcingImageToVideoPipeline,
             SkyReelsV2DiffusionForcingPipeline,
             SkyReelsV2ImageToVideoPipeline,
             SkyReelsV2Pipeline,

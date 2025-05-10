@@ -198,6 +198,7 @@ else:
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
+            "SkyReelsV2Transformer3DModel",
             "SparseControlNetModel",
             "StableAudioDiTModel",
             "StableCascadeUNet",
@@ -215,7 +216,6 @@ else:
             "UVit2DModel",
             "VQModel",
             "WanTransformer3DModel",
-            "SkyReelsV2Transformer3DModel",
         ]
     )
     _import_structure["optimization"] = [
@@ -446,6 +446,7 @@ else:
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
+            "SkyreelsV2DiffusionForcingImageToVideoPipeline",
             "SkyreelsV2DiffusionForcingPipeline",
             "SkyreelsV2ImageToVideoPipeline",
             "SkyreelsV2Pipeline",
@@ -1032,6 +1033,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
+            SkyreelsV2DiffusionForcingImageToVideoPipeline,
             SkyreelsV2DiffusionForcingPipeline,
             SkyreelsV2ImageToVideoPipeline,
             SkyreelsV2Pipeline,

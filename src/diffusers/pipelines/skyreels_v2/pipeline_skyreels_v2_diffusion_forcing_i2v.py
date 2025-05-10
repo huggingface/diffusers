@@ -51,11 +51,11 @@ EXAMPLE_DOC_STRING = """\
         ```py
         >>> import torch
         >>> import PIL.Image
-        >>> from diffusers import SkyReelsV2DiffusionForcingPipeline
+        >>> from diffusers import SkyReelsV2DiffusionForcingImageToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> # Load the pipeline
-        >>> pipe = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
+        >>> pipe = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
         ...     "HF_placeholder/SkyReels-V2-DF-1.3B-540P", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
@@ -96,7 +96,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
+class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     """
     Pipeline for video generation with diffusion forcing using SkyReels-V2. This pipeline supports two main tasks:
     Text-to-Video (t2v) and Image-to-Video (i2v)
