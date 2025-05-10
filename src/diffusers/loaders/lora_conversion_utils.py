@@ -1704,3 +1704,11 @@ def _convert_musubi_wan_lora_to_diffusers(state_dict):
         converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
 
     return converted_state_dict
+
+
+def _convert_non_diffusers_hidream_lora_to_diffusers(state_dict, non_diffusers_prefix="diffusion_model"):
+    if not all(k.startswith(non_diffusers_prefix) for k in state_dict):
+        raise ValueError("Invalid LoRA state dict for HiDream.")
+    converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
+    converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+    return converted_state_dict

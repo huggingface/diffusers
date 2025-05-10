@@ -789,6 +789,7 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
                 ]
                 latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
 
+            latents = latents.to(self.vae.dtype)
             video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 

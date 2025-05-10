@@ -75,7 +75,7 @@ class QuantizationConfigMixin:
         Args:
             config_dict (`Dict[str, Any]`):
                 Dictionary that will be used to instantiate the configuration object.
-            return_unused_kwargs (`bool`,*optional*, defaults to `False`):
+            return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether or not to return a list of unused keyword arguments. Used for `from_pretrained` method in
                 `PreTrainedModel`.
             kwargs (`Dict[str, Any]`):
