@@ -20,7 +20,7 @@ from ..utils import get_logger
 
 
 if TYPE_CHECKING:
-    from ..pipelines.modular_pipeline import BlockState
+    from ..modular_pipelines.modular_pipeline import BlockState
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -171,7 +171,7 @@ class BaseGuidance:
         Returns:
             `BlockState`: The prepared batch of data.
         """
-        from ..pipelines.modular_pipeline import BlockState
+        from ..modular_pipelines.modular_pipeline import BlockState
 
         if input_fields is None:
             raise ValueError("Input fields cannot be None. Please pass `input_fields` to `prepare_inputs` or call `set_input_fields` before preparing inputs.")

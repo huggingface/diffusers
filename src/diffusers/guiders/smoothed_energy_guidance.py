@@ -22,7 +22,7 @@ from ..hooks.smoothed_energy_guidance_utils import SmoothedEnergyGuidanceConfig,
 from .guider_utils import BaseGuidance, rescale_noise_cfg
 
 if TYPE_CHECKING:
-    from ..pipelines.modular_pipeline import BlockState
+    from ..modular_pipelines.modular_pipeline import BlockState
 
 
 class SmoothedEnergyGuidance(BaseGuidance):
