@@ -13,19 +13,24 @@
 # limitations under the License.
 
 import math
+from typing import Optional
 
 import numpy as np
 import torch
 import torch.amp as amp
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.backends.cuda import sdp_kernel
 from torch.nn.attention.flex_attention import BlockMask, create_block_mask, flex_attention
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
+from ..attention import FeedForward
+from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..modeling_utils import ModelMixin
+from ..normalization import FP32LayerNorm
 from .attention import flash_attention
 
 
@@ -126,24 +131,12 @@ class WanLayerNorm(nn.LayerNorm):
         return super().forward(x)
 
 
-class WanSelfAttention(nn.Module):
-    def __init__(self, dim, num_heads, window_size=(-1, -1), qk_norm=True, eps=1e-6):
-        assert dim % num_heads == 0
-        super().__init__()
-        self.dim = dim
-        self.num_heads = num_heads
-        self.head_dim = dim // num_heads
-        self.window_size = window_size
-        self.qk_norm = qk_norm
-        self.eps = eps
-
-        # layers
-        self.q = nn.Linear(dim, dim)
-        self.k = nn.Linear(dim, dim)
-        self.v = nn.Linear(dim, dim)
-        self.o = nn.Linear(dim, dim)
-        self.norm_q = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
-        self.norm_k = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
+class SkyReelsV2AttnProcessor2_0:
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "SkyReelsV2AttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
+            )
 
         self._flag_ar_attention = False
 
@@ -196,7 +189,7 @@ class WanSelfAttention(nn.Module):
         return x
 
 
-class WanT2VCrossAttention(WanSelfAttention):
+class WanT2VCrossAttention(SkyReelsV2AttnProcessor2_0):
     def forward(self, x, context):
         r"""
         Args:
@@ -220,7 +213,7 @@ class WanT2VCrossAttention(WanSelfAttention):
         return x
 
 
-class WanI2VCrossAttention(WanSelfAttention):
+class WanI2VCrossAttention(SkyReelsV2AttnProcessor2_0):
     def __init__(self, dim, num_heads, window_size=(-1, -1), qk_norm=True, eps=1e-6):
         super().__init__(dim, num_heads, window_size, qk_norm, eps)
 
@@ -279,14 +272,14 @@ mul_add_add_compile = torch.compile(mul_add_add, dynamic=True, disable=DISABLE_C
 class WanAttentionBlock(nn.Module):
     def __init__(
         self,
-        cross_attn_type,
-        dim,
-        ffn_dim,
-        num_heads,
+        dim: int,
+        ffn_dim: int,
+        num_heads: int,
         window_size=(-1, -1),
-        qk_norm=True,
-        cross_attn_norm=False,
-        eps=1e-6,
+        qk_norm: str = "rms_norm",
+        cross_attn_norm: bool = False,
+        eps: float = 1e-6,
+        added_kv_proj_dim: Optional[int] = None,
     ):
         super().__init__()
         self.dim = dim
@@ -297,16 +290,46 @@ class WanAttentionBlock(nn.Module):
         self.cross_attn_norm = cross_attn_norm
         self.eps = eps
 
-        # layers
-        self.norm1 = WanLayerNorm(dim, eps)
-        self.self_attn = WanSelfAttention(dim, num_heads, window_size, qk_norm, eps)
-        self.norm3 = WanLayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
-        self.cross_attn = WAN_CROSSATTENTION_CLASSES[cross_attn_type](dim, num_heads, (-1, -1), qk_norm, eps)
-        self.norm2 = WanLayerNorm(dim, eps)
-        self.ffn = nn.Sequential(nn.Linear(dim, ffn_dim), nn.GELU(approximate="tanh"), nn.Linear(ffn_dim, dim))
+        # 1. Self-attention
+        self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+        self.attn1 = Attention(
+            window_size=window_size,
+            query_dim=dim,
+            heads=num_heads,
+            kv_heads=num_heads,
+            dim_head=dim // num_heads,
+            qk_norm=qk_norm,
+            eps=eps,
+            bias=True,
+            cross_attention_dim=None,
+            out_bias=True,
+            processor=SkyReelsV2AttnProcessor2_0(),
+        )
 
-        # modulation
-        self.modulation = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
+        # 2. Cross-attention
+        self.attn2 = Attention(
+            window_size=(-1, -1),
+            query_dim=dim,
+            heads=num_heads,
+            kv_heads=num_heads,
+            dim_head=dim // num_heads,
+            qk_norm=qk_norm,
+            eps=eps,
+            bias=True,
+            cross_attention_dim=None,
+            out_bias=True,
+            added_kv_proj_dim=added_kv_proj_dim,
+            added_proj_bias=True,
+            pre_only=False,
+            processor=SkyReelsV2AttnProcessor2_0(),
+        )
+        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+
+        # 3. Feed-forward
+        self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
+        self.norm3 = FP32LayerNorm(dim, eps) if cross_attn_norm else nn.Identity()
+
+        self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
     def set_ar_attention(self):
         self.self_attn.set_ar_attention()
@@ -423,7 +446,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
     @register_to_config
     def __init__(
         self,
-        model_type="t2v",
         patch_size=(1, 2, 2),
         text_len=512,
         in_dim=16,
@@ -478,9 +500,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         super().__init__()
 
-        assert model_type in ["t2v", "i2v"]
-        self.model_type = model_type
-
         self.patch_size = patch_size
         self.text_len = text_len
         self.in_dim = in_dim
@@ -512,10 +531,9 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             self.fps_projection = nn.Sequential(nn.Linear(dim, dim), nn.SiLU(), nn.Linear(dim, dim * 6))
 
         # blocks
-        cross_attn_type = "t2v_cross_attn" if model_type == "t2v" else "i2v_cross_attn"
         self.blocks = nn.ModuleList(
             [
-                WanAttentionBlock(cross_attn_type, dim, ffn_dim, num_heads, window_size, qk_norm, cross_attn_norm, eps)
+                WanAttentionBlock(dim, ffn_dim, num_heads, window_size, qk_norm, cross_attn_norm, eps)
                 for _ in range(num_layers)
             ]
         )
@@ -531,8 +549,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             dim=1,
         )
 
-        if model_type == "i2v":
-            self.img_emb = MLPProj(1280, dim)
+        # if model_type == "i2v":
+        #    self.img_emb = MLPProj(1280, dim)
 
         self.gradient_checkpointing = False
 
