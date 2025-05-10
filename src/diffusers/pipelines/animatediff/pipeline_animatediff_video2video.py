@@ -239,6 +239,10 @@ class AnimateDiffVideoToVideoPipeline(
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._cross_attention_kwargs=None
+        self._num_timesteps=0
+        self._interrupt=False
         if isinstance(unet, UNet2DConditionModel):
             unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
 
@@ -883,7 +887,6 @@ class AnimateDiffVideoToVideoPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, (str, dict)):

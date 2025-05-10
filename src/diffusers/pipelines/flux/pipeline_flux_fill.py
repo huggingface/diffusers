@@ -211,6 +211,10 @@ class FluxFillPipeline(
         transformer: FluxTransformer2DModel,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._joint_attention_kwargs=None
+        self._num_timesteps=0
+        self._interrupt=False
 
         self.register_modules(
             vae=vae,
@@ -863,7 +867,6 @@ class FluxFillPipeline(
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
-        self._interrupt = False
 
         init_image = self.image_processor.preprocess(image, height=height, width=width)
         init_image = init_image.to(dtype=torch.float32)

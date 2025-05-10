@@ -177,6 +177,11 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionLor
         force_zeros_for_empty_prompt: bool = False,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._cross_attention_kwargs=None
+        self._denoising_end=None
+        self._num_timesteps=0
+        self._interrupt=False
 
         self.register_modules(
             vae=vae,
@@ -857,7 +862,6 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionLor
         self._guidance_scale = guidance_scale
         self._cross_attention_kwargs = cross_attention_kwargs
         self._denoising_end = denoising_end
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
