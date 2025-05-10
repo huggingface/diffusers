@@ -196,7 +196,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         self.norm_out = AdaLayerNormContinuous(inner_dim, inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(inner_dim, patch_size_t * patch_size * patch_size * out_channels)
 
-        self.gradient_checkpointing = False
+        self.use_gradient_checkpointing = False
 
     def forward(
         self,
