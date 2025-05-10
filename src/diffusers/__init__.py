@@ -215,6 +215,7 @@ else:
             "UVit2DModel",
             "VQModel",
             "WanTransformer3DModel",
+            "SkyReelsV2Transformer3DModel",
         ]
     )
     _import_structure["optimization"] = [
@@ -804,6 +805,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
+            SkyReelsV2Transformer3DModel,
             SparseControlNetModel,
             StableAudioDiTModel,
             T2IAdapter,

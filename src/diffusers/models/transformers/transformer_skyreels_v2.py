@@ -13,20 +13,25 @@
 # limitations under the License.
 
 import math
+from typing import Any, Dict, Optional, Tuple, Union
 
-import numpy as np
 import torch
-import torch.amp as amp
 import torch.nn as nn
-from torch.backends.cuda import sdp_kernel
-from torch.nn.attention.flex_attention import BlockMask, create_block_mask, flex_attention
+import torch.nn.functional as F
 
-from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.loaders import PeftAdapterMixin
-from diffusers.models.modeling_utils import ModelMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ..attention import FeedForward
+from ..attention_processor import Attention
+from ..cache_utils import CacheMixin
+from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
+from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
+from ..normalization import FP32LayerNorm
 
-from .attention import flash_attention
 
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 flex_attention = torch.compile(flex_attention, dynamic=False, mode="max-autotune")
 
@@ -408,15 +413,16 @@ class MLPProj(torch.nn.Module):
         return clip_extra_context_tokens
 
 
-class WanModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
     Wan diffusion backbone supporting both text-to-video and image-to-video.
     """
 
-    ignore_for_config = ["patch_size", "cross_attn_norm", "qk_norm", "text_dim", "window_size"]
-    _no_split_modules = ["WanAttentionBlock"]
-
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
+    _no_split_modules = ["WanTransformerBlock"]
+    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
     def __init__(
