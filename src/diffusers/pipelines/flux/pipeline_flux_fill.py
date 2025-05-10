@@ -1007,12 +1007,11 @@ class FluxFillPipeline(
         else:
             mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
         
-            mask_gradient  = mask_gradienting(mask_image.squeeze(), iterations=iterations)
-            mask_gradient = torch.from_numpy(mask_gradient)
-            mask_gradient = mask_gradient.unsqueeze(0)
-            mask_gradient = mask_gradient.unsqueeze(0)
-        
-            mask_image = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
+            #mask_gradient  = mask_gradienting(mask_image.squeeze(), iterations=iterations)
+            #mask_gradient = torch.from_numpy(mask_gradient)
+            #mask_gradient = mask_gradient.unsqueeze(0)
+            #mask_gradient = mask_gradient.unsqueeze(0)
+            #mask_image = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
 
             masked_image = init_image * (1 - mask_image)
             masked_image = masked_image.to(device=device, dtype=prompt_embeds.dtype)
@@ -1066,6 +1065,7 @@ class FluxFillPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                print(f'latents size = {latents.shape}')
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
