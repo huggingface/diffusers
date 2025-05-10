@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import math
-from typing import Optional, List, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING, Dict, Union, Tuple
 
 import torch
 
 from .guider_utils import BaseGuidance, rescale_noise_cfg
 
 if TYPE_CHECKING:
-    from ..pipelines.modular_pipeline import BlockState
+    from ..modular_pipelines.modular_pipeline import BlockState
 
 
 class TangentialClassifierFreeGuidance(BaseGuidance):
@@ -62,11 +62,15 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
+    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
+        
+        if input_fields is None:
+            input_fields = self._input_fields
+        
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
         for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(self._input_fields, data, tuple_indices[i], self._input_predictions[i])
+            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
             data_batches.append(data_batch)
         return data_batches
 

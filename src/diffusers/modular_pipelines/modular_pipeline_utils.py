@@ -244,11 +244,12 @@ class ConfigSpec:
 @dataclass
 class InputParam:
     """Specification for an input parameter."""
-    name: str
+    name: str = None
     type_hint: Any = None
     default: Any = None
     required: bool = False
     description: str = ""
+    kwargs_type: str = None
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -260,6 +261,7 @@ class OutputParam:
     name: str
     type_hint: Any = None
     description: str = ""
+    kwargs_type: str = None
 
     def __repr__(self):
         return f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
@@ -320,7 +322,11 @@ def format_intermediates_short(intermediates_inputs, required_intermediates_inpu
         if inp.name in required_intermediates_inputs:
             input_parts.append(f"Required({inp.name})")
         else:
-            input_parts.append(inp.name)
+            if inp.name is None and inp.kwargs_type is not None:
+                inp_name = "*_" + inp.kwargs_type
+            else:
+                inp_name = inp.name
+            input_parts.append(inp_name)
     
     # Handle modified variables (appear in both inputs and outputs)
     inputs_set = {inp.name for inp in intermediates_inputs}
