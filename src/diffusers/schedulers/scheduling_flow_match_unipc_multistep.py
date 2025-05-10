@@ -1,6 +1,4 @@
 # Copyright 2025 The SkyReels-V2 Team, The Wan Team and The HuggingFace Team. All rights reserved.
-# Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/schedulers/scheduling_unipc_multistep.py
-# Converted unipc for flow matching
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +25,7 @@ from diffusers.utils import deprecate
 
 class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    `FlowMatchUniPCMultistepScheduler` is a training-free framework designed for the fast sampling of diffusion models.
+    `FlowMatchUniPCMultistepScheduler` is a ...
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
@@ -315,7 +313,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise ValueError(
                     f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`,"
-                    " `v_prediction` or `flow_prediction` for the UniPCMultistepScheduler."
+                    " `v_prediction` or `flow_prediction` for the FlowMatchUniPCMultistepScheduler."
                 )
 
             if self.config.thresholding:
@@ -329,7 +327,7 @@ class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise ValueError(
                     f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`,"
-                    " `v_prediction` or `flow_prediction` for the UniPCMultistepScheduler."
+                    " `v_prediction` or `flow_prediction` for the FlowMatchUniPCMultistepScheduler."
                 )
 
             if self.config.thresholding:
