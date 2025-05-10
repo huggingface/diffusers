@@ -1009,7 +1009,7 @@ class FluxFillPipeline(
             print(f'mask_image shape = {mask_image.shape}')
 
             mask_gradient  = mask_gradienting(mask_image.squeeze(), iterations=iterations)
-            mask_gradient = torch.Tensor(mask_gradient)
+            mask_gradient = torch.from_numpy(mask_gradient)
             mask_gradient = mask_gradient.unsqueeze(0)
             mask_gradient = mask_gradient.unsqueeze(0)
             print(f'mask_gradient shape = {mask_gradient.shape}')
