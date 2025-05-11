@@ -752,6 +752,7 @@ class FluxFillPipeline(
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         iterations: Optional[int] = 10,
+        first_N_steps: Optional[int] = 15,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1053,7 +1054,8 @@ class FluxFillPipeline(
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
+                
+                print(f'timesteps={i}')
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
@@ -1076,27 +1078,28 @@ class FluxFillPipeline(
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
                 print(f'after prediction latents size = {latents.shape}')
                 latents = latents.view(latents.shape[0], height_latent, width_latent, -1)
-                if height_latent > 64:
-                    tmp_dim = (height_latent - 64) // 2
-                    tmp_mean = (latents[:,tmp_dim-1,:,:] + latents[:,tmp_dim,:,:]) / 2.0
-                    latents[:,tmp_dim-1,:,:] = tmp_mean
-                    latents[:,tmp_dim,:,:] = tmp_mean
-                
-                    tmp_mean = (latents[:,64+tmp_dim-1,:,:] + latents[:,64+tmp_dim,:,:]) / 2.0
-                    latents[:,64+tmp_dim-1,:,:] = tmp_mean
-                    latents[:,64+tmp_dim,:,:] = tmp_mean
+                if i < first_N_steps:
+                    if height_latent > 64:
+                        tmp_dim = (height_latent - 64) // 2
+                        tmp_mean = (latents[:,tmp_dim-1,:,:] + latents[:,tmp_dim,:,:]) / 2.0
+                        latents[:,tmp_dim-1,:,:] = tmp_mean
+                        latents[:,tmp_dim,:,:] = tmp_mean
+                    
+                        tmp_mean = (latents[:,64+tmp_dim-1,:,:] + latents[:,64+tmp_dim,:,:]) / 2.0
+                        latents[:,64+tmp_dim-1,:,:] = tmp_mean
+                        latents[:,64+tmp_dim,:,:] = tmp_mean
 
-                if width_latent > 64:
-                    tmp_dim = (width_latent - 64) // 2
-                    tmp_mean = (latents[:,:,tmp_dim-1,:] + latents[:,:,tmp_dim,:]) / 2.0
-                    latents[:,:,tmp_dim-1,:] = tmp_mean
-                    latents[:,:,tmp_dim,:] = tmp_mean
-                
-                    tmp_mean = (latents[:,:,64+tmp_dim-1,:] + latents[:,:,64+tmp_dim,:]) / 2.0
-                    latents[:,:,64+tmp_dim-1,:] = tmp_mean
-                    latents[:,:,64+tmp_dim,:] = tmp_mean        
+                    if width_latent > 64:
+                        tmp_dim = (width_latent - 64) // 2
+                        tmp_mean = (latents[:,:,tmp_dim-1,:] + latents[:,:,tmp_dim,:]) / 2.0
+                        latents[:,:,tmp_dim-1,:] = tmp_mean
+                        latents[:,:,tmp_dim,:] = tmp_mean
+                    
+                        tmp_mean = (latents[:,:,64+tmp_dim-1,:] + latents[:,:,64+tmp_dim,:]) / 2.0
+                        latents[:,:,64+tmp_dim-1,:] = tmp_mean
+                        latents[:,:,64+tmp_dim,:] = tmp_mean        
 
-                latents = latents.view(latents.shape[0], height_latent * width_latent, -1)
+                    latents = latents.view(latents.shape[0], height_latent * width_latent, -1)
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
