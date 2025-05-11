@@ -1147,6 +1147,6 @@ class FluxFillPipeline(
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,mask_gradient)
+            return (image,mask,mask_gradient)
 
         return FluxPipelineOutput(images=image)
