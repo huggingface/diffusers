@@ -414,7 +414,7 @@ class FluxFillPipeline(
         )
         mask = mask.to(device=device, dtype=dtype)
 
-        return mask, masked_image_latents
+        return mask, masked_image_latents, height, width
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
@@ -1007,11 +1007,11 @@ class FluxFillPipeline(
         else:
             mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
         
-            #mask_gradient  = mask_gradienting(mask_image.squeeze(), iterations=iterations)
-            #mask_gradient = torch.from_numpy(mask_gradient)
-            #mask_gradient = mask_gradient.unsqueeze(0)
-            #mask_gradient = mask_gradient.unsqueeze(0)
-            #mask_image = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
+            mask_gradient  = mask_gradienting(mask_image.squeeze(), iterations=iterations)
+            mask_gradient = torch.from_numpy(mask_gradient)
+            mask_gradient = mask_gradient.unsqueeze(0)
+            mask_gradient = mask_gradient.unsqueeze(0)
+            mask_gradient = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
             
             print(f'mask_image size={mask_image.shape}')
             masked_image = init_image * (1 - mask_image)
@@ -1019,7 +1019,7 @@ class FluxFillPipeline(
             print(f'masked_image size = {masked_image.shape}')
 
             height, width = init_image.shape[-2:]
-            mask, masked_image_latents = self.prepare_mask_latents(
+            mask, masked_image_latents, height, width = self.prepare_mask_latents(
                 mask_image,
                 masked_image,
                 batch_size,
@@ -1031,6 +1031,7 @@ class FluxFillPipeline(
                 device,
                 generator,
             )
+            print(f'height={height}, width={width}')
             print(f'before cat masked_image_latents size={masked_image_latents.shape}')
             masked_image_latents = torch.cat((masked_image_latents, mask), dim=-1)
             print(f'mask size={mask.shape}')
