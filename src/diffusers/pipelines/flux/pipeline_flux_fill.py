@@ -16,6 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import cv2
+import copy
 import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
@@ -1037,6 +1038,8 @@ class FluxFillPipeline(
             print(f'height_latent={height_latent}, width_latent={width_latent}')
             print(f'before cat masked_image_latents size={masked_image_latents.shape}')
 
+            mask_original = copy.deepcopy(mask)
+
             mask = mask.view(mask.shape[0], height_latent, width_latent, -1)
             mask = mask.to(dtype=torch.float16)
             mask_gradient  = mask_gradienting(mask[0,:,:,:].cpu().numpy(), iterations=iterations)
@@ -1147,6 +1150,6 @@ class FluxFillPipeline(
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,mask,mask_gradient)
+            return (image,mask_original,mask_gradient)
 
         return FluxPipelineOutput(images=image)
