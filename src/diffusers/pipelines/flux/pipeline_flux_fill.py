@@ -1019,7 +1019,7 @@ class FluxFillPipeline(
             print(f'masked_image size = {masked_image.shape}')
 
             height, width = init_image.shape[-2:]
-            mask, masked_image_latents, height, width = self.prepare_mask_latents(
+            mask, masked_image_latents, height_latent, width_latent = self.prepare_mask_latents(
                 mask_image,
                 masked_image,
                 batch_size,
@@ -1031,7 +1031,9 @@ class FluxFillPipeline(
                 device,
                 generator,
             )
+            height_latent, width_latent = height_latent // 2, width_latent // 2,
             print(f'height={height}, width={width}')
+            print(f'height_latent={height_latent}, width_latent={width_latent}')
             print(f'before cat masked_image_latents size={masked_image_latents.shape}')
             masked_image_latents = torch.cat((masked_image_latents, mask), dim=-1)
             print(f'mask size={mask.shape}')
@@ -1073,6 +1075,28 @@ class FluxFillPipeline(
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
                 print(f'after prediction latents size = {latents.shape}')
+                latents = latents.view(latents.shape[0], height_latent, width_latent, -1)
+                if height_latent > 64:
+                    tmp_dim = (height_latent - 64) // 2
+                    tmp_mean = (latents[:,tmp_dim-1,:,:] + latents[:,tmp_dim,:,:]) / 2.0
+                    latents[:,tmp_dim-1,:,:] = tmp_mean
+                    latents[:,tmp_dim,:,:] = tmp_mean
+                
+                    tmp_mean = (latents[:,64+tmp_dim-1,:,:] + latents[:,64+tmp_dim,:,:]) / 2.0
+                    latents[:,64+tmp_dim-1,:,:] = tmp_mean
+                    latents[:,64+tmp_dim,:,:] = tmp_mean
+
+                if width_latent > 64:
+                    tmp_dim = (width_latent - 64) // 2
+                    tmp_mean = (latents[:,:,tmp_dim-1,:] + latents[:,:,tmp_dim,:]) / 2.0
+                    latents[:,:,tmp_dim-1,:] = tmp_mean
+                    latents[:,:,tmp_dim,:] = tmp_mean
+                
+                    tmp_mean = (latents[:,:,64+tmp_dim-1,:] + latents[:,:,64+tmp_dim,:]) / 2.0
+                    latents[:,:,64+tmp_dim-1,:] = tmp_mean
+                    latents[:,:,64+tmp_dim,:] = tmp_mean        
+
+                latents = latents.view(latents.shape[0], height_latent * width_latent, -1)
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
