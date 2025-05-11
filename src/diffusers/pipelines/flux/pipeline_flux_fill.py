@@ -1012,10 +1012,11 @@ class FluxFillPipeline(
             #mask_gradient = mask_gradient.unsqueeze(0)
             #mask_gradient = mask_gradient.unsqueeze(0)
             #mask_image = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
-            print(f'masked_image size = {masked_image.shape}')
+            
             print(f'mask_image size={mask_image.shape}')
             masked_image = init_image * (1 - mask_image)
             masked_image = masked_image.to(device=device, dtype=prompt_embeds.dtype)
+            print(f'masked_image size = {masked_image.shape}')
 
             height, width = init_image.shape[-2:]
             mask, masked_image_latents = self.prepare_mask_latents(
