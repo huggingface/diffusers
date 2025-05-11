@@ -1038,10 +1038,10 @@ class FluxFillPipeline(
             print(f'before cat masked_image_latents size={masked_image_latents.shape}')
 
             mask = mask.view(mask.shape[0], height_latent, width_latent, -1)
-
+            mask = mask.to(dtype=torch.float16)
             mask_gradient  = mask_gradienting(mask[0,:,:,:].cpu().numpy(), iterations=iterations)
             mask_gradient = torch.from_numpy(mask_gradient)
-            mask_gradient = mask_gradient.to(device=mask.device, dtype=mask.dtype)
+            mask_gradient = mask_gradient.to(device=masked_image_latents.device, dtype=masked_image_latents.dtype)
 
             mask = [mask_gradient] * mask.shape[0]
             mask = torch.stack(mask,dim=0)
