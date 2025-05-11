@@ -752,8 +752,7 @@ class FluxFillPipeline(
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        iterations: Optional[int] = 10,
-        first_N_steps: Optional[int] = 15,
+        iterations: Optional[int] = 30,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1009,17 +1008,9 @@ class FluxFillPipeline(
         else:
             mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
         
-            #mask_gradient  = mask_gradienting(mask_image.squeeze(), iterations=iterations)
-            #mask_gradient = torch.from_numpy(mask_gradient)
-            #mask_gradient = mask_gradient.unsqueeze(0)
-            #mask_gradient = mask_gradient.unsqueeze(0)
-            #mask_gradient = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
-            
-            print(f'mask_image size={mask_image.shape}')
             masked_image = init_image * (1 - mask_image)
             masked_image = masked_image.to(device=device, dtype=prompt_embeds.dtype)
-            print(f'masked_image size = {masked_image.shape}')
-
+            
             height, width = init_image.shape[-2:]
             mask, masked_image_latents, height_latent, width_latent = self.prepare_mask_latents(
                 mask_image,
@@ -1034,11 +1025,6 @@ class FluxFillPipeline(
                 generator,
             )
             height_latent, width_latent = height_latent // 2, width_latent // 2,
-            print(f'height={height}, width={width}')
-            print(f'height_latent={height_latent}, width_latent={width_latent}')
-            print(f'before cat masked_image_latents size={masked_image_latents.shape}')
-
-            mask_original = copy.deepcopy(mask)
 
             mask = mask.view(mask.shape[0], height_latent, width_latent, -1)
             mask = mask.to(dtype=torch.float16)
@@ -1051,7 +1037,6 @@ class FluxFillPipeline(
             mask = mask.view(mask.shape[0], height_latent*width_latent, -1)
 
             masked_image_latents = torch.cat((masked_image_latents, mask), dim=-1)
-            print(f'mask size={mask.shape}')
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
@@ -1069,12 +1054,9 @@ class FluxFillPipeline(
                 if self.interrupt:
                     continue
                 
-                print(f'timesteps={i}')
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                print(f'before prediction latents size = {latents.shape}')
-                print(f'masked_image_latents size={masked_image_latents.shape}')
                 noise_pred = self.transformer(
                     hidden_states=torch.cat((latents, masked_image_latents), dim=2),
                     timestep=timestep / 1000,
@@ -1090,30 +1072,6 @@ class FluxFillPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-                print(f'after prediction latents size = {latents.shape}')
-                if i < first_N_steps:
-                    latents = latents.view(latents.shape[0], height_latent, width_latent, -1)
-                    if height_latent > 64:
-                        tmp_dim = (height_latent - 64) // 2
-                        tmp_mean = (latents[:,tmp_dim-1,:,:] + latents[:,tmp_dim,:,:]) / 2.0
-                        latents[:,tmp_dim-1,:,:] = tmp_mean
-                        latents[:,tmp_dim,:,:] = tmp_mean
-                    
-                        tmp_mean = (latents[:,64+tmp_dim-1,:,:] + latents[:,64+tmp_dim,:,:]) / 2.0
-                        latents[:,64+tmp_dim-1,:,:] = tmp_mean
-                        latents[:,64+tmp_dim,:,:] = tmp_mean
-
-                    if width_latent > 64:
-                        tmp_dim = (width_latent - 64) // 2
-                        tmp_mean = (latents[:,:,tmp_dim-1,:] + latents[:,:,tmp_dim,:]) / 2.0
-                        latents[:,:,tmp_dim-1,:] = tmp_mean
-                        latents[:,:,tmp_dim,:] = tmp_mean
-                    
-                        tmp_mean = (latents[:,:,64+tmp_dim-1,:] + latents[:,:,64+tmp_dim,:]) / 2.0
-                        latents[:,:,64+tmp_dim-1,:] = tmp_mean
-                        latents[:,:,64+tmp_dim,:] = tmp_mean        
-
-                    latents = latents.view(latents.shape[0], height_latent * width_latent, -1)
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
@@ -1150,6 +1108,6 @@ class FluxFillPipeline(
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,mask_original,mask_gradient)
+            return (image,)
 
         return FluxPipelineOutput(images=image)
