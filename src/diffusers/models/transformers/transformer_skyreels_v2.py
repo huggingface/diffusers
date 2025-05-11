@@ -29,9 +29,9 @@ from ...utils import logging
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
+from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from .attention import flash_attention
 
 
