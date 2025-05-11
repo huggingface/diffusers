@@ -1012,7 +1012,8 @@ class FluxFillPipeline(
             #mask_gradient = mask_gradient.unsqueeze(0)
             #mask_gradient = mask_gradient.unsqueeze(0)
             #mask_image = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
-
+            print(f'masked_image size = {masked_image.shape}')
+            print(f'mask_image size={mask_image.shape}')
             masked_image = init_image * (1 - mask_image)
             masked_image = masked_image.to(device=device, dtype=prompt_embeds.dtype)
 
@@ -1029,7 +1030,9 @@ class FluxFillPipeline(
                 device,
                 generator,
             )
+            print(f'before cat masked_image_latents size={masked_image_latents.shape}')
             masked_image_latents = torch.cat((masked_image_latents, mask), dim=-1)
+            print(f'mask size={mask.shape}')
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
