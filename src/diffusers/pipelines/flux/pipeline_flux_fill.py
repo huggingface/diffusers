@@ -1077,8 +1077,8 @@ class FluxFillPipeline(
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
                 print(f'after prediction latents size = {latents.shape}')
-                latents = latents.view(latents.shape[0], height_latent, width_latent, -1)
                 if i < first_N_steps:
+                    latents = latents.view(latents.shape[0], height_latent, width_latent, -1)
                     if height_latent > 64:
                         tmp_dim = (height_latent - 64) // 2
                         tmp_mean = (latents[:,tmp_dim-1,:,:] + latents[:,tmp_dim,:,:]) / 2.0
