@@ -1050,6 +1050,8 @@ class FluxFillPipeline(
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
+                print(f'before prediction latents size = {latents.shape}')
+                print(f'masked_image_latents size={masked_image_latents.shape}')
                 noise_pred = self.transformer(
                     hidden_states=torch.cat((latents, masked_image_latents), dim=2),
                     timestep=timestep / 1000,
@@ -1065,7 +1067,7 @@ class FluxFillPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-                print(f'latents size = {latents.shape}')
+                print(f'after prediction latents size = {latents.shape}')
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
