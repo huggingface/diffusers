@@ -241,6 +241,13 @@ class ConfigSpec:
     name: str
     default: Any
     description: Optional[str] = None
+
+
+# YiYi Notes: both inputs and intermediates_inputs are InputParam objects
+# however some fields are not relevant for intermediates_inputs
+# e.g. unlike inputs, required only used in docstring for intermediate_inputs, we do not check if a required intermediate inputs is passed
+# default is not used for intermediates_inputs, we only use default from inputs, so it is ignored if it is set for intermediates_inputs
+# -> should we use different class for inputs and intermediates_inputs?
 @dataclass
 class InputParam:
     """Specification for an input parameter."""
@@ -249,7 +256,7 @@ class InputParam:
     default: Any = None
     required: bool = False
     description: str = ""
-    kwargs_type: str = None
+    kwargs_type: str = None # YiYi Notes: experimenting with this, not sure if we should keep it
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
