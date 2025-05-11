@@ -1039,9 +1039,9 @@ class FluxFillPipeline(
 
             mask = mask.view(mask.shape[0], height_latent, width_latent, -1)
 
-            mask_gradient  = mask_gradienting(mask[0,:,:,:], iterations=iterations)
+            mask_gradient  = mask_gradienting(mask[0,:,:,:].cpu().numpy(), iterations=iterations)
             mask_gradient = torch.from_numpy(mask_gradient)
-            mask_gradient = mask_gradient.to(device=mask_image.device, dtype=mask_image.dtype)
+            mask_gradient = mask_gradient.to(device=mask.device, dtype=mask.dtype)
 
             mask = [mask_gradient] * mask.shape[0]
             mask = torch.stack(mask,dim=0)
@@ -1147,6 +1147,6 @@ class FluxFillPipeline(
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,mask_image)
+            return (image,mask_gradient)
 
         return FluxPipelineOutput(images=image)
