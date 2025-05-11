@@ -564,98 +564,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         # TODO: Say: Initializing suggested by the original repo?
         # self.init_weights()
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        self.gradient_checkpointing = value
-
-    def zero_init_i2v_cross_attn(self):
-        print("zero init i2v cross attn")
-        for i in range(self.num_layers):
-            self.blocks[i].cross_attn.v_img.weight.data.zero_()
-            self.blocks[i].cross_attn.v_img.bias.data.zero_()
-
-    @staticmethod
-    def _prepare_blockwise_causal_attn_mask(
-        device: torch.device | str, num_frames: int = 21, frame_seqlen: int = 1560, num_frame_per_block=1
-    ) -> BlockMask:
-        """
-        we will divide the token sequence into the following format [1 latent frame] [1 latent frame] ... [1 latent
-        frame] We use flexattention to construct the attention mask
-        """
-        total_length = num_frames * frame_seqlen
-
-        # we do right padding to get to a multiple of 128
-        padded_length = math.ceil(total_length / 128) * 128 - total_length
-
-        ends = torch.zeros(total_length + padded_length, device=device, dtype=torch.long)
-
-        # Block-wise causal mask will attend to all elements that are before the end of the current chunk
-        frame_indices = torch.arange(start=0, end=total_length, step=frame_seqlen * num_frame_per_block, device=device)
-
-        for tmp in frame_indices:
-            ends[tmp : tmp + frame_seqlen * num_frame_per_block] = tmp + frame_seqlen * num_frame_per_block
-
-        def attention_mask(b, h, q_idx, kv_idx):
-            return (kv_idx < ends[q_idx]) | (q_idx == kv_idx)
-            # return ((kv_idx < total_length) & (q_idx < total_length))  | (q_idx == kv_idx) # bidirectional mask
-
-        block_mask = create_block_mask(
-            attention_mask,
-            B=None,
-            H=None,
-            Q_LEN=total_length + padded_length,
-            KV_LEN=total_length + padded_length,
-            _compile=False,
-            device=device,
-        )
-
-        return block_mask
-
-    def initialize_teacache(
-        self, enable_teacache=True, num_steps=25, teacache_thresh=0.15, use_ret_steps=False, ckpt_dir=""
-    ):
-        self.enable_teacache = enable_teacache
-        print("using teacache")
-        self.cnt = 0
-        self.num_steps = num_steps
-        self.teacache_thresh = teacache_thresh
-        self.accumulated_rel_l1_distance_even = 0
-        self.accumulated_rel_l1_distance_odd = 0
-        self.previous_e0_even = None
-        self.previous_e0_odd = None
-        self.previous_residual_even = None
-        self.previous_residual_odd = None
-        self.use_ref_steps = use_ret_steps
-        if "I2V" in ckpt_dir:
-            if use_ret_steps:
-                if "540P" in ckpt_dir:
-                    self.coefficients = [2.57151496e05, -3.54229917e04, 1.40286849e03, -1.35890334e01, 1.32517977e-01]
-                if "720P" in ckpt_dir:
-                    self.coefficients = [8.10705460e03, 2.13393892e03, -3.72934672e02, 1.66203073e01, -4.17769401e-02]
-                self.ret_steps = 5 * 2
-                self.cutoff_steps = num_steps * 2
-            else:
-                if "540P" in ckpt_dir:
-                    self.coefficients = [-3.02331670e02, 2.23948934e02, -5.25463970e01, 5.87348440e00, -2.01973289e-01]
-                if "720P" in ckpt_dir:
-                    self.coefficients = [-114.36346466, 65.26524496, -18.82220707, 4.91518089, -0.23412683]
-                self.ret_steps = 1 * 2
-                self.cutoff_steps = num_steps * 2 - 2
-        else:
-            if use_ret_steps:
-                if "1.3B" in ckpt_dir:
-                    self.coefficients = [-5.21862437e04, 9.23041404e03, -5.28275948e02, 1.36987616e01, -4.99875664e-02]
-                if "14B" in ckpt_dir:
-                    self.coefficients = [-3.03318725e05, 4.90537029e04, -2.65530556e03, 5.87365115e01, -3.15583525e-01]
-                self.ret_steps = 5 * 2
-                self.cutoff_steps = num_steps * 2
-            else:
-                if "1.3B" in ckpt_dir:
-                    self.coefficients = [2.39676752e03, -1.31110545e03, 2.01331979e02, -8.29855975e00, 1.37887774e-01]
-                if "14B" in ckpt_dir:
-                    self.coefficients = [-5784.54975374, 5449.50911966, -1811.16591783, 256.27178429, -13.02252404]
-                self.ret_steps = 1 * 2
-                self.cutoff_steps = num_steps * 2 - 2
-
     def forward(self, x, t, context, clip_fea=None, y=None, fps=None):
         r"""
         Forward pass through the diffusion model
@@ -678,6 +586,28 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             List[Tensor]:
                 List of denoised video tensors with original input shapes [C_out, F, H / 8, W / 8]
         """
+
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        p_t, p_h, p_w = self.config.patch_size
+        post_patch_num_frames = num_frames // p_t
+        post_patch_height = height // p_h
+        post_patch_width = width // p_w
+
         if self.model_type == "i2v":
             assert clip_fea is not None and y is not None
         # params
@@ -818,42 +748,115 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             for block in self.blocks:
                 x = block(x, **kwargs)
 
-        x = self.head(x, e)
+        # 5. Output norm, projection & unpatchify
+        shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
 
-        # unpatchify
-        x = self.unpatchify(x, grid_sizes)
+        # Move the shift and scale tensors to the same device as hidden_states.
+        # When using multi-GPU inference via accelerate these will be on the
+        # first device rather than the last device, which hidden_states ends up
+        # on.
+        shift = shift.to(hidden_states.device)
+        scale = scale.to(hidden_states.device)
+
+        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+
+        hidden_states = hidden_states.reshape(
+            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
+        )
+        hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
+        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
         return x.float()
-
-    def unpatchify(self, x, grid_sizes):
-        r"""
-        Reconstruct video tensors from patch embeddings.
-
-        Args:
-            x (List[Tensor]):
-                List of patchified features, each with shape [L, C_out * prod(patch_size)]
-            grid_sizes (Tensor):
-                Original spatial-temporal grid dimensions before patching,
-                    shape [B, 3] (3 dimensions correspond to F_patches, H_patches, W_patches)
-
-        Returns:
-            List[Tensor]:
-                Reconstructed video tensors with shape [C_out, F, H / 8, W / 8]
-        """
-
-        c = self.out_dim
-        bs = x.shape[0]
-        x = x.view(bs, *grid_sizes, *self.patch_size, c)
-        x = torch.einsum("bfhwpqrc->bcfphqwr", x)
-        x = x.reshape(bs, c, *[i * j for i, j in zip(grid_sizes, self.patch_size)])
-
-        return x
 
     def set_ar_attention(self, causal_block_size):
         self.num_frame_per_block = causal_block_size
         self.flag_causal_attention = True
         for block in self.blocks:
             block.set_ar_attention()
+
+    @staticmethod
+    def _prepare_blockwise_causal_attn_mask(
+        device: torch.device | str, num_frames: int = 21, frame_seqlen: int = 1560, num_frame_per_block=1
+    ) -> BlockMask:
+        """
+        we will divide the token sequence into the following format [1 latent frame] [1 latent frame] ... [1 latent
+        frame] We use flexattention to construct the attention mask
+        """
+        total_length = num_frames * frame_seqlen
+
+        # we do right padding to get to a multiple of 128
+        padded_length = math.ceil(total_length / 128) * 128 - total_length
+
+        ends = torch.zeros(total_length + padded_length, device=device, dtype=torch.long)
+
+        # Block-wise causal mask will attend to all elements that are before the end of the current chunk
+        frame_indices = torch.arange(start=0, end=total_length, step=frame_seqlen * num_frame_per_block, device=device)
+
+        for tmp in frame_indices:
+            ends[tmp : tmp + frame_seqlen * num_frame_per_block] = tmp + frame_seqlen * num_frame_per_block
+
+        def attention_mask(b, h, q_idx, kv_idx):
+            return (kv_idx < ends[q_idx]) | (q_idx == kv_idx)
+            # return ((kv_idx < total_length) & (q_idx < total_length))  | (q_idx == kv_idx) # bidirectional mask
+
+        block_mask = create_block_mask(
+            attention_mask,
+            B=None,
+            H=None,
+            Q_LEN=total_length + padded_length,
+            KV_LEN=total_length + padded_length,
+            _compile=False,
+            device=device,
+        )
+
+        return block_mask
+
+    def initialize_teacache(
+        self, enable_teacache=True, num_steps=25, teacache_thresh=0.15, use_ret_steps=False, ckpt_dir=""
+    ):
+        self.enable_teacache = enable_teacache
+        print("using teacache")
+        self.cnt = 0
+        self.num_steps = num_steps
+        self.teacache_thresh = teacache_thresh
+        self.accumulated_rel_l1_distance_even = 0
+        self.accumulated_rel_l1_distance_odd = 0
+        self.previous_e0_even = None
+        self.previous_e0_odd = None
+        self.previous_residual_even = None
+        self.previous_residual_odd = None
+        self.use_ref_steps = use_ret_steps
+        if "I2V" in ckpt_dir:
+            if use_ret_steps:
+                if "540P" in ckpt_dir:
+                    self.coefficients = [2.57151496e05, -3.54229917e04, 1.40286849e03, -1.35890334e01, 1.32517977e-01]
+                if "720P" in ckpt_dir:
+                    self.coefficients = [8.10705460e03, 2.13393892e03, -3.72934672e02, 1.66203073e01, -4.17769401e-02]
+                self.ret_steps = 5 * 2
+                self.cutoff_steps = num_steps * 2
+            else:
+                if "540P" in ckpt_dir:
+                    self.coefficients = [-3.02331670e02, 2.23948934e02, -5.25463970e01, 5.87348440e00, -2.01973289e-01]
+                if "720P" in ckpt_dir:
+                    self.coefficients = [-114.36346466, 65.26524496, -18.82220707, 4.91518089, -0.23412683]
+                self.ret_steps = 1 * 2
+                self.cutoff_steps = num_steps * 2 - 2
+        else:
+            if use_ret_steps:
+                if "1.3B" in ckpt_dir:
+                    self.coefficients = [-5.21862437e04, 9.23041404e03, -5.28275948e02, 1.36987616e01, -4.99875664e-02]
+                if "14B" in ckpt_dir:
+                    self.coefficients = [-3.03318725e05, 4.90537029e04, -2.65530556e03, 5.87365115e01, -3.15583525e-01]
+                self.ret_steps = 5 * 2
+                self.cutoff_steps = num_steps * 2
+            else:
+                if "1.3B" in ckpt_dir:
+                    self.coefficients = [2.39676752e03, -1.31110545e03, 2.01331979e02, -8.29855975e00, 1.37887774e-01]
+                if "14B" in ckpt_dir:
+                    self.coefficients = [-5784.54975374, 5449.50911966, -1811.16591783, 256.27178429, -13.02252404]
+                self.ret_steps = 1 * 2
+                self.cutoff_steps = num_steps * 2 - 2
 
     def init_weights(self):
         r"""
@@ -888,3 +891,9 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         # init output layer
         nn.init.zeros_(self.head.head.weight)
+
+    def zero_init_i2v_cross_attn(self):
+        print("zero init i2v cross attn")
+        for i in range(self.num_layers):
+            self.blocks[i].cross_attn.v_img.weight.data.zero_()
+            self.blocks[i].cross_attn.v_img.bias.data.zero_()
