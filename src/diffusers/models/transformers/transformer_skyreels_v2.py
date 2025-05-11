@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -31,6 +31,7 @@ from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
+from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from .attention import flash_attention
 
 
@@ -39,28 +40,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 flex_attention = torch.compile(flex_attention, dynamic=False, mode="max-autotune")
 
 DISABLE_COMPILE = False  # get os env
-
-
-def sinusoidal_embedding_1d(dim, position):
-    # preprocess
-    assert dim % 2 == 0
-    half = dim // 2
-    position = position.type(torch.float64)
-
-    # calculation
-    sinusoid = torch.outer(position, torch.pow(10000, -torch.arange(half).to(position).div(half)))
-    x = torch.cat([torch.cos(sinusoid), torch.sin(sinusoid)], dim=1)
-    return x
-
-
-@amp.autocast("cuda", enabled=False)
-def rope_params(max_seq_len, dim, theta=10000):
-    assert dim % 2 == 0
-    freqs = torch.outer(
-        torch.arange(max_seq_len), 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim))
-    )
-    freqs = torch.polar(torch.ones_like(freqs), freqs)
-    return freqs
 
 
 @amp.autocast("cuda", enabled=False)
@@ -91,44 +70,6 @@ def rope_apply(x, grid_sizes, freqs):
     x = torch.view_as_real(x * freqs_i).flatten(3)
 
     return x
-
-
-@torch.compile(dynamic=True, disable=DISABLE_COMPILE)
-def fast_rms_norm(x, weight, eps):
-    x = x.float()
-    x = x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + eps)
-    x = x.type_as(x) * weight
-    return x
-
-
-class WanRMSNorm(nn.Module):
-    def __init__(self, dim, eps=1e-5):
-        super().__init__()
-        self.dim = dim
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x):
-        r"""
-        Args:
-            x(Tensor): Shape [B, L, C]
-        """
-        return fast_rms_norm(x, self.weight, self.eps)
-
-    def _norm(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
-
-
-class WanLayerNorm(nn.LayerNorm):
-    def __init__(self, dim, eps=1e-6, elementwise_affine=False):
-        super().__init__(dim, elementwise_affine=elementwise_affine, eps=eps)
-
-    def forward(self, x):
-        r"""
-        Args:
-            x(Tensor): Shape [B, L, C]
-        """
-        return super().forward(x)
 
 
 class SkyReelsV2AttnProcessor2_0:
@@ -251,12 +192,6 @@ class WanI2VCrossAttention(SkyReelsV2AttnProcessor2_0):
         return x
 
 
-WAN_CROSSATTENTION_CLASSES = {
-    "t2v_cross_attn": WanT2VCrossAttention,
-    "i2v_cross_attn": WanI2VCrossAttention,
-}
-
-
 def mul_add(x, y, z):
     return x.float() + y.float() * z.float()
 
@@ -268,8 +203,114 @@ def mul_add_add(x, y, z):
 mul_add_compile = torch.compile(mul_add, dynamic=True, disable=DISABLE_COMPILE)
 mul_add_add_compile = torch.compile(mul_add_add, dynamic=True, disable=DISABLE_COMPILE)
 
+class SkyReelsV2ImageEmbedding(torch.nn.Module):
+    def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
+        super().__init__()
 
-class WanAttentionBlock(nn.Module):
+        self.norm1 = FP32LayerNorm(in_features)
+        self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
+        self.norm2 = FP32LayerNorm(out_features)
+        if pos_embed_seq_len is not None:
+            self.pos_embed = nn.Parameter(torch.zeros(1, pos_embed_seq_len, in_features))
+        else:
+            self.pos_embed = None
+
+    def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
+        if self.pos_embed is not None:
+            batch_size, seq_len, embed_dim = encoder_hidden_states_image.shape
+            encoder_hidden_states_image = encoder_hidden_states_image.view(-1, 2 * seq_len, embed_dim)
+            encoder_hidden_states_image = encoder_hidden_states_image + self.pos_embed
+
+        hidden_states = self.norm1(encoder_hidden_states_image)
+        hidden_states = self.ff(hidden_states)
+        hidden_states = self.norm2(hidden_states)
+        return hidden_states
+
+class SkyReelsV2TimeTextImageEmbedding(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        time_freq_dim: int,
+        time_proj_dim: int,
+        text_embed_dim: int,
+        image_embed_dim: Optional[int] = None,
+        pos_embed_seq_len: Optional[int] = None,
+    ):
+        super().__init__()
+
+        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
+        self.act_fn = nn.SiLU()
+        self.time_proj = nn.Linear(dim, time_proj_dim)
+        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
+
+        self.image_embedder = None
+        if image_embed_dim is not None:
+            self.image_embedder = SkyReelsV2ImageEmbedding(image_embed_dim, dim, pos_embed_seq_len=pos_embed_seq_len)
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+    ):
+        timestep = self.timesteps_proj(timestep)
+
+        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
+        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
+            timestep = timestep.to(time_embedder_dtype)
+        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+        timestep_proj = self.time_proj(self.act_fn(temb))
+
+        encoder_hidden_states = self.text_embedder(encoder_hidden_states)
+        if encoder_hidden_states_image is not None:
+            encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
+
+        return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
+
+class SkyReelsV2RotaryPosEmbed(nn.Module):
+    def __init__(
+        self, attention_head_dim: int, patch_size: Tuple[int, int, int], max_seq_len: int, theta: float = 10000.0
+    ):
+        super().__init__()
+
+        self.attention_head_dim = attention_head_dim
+        self.patch_size = patch_size
+        self.max_seq_len = max_seq_len
+
+        h_dim = w_dim = 2 * (attention_head_dim // 6)
+        t_dim = attention_head_dim - h_dim - w_dim
+
+        freqs = []
+        for dim in [t_dim, h_dim, w_dim]:
+            freq = get_1d_rotary_pos_embed(
+                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=torch.float64
+            )
+            freqs.append(freq)
+        self.freqs = torch.cat(freqs, dim=1)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        p_t, p_h, p_w = self.patch_size
+        ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
+
+        freqs = self.freqs.to(hidden_states.device)
+        freqs = freqs.split_with_sizes(
+            [
+                self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
+                self.attention_head_dim // 6,
+                self.attention_head_dim // 6,
+            ],
+            dim=1,
+        )
+
+        freqs_f = freqs[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_h = freqs[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_w = freqs[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
+        freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
+        return freqs
+
+class SkyReelsV2TransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -381,21 +422,6 @@ class WanAttentionBlock(nn.Module):
 
 
 class Head(nn.Module):
-    def __init__(self, dim, out_dim, patch_size, eps=1e-6):
-        super().__init__()
-        self.dim = dim
-        self.out_dim = out_dim
-        self.patch_size = patch_size
-        self.eps = eps
-
-        # layers
-        out_dim = math.prod(patch_size) * out_dim
-        self.norm = WanLayerNorm(dim, eps)
-        self.head = nn.Linear(dim, out_dim)
-
-        # modulation
-        self.modulation = nn.Parameter(torch.randn(1, 2, dim) / dim**0.5)
-
     def forward(self, x, e):
         r"""
         Args:
@@ -415,26 +441,47 @@ class Head(nn.Module):
         return x
 
 
-class MLPProj(torch.nn.Module):
-    def __init__(self, in_dim, out_dim):
-        super().__init__()
-
-        self.proj = torch.nn.Sequential(
-            torch.nn.LayerNorm(in_dim),
-            torch.nn.Linear(in_dim, in_dim),
-            torch.nn.GELU(),
-            torch.nn.Linear(in_dim, out_dim),
-            torch.nn.LayerNorm(out_dim),
-        )
-
-    def forward(self, image_embeds):
-        clip_extra_context_tokens = self.proj(image_embeds)
-        return clip_extra_context_tokens
-
-
 class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
-    Wan diffusion backbone supporting both text-to-video and image-to-video.
+    A Transformer model for video-like data used in the Wan-based SkyReels-V2 model.
+
+    Args:
+        patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
+            3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
+        num_attention_heads (`int`, defaults to `16`):
+            Fixed length for text embeddings.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of channels in each head.
+        in_channels (`int`, defaults to `16`):
+            The number of channels in the input.
+        out_channels (`int`, defaults to `16`):
+            The number of channels in the output.
+        text_dim (`int`, defaults to `4096`):
+            Input dimension for text embeddings.
+        freq_dim (`int`, defaults to `256`):
+            Dimension for sinusoidal time embeddings.
+        ffn_dim (`int`, defaults to `8192`):
+            Intermediate dimension in feed-forward network.
+        num_layers (`int`, defaults to `32`):
+            The number of layers of transformer blocks to use.
+        window_size (`Tuple[int]`, defaults to `(-1, -1)`):
+            Window size for local attention (-1 indicates global attention).
+        cross_attn_norm (`bool`, defaults to `True`):
+            Enable cross-attention normalization.
+        qk_norm (`str`, *optional*, defaults to `"rms_norm"`):
+            Enable query/key normalization.
+        eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        inject_sample_info (`bool`, defaults to `False`):
+            Whether to inject sample information into the model.
+        image_dim (`int`, *optional*):
+            The dimension of the image embeddings.
+        added_kv_proj_dim (`int`, *optional*):
+            The dimension of the added key/value projection.
+        rope_max_seq_len (`int`, defaults to `1024`):
+            The maximum sequence length for the rotary embeddings.
+        pos_embed_seq_len (`int`, *optional*):
+            The sequence length for the positional embeddings.
     """
 
     _supports_gradient_checkpointing = True
@@ -446,119 +493,76 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
     @register_to_config
     def __init__(
         self,
-        patch_size=(1, 2, 2),
-        text_len=512,
-        in_dim=16,
-        dim=2048,
-        ffn_dim=8192,
-        freq_dim=256,
-        text_dim=4096,
-        out_dim=16,
-        num_heads=16,
-        num_layers=32,
-        window_size=(-1, -1),
-        qk_norm=True,
-        cross_attn_norm=True,
-        inject_sample_info=False,
-        eps=1e-6,
+        patch_size: Tuple[int] = (1, 2, 2),
+        attention_head_dim: int = 128,
+        in_channels: int = 16,
+        ffn_dim: int = 8192,
+        freq_dim: int = 256,
+        text_dim: int = 4096,
+        out_channels: int = 16,
+        num_attention_heads: int = 16,
+        num_layers: int = 32,
+        window_size: Tuple[int, int] = (-1, -1),
+        qk_norm: Optional[str] = "rms_norm",
+        cross_attn_norm: bool = True,
+        inject_sample_info: bool = False,
+        eps: float = 1e-6,
+        image_dim: Optional[int] = None,
+        added_kv_proj_dim: Optional[int] = None,
+        rope_max_seq_len: int = 1024,
+        pos_embed_seq_len: Optional[int] = None,
     ):
-        r"""
-        Initialize the diffusion model backbone.
-
-        Args:
-            model_type (`str`, *optional*, defaults to 't2v'):
-                Model variant - 't2v' (text-to-video) or 'i2v' (image-to-video)
-            patch_size (`tuple`, *optional*, defaults to (1, 2, 2)):
-                3D patch dimensions for video embedding (t_patch, h_patch, w_patch)
-            text_len (`int`, *optional*, defaults to 512):
-                Fixed length for text embeddings
-            in_dim (`int`, *optional*, defaults to 16):
-                Input video channels (C_in)
-            dim (`int`, *optional*, defaults to 2048):
-                Hidden dimension of the transformer
-            ffn_dim (`int`, *optional*, defaults to 8192):
-                Intermediate dimension in feed-forward network
-            freq_dim (`int`, *optional*, defaults to 256):
-                Dimension for sinusoidal time embeddings
-            text_dim (`int`, *optional*, defaults to 4096):
-                Input dimension for text embeddings
-            out_dim (`int`, *optional*, defaults to 16):
-                Output video channels (C_out)
-            num_heads (`int`, *optional*, defaults to 16):
-                Number of attention heads
-            num_layers (`int`, *optional*, defaults to 32):
-                Number of transformer blocks
-            window_size (`tuple`, *optional*, defaults to (-1, -1)):
-                Window size for local attention (-1 indicates global attention)
-            qk_norm (`bool`, *optional*, defaults to True):
-                Enable query/key normalization
-            cross_attn_norm (`bool`, *optional*, defaults to False):
-                Enable cross-attention normalization
-            eps (`float`, *optional*, defaults to 1e-6):
-                Epsilon value for normalization layers
-        """
-
         super().__init__()
 
-        self.patch_size = patch_size
-        self.text_len = text_len
-        self.in_dim = in_dim
-        self.dim = dim
-        self.ffn_dim = ffn_dim
-        self.freq_dim = freq_dim
-        self.text_dim = text_dim
-        self.out_dim = out_dim
-        self.num_heads = num_heads
-        self.num_layers = num_layers
-        self.window_size = window_size
-        self.qk_norm = qk_norm
-        self.cross_attn_norm = cross_attn_norm
-        self.eps = eps
+        inner_dim = num_attention_heads * attention_head_dim
+        out_channels = out_channels or in_channels
+
         self.num_frame_per_block = 1
         self.flag_causal_attention = False
         self.block_mask = None
         self.enable_teacache = False
+        self.inject_sample_info = inject_sample_info
 
-        # embeddings
-        self.patch_embedding = nn.Conv3d(in_dim, dim, kernel_size=patch_size, stride=patch_size)
-        self.text_embedding = nn.Sequential(nn.Linear(text_dim, dim), nn.GELU(approximate="tanh"), nn.Linear(dim, dim))
+        # 1. Patch & position embedding
+        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
+        self.rope = SkyReelsV2RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
 
-        self.time_embedding = nn.Sequential(nn.Linear(freq_dim, dim), nn.SiLU(), nn.Linear(dim, dim))
-        self.time_projection = nn.Sequential(nn.SiLU(), nn.Linear(dim, dim * 6))
+        # 2. Condition embeddings
+        # image_embedding_dim=1280 for I2V model
+        self.condition_embedder = SkyReelsV2TimeTextImageEmbedding(
+            dim=inner_dim,
+            time_freq_dim=freq_dim,
+            time_proj_dim=inner_dim * 6,
+            text_embed_dim=text_dim,
+            image_embed_dim=image_dim,
+            pos_embed_seq_len=pos_embed_seq_len,
+        )
 
-        if inject_sample_info:
-            self.fps_embedding = nn.Embedding(2, dim)
-            self.fps_projection = nn.Sequential(nn.Linear(dim, dim), nn.SiLU(), nn.Linear(dim, dim * 6))
-
-        # blocks
+        # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
-                WanAttentionBlock(dim, ffn_dim, num_heads, window_size, qk_norm, cross_attn_norm, eps)
+                SkyReelsV2TransformerBlock(
+                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps,
+                    window_size,  # TODO: check
+                    added_kv_proj_dim  # TODO: check
+                )
                 for _ in range(num_layers)
             ]
         )
 
-        # head
-        self.head = Head(dim, out_dim, patch_size, eps)
-
-        # buffers (don't use register_buffer otherwise dtype will be changed in to())
-        assert (dim % num_heads) == 0 and (dim // num_heads) % 2 == 0
-        d = dim // num_heads
-        self.freqs = torch.cat(
-            [rope_params(1024, d - 4 * (d // 6)), rope_params(1024, 2 * (d // 6)), rope_params(1024, 2 * (d // 6))],
-            dim=1,
-        )
-
-        # if model_type == "i2v":
-        #    self.img_emb = MLPProj(1280, dim)
+        # 4. Output norm & projection
+        self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
+        self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
+        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         self.gradient_checkpointing = False
 
-        self.cpu_offloading = False
+        if inject_sample_info:
+            self.fps_embedding = nn.Embedding(2, inner_dim)
+            self.fps_projection = nn.Sequential(nn.Linear(inner_dim, inner_dim), nn.SiLU(), nn.Linear(inner_dim, inner_dim * 6))
 
-        self.inject_sample_info = inject_sample_info
-        # initialize weights
-        self.init_weights()
+        # TODO: Say: Initializing suggested by the original repo?
+        # self.init_weights()
 
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
