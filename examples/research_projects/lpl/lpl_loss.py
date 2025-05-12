@@ -55,8 +55,9 @@ class LatentPerceptualLoss(nn.Module):
         super().__init__()
         self.vae = vae
         self.decoder = self.vae.decoder
-        self.scale = self.vae._internal_dict.scaling_factor
-        self.shift = self.vae._internal_dict.shift_factor
+        self.scale = getattr(self.vae, "_internal_dict", {}).get("scaling_factor", 1.0)
+        # Default shift to 0 if not available
+        self.shift = getattr(self.vae, "_internal_dict", {}).get("shift_factor", 0.0)
         self.gradient_checkpointing = grad_ckpt
         self.pow_law = pow_law
         self.norm_type = norm_type.lower()
@@ -138,7 +139,7 @@ class LatentPerceptualLoss(nn.Module):
             for i, (x, y) in enumerate(zip(inp_f, tar_f, strict=False)):
                 my = torch.ones_like(y).bool()
                 outlier_ratio = 0.0
-                
+
                 if self.outlier_mask:
                     with torch.no_grad():
                         if i == 2:
@@ -151,9 +152,9 @@ class LatentPerceptualLoss(nn.Module):
                 # Store feature statistics before normalization
                 with torch.no_grad():
                     stats = {
-                        'mean': y.mean().item(),
-                        'std': y.std().item(),
-                        'outlier_ratio': outlier_ratio,
+                        "mean": y.mean().item(),
+                        "std": y.std().item(),
+                        "outlier_ratio": outlier_ratio,
                     }
                     self.last_feature_stats.append(stats)
 

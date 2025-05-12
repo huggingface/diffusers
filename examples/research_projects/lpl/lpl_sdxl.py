@@ -1364,39 +1364,49 @@ def main(args):
                 if args.use_lpl and lpl_fn is not None and global_step >= args.lpl_start:
                     if lpl_mask.any():
                         # LPL application statistics
-                        log_data.update({
-                            "lpl/loss": lpl_loss_value.item(),
-                            "lpl/num_samples": lpl_mask.sum().item(),
-                            "lpl/application_ratio": lpl_mask.float().mean().item(),
-                            "lpl/weight": args.lpl_weight,
-                            "lpl/weighted_loss": (args.lpl_weight * lpl_loss_value).item(),
-                        })
+                        log_data.update(
+                            {
+                                "lpl/loss": lpl_loss_value.item(),
+                                "lpl/num_samples": lpl_mask.sum().item(),
+                                "lpl/application_ratio": lpl_mask.float().mean().item(),
+                                "lpl/weight": args.lpl_weight,
+                                "lpl/weighted_loss": (args.lpl_weight * lpl_loss_value).item(),
+                            }
+                        )
 
                         # SNR statistics for LPL-applied samples
                         if args.snr_gamma is not None:
                             snr_values = snr[masked_indices]
-                            log_data.update({
-                                "lpl/snr_mean": snr_values.mean().item(),
-                                "lpl/snr_std": snr_values.std().item(),
-                                "lpl/snr_min": snr_values.min().item(),
-                                "lpl/snr_max": snr_values.max().item(),
-                            })
+                            log_data.update(
+                                {
+                                    "lpl/snr_mean": snr_values.mean().item(),
+                                    "lpl/snr_std": snr_values.std().item(),
+                                    "lpl/snr_min": snr_values.min().item(),
+                                    "lpl/snr_max": snr_values.max().item(),
+                                }
+                            )
 
                         # Feature statistics if available
-                        if hasattr(lpl_fn, 'last_feature_stats'):
+                        if hasattr(lpl_fn, "last_feature_stats"):
                             for layer_idx, stats in enumerate(lpl_fn.last_feature_stats):
-                                log_data.update({
-                                    f"lpl/features/layer_{layer_idx}/mean": stats['mean'].item(),
-                                    f"lpl/features/layer_{layer_idx}/std": stats['std'].item(),
-                                    f"lpl/features/layer_{layer_idx}/outlier_ratio": stats.get('outlier_ratio', 0.0),
-                                })
+                                log_data.update(
+                                    {
+                                        f"lpl/features/layer_{layer_idx}/mean": stats["mean"].item(),
+                                        f"lpl/features/layer_{layer_idx}/std": stats["std"].item(),
+                                        f"lpl/features/layer_{layer_idx}/outlier_ratio": stats.get(
+                                            "outlier_ratio", 0.0
+                                        ),
+                                    }
+                                )
 
                         # Memory usage if available
                         if torch.cuda.is_available():
-                            log_data.update({
-                                "lpl/memory/allocated": torch.cuda.memory_allocated() / 1024**2,  # MB
-                                "lpl/memory/reserved": torch.cuda.memory_reserved() / 1024**2,    # MB
-                            })
+                            log_data.update(
+                                {
+                                    "lpl/memory/allocated": torch.cuda.memory_allocated() / 1024**2,  # MB
+                                    "lpl/memory/reserved": torch.cuda.memory_reserved() / 1024**2,  # MB
+                                }
+                            )
 
                 # Log to accelerator
                 accelerator.log(log_data, step=global_step)
@@ -1407,10 +1417,12 @@ def main(args):
                     "lr": lr_scheduler.get_last_lr()[0],
                 }
                 if args.use_lpl and lpl_loss_value.item() > 0:
-                    progress_bar_logs.update({
-                        "lpl": lpl_loss_value.item(),
-                        "lpl_ratio": lpl_mask.float().mean().item() if lpl_mask.any() else 0.0,
-                    })
+                    progress_bar_logs.update(
+                        {
+                            "lpl": lpl_loss_value.item(),
+                            "lpl_ratio": lpl_mask.float().mean().item() if lpl_mask.any() else 0.0,
+                        }
+                    )
                 progress_bar.set_postfix(**progress_bar_logs)
 
                 # DeepSpeed requires saving weights on every device; saving weights only on the main process would cause issues.
