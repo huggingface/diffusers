@@ -61,6 +61,7 @@ class LatentPerceptualLoss(nn.Module):
         self.pow_law = pow_law
         self.norm_type = norm_type.lower()
         self.outlier_mask = remove_outliers
+        self.last_feature_stats = []  # Store feature statistics for logging
 
         assert feature_type in ["feature", "image"]
         self.feature_type = feature_type
@@ -132,15 +133,29 @@ class LatentPerceptualLoss(nn.Module):
             inp_f = self.get_features(self.shift + input / self.scale)
             tar_f = self.get_features(self.shift + target / self.scale, disable_grads=True)
             losses = []
+            self.last_feature_stats = []  # Reset feature stats
 
             for i, (x, y) in enumerate(zip(inp_f, tar_f, strict=False)):
                 my = torch.ones_like(y).bool()
+                outlier_ratio = 0.0
+                
                 if self.outlier_mask:
                     with torch.no_grad():
                         if i == 2:
                             my, y = remove_outliers(y, down_f=2)
+                            outlier_ratio = 1.0 - my.float().mean().item()
                         elif i in [3, 4, 5]:
                             my, y = remove_outliers(y, down_f=1)
+                            outlier_ratio = 1.0 - my.float().mean().item()
+
+                # Store feature statistics before normalization
+                with torch.no_grad():
+                    stats = {
+                        'mean': y.mean().item(),
+                        'std': y.std().item(),
+                        'outlier_ratio': outlier_ratio,
+                    }
+                    self.last_feature_stats.append(stats)
 
                 # normalize feature tensors
                 if self.norm_type == "default":
