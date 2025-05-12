@@ -55,6 +55,7 @@ from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
+from .lpl_loss import LatentPerceptualLoss
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -544,25 +545,55 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--lpl_weight",
         type=float,
-        default=1.0,  # Adjust default as needed based on experiments
+        default=1.0,
         help="Weight for the Latent Perceptual Loss.",
     )
     parser.add_argument(
         "--lpl_t_threshold",
         type=int,
-        default=200,  # Example: Apply LPL only for first 200 timesteps (adjust based on experiments)
+        default=200,
         help="Apply LPL only for timesteps t < lpl_t_threshold. Corresponds to high SNR.",
     )
     parser.add_argument(
-        "--lpl_decoder_layer_pattern",
+        "--lpl_loss_type",
         type=str,
-        default=r"up_blocks\.(1|2)\.resnets\.(0|1)$",  # Example: Layers in up-blocks 1 and 2
-        help="Regex pattern to select VAE decoder layers for LPL. Uses re.match(). Example: 'up_blocks\.2\.resnets\.1'. Leave empty to attempt auto-detection.",
+        default="mse",
+        choices=["mse", "l1"],
+        help="Type of loss to use for LPL.",
     )
     parser.add_argument(
-        "--lpl_normalize_depth_weights",
+        "--lpl_norm_type",
+        type=str,
+        default="default",
+        choices=["default", "shared", "batch"],
+        help="Type of normalization to use for LPL features.",
+    )
+    parser.add_argument(
+        "--lpl_pow_law",
         action="store_true",
-        help="Automatically calculate depth weights based on layer resolution (experimental).",
+        help="Whether to use power law weighting for LPL layers.",
+    )
+    parser.add_argument(
+        "--lpl_num_blocks",
+        type=int,
+        default=4,
+        help="Number of up blocks to use for LPL feature extraction.",
+    )
+    parser.add_argument(
+        "--lpl_remove_outliers",
+        action="store_true",
+        help="Whether to remove outliers in LPL feature maps.",
+    )
+    parser.add_argument(
+        "--lpl_scale",
+        action="store_true",
+        help="Whether to scale LPL loss by noise level weights.",
+    )
+    parser.add_argument(
+        "--lpl_start",
+        type=int,
+        default=0,
+        help="Step to start applying LPL loss.",
     )
 
     if input_args is not None:
@@ -1097,95 +1128,20 @@ def main(args):
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune-sdxl", config=vars(args))
 
-    lpl_layer_names = []
-    lpl_depth_weights = {}
-
     if args.use_lpl:
-        # Identify layers based on pattern or auto-detect
-        target_layers = []
-        all_decoder_layers = get_decoder_layer_names(vae.decoder)
-        logger.info(f"Available VAE decoder layers for LPL: {all_decoder_layers}")
-
-        if args.lpl_decoder_layer_pattern:
-            pattern = re.compile(args.lpl_decoder_layer_pattern)
-            target_layers = [name for name in all_decoder_layers if pattern.match(name)]
-            if not target_layers:
-                logger.warning(
-                    f"LPL: No layers matched pattern '{args.lpl_decoder_layer_pattern}'. Check pattern and available layers."
-                )
-        else:
-            # Default selection if no pattern provided (e.g., layers from mid/late up blocks)
-            target_layers = [
-                name for name in all_decoder_layers if re.match(r"up_blocks\.[1-3]\.resnets\.\d$", name)
-            ]  # Example default
-            logger.info(f"LPL: Using auto-detected layers: {target_layers}")
-
-        if not target_layers:
-            logger.warning("LPL: No target layers selected. LPL will not be calculated.")
-            args.use_lpl = False  # Disable if no layers found
-        else:
-            lpl_layer_names = target_layers
-            logger.info(f"LPL: Will use features from layers: {lpl_layer_names}")
-
-            if args.lpl_normalize_depth_weights:
-                try:
-                    # Need to run a dummy forward pass to get feature shapes/resolutions
-                    dummy_latent = torch.randn(
-                        1,
-                        vae.decoder.config.latent_channels,
-                        args.resolution // 8,
-                        args.resolution // 8,
-                        device=accelerator.device,
-                        dtype=torch.float32,
-                    )
-                    temp_hooks = []
-                    temp_features = {}
-
-                    def temp_hook_fn(name):
-                        def hook(model, input, output):
-                            if isinstance(output, tuple):
-                                temp_features[name] = output[0].shape
-                            else:
-                                temp_features[name] = output.shape
-
-                        return hook
-
-                    for name in lpl_layer_names:
-                        module = vae.decoder.get_submodule(name)
-                        temp_hooks.append(module.register_forward_hook(temp_hook_fn(name)))
-
-                    with torch.no_grad():
-                        vae.decode(dummy_latent)
-
-                    for h in temp_hooks:
-                        h.remove()
-
-                    # Assume H/W dims are 2 and 3
-                    resolutions = {name: shape[2] for name, shape in temp_features.items() if len(shape) >= 4}
-                    if resolutions:
-                        first_res = resolutions[lpl_layer_names[0]]
-                        lpl_depth_weights = {
-                            name: (first_res / res)
-                            ** 2  # Weight by inverse squared resolution ratio relative to first layer
-                            for name, res in resolutions.items()
-                        }
-                        # Normalize weights to sum to 1 (or number of layers)
-                        total_weight = sum(lpl_depth_weights.values())
-                        lpl_depth_weights = {
-                            name: w / total_weight * len(lpl_layer_names) for name, w in lpl_depth_weights.items()
-                        }
-                        logger.info(f"LPL: Calculated depth weights: {lpl_depth_weights}")
-                    else:
-                        logger.warning(
-                            "LPL: Could not determine resolutions for depth weighting. Using uniform weights."
-                        )
-                        lpl_depth_weights = {name: 1.0 for name in lpl_layer_names}
-
-                except Exception as e:
-                    logger.warning(f"LPL: Failed to calculate depth weights ({e}). Using uniform weights.")
-                    lpl_depth_weights = {name: 1.0 for name in lpl_layer_names}
-            else:
-                lpl_depth_weights = {name: 1.0 for name in lpl_layer_names}
+        lpl_fn = LatentPerceptualLoss(
+            vae=vae,
+            loss_type=args.lpl_loss_type,
+            grad_ckpt=args.gradient_checkpointing,
+            pow_law=args.lpl_pow_law,
+            norm_type=args.lpl_norm_type,
+            num_mid_blocks=args.lpl_num_blocks,
+            feature_type="feature",
+            remove_outliers=args.lpl_remove_outliers,
+        )
+        lpl_fn.to(accelerator.device)
+    else:
+        lpl_fn = None
 
     # Function for unwrapping if torch.compile() was used in accelerate.
     def unwrap_model(model):
@@ -1344,7 +1300,7 @@ def main(args):
                     loss = loss.mean()
 
                 lpl_loss_value = torch.tensor(0.0, device=accelerator.device)
-                if args.use_lpl and len(lpl_layer_names) > 0:
+                if args.use_lpl and lpl_fn is not None and global_step >= args.lpl_start:
                     # Apply LPL only below the timestep threshold
                     lpl_mask = timesteps < args.lpl_t_threshold
                     if lpl_mask.any():
@@ -1356,10 +1312,8 @@ def main(args):
                         model_pred_masked = model_pred[masked_indices]
 
                         # Calculate z0_hat for the masked samples
-                        # Ensure calculations happen in float32 for stability if needed
                         alpha_t = alphas_cumprod[t_masked].sqrt().to(torch.float32)
                         sigma_t = (1 - alphas_cumprod[t_masked]).sqrt().to(torch.float32)
-                        # Reshape alpha_t, sigma_t for broadcasting: (batch,) -> (batch, 1, 1, 1)
                         alpha_t = alpha_t.view(-1, 1, 1, 1)
                         sigma_t = sigma_t.view(-1, 1, 1, 1)
 
@@ -1367,75 +1321,21 @@ def main(args):
                             z0_hat_masked = (zt_masked.float() - sigma_t * model_pred_masked.float()) / alpha_t
                         elif noise_scheduler.config.prediction_type == "v_prediction":
                             z0_hat_masked = alpha_t * zt_masked.float() - sigma_t * model_pred_masked.float()
-                        else:  # sample prediction - assumes model_pred is predicted z0 directly
+                        else:  # sample prediction
                             z0_hat_masked = model_pred_masked.float()
 
-                        # Register hooks to capture features
-                        current_hooks = []
-                        for layer_name in lpl_layer_names:
-                            try:
-                                module = vae.decoder.get_submodule(layer_name)
-                                hook = module.register_forward_hook(get_intermediate_features_hook(layer_name))
-                                current_hooks.append(hook)
-                            except AttributeError:
-                                logger.warning(
-                                    f"LPL: Could not find layer {layer_name} in VAE decoder to attach hook."
-                                )
-                                continue  # Skip if layer not found
+                        with accelerator.autocast():
+                            lpl_loss_value = lpl_fn.get_loss(z0_hat_masked, z0_masked)
 
-                        if not current_hooks:
-                            logger.warning("LPL: No hooks attached, skipping LPL calculation for this step.")
-                        else:
-                            # Decode z0_masked (original latents)
-                            clear_hook_features()
-                            with torch.no_grad():  # No gradients needed for VAE decode
-                                # VAE decode expects float32 input usually
-                                _ = vae.decode(z0_masked.to(torch.float32))
-                            features_z0 = hook_features.copy()  # Store features from z0
+                            if args.lpl_scale:
+                                lpl_loss_value = (lpl_loss_value * mse_loss_weights[masked_indices]).mean()
+                            else:
+                                lpl_loss_value = lpl_loss_value.mean()
 
-                            # Decode z0_hat_masked (predicted latents)
-                            clear_hook_features()
-                            with torch.no_grad():
-                                _ = vae.decode(z0_hat_masked.to(torch.float32))
-                            features_z0_hat = hook_features.copy()  # Store features from z0_hat
-
-                            # Remove hooks
-                            for hook in current_hooks:
-                                hook.remove()
-
-                            # Calculate weighted LPL
-                            lpl_sum = 0.0
-                            num_layers_contributing = 0
-                            for layer_name in lpl_layer_names:
-                                if layer_name in features_z0 and layer_name in features_z0_hat:
-                                    phi_l = features_z0[layer_name].float()
-                                    phi_l_hat = features_z0_hat[layer_name].float()
-
-                                    # Normalize using z0_hat stats
-                                    phi_l_norm, phi_l_hat_norm = normalize_features(phi_l, phi_l_hat)
-
-                                    # Calculate MSE loss for this layer
-                                    layer_loss = F.mse_loss(phi_l_norm, phi_l_hat_norm, reduction="mean")
-                                    layer_weight = lpl_depth_weights.get(layer_name, 1.0)
-                                    lpl_sum += layer_loss * layer_weight
-                                    num_layers_contributing += 1
-                                else:
-                                    logger.warning(
-                                        f"LPL: Missing features for layer {layer_name} in step {global_step}"
-                                    )
-
-                            if num_layers_contributing > 0:
-                                # Average LPL over contributing layers
-                                lpl_loss_value = lpl_sum / num_layers_contributing
-                                lpl_accumulated += lpl_loss_value.item()  # For logging avg LPL
-
-                # Combine losses: L_total = L_diffusion + w_LPL * L_LPL
-                # lpl_loss_value is already averaged over the masked batch and layers
-                # The main `loss` is averaged over the full batch.
-                # Adding them directly scales LPL contribution by its weight.
+                # Combine losses
                 total_loss = loss + args.lpl_weight * lpl_loss_value
 
-                # Gather the losses across all processes for logging (if we use distributed training).
+                # Gather the losses across all processes for logging
                 avg_loss = accelerator.gather(total_loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
 
@@ -1456,12 +1356,11 @@ def main(args):
                 global_step += 1
 
                 log_data = {
-                    "train_loss": train_loss,  # This is the average total loss (diff + LPL)
-                    "diffusion_loss": loss.item(),  # Log original diffusion loss
+                    "train_loss": train_loss,
+                    "diffusion_loss": loss.item(),
                 }
-                if args.use_lpl and lpl_accumulated > 0:  # Only log if LPL was calculated
-                    # Avg LPL over steps in epoch where it was active
-                    log_data["lpl_loss"] = lpl_accumulated / (step + 1)
+                if args.use_lpl and lpl_loss_value.item() > 0:
+                    log_data["lpl_loss"] = lpl_loss_value.item()
                 accelerator.log(log_data, step=global_step)
 
                 # DeepSpeed requires saving weights on every device; saving weights only on the main process would cause issues.
