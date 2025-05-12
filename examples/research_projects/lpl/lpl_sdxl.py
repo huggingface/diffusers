@@ -1402,8 +1402,8 @@ def main(args):
                             for layer_idx, stats in enumerate(lpl_fn.last_feature_stats):
                                 log_data.update(
                                     {
-                                        f"lpl/features/layer_{layer_idx}/mean": stats["mean"].item(),
-                                        f"lpl/features/layer_{layer_idx}/std": stats["std"].item(),
+                                        f"lpl/features/layer_{layer_idx}/mean": stats["mean"],
+                                        f"lpl/features/layer_{layer_idx}/std": stats["std"],
                                         f"lpl/features/layer_{layer_idx}/outlier_ratio": stats.get(
                                             "outlier_ratio", 0.0
                                         ),
