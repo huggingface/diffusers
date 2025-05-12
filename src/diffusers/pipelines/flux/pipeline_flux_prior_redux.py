@@ -204,7 +204,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
-        device = device or self._execution_device
+        device = self.text_encoder.device #device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -252,7 +252,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
     ):
-        device = device or self._execution_device
+        device = self.text_encoder.device#device or self._execution_device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
@@ -323,7 +323,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             lora_scale (`float`, *optional*):
                 A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
-        device = device or self._execution_device
+        device = self.text_encoder.device #device or self._execution_device
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
@@ -464,7 +464,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         if isinstance(pooled_prompt_embeds_scale, float):
             pooled_prompt_embeds_scale = batch_size * [pooled_prompt_embeds_scale]
 
-        device = self._execution_device
+        device = self.text_encoder.device#self._execution_device
 
         # 3. Prepare image embeddings
         # thesea modified for ip and txt masks
