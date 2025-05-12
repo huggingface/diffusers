@@ -1139,7 +1139,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             return final_mask_array
 
         # mask graident
-        mask = mask.to(dtype=torch.float16)
         tmp_mask = mask[0,:,:].cpu().numpy()
         mask_gradient = mask_gradienting(tmp_mask, iterations=iterations)
         tmp_tensor = torch.Tensor(mask_gradient)
