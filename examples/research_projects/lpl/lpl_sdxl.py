@@ -1327,7 +1327,18 @@ def main(args):
                             lpl_loss_value = lpl_fn.get_loss(z0_hat_masked, z0_masked)
 
                             if args.lpl_scale:
-                                lpl_loss_value = (lpl_loss_value * mse_loss_weights[masked_indices]).mean()
+                                if args.snr_gamma is not None:
+                                    # Use SNR-based weights if available
+                                    snr = compute_snr(noise_scheduler, t_masked)
+                                    snr_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(t_masked)], dim=1).min(dim=1)[0]
+                                    if noise_scheduler.config.prediction_type == "epsilon":
+                                        snr_weights = snr_weights / snr
+                                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                                        snr_weights = snr_weights / (snr + 1)
+                                    lpl_loss_value = (lpl_loss_value * snr_weights).mean()
+                                else:
+                                    # If no SNR weighting, just use mean
+                                    lpl_loss_value = lpl_loss_value.mean()
                             else:
                                 lpl_loss_value = lpl_loss_value.mean()
 
