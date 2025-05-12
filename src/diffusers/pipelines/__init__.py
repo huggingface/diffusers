@@ -281,6 +281,7 @@ else:
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
+    _import_structure["visualcloze"] = ["VisualClozePipeline", "VisualClozeGenerationPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
@@ -727,6 +728,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserPipeline,
             UniDiffuserTextDecoder,
         )
+        from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
         from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
