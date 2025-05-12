@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import math
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 import torch
 
 from .guider_utils import BaseGuidance, rescale_noise_cfg
+
 
 if TYPE_CHECKING:
     from ..pipelines.modular_pipeline import BlockState
@@ -119,19 +120,19 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     def _is_apg_enabled(self) -> bool:
         if not self._enabled:
             return False
-        
+
         is_within_range = True
         if self._num_inference_steps is not None:
             skip_start_step = int(self._start * self._num_inference_steps)
             skip_stop_step = int(self._stop * self._num_inference_steps)
             is_within_range = skip_start_step <= self._step < skip_stop_step
-        
+
         is_close = False
         if self.use_original_formulation:
             is_close = math.isclose(self.guidance_scale, 0.0)
         else:
             is_close = math.isclose(self.guidance_scale, 1.0)
-        
+
         return is_within_range and not is_close
 
 
@@ -156,25 +157,25 @@ def normalized_guidance(
 ):
     diff = pred_cond - pred_uncond
     dim = [-i for i in range(1, len(diff.shape))]
-    
+
     if momentum_buffer is not None:
         momentum_buffer.update(diff)
         diff = momentum_buffer.running_average
-    
+
     if norm_threshold > 0:
         ones = torch.ones_like(diff)
         diff_norm = diff.norm(p=2, dim=dim, keepdim=True)
         scale_factor = torch.minimum(ones, norm_threshold / diff_norm)
         diff = diff * scale_factor
-    
+
     v0, v1 = diff.double(), pred_cond.double()
     v1 = torch.nn.functional.normalize(v1, dim=dim)
     v0_parallel = (v0 * v1).sum(dim=dim, keepdim=True) * v1
     v0_orthogonal = v0 - v0_parallel
     diff_parallel, diff_orthogonal = v0_parallel.type_as(diff), v0_orthogonal.type_as(diff)
     normalized_update = diff_orthogonal + eta * diff_parallel
-    
+
     pred = pred_cond if use_original_formulation else pred_uncond
     pred = pred + guidance_scale * normalized_update
-    
+
     return pred

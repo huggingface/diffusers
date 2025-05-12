@@ -761,8 +761,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
-            apply_layer_skip,
             apply_faster_cache,
+            apply_layer_skip,
             apply_pyramid_attention_broadcast,
         )
         from .models import (
@@ -1085,6 +1085,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionSAGPipeline,
             StableDiffusionUpscalePipeline,
             StableDiffusionXLAdapterPipeline,
+            StableDiffusionXLAutoPipeline,
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPAGImg2ImgPipeline,
@@ -1102,7 +1103,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
             StableDiffusionXLPipeline,
-            StableDiffusionXLAutoPipeline,
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
             StableVideoDiffusionPipeline,

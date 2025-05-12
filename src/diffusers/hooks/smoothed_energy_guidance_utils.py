@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
@@ -67,7 +67,7 @@ class SmoothedEnergyGuidanceHook(ModelHook):
 
 def _apply_smoothed_energy_guidance_hook(module: torch.nn.Module, config: SmoothedEnergyGuidanceConfig, blur_sigma: float, name: Optional[str] = None) -> None:
     name = name or _SMOOTHED_ENERGY_GUIDANCE_HOOK
-    
+
     if config.fqn == "auto":
         for identifier in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS:
             if hasattr(module, identifier):
@@ -78,18 +78,18 @@ def _apply_smoothed_energy_guidance_hook(module: torch.nn.Module, config: Smooth
                 "Could not find a suitable identifier for the transformer blocks automatically. Please provide a valid "
                 "`fqn` (fully qualified name) that identifies a stack of transformer blocks."
             )
-    
+
     if config._query_proj_identifiers is None:
         config._query_proj_identifiers = ["to_q"]
-    
+
     transformer_blocks = _get_submodule_from_fqn(module, config.fqn)
     blocks_found = False
     for i, block in enumerate(transformer_blocks):
         if i not in config.indices:
             continue
-        
+
         blocks_found = True
-        
+
         for submodule_name, submodule in block.named_modules():
             if not isinstance(submodule, _ATTENTION_CLASSES) or submodule.is_cross_attention:
                 continue
@@ -103,7 +103,7 @@ def _apply_smoothed_energy_guidance_hook(module: torch.nn.Module, config: Smooth
                 registry = HookRegistry.check_if_exists_or_initialize(query_proj)
                 hook = SmoothedEnergyGuidanceHook(blur_sigma)
                 registry.register_hook(hook, name)
-    
+
     if not blocks_found:
         raise ValueError(
             f"Could not find any transformer blocks matching the provided indices {config.indices} and "
@@ -124,7 +124,7 @@ def _gaussian_blur_2d(query: torch.Tensor, kernel_size: int, sigma: float, sigma
     in the future without warning or guarantee of reproducibility.
     """
     assert query.ndim == 3
-    
+
     is_inf = sigma > sigma_threshold_inf
     batch_size, seq_len, embed_dim = query.shape
 
@@ -133,7 +133,7 @@ def _gaussian_blur_2d(query: torch.Tensor, kernel_size: int, sigma: float, sigma
     query_slice = query[:, :num_square_tokens, :]
     query_slice = query_slice.permute(0, 2, 1)
     query_slice = query_slice.reshape(batch_size, embed_dim, seq_len_sqrt, seq_len_sqrt)
-    
+
     if is_inf:
         kernel_size = min(kernel_size, seq_len_sqrt - (seq_len_sqrt % 2 - 1))
         kernel_size_half = (kernel_size - 1) / 2
@@ -154,5 +154,5 @@ def _gaussian_blur_2d(query: torch.Tensor, kernel_size: int, sigma: float, sigma
     query_slice = query_slice.reshape(batch_size, embed_dim, num_square_tokens)
     query_slice = query_slice.permute(0, 2, 1)
     query[:, :num_square_tokens, :] = query_slice.clone()
-    
+
     return query

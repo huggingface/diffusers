@@ -102,8 +102,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .ip_adapter import (
                 FluxIPAdapterMixin,
                 IPAdapterMixin,
-                SD3IPAdapterMixin,
                 ModularIPAdapterMixin,
+                SD3IPAdapterMixin,
             )
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,

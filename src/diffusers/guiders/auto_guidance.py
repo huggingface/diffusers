@@ -13,13 +13,14 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import torch
 
 from ..hooks import HookRegistry, LayerSkipConfig
 from ..hooks.layer_skip import _apply_layer_skip_hook
 from .guider_utils import BaseGuidance, rescale_noise_cfg
+
 
 if TYPE_CHECKING:
     from ..pipelines.modular_pipeline import BlockState
@@ -113,13 +114,13 @@ class AutoGuidance(BaseGuidance):
         if self._is_ag_enabled() and self.is_unconditional:
             for name, config in zip(self._auto_guidance_hook_names, self.auto_guidance_config):
                 _apply_layer_skip_hook(denoiser, config, name=name)
-    
+
     def cleanup_models(self, denoiser: torch.nn.Module) -> None:
         if self._is_ag_enabled() and self.is_unconditional:
             for name in self._auto_guidance_hook_names:
                 registry = HookRegistry.check_if_exists_or_initialize(denoiser)
                 registry.remove_hook(name, recurse=True)
-    
+
     def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
@@ -140,9 +141,9 @@ class AutoGuidance(BaseGuidance):
 
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
-        
+
         return pred, {}
-    
+
     @property
     def is_conditional(self) -> bool:
         return self._count_prepared == 1
@@ -157,17 +158,17 @@ class AutoGuidance(BaseGuidance):
     def _is_ag_enabled(self) -> bool:
         if not self._enabled:
             return False
-        
+
         is_within_range = True
         if self._num_inference_steps is not None:
             skip_start_step = int(self._start * self._num_inference_steps)
             skip_stop_step = int(self._stop * self._num_inference_steps)
             is_within_range = skip_start_step <= self._step < skip_stop_step
-        
+
         is_close = False
         if self.use_original_formulation:
             is_close = math.isclose(self.guidance_scale, 0.0)
         else:
             is_close = math.isclose(self.guidance_scale, 1.0)
-        
+
         return is_within_range and not is_close
