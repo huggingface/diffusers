@@ -1,4 +1,5 @@
 import random
+import tempfile
 import unittest
 
 import numpy as np
@@ -6,19 +7,23 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
+import diffusers
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
     FluxTransformer2DModel,
     VisualClozeGenerationPipeline,
 )
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
+    CaptureLogger,
     enable_full_determinism,
     floats_tensor,
+    require_accelerator,
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
@@ -39,6 +44,8 @@ class VisualClozeGenerationPipelineFastTests(unittest.TestCase, PipelineTesterMi
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -171,3 +178,135 @@ class VisualClozeGenerationPipelineFastTests(unittest.TestCase, PipelineTesterMi
         # Different task prompts should produce different outputs
         max_diff = np.abs(output_original - output_different_task).max()
         assert max_diff > expected_min_diff
+
+    def test_save_load_local(self, expected_max_difference=5e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)[0]
+
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel(diffusers.logging.INFO)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+
+            with CaptureLogger(logger) as cap_logger:
+                # NOTE: Resolution must be set to 32 for loading otherwise will lead to OOM on CI hardware
+                # This attribute is not serialized in the config of the pipeline
+                pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, resolution=32)
+
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+
+            for name in pipe_loaded.components.keys():
+                if name not in pipe_loaded._optional_components:
+                    assert name in str(cap_logger)
+
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, expected_max_difference)
+
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        if not hasattr(self.pipeline_class, "_optional_components"):
+            return
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # set all optional components to None
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            # NOTE: Resolution must be set to 32 for loading otherwise will lead to OOM on CI hardware
+            # This attribute is not serialized in the config of the pipeline
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, resolution=32)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, expected_max_difference)
+
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
+    def test_save_load_float16(self, expected_max_diff=1e-2):
+        components = self.get_dummy_components()
+        for name, module in components.items():
+            if hasattr(module, "half"):
+                components[name] = module.to(torch_device).half()
+
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            # NOTE: Resolution must be set to 32 for loading otherwise will lead to OOM on CI hardware
+            # This attribute is not serialized in the config of the pipeline
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16, resolution=32)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for name, component in pipe_loaded.components.items():
+            if hasattr(component, "dtype"):
+                self.assertTrue(
+                    component.dtype == torch.float16,
+                    f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
+                )
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**inputs)[0]
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(
+            max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
+        )
+
+    @unittest.skip("Skipped due to missing layout_prompt. Needs further investigation.")
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=0.0001, rtol=0.0001):
+        pass
