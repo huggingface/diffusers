@@ -1,3 +1,5 @@
+# Copyright 2025 Berrada et al.
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -186,4 +188,4 @@ class LatentPerceptualLoss(nn.Module):
 
         feat_in, feat_tar = cross_normalize(feat_in, feat_tar)
 
-        return F.mse_loss(feat_in, feat_tar, reduction="mean") 
+        return F.mse_loss(feat_in, feat_tar, reduction="mean")

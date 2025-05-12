@@ -41,6 +41,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import DistributedType, ProjectConfiguration, set_seed
 from datasets import concatenate_datasets, load_dataset
 from huggingface_hub import create_repo, upload_folder
+from lpl_loss import LatentPerceptualLoss
 from packaging import version
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -55,7 +56,6 @@ from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
-from .lpl_loss import LatentPerceptualLoss
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -1208,7 +1208,6 @@ def main(args):
 
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
-        lpl_accumulated = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
