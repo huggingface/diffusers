@@ -66,12 +66,6 @@ class LatentPerceptualLoss(nn.Module):
         self.scale = torch.tensor(1.0 if scale_factor is None else scale_factor, device=device)
         self.shift = torch.tensor(0.0 if shift_factor is None else shift_factor, device=device)
         
-        # Debug logging
-        print(f"VAE config: {self.vae.config}")
-        print(f"Raw scale factor: {scale_factor}, shift factor: {shift_factor}")
-        print(f"Final scale tensor: {self.scale}, shift tensor: {self.shift}")
-        print(f"Device: {device}")
-        
         self.gradient_checkpointing = grad_ckpt
         self.pow_law = pow_law
         self.norm_type = norm_type.lower()
@@ -144,11 +138,6 @@ class LatentPerceptualLoss(nn.Module):
                 return features
 
     def get_loss(self, input, target, get_hist=False):
-        # Debug logging for each call
-        print(f"Current scale: {self.scale}, shift: {self.shift}")
-        print(f"Input shape: {input.shape}, dtype: {input.dtype}")
-        print(f"Scale type: {type(self.scale)}, shift type: {type(self.shift)}")
-        
         if self.feature_type == "feature":
             inp_f = self.get_features(self.shift + input / self.scale)
             tar_f = self.get_features(self.shift + target / self.scale, disable_grads=True)
