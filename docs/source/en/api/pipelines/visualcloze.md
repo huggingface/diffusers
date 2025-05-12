@@ -37,15 +37,6 @@ VisualCloze is a two-stage cascade pipeline, containing `VisualClozeGenerationPi
 
 The `VisualClozePipeline` integrates both stages to support convenient end-to-end sampling, while also allowing users to utilize each pipeline independently as needed.
 
-```python
-import torch
-from diffusers import VisualClozePipeline
-
-# the pipeline has combined both pipelines to support convenient end-to-end sampling
-pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
-```
-
 ### Input Specifications
 
 #### Task and Content Prompts
@@ -74,6 +65,12 @@ For comprehensive examples covering a wide range of tasks, please refer to the [
 #### Example for mask2image
 
 ```python
+import torch
+from diffusers import VisualClozePipeline
+from diffusers.utils import load_image
+
+pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
 
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
@@ -120,6 +117,13 @@ image_result.save("visualcloze.png")
 #### Example for edge-detection
 
 ```python
+import torch
+from diffusers import VisualClozePipeline
+from diffusers.utils import load_image
+
+pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
     # in-context examples
@@ -163,6 +167,13 @@ image_result.save("visualcloze.png")
 #### Example for subject-driven generation
 
 ```python
+import torch
+from diffusers import VisualClozePipeline
+from diffusers.utils import load_image
+
+pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
     # in-context examples
