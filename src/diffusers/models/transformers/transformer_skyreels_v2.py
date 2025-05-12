@@ -192,17 +192,6 @@ class WanI2VCrossAttention(SkyReelsV2AttnProcessor2_0):
         return x
 
 
-def mul_add(x, y, z):
-    return x.float() + y.float() * z.float()
-
-
-def mul_add_add(x, y, z):
-    return x.float() * (1 + y) + z
-
-
-mul_add_compile = torch.compile(mul_add, dynamic=True, disable=DISABLE_COMPILE)
-mul_add_add_compile = torch.compile(mul_add_add, dynamic=True, disable=DISABLE_COMPILE)
-
 class SkyReelsV2ImageEmbedding(torch.nn.Module):
     def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
@@ -316,20 +305,13 @@ class SkyReelsV2TransformerBlock(nn.Module):
         dim: int,
         ffn_dim: int,
         num_heads: int,
-        window_size=(-1, -1),
+        window_size: Tuple[int, int] = (-1, -1),
         qk_norm: str = "rms_norm",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
     ):
         super().__init__()
-        self.dim = dim
-        self.ffn_dim = ffn_dim
-        self.num_heads = num_heads
-        self.window_size = window_size
-        self.qk_norm = qk_norm
-        self.cross_attn_norm = cross_attn_norm
-        self.eps = eps
 
         # 1. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
@@ -349,7 +331,7 @@ class SkyReelsV2TransformerBlock(nn.Module):
 
         # 2. Cross-attention
         self.attn2 = Attention(
-            window_size=(-1, -1),
+            window_size=window_size,
             query_dim=dim,
             heads=num_heads,
             kv_heads=num_heads,
@@ -361,29 +343,26 @@ class SkyReelsV2TransformerBlock(nn.Module):
             out_bias=True,
             added_kv_proj_dim=added_kv_proj_dim,
             added_proj_bias=True,
-            pre_only=False,
+            pre_only=False, # TODO: check
             processor=SkyReelsV2AttnProcessor2_0(),
         )
-        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+        self.norm2 = FP32LayerNorm(dim, eps) if cross_attn_norm else nn.Identity()
 
         # 3. Feed-forward
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
-        self.norm3 = FP32LayerNorm(dim, eps) if cross_attn_norm else nn.Identity()
-
+        self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
-
-    def set_ar_attention(self):
-        self.self_attn.set_ar_attention()
 
     def forward(
         self,
-        x,
-        e,
-        grid_sizes,
-        freqs,
-        context,
-        block_mask,
-    ):
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        temb_e: torch.Tensor,
+        rotary_emb: torch.Tensor,
+        grid_sizes: torch.Tensor,
+        freqs: torch.Tensor,
+        block_mask: torch.Tensor,
+    ) -> torch.Tensor:
         r"""
         Args:
             x(Tensor): Shape [B, L, C]
@@ -392,33 +371,33 @@ class SkyReelsV2TransformerBlock(nn.Module):
             grid_sizes(Tensor): Shape [B, 3], the second dimension contains (F, H, W)
             freqs(Tensor): Rope freqs, shape [1024, C / num_heads / 2]
         """
-        if e.dim() == 3:
-            modulation = self.modulation  # 1, 6, dim
-            with amp.autocast("cuda", dtype=torch.float32):
-                e = (modulation + e).chunk(6, dim=1)
-        elif e.dim() == 4:
-            modulation = self.modulation.unsqueeze(2)  # 1, 6, 1, dim
-            with amp.autocast("cuda", dtype=torch.float32):
-                e = (modulation + e).chunk(6, dim=1)
-            e = [ei.squeeze(1) for ei in e]
+        if temb_e.dim() == 3:
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (self.scale_shift_table + temb_e.float()).chunk(6, dim=1)
+        elif temb_e.dim() == 4:
+            e = (self.scale_shift_table.unsqueeze(2) + temb_e.float()).chunk(6, dim=1)
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
 
         # self-attention
-        out = mul_add_add_compile(self.norm1(x), e[1], e[0])
-        y = self.self_attn(out, grid_sizes, freqs, block_mask)
-        with amp.autocast("cuda", dtype=torch.float32):
-            x = mul_add_compile(x, y, e[2])
+        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        attn_output = self.self_attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb, grid_sizes=grid_sizes, freqs=freqs, block_mask=block_mask)
+        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
-        # cross-attention & ffn function
-        def cross_attn_ffn(x, context, e):
-            dtype = context.dtype
-            x = x + self.cross_attn(self.norm3(x.to(dtype)), context)
-            y = self.ffn(mul_add_add_compile(self.norm2(x), e[4], e[3]).to(dtype))
-            with amp.autocast("cuda", dtype=torch.float32):
-                x = mul_add_compile(x, y, e[5])
-            return x
+        # 2. Cross-attention
+        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
+        attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
+        hidden_states = hidden_states + attn_output
 
-        x = cross_attn_ffn(x, context, e)
-        return x.to(torch.bfloat16)
+        # 3. Feed-forward
+        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
+            hidden_states
+        )
+        ff_output = self.ffn(norm_hidden_states)
+        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+
+        return hidden_states  # TODO: check .to(torch.bfloat16)
+
+    def set_ar_attention(self):
+        self.self_attn.set_ar_attention()
 
 
 class Head(nn.Module):
