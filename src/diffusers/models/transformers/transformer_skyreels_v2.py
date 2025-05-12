@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple, Dict, Any, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -29,6 +29,7 @@ from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
+from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
 
@@ -109,7 +110,9 @@ class SkyReelsV2AttnProcessor2_0:
                 query.to(torch.bfloat16) if is_self_attention else query,
                 key.to(torch.bfloat16) if is_self_attention else key,
                 value.to(torch.bfloat16) if is_self_attention else value,
-                attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
             )
         else:
             hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
@@ -150,6 +153,7 @@ class SkyReelsV2ImageEmbedding(torch.nn.Module):
         hidden_states = self.ff(hidden_states)
         hidden_states = self.norm2(hidden_states)
         return hidden_states
+
 
 class SkyReelsV2TimeTextImageEmbedding(nn.Module):
     def __init__(
@@ -193,6 +197,7 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
 
         return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
 
+
 class SkyReelsV2RotaryPosEmbed(nn.Module):
     def __init__(
         self, attention_head_dim: int, patch_size: Tuple[int, int, int], max_seq_len: int, theta: float = 10000.0
@@ -234,6 +239,7 @@ class SkyReelsV2RotaryPosEmbed(nn.Module):
         freqs_w = freqs[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
         freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
         return freqs
+
 
 class SkyReelsV2TransformerBlock(nn.Module):
     def __init__(
@@ -298,14 +304,16 @@ class SkyReelsV2TransformerBlock(nn.Module):
         if temb_e.dim() == 3:
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
                 self.scale_shift_table + temb_e.float()
-                ).chunk(6, dim=1)
+            ).chunk(6, dim=1)
         elif temb_e.dim() == 4:
             e = (self.scale_shift_table.unsqueeze(2) + temb_e.float()).chunk(6, dim=1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
 
         # self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb, attention_mask=attention_mask)
+        attn_output = self.attn1(
+            hidden_states=norm_hidden_states, rotary_emb=rotary_emb, attention_mask=attention_mask
+        )
         hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
@@ -444,8 +452,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         self.blocks = nn.ModuleList(
             [
                 SkyReelsV2TransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps,
-                    added_kv_proj_dim=inner_dim
+                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim=inner_dim
                 )
                 for _ in range(num_layers)
             ]
@@ -460,7 +467,9 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         if inject_sample_info:
             self.fps_embedding = nn.Embedding(2, inner_dim)
-            self.fps_projection = nn.Sequential(nn.Linear(inner_dim, inner_dim), nn.SiLU(), nn.Linear(inner_dim, inner_dim * 6))
+            self.fps_projection = nn.Sequential(
+                nn.Linear(inner_dim, inner_dim), nn.SiLU(), nn.Linear(inner_dim, inner_dim * 6)
+            )
 
         # TODO: Say: Initializing suggested by the original repo?
         # self.init_weights()
@@ -526,12 +535,12 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             self.freqs = self.freqs.to(device)
 
         if y is not None:
-            x = torch.cat([x, y], dim=1)
+            hidden_states = torch.cat([hidden_states, y], dim=1)
 
         # embeddings
-        x = self.patch_embedding(x)
-        grid_sizes = torch.tensor(x.shape[2:], dtype=torch.long)
-        x = x.flatten(2).transpose(1, 2)
+        hidden_states = self.patch_embedding(hidden_states)
+        grid_sizes = torch.tensor(hidden_states.shape[2:], dtype=torch.long)
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         if self.flag_causal_attention:
             frame_num = grid_sizes[0]
@@ -541,58 +550,57 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             range_tensor = torch.arange(block_num).view(-1, 1)
             range_tensor = range_tensor.repeat(1, self.num_frame_per_block).flatten()
             casual_mask = range_tensor.unsqueeze(0) <= range_tensor.unsqueeze(1)  # f, f
-            casual_mask = casual_mask.view(frame_num, 1, 1, frame_num, 1, 1).to(x.device)
+            casual_mask = casual_mask.view(frame_num, 1, 1, frame_num, 1, 1).to(hidden_states.device)
             casual_mask = casual_mask.repeat(1, height, width, 1, height, width)
             casual_mask = casual_mask.reshape(frame_num * height * width, frame_num * height * width)
             block_mask = casual_mask.unsqueeze(0).unsqueeze(0)
 
         # time embeddings
-        with amp.autocast("cuda", dtype=torch.float32):
-            if timestep.dim() == 2:
-                b, f = timestep.shape
-                _flag_df = True
-            else:
-                _flag_df = False
+        if timestep.dim() == 2:
+            b, f = timestep.shape
+            _flag_df = True
+        else:
+            _flag_df = False
 
-            e = self.time_embedding(
-                sinusoidal_embedding_1d(self.freq_dim, timestep.flatten()).to(self.patch_embedding.weight.dtype)
-            )  # b, dim
-            e0 = self.time_projection(e).unflatten(1, (6, self.dim))  # b, 6, dim
+        temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
+            timestep, encoder_hidden_states, encoder_hidden_states_image
+        )
+        timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
-            if self.inject_sample_info:
-                fps = torch.tensor(fps, dtype=torch.long, device=device)
+        if self.inject_sample_info:
+            fps = torch.tensor(fps, dtype=torch.long, device=device)
 
-                fps_emb = self.fps_embedding(fps).float()
-                if _flag_df:
-                    e0 = e0 + self.fps_projection(fps_emb).unflatten(1, (6, self.dim)).repeat(timestep.shape[1], 1, 1)
-                else:
-                    e0 = e0 + self.fps_projection(fps_emb).unflatten(1, (6, self.dim))
-
+            fps_emb = self.fps_embedding(fps).float()
             if _flag_df:
-                e = e.view(b, f, 1, 1, self.dim)
-                e0 = e0.view(b, f, 1, 1, 6, self.dim)
-                e = e.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1).flatten(1, 3)
-                e0 = e0.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1, 1).flatten(1, 3)
-                e0 = e0.transpose(1, 2).contiguous()
+                timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, self.dim)).repeat(
+                    timestep.shape[1], 1, 1
+                )
+            else:
+                timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, self.dim))
 
-            assert e.dtype == torch.float32 and e0.dtype == torch.float32
+        if _flag_df:
+            temb = temb.view(b, f, 1, 1, self.dim)
+            timestep_proj = timestep_proj.view(b, f, 1, 1, 6, self.dim)
+            temb = temb.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1).flatten(1, 3)
+            timestep_proj = timestep_proj.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1, 1).flatten(1, 3)
+            timestep_proj = timestep_proj.transpose(1, 2).contiguous()
 
         # context
         encoder_hidden_states = self.text_embedding(encoder_hidden_states)
 
         if encoder_hidden_states_image is not None:
-            context_clip = self.img_emb(encoder_hidden_states_image)  # bs x 257 x dim
-            encoder_hidden_states = torch.concat([context_clip, encoder_hidden_states], dim=1)
+            encoder_hidden_states_image = self.img_emb(encoder_hidden_states_image)  # bs x 257 x dim
+            encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
 
         # arguments
         kwargs = {
-            "e": e0,
-            "freqs": self.freqs,
+            "temb": timestep_proj,
+            "rotary_emb": rotary_emb,
             "encoder_hidden_states": encoder_hidden_states,
             "attention_mask": block_mask,
         }
         if self.enable_teacache:
-            modulated_inp = e0 if self.use_ref_steps else e
+            modulated_inp = timestep_proj if self.use_ref_steps else temb
             # teacache
             if self.cnt % 2 == 0:  # even -> condition
                 self.is_even = True
@@ -635,27 +643,27 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if self.enable_teacache:
             if self.is_even:
                 if not should_calc_even:
-                    x += self.previous_residual_even
+                    hidden_states += self.previous_residual_even
                 else:
-                    ori_x = x.clone()
+                    ori_hidden_states = hidden_states.clone()
                     for block in self.blocks:
-                        x = block(x, **kwargs)
-                    self.previous_residual_even = x - ori_x
+                        hidden_states = block(hidden_states, **kwargs)
+                    self.previous_residual_even = hidden_states - ori_hidden_states
             else:
                 if not should_calc_odd:
-                    x += self.previous_residual_odd
+                    hidden_states += self.previous_residual_odd
                 else:
-                    ori_x = x.clone()
+                    ori_hidden_states = hidden_states.clone()
                     for block in self.blocks:
-                        x = block(x, **kwargs)
-                    self.previous_residual_odd = x - ori_x
+                        hidden_states = block(hidden_states, **kwargs)
+                    self.previous_residual_odd = hidden_states - ori_hidden_states
 
             self.cnt += 1
             if self.cnt >= self.num_steps:
                 self.cnt = 0
         else:
             for block in self.blocks:
-                x = block(x, **kwargs)
+                hidden_states = block(hidden_states, **kwargs)
 
         # 5. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
@@ -674,9 +682,16 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
         )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
-        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3).float()
 
-        return x.float()
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
+
+        if not return_dict:
+            return (output,)
+
+        return Transformer2DModelOutput(sample=output)
 
     def set_ar_attention(self, causal_block_size):
         self.num_frame_per_block = causal_block_size
