@@ -1,4 +1,5 @@
 import random
+import tempfile
 import unittest
 
 import numpy as np
@@ -6,14 +7,17 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
+import diffusers
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxTransformer2DModel, VisualClozePipeline
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
+    CaptureLogger,
     enable_full_determinism,
     floats_tensor,
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
@@ -204,5 +208,49 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         max_diff = np.abs(output_original - output_different_task).max()
         assert max_diff > expected_min_diff
 
+    @unittest.skip(
+        "Test not applicable because the pipeline being tested is a wrapper pipeline. CFG tests should be done on the inner pipelines."
+    )
     def test_callback_cfg(self):
         pass
+
+    def test_save_load_local(self, expected_max_difference=5e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)[0]
+
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel(diffusers.logging.INFO)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+
+            with CaptureLogger(logger) as cap_logger:
+                # NOTE: Resolution must be set to 32 for loading otherwise will lead to OOM on CI hardware
+                # This attribute is not serialized in the config of the pipeline
+                pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, resolution=32)
+
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+
+            for name in pipe_loaded.components.keys():
+                if name not in pipe_loaded._optional_components:
+                    assert name in str(cap_logger)
+
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, expected_max_difference)
