@@ -61,6 +61,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion_xl_inpaint import StableDiffusionXLInpaintPipeline
         from .pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
         from .pipeline_stable_diffusion_xl_modular import (
+            StableDiffusionXLAutoPipeline,
             StableDiffusionXLControlNetDenoiseStep,
             StableDiffusionXLDecodeLatentsStep,
             StableDiffusionXLDenoiseStep,
@@ -70,7 +71,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPrepareLatentsStep,
             StableDiffusionXLSetTimestepsStep,
             StableDiffusionXLTextEncoderStep,
-            StableDiffusionXLAutoPipeline,
         )
 
     try:
