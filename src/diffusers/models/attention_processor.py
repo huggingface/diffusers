@@ -203,8 +203,8 @@ class Attention(nn.Module):
             self.norm_q = nn.LayerNorm(dim_head * heads, eps=eps)
             self.norm_k = nn.LayerNorm(dim_head * kv_heads, eps=eps)
         elif qk_norm == "rms_norm":
-            self.norm_q = RMSNorm(dim_head, eps=eps)
-            self.norm_k = RMSNorm(dim_head, eps=eps)
+            self.norm_q = RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_k = RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
         elif qk_norm == "rms_norm_across_heads":
             # LTX applies qk norm across all heads
             self.norm_q = RMSNorm(dim_head * heads, eps=eps)
