@@ -55,9 +55,9 @@ class LatentPerceptualLoss(nn.Module):
         super().__init__()
         self.vae = vae
         self.decoder = self.vae.decoder
-        self.scale = getattr(self.vae, "_internal_dict", {}).get("scaling_factor", 1.0)
-        # Default shift to 0 if not available
-        self.shift = getattr(self.vae, "_internal_dict", {}).get("shift_factor", 0.0)
+        # Use vae.config for scaling and shift factors
+        self.scale = getattr(self.vae.config, "scaling_factor", 1.0)
+        self.shift = getattr(self.vae.config, "shift_factor", 0.0)
         self.gradient_checkpointing = grad_ckpt
         self.pow_law = pow_law
         self.norm_type = norm_type.lower()
