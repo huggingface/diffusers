@@ -13,29 +13,27 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any, Union
 
 import numpy as np
 import torch
 import torch.amp as amp
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.backends.cuda import sdp_kernel
 from torch.nn.attention.flex_attention import BlockMask, create_block_mask, flex_attention
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import logging
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
-from .attention import flash_attention
 
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+logger = logging.get_logger(__name__)
 
 flex_attention = torch.compile(flex_attention, dynamic=False, mode="max-autotune")
 
@@ -128,7 +126,6 @@ class SkyReelsV2AttnProcessor2_0:
 
     def set_ar_attention(self):
         self._flag_ar_attention = True
-
 
 
 class SkyReelsV2ImageEmbedding(torch.nn.Module):
@@ -296,27 +293,19 @@ class SkyReelsV2TransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb_e: torch.Tensor,
         rotary_emb: torch.Tensor,
-        grid_sizes: torch.Tensor,
-        freqs: torch.Tensor,
-        block_mask: torch.Tensor,
+        attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        r"""
-        Args:
-            x(Tensor): Shape [B, L, C]
-            e(Tensor): Shape [B, 6, C]
-            seq_lens(Tensor): Shape [B], length of each sequence in batch
-            grid_sizes(Tensor): Shape [B, 3], the second dimension contains (F, H, W)
-            freqs(Tensor): Rope freqs, shape [1024, C / num_heads / 2]
-        """
         if temb_e.dim() == 3:
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (self.scale_shift_table + temb_e.float()).chunk(6, dim=1)
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
+                self.scale_shift_table + temb_e.float()
+                ).chunk(6, dim=1)
         elif temb_e.dim() == 4:
             e = (self.scale_shift_table.unsqueeze(2) + temb_e.float()).chunk(6, dim=1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
 
         # self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb, grid_sizes=grid_sizes, freqs=freqs, block_mask=block_mask)
+        attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb, attention_mask=attention_mask)
         hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
@@ -418,7 +407,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         out_channels: int = 16,
         num_attention_heads: int = 16,
         num_layers: int = 32,
-        window_size: Tuple[int, int] = (-1, -1),
         qk_norm: Optional[str] = "rms_norm",
         cross_attn_norm: bool = True,
         inject_sample_info: bool = False,
@@ -435,9 +423,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         self.num_frame_per_block = 1
         self.flag_causal_attention = False
-        self.block_mask = None
         self.enable_teacache = False
-        self.inject_sample_info = inject_sample_info
 
         # 1. Patch & position embedding
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
@@ -459,8 +445,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             [
                 SkyReelsV2TransformerBlock(
                     inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps,
-                    window_size,  # TODO: check
-                    added_kv_proj_dim  # TODO: check
+                    added_kv_proj_dim=inner_dim
                 )
                 for _ in range(num_layers)
             ]
@@ -480,10 +465,19 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         # TODO: Say: Initializing suggested by the original repo?
         # self.init_weights()
 
-    def forward(self, x, t, context, clip_fea=None, y=None, fps=None):
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.LongTensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        y: Optional[torch.Tensor] = None,
+        fps: Optional[torch.Tensor] = None,
+        return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         r"""
-        Forward pass through the diffusion model
-
         Args:
             x (List[Tensor]):
                 List of input video tensors, each with shape [C_in, F, H, W]
@@ -524,8 +518,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         post_patch_height = height // p_h
         post_patch_width = width // p_w
 
-        if self.model_type == "i2v":
-            assert clip_fea is not None and y is not None
+        rotary_emb = self.rope(hidden_states)
+
         # params
         device = self.patch_embedding.weight.device
         if self.freqs.device != device:
@@ -550,18 +544,18 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             casual_mask = casual_mask.view(frame_num, 1, 1, frame_num, 1, 1).to(x.device)
             casual_mask = casual_mask.repeat(1, height, width, 1, height, width)
             casual_mask = casual_mask.reshape(frame_num * height * width, frame_num * height * width)
-            self.block_mask = casual_mask.unsqueeze(0).unsqueeze(0)
+            block_mask = casual_mask.unsqueeze(0).unsqueeze(0)
 
         # time embeddings
         with amp.autocast("cuda", dtype=torch.float32):
-            if t.dim() == 2:
-                b, f = t.shape
+            if timestep.dim() == 2:
+                b, f = timestep.shape
                 _flag_df = True
             else:
                 _flag_df = False
 
             e = self.time_embedding(
-                sinusoidal_embedding_1d(self.freq_dim, t.flatten()).to(self.patch_embedding.weight.dtype)
+                sinusoidal_embedding_1d(self.freq_dim, timestep.flatten()).to(self.patch_embedding.weight.dtype)
             )  # b, dim
             e0 = self.time_projection(e).unflatten(1, (6, self.dim))  # b, 6, dim
 
@@ -570,7 +564,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
                 fps_emb = self.fps_embedding(fps).float()
                 if _flag_df:
-                    e0 = e0 + self.fps_projection(fps_emb).unflatten(1, (6, self.dim)).repeat(t.shape[1], 1, 1)
+                    e0 = e0 + self.fps_projection(fps_emb).unflatten(1, (6, self.dim)).repeat(timestep.shape[1], 1, 1)
                 else:
                     e0 = e0 + self.fps_projection(fps_emb).unflatten(1, (6, self.dim))
 
@@ -584,19 +578,18 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             assert e.dtype == torch.float32 and e0.dtype == torch.float32
 
         # context
-        context = self.text_embedding(context)
+        encoder_hidden_states = self.text_embedding(encoder_hidden_states)
 
-        if clip_fea is not None:
-            context_clip = self.img_emb(clip_fea)  # bs x 257 x dim
-            context = torch.concat([context_clip, context], dim=1)
+        if encoder_hidden_states_image is not None:
+            context_clip = self.img_emb(encoder_hidden_states_image)  # bs x 257 x dim
+            encoder_hidden_states = torch.concat([context_clip, encoder_hidden_states], dim=1)
 
         # arguments
         kwargs = {
             "e": e0,
-            "grid_sizes": grid_sizes,
             "freqs": self.freqs,
-            "context": context,
-            "block_mask": self.block_mask,
+            "encoder_hidden_states": encoder_hidden_states,
+            "attention_mask": block_mask,
         }
         if self.enable_teacache:
             modulated_inp = e0 if self.use_ref_steps else e
