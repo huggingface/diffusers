@@ -542,8 +542,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             causal_block_size = self.transformer.num_frame_per_block
         fps_embeds = [fps] * prompt_embeds.shape[0]
         fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
-        transformer_dtype = self.transformer.dtype
-        # with torch.cuda.amp.autocast(dtype=self.transformer.dtype), torch.no_grad():
+
         if overlap_history is None or base_num_frames is None or num_frames <= base_num_frames:
             # short video generation
             latent_shape = [16, latent_length, latent_height, latent_width]
