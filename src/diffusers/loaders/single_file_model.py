@@ -31,6 +31,7 @@ from .single_file_utils import (
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_flux_transformer_checkpoint_to_diffusers,
+    convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
@@ -132,6 +133,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "AutoencoderKLWan": {
         "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
         "default_subfolder": "vae",
+    },
+    "HiDreamImageTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_hidream_transformer_to_diffusers,
+        "default_subfolder": "transformer",
     },
 }
 

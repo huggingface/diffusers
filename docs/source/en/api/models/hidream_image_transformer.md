@@ -21,6 +21,29 @@ from diffusers import HiDreamImageTransformer2DModel
 transformer = HiDreamImageTransformer2DModel.from_pretrained("HiDream-ai/HiDream-I1-Full", subfolder="transformer", torch_dtype=torch.bfloat16)
 ```
 
+## Loading GGUF quantized checkpoints
+
+GGUF checkpoints for the `HiDreamImageTransformer2DModel` can we be loaded using `~FromOriginalModelMixin.from_single_file`
+
+```python
+from diffusers import HiDreamImageTransformer2DModel
+
+ckpt_path = "https://huggingface.co/city96/HiDream-I1-Dev-gguf/blob/main/hidream-i1-dev-Q2_K.gguf"
+transformer = HiDreamImageTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
+```
+
+If you are trying to use a GGUF checkpoint for the `HiDream-ai/HiDream-E1-Full` model, you will have to pass in a `config` argument to properly configure the model. This is because the HiDream I1 and E1 models share the same state dict keys, so it is currently not possible to automatically infer the model type from the checkpoint itself.
+
+```python
+from diffusers import HiDreamImageTransformer2DModel
+
+ckpt_path = "https://huggingface.co/ND911/HiDream_e1_full_bf16-ggufs/blob/main/hidream_e1_full_bf16-Q2_K.gguf"
+
+transformer = HiDreamImageTransformer2DModel.from_single_file(ckpt_path, config="HiDream-ai/HiDream-E1-Full", subfolder="transformer", torch_dtype=torch.bfloat16)
+```
+
+
+
 ## HiDreamImageTransformer2DModel
 
 [[autodoc]] HiDreamImageTransformer2DModel
