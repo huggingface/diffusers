@@ -420,7 +420,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         inject_sample_info: bool = False,
         eps: float = 1e-6,
         image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
     ):
@@ -480,7 +479,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
         y: Optional[torch.Tensor] = None,
         fps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
@@ -529,31 +527,25 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         rotary_emb = self.rope(hidden_states)
 
-        # params
-        device = self.patch_embedding.weight.device
-        if self.freqs.device != device:
-            self.freqs = self.freqs.to(device)
-
+        # TODO: check here
         if y is not None:
             hidden_states = torch.cat([hidden_states, y], dim=1)
 
-        # embeddings
         hidden_states = self.patch_embedding(hidden_states)
         grid_sizes = torch.tensor(hidden_states.shape[2:], dtype=torch.long)
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         if self.flag_causal_attention:
-            frame_num = grid_sizes[0]
-            height = grid_sizes[1]
-            width = grid_sizes[2]
+            frame_num, height, width = grid_sizes
             block_num = frame_num // self.num_frame_per_block
-            range_tensor = torch.arange(block_num).view(-1, 1)
+            range_tensor = torch.arange(block_num, device=hidden_states.device).view(-1, 1)
             range_tensor = range_tensor.repeat(1, self.num_frame_per_block).flatten()
-            casual_mask = range_tensor.unsqueeze(0) <= range_tensor.unsqueeze(1)  # f, f
-            casual_mask = casual_mask.view(frame_num, 1, 1, frame_num, 1, 1).to(hidden_states.device)
-            casual_mask = casual_mask.repeat(1, height, width, 1, height, width)
-            casual_mask = casual_mask.reshape(frame_num * height * width, frame_num * height * width)
-            block_mask = casual_mask.unsqueeze(0).unsqueeze(0)
+            causal_mask = range_tensor.unsqueeze(0) <= range_tensor.unsqueeze(1)  # f, f
+            causal_mask = causal_mask.view(frame_num, 1, 1, frame_num, 1, 1)
+            causal_mask = causal_mask.repeat(1, height, width, 1, height, width)
+            causal_mask = causal_mask.reshape(frame_num * height * width, frame_num * height * width)
+            causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
+
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         # time embeddings
         if timestep.dim() == 2:
@@ -567,8 +559,11 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         )
         timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
+        if encoder_hidden_states_image is not None:
+            encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
+
         if self.inject_sample_info:
-            fps = torch.tensor(fps, dtype=torch.long, device=device)
+            fps = torch.tensor(fps, dtype=torch.long, device=hidden_states.device)
 
             fps_emb = self.fps_embedding(fps).float()
             if _flag_df:
@@ -585,20 +580,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             timestep_proj = timestep_proj.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1, 1).flatten(1, 3)
             timestep_proj = timestep_proj.transpose(1, 2).contiguous()
 
-        # context
-        encoder_hidden_states = self.text_embedding(encoder_hidden_states)
-
-        if encoder_hidden_states_image is not None:
-            encoder_hidden_states_image = self.img_emb(encoder_hidden_states_image)  # bs x 257 x dim
-            encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
-
-        # arguments
-        kwargs = {
-            "temb": timestep_proj,
-            "rotary_emb": rotary_emb,
-            "encoder_hidden_states": encoder_hidden_states,
-            "attention_mask": block_mask,
-        }
         if self.enable_teacache:
             modulated_inp = timestep_proj if self.use_ref_steps else temb
             # teacache
@@ -647,7 +628,9 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 else:
                     ori_hidden_states = hidden_states.clone()
                     for block in self.blocks:
-                        hidden_states = block(hidden_states, **kwargs)
+                        hidden_states = block(
+                            hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask
+                        )
                     self.previous_residual_even = hidden_states - ori_hidden_states
             else:
                 if not should_calc_odd:
@@ -655,7 +638,9 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 else:
                     ori_hidden_states = hidden_states.clone()
                     for block in self.blocks:
-                        hidden_states = block(hidden_states, **kwargs)
+                        hidden_states = block(
+                            hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask
+                        )
                     self.previous_residual_odd = hidden_states - ori_hidden_states
 
             self.cnt += 1
@@ -663,7 +648,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 self.cnt = 0
         else:
             for block in self.blocks:
-                hidden_states = block(hidden_states, **kwargs)
+                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask)
 
         # 5. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
