@@ -75,7 +75,7 @@ class QuantizationConfigMixin:
         Args:
             config_dict (`Dict[str, Any]`):
                 Dictionary that will be used to instantiate the configuration object.
-            return_unused_kwargs (`bool`,*optional*, defaults to `False`):
+            return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether or not to return a list of unused keyword arguments. Used for `from_pretrained` method in
                 `PreTrainedModel`.
             kwargs (`Dict[str, Any]`):
@@ -179,7 +179,7 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
     This is a wrapper class about all possible attributes and features that you can play with a model that has been
     loaded using `bitsandbytes`.
 
-    This replaces `load_in_8bit` or `load_in_4bit`therefore both options are mutually exclusive.
+    This replaces `load_in_8bit` or `load_in_4bit` therefore both options are mutually exclusive.
 
     Currently only supports `LLM.int8()`, `FP4`, and `NF4` quantization. If more methods are added to `bitsandbytes`,
     then more arguments will be added to this class.
