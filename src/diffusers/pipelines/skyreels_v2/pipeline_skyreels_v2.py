@@ -94,7 +94,7 @@ def prompt_clean(text):
 
 class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Pipeline for text-to-video generation using Wan.
+    Pipeline for Text-to-Video (t2v) generation using SkyReels-V2.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).

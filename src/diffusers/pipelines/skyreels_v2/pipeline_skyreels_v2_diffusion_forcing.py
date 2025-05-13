@@ -100,7 +100,7 @@ def retrieve_latents(
 
 class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     """
-    Pipeline for text-to-video generation using SkyReels-V2 with diffusion forcing.
+    Pipeline for Text-to-Video (t2v) generation using SkyReels-V2 with diffusion forcing.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a specific device, etc.).
@@ -460,13 +460,21 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
-            shift (`float`, *optional*, defaults to `5.0`):
-                The shift of the flow.
-            autocast_dtype (`torch.dtype`, *optional*, defaults to `torch.bfloat16`):
-                The dtype to use for the torch.amp.autocast.
+            shift (`float`, *optional*, defaults to `1.0`):
+
+            overlap_history (`int`, *optional*):
+
+            addnoise_condition (`float`, *optional*, defaults to `0.0`):
+
+            base_num_frames (`int`, *optional*, defaults to `97`):
+
+            ar_step (`int`, *optional*, defaults to `5`):
+                The step of the autoregressive steps.
+            causal_block_size (`int`, *optional*):
+
+            fps (`int`, *optional*, defaults to `24`):
 
         Examples:
-
         Returns:
             [`~SkyReelsV2PipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`SkyReelsV2PipelineOutput`] is returned, otherwise a `tuple` is returned

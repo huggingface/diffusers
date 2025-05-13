@@ -127,7 +127,7 @@ def retrieve_latents(
 
 class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Pipeline for image-to-video generation using Wan.
+    Pipeline for image-to-video generation using SkyReels-V2.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -182,6 +182,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.image_processor = image_processor
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.encode_prompt
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -223,6 +224,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.encode_image
     def encode_image(
         self,
         image: PipelineImageInput,
@@ -315,6 +317,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds, negative_prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -369,6 +372,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.prepare_latents
     def prepare_latents(
         self,
         image: PipelineImageInput,

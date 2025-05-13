@@ -98,8 +98,7 @@ def retrieve_latents(
 
 class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     """
-    Pipeline for video generation with diffusion forcing using SkyReels-V2. This pipeline supports two main tasks:
-    Text-to-Video (t2v) and Image-to-Video (i2v)
+    Pipeline for Image-to-Video (i2v) generation using SkyReels-V2 with diffusion forcing.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a specific device, etc.).
@@ -154,6 +153,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.image_processor = image_processor
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -195,6 +195,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.encode_image
     def encode_image(
         self,
         image: PipelineImageInput,
@@ -287,6 +288,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
 
         return prompt_embeds, negative_prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -341,6 +343,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.prepare_latents
     def prepare_latents(
         self,
         image: PipelineImageInput,
@@ -594,7 +597,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             batch_size = prompt_embeds.shape[0]
 
         # 3. Encode input prompt
-        #prompt_embeds = self.text_encoder.encode(prompt).to(self.transformer.dtype)
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -612,6 +614,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # Encode image embedding
+        prefix_video = not None
+        predix_video_latent_length = 0
         #prefix_video, predix_video_latent_length = self.encode_image(image, height, width, num_frames)
         if image_embeds is None:
             image_embeds = self.encode_image(image, device)
@@ -623,14 +627,13 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         timesteps = self.scheduler.timesteps
 
         if overlap_history is None or base_num_frames is None or num_frames <= base_num_frames:
-            # short video generation
+            # Short video generation
             latent_shape = [16, latent_length, latent_height, latent_width]
             latents = self.prepare_latents(
                 latent_shape, dtype=transformer_dtype, device=prompt_embeds.device, generator=generator
             )
             latents = [latents]
-            if prefix_video is not None:
-                latents[0][:, :predix_video_latent_length] = prefix_video[0].to(transformer_dtype)
+            latents[0][:, :predix_video_latent_length] = prefix_video[0].to(transformer_dtype)
             base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else latent_length
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                 latent_length, timesteps, base_num_frames, ar_step, predix_video_latent_length, causal_block_size
@@ -700,7 +703,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             videos = [video.permute(1, 2, 3, 0) * 255 for video in videos]
             video = [video.cpu().numpy().astype(np.uint8) for video in videos]
         else:
-            # long video generation
+            # Long video generation
             base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else latent_length
             overlap_history_frames = (overlap_history - 1) // 4 + 1
             n_iter = 1 + (latent_length - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
@@ -728,8 +731,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                     latent_shape, dtype=transformer_dtype, device=prompt_embeds.device, generator=generator
                 )
                 latents = [latents]
-                if prefix_video is not None:
-                    latents[0][:, :predix_video_latent_length] = prefix_video[0].to(transformer_dtype)
+                latents[0][:, :predix_video_latent_length] = prefix_video[0].to(transformer_dtype)
                 step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                     base_num_frames_iter,
                     timesteps,
