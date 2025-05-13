@@ -568,7 +568,6 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("image", required=True),
-            InputParam("generator"),
             InputParam("height"),
             InputParam("width"),
         ]
@@ -576,6 +575,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[InputParam]:
         return [
+            InputParam("generator"),
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"), 
             InputParam("preprocess_kwargs", type_hint=Optional[dict], description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]")]
 
@@ -680,7 +680,6 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         return [
             InputParam("height"),
             InputParam("width"),
-            InputParam("generator"),
             InputParam("image", required=True),
             InputParam("mask_image", required=True),
             InputParam("padding_mask_crop"),
@@ -688,7 +687,10 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
 
     @property
     def intermediates_inputs(self) -> List[InputParam]:
-        return [InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs")]
+        return [
+            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
+            InputParam("generator"),
+        ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:

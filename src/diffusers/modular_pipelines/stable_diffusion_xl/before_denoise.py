@@ -440,7 +440,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("generator"),
             InputParam("latents"),
             InputParam("num_images_per_prompt", default=1),
             InputParam("denoising_start"),
@@ -459,6 +458,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
+            InputParam("generator"),
             InputParam(
                 "batch_size", 
                 required=True, 
@@ -733,7 +733,6 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("generator"),
             InputParam("latents"),
             InputParam("num_images_per_prompt", default=1),
             InputParam("denoising_start"),
@@ -742,6 +741,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[InputParam]:
         return [
+            InputParam("generator"),
             InputParam("latent_timestep", required=True, type_hint=torch.Tensor, description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step."), 
             InputParam("image_latents", required=True, type_hint=torch.Tensor, description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step."), 
             InputParam("batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."), 
@@ -879,7 +879,6 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
         return [
             InputParam("height"),
             InputParam("width"),
-            InputParam("generator"),
             InputParam("latents"),
             InputParam("num_images_per_prompt", default=1),
         ]
@@ -887,6 +886,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[InputParam]:
         return [
+            InputParam("generator"),
             InputParam(
                 "batch_size", 
                 required=True, 

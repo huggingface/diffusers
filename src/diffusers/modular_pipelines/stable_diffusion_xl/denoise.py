@@ -485,13 +485,13 @@ class StableDiffusionXLDenoiseLoopAfterDenoiser(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("generator"),
             InputParam("eta", default=0.0),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
+            InputParam("generator"),
             InputParam(
                 "latents", 
                 required=True, 
@@ -554,13 +554,13 @@ class StableDiffusionXLInpaintDenoiseLoopAfterDenoiser(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("generator"),
             InputParam("eta", default=0.0),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
+            InputParam("generator"),
             InputParam(
                 "timesteps", 
                 required=True, 
