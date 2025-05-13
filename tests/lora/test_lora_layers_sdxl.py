@@ -37,12 +37,13 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     is_flaky,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -105,12 +106,12 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @is_flaky
     def test_multiple_wrong_adapter_name_raises_error(self):
@@ -119,18 +120,18 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 @slow
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 @require_peft_backend
 class LoraSDXLIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_sdxl_1_0_lora(self):
         generator = torch.Generator("cpu").manual_seed(0)
