@@ -89,6 +89,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [UniDiffuser](unidiffuser) | text2image, image2text, image variation, text variation, unconditional image generation, unconditional audio generation |
 | [Value-guided planning](value_guided_sampling) | value guided sampling |
 | [Wuerstchen](wuerstchen) | text2image |
+| [VisualCloze](visualcloze) | text2image, image2image, subject driven generation, inpainting, style transfer, image restoration, image editing, [depth,normal,edge,pose]2image, [depth,normal,edge,pose]-estimation, virtual try-on, image relighting |
 
 ## DiffusionPipeline
 
