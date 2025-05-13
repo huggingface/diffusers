@@ -41,7 +41,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 
-class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
+class StableDiffusionXLDecodeStep(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
     
@@ -187,63 +187,17 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
         return components, state
 
 
-# YiYi TODO: remove this, we don't need this in modular
-class StableDiffusionXLOutputStep(PipelineBlock):
-    model_name = "stable-diffusion-xl"
-
-    @property
-    def description(self) -> str:
-        return "final step to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or a plain tuple."
-
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [InputParam("return_dict", default=True)] 
-
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        return [InputParam("images", required=True, type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]], description="The generated images from the decode step.")]
-    
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("images", description="The final images output, can be a tuple or a `StableDiffusionXLPipelineOutput`")]
-    
-    
-    @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-
-        if not block_state.return_dict:
-            block_state.images = (block_state.images,)
-        else:
-            block_state.images = StableDiffusionXLPipelineOutput(images=block_state.images)
-        self.add_block_state(state, block_state)
-        return components, state
-
-
-# After denoise
-class StableDiffusionXLDecodeStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLOutputStep]
-    block_names = ["decode", "output"]
-
-    @property
-    def description(self):
-        return """Decode step that decode the denoised latents into images outputs.
-This is a sequential pipeline blocks:
- - `StableDiffusionXLDecodeLatentsStep` is used to decode the denoised latents into images
- - `StableDiffusionXLOutputStep` is used to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or a plain tuple."""
-
 
 class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLInpaintOverlayMaskStep, StableDiffusionXLOutputStep]
-    block_names = ["decode", "mask_overlay", "output"]
+    block_classes = [StableDiffusionXLDecodeStep, StableDiffusionXLInpaintOverlayMaskStep]
+    block_names = ["decode", "mask_overlay"]
 
     @property
     def description(self):
         return "Inpaint decode step that decode the denoised latents into images outputs.\n" + \
                "This is a sequential pipeline blocks:\n" + \
-               " - `StableDiffusionXLDecodeLatentsStep` is used to decode the denoised latents into images\n" + \
-               " - `StableDiffusionXLInpaintOverlayMaskStep` is used to overlay the mask on the image\n" + \
-               " - `StableDiffusionXLOutputStep` is used to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or a plain tuple."
+               " - `StableDiffusionXLDecodeStep` is used to decode the denoised latents into images\n" + \
+               " - `StableDiffusionXLInpaintOverlayMaskStep` is used to overlay the mask on the image"
 
 
 class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
