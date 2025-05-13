@@ -24,6 +24,7 @@ from ..utils import logging
 
 logger = logging.get_logger(__name__)
 
+
 class AutoModel(ConfigMixin):
     config_name = "config.json"
 
@@ -184,23 +185,12 @@ class AutoModel(ConfigMixin):
                 orig_class_name = config["_class_name"]
                 library = "diffusers"
                 load_config_kwargs.update({"subfolder": subfolder})
+            elif "model_type" in config:
+                orig_class_name = "AutoModel"
+                library = "transformers"
+                load_config_kwargs.update({"subfolder": "" if subfolder is None else subfolder})
             else:
-                # If we don't find a class name in the config, we can try to load the model as a transformers model
-                logger.warning(
-                    f"Doesn't look like a diffusers model. Loading {pretrained_model_or_path} as a transformer model."
-                )
-                if "architectures" in config and len(config["architectures"]) > 0:
-                    if len(config["architectures"]) > 1:
-                        logger.warning(
-                            f"Found multiple architectures in {pretrained_model_or_path}. Using the first one: {config['architectures'][0]}"
-                        )
-                    orig_class_name = config["architectures"][0]
-                    library = "transformers"
-                    load_config_kwargs.update({"subfolder": "" if subfolder is None else subfolder})
-                else:
-                    raise ValueError(
-                        f"Couldn't find model associated with the config file at {pretrained_model_or_path}."
-                    )
+                raise ValueError(f"Couldn't find model associated with the config file at {pretrained_model_or_path}.")
 
         model_cls, _ = get_class_obj_and_candidates(
             library_name=library,
