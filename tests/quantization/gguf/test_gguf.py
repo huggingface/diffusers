@@ -557,3 +557,23 @@ class HiDreamGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     torch_dtype = torch.bfloat16
     model_cls = HiDreamImageTransformer2DModel
     expected_memory_use_in_gb = 8
+
+    def get_dummy_inputs(self):
+        return {
+            "hidden_states": torch.randn((1, 16, 128, 128), generator=torch.Generator("cpu").manual_seed(0)).to(
+                torch_device, self.torch_dtype
+            ),
+            "encoder_hidden_states_t5": torch.randn(
+                (1, 128, 4096),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "encoder_hidden_states_llama3": torch.randn(
+                (32, 1, 128, 4096),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "pooled_embeds": torch.randn(
+                (1, 2048),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+        }
