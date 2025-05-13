@@ -48,7 +48,7 @@ class SkyReelsV2AttnProcessor2_0:
 
         self._flag_ar_attention = False
 
-    def forward(
+    def __call__(
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
@@ -247,7 +247,6 @@ class SkyReelsV2TransformerBlock(nn.Module):
         dim: int,
         ffn_dim: int,
         num_heads: int,
-        window_size: Tuple[int, int] = (-1, -1),
         qk_norm: str = "rms_norm",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
@@ -258,7 +257,6 @@ class SkyReelsV2TransformerBlock(nn.Module):
         # 1. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.attn1 = Attention(
-            window_size=window_size,
             query_dim=dim,
             heads=num_heads,
             kv_heads=num_heads,
@@ -273,7 +271,6 @@ class SkyReelsV2TransformerBlock(nn.Module):
 
         # 2. Cross-attention
         self.attn2 = Attention(
-            window_size=window_size,
             query_dim=dim,
             heads=num_heads,
             kv_heads=num_heads,
@@ -284,32 +281,34 @@ class SkyReelsV2TransformerBlock(nn.Module):
             cross_attention_dim=None,
             out_bias=True,
             added_kv_proj_dim=added_kv_proj_dim,
+            added_proj_bias=True,
             processor=SkyReelsV2AttnProcessor2_0(),
         )
-        self.norm2 = FP32LayerNorm(dim, eps) if cross_attn_norm else nn.Identity()
+        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
         # 3. Feed-forward
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
         self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb_e: torch.Tensor,
+        temb: torch.Tensor,
         rotary_emb: torch.Tensor,
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        if temb_e.dim() == 3:
+        if temb.dim() == 3:
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-                self.scale_shift_table + temb_e.float()
+                self.scale_shift_table + temb.float()
             ).chunk(6, dim=1)
-        elif temb_e.dim() == 4:
-            e = (self.scale_shift_table.unsqueeze(2) + temb_e.float()).chunk(6, dim=1)
+        elif temb.dim() == 4:
+            e = (self.scale_shift_table.unsqueeze(2) + temb.float()).chunk(6, dim=1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
 
-        # self-attention
+        # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.attn1(
             hidden_states=norm_hidden_states, rotary_emb=rotary_emb, attention_mask=attention_mask
@@ -407,22 +406,23 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
     def __init__(
         self,
         patch_size: Tuple[int] = (1, 2, 2),
+        num_attention_heads: int = 16,
         attention_head_dim: int = 128,
         in_channels: int = 16,
-        ffn_dim: int = 8192,
-        freq_dim: int = 256,
-        text_dim: int = 4096,
         out_channels: int = 16,
-        num_attention_heads: int = 16,
+        text_dim: int = 4096,
+        freq_dim: int = 256,
+        ffn_dim: int = 8192,
         num_layers: int = 32,
-        qk_norm: Optional[str] = "rms_norm",
         cross_attn_norm: bool = True,
-        inject_sample_info: bool = False,
+        qk_norm: Optional[str] = "rms_norm",
         eps: float = 1e-6,
         image_dim: Optional[int] = None,
+        added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
-    ):
+        inject_sample_info: bool = False,
+    ) -> None:
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
@@ -433,8 +433,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         self.enable_teacache = False
 
         # 1. Patch & position embedding
-        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
         self.rope = SkyReelsV2RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
+        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
         # image_embedding_dim=1280 for I2V model
@@ -667,7 +667,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
         )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
-        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3).float()
+        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
