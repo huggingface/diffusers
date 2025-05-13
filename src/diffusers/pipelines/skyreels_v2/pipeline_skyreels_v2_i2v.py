@@ -182,7 +182,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.image_processor = image_processor
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.encode_prompt
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanImageToVideoPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -224,7 +224,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.encode_image
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanImageToVideoPipeline.encode_image
     def encode_image(
         self,
         image: PipelineImageInput,
@@ -235,7 +235,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
         return image_embeds.hidden_states[-2]
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanImageToVideoPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -317,7 +317,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.check_inputs
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanImageToVideoPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -372,7 +372,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanPipeline.prepare_latents
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanImageToVideoPipeline.prepare_latents
     def prepare_latents(
         self,
         image: PipelineImageInput,
