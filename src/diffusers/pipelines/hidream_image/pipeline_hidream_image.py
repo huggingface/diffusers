@@ -901,7 +901,6 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             device=device,
-            dtype=self.dtype,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,

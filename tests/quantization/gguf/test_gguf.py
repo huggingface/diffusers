@@ -575,5 +575,5 @@ class HiDreamGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
                 (1, 2048),
                 generator=torch.Generator("cpu").manual_seed(0),
             ).to(torch_device, self.torch_dtype),
-            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+            "timesteps": torch.tensor([1]).to(torch_device, self.torch_dtype),
         }
