@@ -12,6 +12,7 @@ from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
     GGUFQuantizationConfig,
+    HiDreamImageTransformer2DModel,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
 )
@@ -549,3 +550,10 @@ class FluxControlLoRAGGUFTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3)
+
+
+class HiDreamGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+    ckpt_path = "https://huggingface.co/city96/HiDream-I1-Dev-gguf/blob/main/hidream-i1-dev-Q2_K.gguf"
+    torch_dtype = torch.bfloat16
+    model_cls = HiDreamImageTransformer2DModel
+    expected_memory_use_in_gb = 8
