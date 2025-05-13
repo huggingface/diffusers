@@ -547,7 +547,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
-        # time embeddings
+        # TODO: check here
         if timestep.dim() == 2:
             b, f = timestep.shape
             _flag_df = True
