@@ -544,14 +544,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
 
         if overlap_history is None or base_num_frames is None or num_frames <= base_num_frames:
-            # short video generation
+            # Short video generation
             latent_shape = [16, latent_length, latent_height, latent_width]
             latents = self.prepare_latents(
                 latent_shape, dtype=transformer_dtype, device=prompt_embeds.device, generator=generator
             )
             latents = [latents]
-            if prefix_video is not None:
-                latents[0][:, :predix_video_latent_length] = prefix_video[0].to(transformer_dtype)
             base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else latent_length
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                 latent_length, timesteps, base_num_frames, ar_step, predix_video_latent_length, causal_block_size
@@ -611,22 +609,17 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             generator=generator,
                         )[0]
                         sample_schedulers_counter[idx] += 1
-            if self.offload:
-                self.transformer.cpu()
-                torch.cuda.empty_cache()
             x0 = latents[0].unsqueeze(0)
             videos = self.vae.decode(x0)
             videos = (videos / 2 + 0.5).clamp(0, 1)
             videos = [video for video in videos]
             videos = [video.permute(1, 2, 3, 0) * 255 for video in videos]
-            videos = [video.cpu().numpy().astype(np.uint8) for video in videos]
-            return videos
+            video = [video.cpu().numpy().astype(np.uint8) for video in videos]
         else:
-            # long video generation
+            # Long video generation
             base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else latent_length
             overlap_history_frames = (overlap_history - 1) // 4 + 1
             n_iter = 1 + (latent_length - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
-            print(f"n_iter:{n_iter}")
             output_video = None
             for i in range(n_iter):
                 if output_video is not None:  # i !=0
@@ -732,9 +725,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             output_video = [(output_video / 2 + 0.5).clamp(0, 1)]
             output_video = [video for video in output_video]
             output_video = [video.permute(1, 2, 3, 0) * 255 for video in output_video]
-            output_video = [video.cpu().numpy().astype(np.uint8) for video in output_video]
+            video = [video.cpu().numpy().astype(np.uint8) for video in output_video]
 
-            if not return_dict:
-                return (output_video,)
+        # Offload all models
+        self.maybe_free_model_hooks()
 
-            return SkyReelsV2PipelineOutput(frames=output_video)
+        if not return_dict:
+            return (video,)
+
+        return SkyReelsV2PipelineOutput(frames=video)
