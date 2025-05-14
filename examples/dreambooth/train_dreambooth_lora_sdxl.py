@@ -659,12 +659,15 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--use_dora",
         action="store_true",
         default=False,
         help=(
-            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -852,7 +855,7 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.Resize(size, interpolation=interpolation),
                 transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -1199,10 +1202,11 @@ def main(args):
             text_encoder_one.gradient_checkpointing_enable()
             text_encoder_two.gradient_checkpointing_enable()
 
-    def get_lora_config(rank, use_dora, target_modules):
+    def get_lora_config(rank, dropout, use_dora, target_modules):
         base_config = {
             "r": rank,
             "lora_alpha": rank,
+            "lora_dropout": dropout,
             "init_lora_weights": "gaussian",
             "target_modules": target_modules,
         }
@@ -1218,14 +1222,24 @@ def main(args):
 
     # now we will add new LoRA weights to the attention layers
     unet_target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
-    unet_lora_config = get_lora_config(rank=args.rank, use_dora=args.use_dora, target_modules=unet_target_modules)
+    unet_lora_config = get_lora_config(
+        rank=args.rank,
+        dropout=args.lora_dropout,
+        use_dora=args.use_dora,
+        target_modules=unet_target_modules,
+    )
     unet.add_adapter(unet_lora_config)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
         text_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
-        text_lora_config = get_lora_config(rank=args.rank, use_dora=args.use_dora, target_modules=text_target_modules)
+        text_lora_config = get_lora_config(
+            rank=args.rank,
+            dropout=args.lora_dropout,
+            use_dora=args.use_dora,
+            target_modules=text_target_modules,
+        )
         text_encoder_one.add_adapter(text_lora_config)
         text_encoder_two.add_adapter(text_lora_config)
 

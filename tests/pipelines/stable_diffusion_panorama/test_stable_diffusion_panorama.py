@@ -29,7 +29,17 @@ from diffusers import (
     StableDiffusionPanoramaPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
+    enable_full_determinism,
+    nightly,
+    require_torch_accelerator,
+    skip_mps,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
@@ -267,17 +277,17 @@ class StableDiffusionPanoramaPipelineFastTests(
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, seed=0):
         generator = torch.manual_seed(seed)
@@ -415,9 +425,9 @@ class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
         assert number_of_steps == 3
 
     def test_stable_diffusion_panorama_pipeline_with_sequential_cpu_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
@@ -429,6 +439,6 @@ class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
         inputs = self.get_inputs()
         _ = pipe(**inputs)
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         # make sure that less than 5.2 GB is allocated
         assert mem_bytes < 5.5 * 10**9

@@ -47,6 +47,7 @@ from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
+from ..quantizers import PipelineQuantizationConfig
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
@@ -58,6 +59,7 @@ from ..utils import (
     _is_valid_type,
     is_accelerate_available,
     is_accelerate_version,
+    is_hpu_available,
     is_torch_npu_available,
     is_torch_version,
     is_transformers_version,
@@ -450,6 +452,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
 
+        # Enable generic support for Intel Gaudi accelerator using GPU/HPU migration
+        if device_type == "hpu" and kwargs.pop("hpu_migration", True) and is_hpu_available():
+            os.environ["PT_HPU_GPU_MIGRATION"] = "1"
+            logger.debug("Environment variable set: PT_HPU_GPU_MIGRATION=1")
+
+            import habana_frameworks.torch  # noqa: F401
+
+            # HPU hardware check
+            if not (hasattr(torch, "hpu") and torch.hpu.is_available()):
+                raise ValueError("You are trying to call `.to('hpu')` but HPU device is unavailable.")
+
+            os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+            logger.debug("Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1")
+
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
@@ -557,12 +573,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
-            torch_dtype (`str` or `torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
-                dtype is automatically derived from the model's weights. To load submodels with different dtype pass a
-                `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`). Set the default dtype for
-                unspecified components with `default` (for example `{'transformer': torch.bfloat16, 'default':
-                torch.float16}`). If a component is not specified and no default is set, `torch.float32` is used.
+            torch_dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype. To load submodels with
+                different dtype pass a `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`).
+                Set the default dtype for unspecified components with `default` (for example `{'transformer':
+                torch.bfloat16, 'default': torch.float16}`). If a component is not specified and no default is set,
+                `torch.float32` is used.
             custom_pipeline (`str`, *optional*):
 
                 <Tip warning={true}>
@@ -710,6 +726,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
+        quantization_config = kwargs.pop("quantization_config", None)
 
         if torch_dtype is not None and not isinstance(torch_dtype, dict) and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
@@ -725,6 +742,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
             )
+
+        if quantization_config is not None and not isinstance(quantization_config, PipelineQuantizationConfig):
+            raise ValueError("`quantization_config` must be an instance of `PipelineQuantizationConfig`.")
 
         if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
@@ -986,6 +1006,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     use_safetensors=use_safetensors,
                     dduf_entries=dduf_entries,
                     provider_options=provider_options,
+                    quantization_config=quantization_config,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."

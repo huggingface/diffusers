@@ -38,6 +38,7 @@ from .import_utils import (
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
+    is_optimum_quanto_available,
     is_peft_available,
     is_timm_available,
     is_torch_available,
@@ -484,6 +485,13 @@ def require_bitsandbytes(test_case):
     Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
     """
     return unittest.skipUnless(is_bitsandbytes_available(), "test requires bitsandbytes")(test_case)
+
+
+def require_quanto(test_case):
+    """
+    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
+    """
+    return unittest.skipUnless(is_optimum_quanto_available(), "test requires quanto")(test_case)
 
 
 def require_accelerate(test_case):
@@ -1186,6 +1194,13 @@ if is_torch_available():
         "mps": 0,
         "default": 0,
     }
+    BACKEND_SYNCHRONIZE = {
+        "cuda": torch.cuda.synchronize,
+        "xpu": getattr(torch.xpu, "synchronize", None),
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
@@ -1206,6 +1221,10 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 # These are callables which automatically dispatch the function specific to the accelerator
 def backend_manual_seed(device: str, seed: int):
     return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+
+
+def backend_synchronize(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
 
 
 def backend_empty_cache(device: str):

@@ -154,11 +154,11 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
 pipeline.enable_model_cpu_offload()
 ```
 
-You can enable PAG on an exisiting inpainting pipeline like this
+You can enable PAG on an existing inpainting pipeline like this
 
 ```py
-pipeline_inpaint = AutoPipelineForInpaiting.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
-pipeline = AutoPipelineForInpaiting.from_pipe(pipeline_inpaint, enable_pag=True)
+pipeline_inpaint = AutoPipelineForInpainting.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline = AutoPipelineForInpainting.from_pipe(pipeline_inpaint, enable_pag=True)
 ```
 
 This still works when your pipeline has a different task:
