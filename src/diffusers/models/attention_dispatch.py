@@ -30,7 +30,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ATTN_PROVIDER
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 
 
 if is_flash_attn_available():
@@ -78,7 +78,7 @@ else:
     class BlockMask:
         def __init__(self, *args, **kwargs):
             raise OptionalDependencyNotAvailable(
-                "The `torch` library version is too old. Please update it to at least 2.5.0."
+                "The `torch` library version is too old for using Flex Attention. Please update it to at least 2.5.0."
             )
 
 
@@ -100,7 +100,7 @@ _SAGE_ATTENTION_QK_QUANT_GRAN = Literal["per_thread", "per_warp"]
 _SAGE_ATTENTION_QUANTIZATION_BACKEND = Literal["cuda", "triton"]
 
 
-class AttentionProvider(str, Enum):
+class AttentionBackendName(str, Enum):
     # EAGER = "eager"
 
     # `flash-attn`
@@ -130,49 +130,49 @@ class AttentionProvider(str, Enum):
     XFORMERS = "xformers"
 
 
-class _AttentionProviderRegistry:
-    _providers = {}
+class _AttentionBackendRegistry:
+    _backends = {}
     _constraints = {}
     _supported_arg_names = {}
-    _active_provider = AttentionProvider(DIFFUSERS_ATTN_PROVIDER)
+    _active_backend = AttentionBackendName(DIFFUSERS_ATTN_BACKEND)
     _checks_enabled = DIFFUSERS_ATTN_CHECKS
 
     @classmethod
-    def register(cls, provider: AttentionProvider, constraints: Optional[List[Callable]] = None):
-        logger.debug(f"Registering attention provider: {provider} with constraints: {constraints}")
+    def register(cls, backend: AttentionBackendName, constraints: Optional[List[Callable]] = None):
+        logger.debug(f"Registering attention backend: {backend} with constraints: {constraints}")
 
         def decorator(func):
-            cls._providers[provider] = func
-            cls._constraints[provider] = constraints or []
-            cls._supported_arg_names[provider] = set(inspect.signature(func).parameters.keys())
+            cls._backends[backend] = func
+            cls._constraints[backend] = constraints or []
+            cls._supported_arg_names[backend] = set(inspect.signature(func).parameters.keys())
             return func
 
         return decorator
 
     @classmethod
-    def get_active_provider(cls):
-        return cls._active_provider, cls._providers[cls._active_provider]
+    def get_active_backend(cls):
+        return cls._active_backend, cls._backends[cls._active_backend]
 
     @classmethod
-    def list_providers(cls):
-        return list(cls._providers.keys())
+    def list_backends(cls):
+        return list(cls._backends.keys())
 
 
 @contextlib.contextmanager
-def attention_provider(provider: AttentionProvider = AttentionProvider.NATIVE):
+def attention_backend(backend: AttentionBackendName = AttentionBackendName.NATIVE):
     """
-    Context manager to set the active attention provider.
+    Context manager to set the active attention backend.
     """
-    if provider not in _AttentionProviderRegistry._providers:
-        raise ValueError(f"Provider {provider} is not registered.")
+    if backend not in _AttentionBackendRegistry._backends:
+        raise ValueError(f"Backend {backend} is not registered.")
 
-    old_provider = _AttentionProviderRegistry._active_provider
-    _AttentionProviderRegistry._active_provider = provider
+    old_backend = _AttentionBackendRegistry._active_backend
+    _AttentionBackendRegistry._active_backend = backend
 
     try:
         yield
     finally:
-        _AttentionProviderRegistry._active_provider = old_provider
+        _AttentionBackendRegistry._active_backend = old_backend
 
 
 def attention_dispatch(
@@ -187,7 +187,7 @@ def attention_dispatch(
     attention_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
-    provider_name, provider_fn = _AttentionProviderRegistry.get_active_provider()
+    backend_name, backend_fn = _AttentionBackendRegistry.get_active_backend()
     kwargs = {
         "query": query,
         "key": key,
@@ -200,20 +200,20 @@ def attention_dispatch(
         **attention_kwargs,
     }
 
-    if _AttentionProviderRegistry._checks_enabled:
-        removed_kwargs = set(kwargs) - set(_AttentionProviderRegistry._supported_arg_names[provider_name])
+    if _AttentionBackendRegistry._checks_enabled:
+        removed_kwargs = set(kwargs) - set(_AttentionBackendRegistry._supported_arg_names[backend_name])
         if removed_kwargs:
-            logger.warning(f"Removing unsupported arguments for attention provider {provider_name}: {removed_kwargs}.")
-        for check in _AttentionProviderRegistry._constraints.get(provider_name):
+            logger.warning(f"Removing unsupported arguments for attention backend {backend_name}: {removed_kwargs}.")
+        for check in _AttentionBackendRegistry._constraints.get(backend_name):
             check(**kwargs)
 
-    kwargs = {k: v for k, v in kwargs.items() if k in _AttentionProviderRegistry._supported_arg_names[provider_name]}
-    return provider_fn(**kwargs)
+    kwargs = {k: v for k, v in kwargs.items() if k in _AttentionBackendRegistry._supported_arg_names[backend_name]}
+    return backend_fn(**kwargs)
 
 
 def _check_attn_mask_is_none(attn_mask: Optional[torch.Tensor], **kwargs) -> None:
     if attn_mask is not None:
-        raise ValueError("Attention mask must be None for this provider.")
+        raise ValueError("Attention mask must be None for this backend.")
 
 
 def _check_attn_mask_or_causal(attn_mask: Optional[torch.Tensor], is_causal: bool, **kwargs) -> None:
@@ -349,8 +349,8 @@ def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
     return q_idx >= kv_idx
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider.FLASH,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH,
     constraints=[_check_attn_mask_is_none, _check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
 def _flash_attention(
@@ -391,8 +391,8 @@ def _flash_attention(
     return out
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider.FLASH_VARLEN,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH_VARLEN,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
 def _flash_varlen_attention(
@@ -469,8 +469,8 @@ def _flash_varlen_attention(
     return out
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider.FLEX,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.FLEX,
     constraints=[_check_attn_mask_or_causal, _check_device, _check_shape],
 )
 def _native_flex_attention(
@@ -529,8 +529,8 @@ def _native_flex_attention(
     )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider.NATIVE,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.NATIVE,
     constraints=[_check_device, _check_shape],
 )
 def _native_attention(
@@ -555,8 +555,8 @@ def _native_attention(
     )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider._NATIVE_CUDNN,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._NATIVE_CUDNN,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
 def _native_cudnn_attention(
@@ -582,8 +582,8 @@ def _native_cudnn_attention(
         )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider._NATIVE_EFFICIENT,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._NATIVE_EFFICIENT,
     constraints=[_check_device, _check_shape],
 )
 def _native_efficient_attention(
@@ -609,8 +609,8 @@ def _native_efficient_attention(
         )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider._NATIVE_FLASH,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._NATIVE_FLASH,
     constraints=[_check_attn_mask_is_none, _check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
 def _native_flash_attention(
@@ -636,8 +636,8 @@ def _native_flash_attention(
         )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider._NATIVE_MATH,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._NATIVE_MATH,
     constraints=[_check_device, _check_shape],
 )
 def _native_math_attention(
@@ -663,8 +663,8 @@ def _native_math_attention(
         )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider.SAGE,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SAGE,
     constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
 def _sage_attention(
@@ -686,8 +686,8 @@ def _sage_attention(
     )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider.SAGE_VARLEN,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SAGE_VARLEN,
     constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
 def _sage_varlen_attention(
@@ -754,8 +754,8 @@ def _sage_varlen_attention(
     return out
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider._SAGE_QK_INT8_PV_FP8_CUDA,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._SAGE_QK_INT8_PV_FP8_CUDA,
     constraints=[_check_device_cuda_atleast_smXY(9, 0), _check_shape],
 )
 def _sage_qk_int8_pv_fp8_cuda_attention(
@@ -785,8 +785,8 @@ def _sage_qk_int8_pv_fp8_cuda_attention(
     )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider._SAGE_QK_INT8_PV_FP8_CUDA_SM90,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._SAGE_QK_INT8_PV_FP8_CUDA_SM90,
     constraints=[_check_device_cuda_atleast_smXY(9, 0), _check_shape],
 )
 def _sage_qk_int8_pv_fp8_cuda_sm90_attention(
@@ -814,8 +814,8 @@ def _sage_qk_int8_pv_fp8_cuda_sm90_attention(
     )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider._SAGE_QK_INT8_PV_FP16_CUDA,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._SAGE_QK_INT8_PV_FP16_CUDA,
     constraints=[_check_device_cuda_atleast_smXY(8, 0), _check_shape],
 )
 def _sage_qk_int8_pv_fp16_cuda_attention(
@@ -845,8 +845,8 @@ def _sage_qk_int8_pv_fp16_cuda_attention(
     )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider._SAGE_QK_INT8_PV_FP16_TRITON,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._SAGE_QK_INT8_PV_FP16_TRITON,
     constraints=[_check_device_cuda_atleast_smXY(8, 0), _check_shape],
 )
 def _sage_qk_int8_pv_fp16_triton_attention(
@@ -872,8 +872,8 @@ def _sage_qk_int8_pv_fp16_triton_attention(
     )
 
 
-@_AttentionProviderRegistry.register(
-    AttentionProvider.XFORMERS,
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.XFORMERS,
     constraints=[_check_attn_mask_or_causal, _check_device, _check_shape],
 )
 def _xformers_attention(

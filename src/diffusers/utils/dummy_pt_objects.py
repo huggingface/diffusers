@@ -85,7 +85,7 @@ class AsymmetricAutoencoderKL(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class AttentionProvider(metaclass=DummyObject):
+class AttentionBackendName(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -1165,8 +1165,8 @@ class WanTransformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-def attention_provider(*args, **kwargs):
-    requires_backends(attention_provider, ["torch"])
+def attention_backend(*args, **kwargs):
+    requires_backends(attention_backend, ["torch"])
 
 
 def get_constant_schedule(*args, **kwargs):
