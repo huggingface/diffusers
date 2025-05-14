@@ -31,23 +31,19 @@ class BaseState:
         )
 
 
-class ContextAwareState(BaseState):
-    def __init__(self, init_args=None, init_kwargs=None):
-        super().__init__()
-
+class StateManager:
+    def __init__(self, state_cls: BaseState, init_args=None, init_kwargs=None):
+        self._state_cls = state_cls
         self._init_args = init_args if init_args is not None else ()
         self._init_kwargs = init_kwargs if init_kwargs is not None else {}
-        self._current_context = None
         self._state_cache = {}
+        self._current_context = None
 
-    def get_state(self) -> "ContextAwareState":
+    def get_state(self):
         if self._current_context is None:
-            # If no context is set, simply return a dummy object since we're not going to be using it
-            return self
+            raise ValueError("No context is set. Please set a context before retrieving the state.")
         if self._current_context not in self._state_cache.keys():
-            self._state_cache[self._current_context] = ContextAwareState._create_state(
-                self.__class__, self._init_args, self._init_kwargs
-            )
+            self._state_cache[self._current_context] = self._state_cls(*self._init_args, **self._init_kwargs)
         return self._state_cache[self._current_context]
 
     def set_context(self, name: str) -> None:
@@ -58,30 +54,6 @@ class ContextAwareState(BaseState):
             state.reset(*args, **kwargs)
             self._state_cache.pop(name)
         self._current_context = None
-
-    @staticmethod
-    def _create_state(cls, init_args, init_kwargs) -> "ContextAwareState":
-        return cls(*init_args, **init_kwargs)
-
-    def __getattribute__(self, name):
-        # fmt: off
-        direct_attrs = ("get_state", "set_context", "reset", "_init_args", "_init_kwargs", "_current_context", "_state_cache", "_create_state")
-        # fmt: on
-        if name in direct_attrs or _is_dunder_method(name):
-            return object.__getattribute__(self, name)
-        else:
-            current_state = ContextAwareState.get_state(self)
-            return object.__getattribute__(current_state, name)
-
-    def __setattr__(self, name, value):
-        # fmt: off
-        direct_attrs = ("get_state", "set_context", "reset", "_init_args", "_init_kwargs", "_current_context", "_state_cache", "_create_state")
-        # fmt: on
-        if name in direct_attrs or _is_dunder_method(name):
-            object.__setattr__(self, name, value)
-        else:
-            current_state = ContextAwareState.get_state(self)
-            object.__setattr__(current_state, name, value)
 
 
 class ModelHook:
@@ -161,10 +133,10 @@ class ModelHook:
         return module
 
     def _set_context(self, module: torch.nn.Module, name: str) -> None:
-        # Iterate over all attributes of the hook to see if any of them have the type `ContextAwareState`. If so, call `set_context` on them.
+        # Iterate over all attributes of the hook to see if any of them have the type `StateManager`. If so, call `set_context` on them.
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
-            if isinstance(attr, ContextAwareState):
+            if isinstance(attr, StateManager):
                 attr.set_context(name)
         return module
 
