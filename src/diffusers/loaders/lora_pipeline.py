@@ -43,6 +43,7 @@ from .lora_conversion_utils import (
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
+    _convert_non_diffusers_hidream_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
     _convert_non_diffusers_lumina2_lora_to_diffusers,
     _convert_non_diffusers_wan_lora_to_diffusers,
@@ -2103,7 +2104,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix = prefix or cls.transformer_name
         for key in list(state_dict.keys()):
             if key.split(".")[0] == prefix:
-                state_dict[key[len(f"{prefix}.") :]] = state_dict.pop(key)
+                state_dict[key.removeprefix(f"{prefix}.")] = state_dict.pop(key)
 
         # Find invalid keys
         transformer_state_dict = transformer.state_dict()
@@ -2413,7 +2414,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     ) -> bool:
         """
         Control LoRA expands the shape of the input layer from (3072, 64) to (3072, 128). This method handles that and
-        generalizes things a bit so that any parameter that needs expansion receives appropriate treatement.
+        generalizes things a bit so that any parameter that needs expansion receives appropriate treatment.
         """
         state_dict = {}
         if lora_state_dict is not None:
@@ -2425,7 +2426,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix = prefix or cls.transformer_name
         for key in list(state_dict.keys()):
             if key.split(".")[0] == prefix:
-                state_dict[key[len(f"{prefix}.") :]] = state_dict.pop(key)
+                state_dict[key.removeprefix(f"{prefix}.")] = state_dict.pop(key)
 
         # Expand transformer parameter shapes if they don't match lora
         has_param_with_shape_update = False
@@ -5371,7 +5372,6 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -5464,6 +5464,10 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_non_diffusers_format = any("diffusion_model" in k for k in state_dict)
+        if is_non_diffusers_format:
+            state_dict = _convert_non_diffusers_hidream_lora_to_diffusers(state_dict)
 
         return state_dict
 

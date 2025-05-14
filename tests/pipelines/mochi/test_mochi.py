@@ -27,8 +27,8 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     nightly,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
-    require_torch_gpu,
+    require_big_accelerator,
+    require_torch_accelerator,
     torch_device,
 )
 
@@ -268,9 +268,9 @@ class MochiPipelineFastTests(
 
 
 @nightly
-@require_torch_gpu
-@require_big_gpu_with_torch_cuda
-@pytest.mark.big_gpu_with_torch_cuda
+@require_torch_accelerator
+@require_big_accelerator
+@pytest.mark.big_accelerator
 class MochiPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
@@ -304,5 +304,5 @@ class MochiPipelineIntegrationTests(unittest.TestCase):
         video = videos[0]
         expected_video = torch.randn(1, 19, 480, 848, 3).numpy()
 
-        max_diff = numpy_cosine_similarity_distance(video, expected_video)
+        max_diff = numpy_cosine_similarity_distance(video.cpu(), expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video}"

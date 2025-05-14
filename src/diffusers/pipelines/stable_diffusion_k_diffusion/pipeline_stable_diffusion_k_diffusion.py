@@ -123,7 +123,7 @@ class StableDiffusionKDiffusionPipeline(
         super().__init__()
 
         logger.info(
-            f"{self.__class__} is an experimntal pipeline and is likely to change in the future. We recommend to use"
+            f"{self.__class__} is an experimental pipeline and is likely to change in the future. We recommend to use"
             " this pipeline for fast experimentation / iteration if needed, but advice to rely on existing pipelines"
             " as defined in https://huggingface.co/docs/diffusers/api/schedulers#implemented-schedulers for"
             " production settings."

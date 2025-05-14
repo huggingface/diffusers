@@ -727,8 +727,25 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             elif k.startswith("lora_te1_"):
                 has_te_keys = True
                 continue
+            elif k.startswith("lora_transformer_context_embedder"):
+                diffusers_key = "context_embedder"
+            elif k.startswith("lora_transformer_norm_out_linear"):
+                diffusers_key = "norm_out.linear"
+            elif k.startswith("lora_transformer_proj_out"):
+                diffusers_key = "proj_out"
+            elif k.startswith("lora_transformer_x_embedder"):
+                diffusers_key = "x_embedder"
+            elif k.startswith("lora_transformer_time_text_embed_guidance_embedder_linear_"):
+                i = int(k.split("lora_transformer_time_text_embed_guidance_embedder_linear_")[-1])
+                diffusers_key = f"time_text_embed.guidance_embedder.linear_{i}"
+            elif k.startswith("lora_transformer_time_text_embed_text_embedder_linear_"):
+                i = int(k.split("lora_transformer_time_text_embed_text_embedder_linear_")[-1])
+                diffusers_key = f"time_text_embed.text_embedder.linear_{i}"
+            elif k.startswith("lora_transformer_time_text_embed_timestep_embedder_linear_"):
+                i = int(k.split("lora_transformer_time_text_embed_timestep_embedder_linear_")[-1])
+                diffusers_key = f"time_text_embed.timestep_embedder.linear_{i}"
             else:
-                raise NotImplementedError
+                raise NotImplementedError(f"Handling for key ({k}) is not implemented.")
 
             if "attn_" in k:
                 if "_to_out_0" in k:
@@ -819,7 +836,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_pe:
                 logger.info(
                     "The `position_embedding` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
 
             else:
@@ -835,7 +852,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_t5:
                 logger.info(
                     "The `t5xxl` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -850,7 +867,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_diff_b:
                 logger.info(
                     "The `diff_b` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -866,7 +883,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_diff:
                 logger.info(
                     "The `diff` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -1237,7 +1254,7 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
             f"double_blocks.{i}.txt_attn.norm.key_norm.scale"
         )
 
-    # single transfomer blocks
+    # single transformer blocks
     for i in range(num_single_layers):
         block_prefix = f"single_transformer_blocks.{i}."
 
@@ -1686,4 +1703,12 @@ def _convert_musubi_wan_lora_to_diffusers(state_dict):
     for key in list(converted_state_dict.keys()):
         converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
 
+    return converted_state_dict
+
+
+def _convert_non_diffusers_hidream_lora_to_diffusers(state_dict, non_diffusers_prefix="diffusion_model"):
+    if not all(k.startswith(non_diffusers_prefix) for k in state_dict):
+        raise ValueError("Invalid LoRA state dict for HiDream.")
+    converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
+    converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
     return converted_state_dict

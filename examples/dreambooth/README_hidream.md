@@ -107,7 +107,7 @@ To better track our training experiments, we're using the following flags in the
 
 Additionally, we welcome you to explore the following CLI arguments:
 
-* `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
+* `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
 * `--rank`: The rank of the LoRA layers. The higher the rank, the more parameters are trained. The default is 16.
 
 We provide several options for optimizing memory optimization:
@@ -117,3 +117,30 @@ We provide several options for optimizing memory optimization:
 * `--use_8bit_adam`: When enabled, we will use the 8bit version of AdamW provided by the `bitsandbytes` library.
 
 Refer to the [official documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/) of the `HiDreamImagePipeline` to know more about the model.
+
+## Using quantization
+
+You can quantize the base model with [`bitsandbytes`](https://huggingface.co/docs/bitsandbytes/index) to reduce memory usage. To do so, pass a JSON file path to `--bnb_quantization_config_path`. This file should hold the configuration to initialize `BitsAndBytesConfig`. Below is an example JSON file:
+
+```json
+{
+    "load_in_4bit": true,
+    "bnb_4bit_quant_type": "nf4"
+}
+```
+
+Below, we provide some numbers with and without the use of NF4 quantization when training:
+
+```
+(with quantization)
+Memory (before device placement): 9.085089683532715 GB.
+Memory (after device placement): 34.59585428237915 GB.
+Memory (after backward): 36.90267467498779 GB.
+
+(without quantization)
+Memory (before device placement): 0.0 GB.
+Memory (after device placement): 57.6400408744812 GB.
+Memory (after backward): 59.932212829589844 GB.
+```
+
+The reason why we see some memory before device placement in the case of quantization is because, by default bnb quantized models are placed on the GPU first.

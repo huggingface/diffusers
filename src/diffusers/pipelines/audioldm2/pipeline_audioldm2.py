@@ -40,6 +40,7 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
+from ...utils.import_utils import is_transformers_version
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
@@ -312,8 +313,19 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             `inputs_embeds (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence of generated hidden-states.
         """
+        cache_position_kwargs = {}
+        if is_transformers_version("<", "4.52.0.dev0"):
+            cache_position_kwargs["input_ids"] = inputs_embeds
+            cache_position_kwargs["model_kwargs"] = model_kwargs
+        else:
+            cache_position_kwargs["seq_length"] = inputs_embeds.shape[0]
+            cache_position_kwargs["device"] = (
+                self.language_model.device if getattr(self, "language_model", None) is not None else self.device
+            )
+            cache_position_kwargs["model_kwargs"] = model_kwargs
         max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
-        model_kwargs = self.language_model._get_initial_cache_position(inputs_embeds, model_kwargs)
+        model_kwargs = self.language_model._get_initial_cache_position(**cache_position_kwargs)
+
         for _ in range(max_new_tokens):
             # prepare model inputs
             model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
@@ -373,7 +385,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 *e.g.* prompt weighting. If not provided, negative_prompt_embeds will be computed from
                 `negative_prompt` input argument.
             generated_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings from the GPT2 langauge model. Can be used to easily tweak text inputs,
+                Pre-generated text embeddings from the GPT2 language model. Can be used to easily tweak text inputs,
                  *e.g.* prompt weighting. If not provided, text embeddings will be generated from `prompt` input
                  argument.
             negative_generated_prompt_embeds (`torch.Tensor`, *optional*):
@@ -394,7 +406,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             attention_mask (`torch.LongTensor`):
                 Attention mask to be applied to the `prompt_embeds`.
             generated_prompt_embeds (`torch.Tensor`):
-                Text embeddings generated from the GPT2 langauge model.
+                Text embeddings generated from the GPT2 language model.
 
         Example:
 
@@ -904,7 +916,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             generated_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings from the GPT2 langauge model. Can be used to easily tweak text inputs,
+                Pre-generated text embeddings from the GPT2 language model. Can be used to easily tweak text inputs,
                  *e.g.* prompt weighting. If not provided, text embeddings will be generated from `prompt` input
                  argument.
             negative_generated_prompt_embeds (`torch.Tensor`, *optional*):
