@@ -24,7 +24,7 @@ else:
     _import_structure["modular_pipeline_presets"] = ["StableDiffusionXLAutoPipeline"]
     _import_structure["modular_loader"] = ["StableDiffusionXLModularLoader"]
     _import_structure["encoders"] = ["StableDiffusionXLAutoIPAdapterStep", "StableDiffusionXLTextEncoderStep", "StableDiffusionXLAutoVaeEncoderStep"]
-    _import_structure["after_denoise"] = ["StableDiffusionXLAutoDecodeStep"]
+    _import_structure["decoders"] = ["StableDiffusionXLAutoDecodeStep"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -36,7 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipeline_presets import StableDiffusionXLAutoPipeline
         from .modular_loader import StableDiffusionXLModularLoader
         from .encoders import StableDiffusionXLAutoIPAdapterStep, StableDiffusionXLTextEncoderStep, StableDiffusionXLAutoVaeEncoderStep
-        from .after_denoise import StableDiffusionXLAutoDecodeStep
+        from .decoders import StableDiffusionXLAutoDecodeStep
 else:
     import sys
 

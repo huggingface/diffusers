@@ -18,7 +18,7 @@ from ..modular_pipeline import SequentialPipelineBlocks
 
 from .denoise import StableDiffusionXLAutoDenoiseStep
 from .before_denoise import StableDiffusionXLAutoBeforeDenoiseStep
-from .after_denoise import StableDiffusionXLAutoDecodeStep
+from .decoders import StableDiffusionXLAutoDecodeStep
 from .encoders import StableDiffusionXLTextEncoderStep, StableDiffusionXLAutoIPAdapterStep, StableDiffusionXLAutoVaeEncoderStep
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -26,7 +26,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class StableDiffusionXLAutoPipeline(SequentialPipelineBlocks):
     block_classes = [StableDiffusionXLTextEncoderStep, StableDiffusionXLAutoIPAdapterStep, StableDiffusionXLAutoVaeEncoderStep, StableDiffusionXLAutoBeforeDenoiseStep, StableDiffusionXLAutoDenoiseStep, StableDiffusionXLAutoDecodeStep]
-    block_names = ["text_encoder", "ip_adapter", "image_encoder", "before_denoise", "denoise", "after_denoise"]
+    block_names = ["text_encoder", "ip_adapter", "image_encoder", "before_denoise", "denoise", "decoder"]
 
     @property
     def description(self):
