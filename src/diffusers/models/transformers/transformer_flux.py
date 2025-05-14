@@ -34,6 +34,7 @@ from ..attention_processor import (
 )
 from ..cache_utils import CacheMixin
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
+from ..metadata import TransformerBlockMetadata, TransformerBlockRegistry
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
@@ -43,6 +44,12 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @maybe_allow_in_graph
+@TransformerBlockRegistry.register(
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=1,
+        return_encoder_hidden_states_index=0,
+    )
+)
 class FluxSingleTransformerBlock(nn.Module):
     def __init__(self, dim: int, num_attention_heads: int, attention_head_dim: int, mlp_ratio: float = 4.0):
         super().__init__()
@@ -109,6 +116,12 @@ class FluxSingleTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
+@TransformerBlockRegistry.register(
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=1,
+        return_encoder_hidden_states_index=0,
+    )
+)
 class FluxTransformerBlock(nn.Module):
     def __init__(
         self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6

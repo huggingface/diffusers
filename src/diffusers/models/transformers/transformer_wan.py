@@ -22,10 +22,12 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
+from ..metadata import TransformerBlockMetadata, TransformerBlockRegistry
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
@@ -219,6 +221,13 @@ class WanRotaryPosEmbed(nn.Module):
         return freqs
 
 
+@maybe_allow_in_graph
+@TransformerBlockRegistry.register(
+    TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=None,
+    )
+)
 class WanTransformerBlock(nn.Module):
     def __init__(
         self,

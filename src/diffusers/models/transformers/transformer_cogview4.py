@@ -21,10 +21,12 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
+from ..metadata import TransformerBlockMetadata, TransformerBlockRegistry
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous
@@ -453,6 +455,13 @@ class CogView4TrainingAttnProcessor:
         return hidden_states, encoder_hidden_states
 
 
+@maybe_allow_in_graph
+@TransformerBlockRegistry.register(
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=1,
+    )
+)
 class CogView4TransformerBlock(nn.Module):
     def __init__(
         self,

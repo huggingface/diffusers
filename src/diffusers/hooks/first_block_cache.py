@@ -17,10 +17,10 @@ from typing import Tuple, Union
 
 import torch
 
+from ..models.metadata import TransformerBlockRegistry
 from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
 from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS
-from ._helpers import TransformerBlockRegistry
 from .hooks import BaseState, HookRegistry, ModelHook, StateManager
 
 
@@ -76,12 +76,7 @@ class FBCHeadBlockHook(ModelHook):
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        outputs_if_skipped = self._metadata.skip_block_output_fn(module, *args, **kwargs)
-
-        if isinstance(outputs_if_skipped, tuple):
-            original_hidden_states = outputs_if_skipped[self._metadata.return_hidden_states_index]
-        else:
-            original_hidden_states = outputs_if_skipped
+        original_hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
 
         output = self.fn_ref.original_forward(*args, **kwargs)
         is_output_tuple = isinstance(output, tuple)
@@ -92,7 +87,7 @@ class FBCHeadBlockHook(ModelHook):
             hidden_states_residual = output - original_hidden_states
 
         shared_state: FBCSharedBlockState = self.state_manager.get_state()
-        hidden_states, encoder_hidden_states = None, None
+        hidden_states = encoder_hidden_states = None
         should_compute = self._should_compute_remaining_blocks(hidden_states_residual)
         shared_state.should_compute = should_compute
 
@@ -159,13 +154,12 @@ class FBCBlockHook(ModelHook):
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        outputs_if_skipped = self._metadata.skip_block_output_fn(module, *args, **kwargs)
-        if not isinstance(outputs_if_skipped, tuple):
-            outputs_if_skipped = (outputs_if_skipped,)
-        original_hidden_states = outputs_if_skipped[self._metadata.return_hidden_states_index]
+        original_hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
         original_encoder_hidden_states = None
         if self._metadata.return_encoder_hidden_states_index is not None:
-            original_encoder_hidden_states = outputs_if_skipped[self._metadata.return_encoder_hidden_states_index]
+            original_encoder_hidden_states = self._metadata._get_parameter_from_args_kwargs(
+                "encoder_hidden_states", args, kwargs
+            )
 
         shared_state = self.state_manager.get_state()
 
@@ -185,13 +179,13 @@ class FBCBlockHook(ModelHook):
                 shared_state.tail_block_residuals = (hidden_states_residual, encoder_hidden_states_residual)
             return output
 
-        output_count = len(outputs_if_skipped)
-        if output_count == 1:
+        if original_encoder_hidden_states is None:
             return_output = original_hidden_states
         else:
-            return_output = [None] * output_count
+            return_output = [None, None]
             return_output[self._metadata.return_hidden_states_index] = original_hidden_states
             return_output[self._metadata.return_encoder_hidden_states_index] = original_encoder_hidden_states
+            return_output = tuple(return_output)
         return return_output
 
 

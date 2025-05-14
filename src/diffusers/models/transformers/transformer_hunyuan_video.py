@@ -33,6 +33,7 @@ from ..embeddings import (
     Timesteps,
     get_1d_rotary_pos_embed,
 )
+from ..metadata import TransformerBlockMetadata, TransformerBlockRegistry
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, FP32LayerNorm
@@ -310,6 +311,12 @@ class HunyuanVideoConditionEmbedding(nn.Module):
         return conditioning, token_replace_emb
 
 
+@TransformerBlockRegistry.register(
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=None,
+    )
+)
 class HunyuanVideoIndividualTokenRefinerBlock(nn.Module):
     def __init__(
         self,
@@ -489,6 +496,12 @@ class HunyuanVideoRotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
+@TransformerBlockRegistry.register(
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=1,
+    )
+)
 class HunyuanVideoSingleTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -565,6 +578,12 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
+@TransformerBlockRegistry.register(
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=1,
+    )
+)
 class HunyuanVideoTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -644,6 +663,12 @@ class HunyuanVideoTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
+@TransformerBlockRegistry.register(
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=1,
+    )
+)
 class HunyuanVideoTokenReplaceSingleTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -724,6 +749,12 @@ class HunyuanVideoTokenReplaceSingleTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
+@TransformerBlockRegistry.register(
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=1,
+    )
+)
 class HunyuanVideoTokenReplaceTransformerBlock(nn.Module):
     def __init__(
         self,
