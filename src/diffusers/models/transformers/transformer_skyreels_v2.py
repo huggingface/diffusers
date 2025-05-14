@@ -33,7 +33,7 @@ from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
 
 
-logger = logging.get_logger(__name__)
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 flex_attention = torch.compile(flex_attention, dynamic=False, mode="max-autotune")
 
@@ -57,8 +57,8 @@ class SkyReelsV2AttnProcessor2_0:
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
-            # image_context_length is hardcoded for now like in the original code
-            image_context_length = 257
+            # 512 is the context length of the text encoder, hardcoded for now
+            image_context_length = encoder_hidden_states.shape[1] - 512
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
             encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
         if encoder_hidden_states is None:
