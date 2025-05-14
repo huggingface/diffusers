@@ -470,9 +470,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 nn.Linear(inner_dim, inner_dim), nn.SiLU(), nn.Linear(inner_dim, inner_dim * 6)
             )
 
-        # TODO: Say: Initializing suggested by the original repo?
-        # self.init_weights()
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -766,43 +763,3 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                     self.coefficients = [-5784.54975374, 5449.50911966, -1811.16591783, 256.27178429, -13.02252404]
                 self.ret_steps = 1 * 2
                 self.cutoff_steps = num_steps * 2 - 2
-
-    def init_weights(self):
-        r"""
-        Initialize model parameters using Xavier initialization.
-        """
-
-        # basic init
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-
-        # init embeddings
-        nn.init.xavier_uniform_(self.patch_embedding.weight.flatten(1))
-        for m in self.text_embedding.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, std=0.02)
-        for m in self.time_embedding.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, std=0.02)
-
-        if self.inject_sample_info:
-            nn.init.normal_(self.fps_embedding.weight, std=0.02)
-
-            for m in self.fps_projection.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.normal_(m.weight, std=0.02)
-
-            nn.init.zeros_(self.fps_projection[-1].weight)
-            nn.init.zeros_(self.fps_projection[-1].bias)
-
-        # init output layer
-        nn.init.zeros_(self.head.head.weight)
-
-    def zero_init_i2v_cross_attn(self):
-        print("zero init i2v cross attn")
-        for i in range(self.num_layers):
-            self.blocks[i].cross_attn.v_img.weight.data.zero_()
-            self.blocks[i].cross_attn.v_img.bias.data.zero_()
