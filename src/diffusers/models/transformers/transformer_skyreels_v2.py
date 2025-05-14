@@ -17,7 +17,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch.amp as amp
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import BlockMask, create_block_mask, flex_attention
@@ -333,26 +332,6 @@ class SkyReelsV2TransformerBlock(nn.Module):
         self.attn1.processor.set_ar_attention()
 
 
-class Head(nn.Module):
-    def forward(self, x, e):
-        r"""
-        Args:
-            x(Tensor): Shape [B, L1, C]
-            e(Tensor): Shape [B, C]
-        """
-        with amp.autocast("cuda", dtype=torch.float32):
-            if e.dim() == 2:
-                modulation = self.modulation  # 1, 2, dim
-                e = (modulation + e.unsqueeze(1)).chunk(2, dim=1)
-
-            elif e.dim() == 3:
-                modulation = self.modulation.unsqueeze(2)  # 1, 2, seq, dim
-                e = (modulation + e.unsqueeze(1)).chunk(2, dim=1)
-                e = [ei.squeeze(1) for ei in e]
-            x = self.head(self.norm(x) * (1 + e[1]) + e[0])
-        return x
-
-
 class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
     A Transformer model for video-like data used in the Wan-based SkyReels-V2 model.
@@ -654,7 +633,11 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask)
 
         # 5. Output norm, projection & unpatchify
-        shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+        if temb.dim() == 2:
+            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+        elif temb.dim() == 3:
+            shift, scale = (self.scale_shift_table.unsqueeze(2) + temb.unsqueeze(1)).chunk(2, dim=1)
+            shift, scale = shift.squeeze(1), scale.squeeze(1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the

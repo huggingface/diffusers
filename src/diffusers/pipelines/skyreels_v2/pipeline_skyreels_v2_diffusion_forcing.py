@@ -19,7 +19,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import ftfy
 import numpy as np
 import torch
-from tqdm import tqdm
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
