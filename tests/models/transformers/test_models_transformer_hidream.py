@@ -23,13 +23,13 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
 
 
-class HiDreamTransformerTests(ModelTesterMixin, unittest.TestCase):
+class HiDreamTransformerTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
     model_class = HiDreamImageTransformer2DModel
     main_input_name = "hidden_states"
     model_split_percents = [0.8, 0.8, 0.9]
