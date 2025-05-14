@@ -104,7 +104,7 @@ class SkyReelsV2AttnProcessor2_0:
             hidden_states_img = hidden_states_img.type_as(query)
 
         if self._flag_ar_attention:
-            is_self_attention = encoder_hidden_states == hidden_states
+            is_self_attention = encoder_hidden_states is hidden_states
             hidden_states = F.scaled_dot_product_attention(
                 query.to(torch.bfloat16) if is_self_attention else query,
                 key.to(torch.bfloat16) if is_self_attention else key,
