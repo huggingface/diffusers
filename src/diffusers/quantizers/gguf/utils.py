@@ -427,7 +427,6 @@ class GGUFParameter(torch.nn.Parameter):
 
         result = super().__torch_function__(func, types, args, kwargs)
 
-
         if isinstance(result, torch.Tensor):
             quant_type = cls._extract_quant_type(args)
             return cls(result, quant_type=quant_type)
