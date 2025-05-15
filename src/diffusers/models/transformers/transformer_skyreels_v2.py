@@ -15,7 +15,6 @@
 import math
 from typing import Any, Dict, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -406,7 +405,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
-
 
         # 1. Patch & position embedding
         self.rope = SkyReelsV2RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
