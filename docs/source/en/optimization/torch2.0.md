@@ -83,8 +83,8 @@ For more information and different options about `torch.compile`, refer to the [
 Compiling the whole model usually has a big problem space for optimization. Models are often composed of multiple repeated blocks. [Regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html) compiles the repeated block first (a transformer encoder block, for example), so that the Torch compiler would re-use its cached/optimized generated code for the other blocks, reducing (often massively) the cold start compilation time observed on the first inference call.
 
 Enabling regional compilation might require simple yet intrusive changes to the
-modeling code. However, 🤗 Accelerate provides a utility [`compile_regions()`](https://huggingface.co/docs/accelerate/main/en/usage_guides/compilation#how-to-use-regional-compilation) which automatically _only_ compiles
-the repeated blocks of the provided `nn.Module`.
+modeling code. However, 🤗 Accelerate provides a utility [`compile_regions()`](https://huggingface.co/docs/accelerate/main/en/usage_guides/compilation#how-to-use-regional-compilation) which automatically compiles
+the repeated blocks of the provided `nn.Module` along with other parts of it that are non-repeating. This helps with not only just cold start time but also the inference latency.
 
 ```py
 # Make sure you're on the latest `accelerate`: `pip install -U accelerate`.
@@ -93,8 +93,7 @@ from accelerate.utils import compile_regions
 pipe.unet = compile_regions(pipe.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-As you may have noticed `compile_regions()` takes the same arguments as `torch.compile()`, allowing
-flexibility.
+As you may have noticed `compile_regions()` takes the same arguments as `torch.compile()`, allowing flexibility.
 
 ## Benchmark
 
