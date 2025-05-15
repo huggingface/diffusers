@@ -1580,10 +1580,10 @@ class ModelTesterMixin:
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading3, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5))
 
-    @parameterized.expand([(False, torch.float16, torch.float32), (True, torch.float16, torch.float32)])
+    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
     @require_torch_accelerator
     @torch.no_grad()
-    def test_group_offloading_with_layerwise_casting(self, record_stream, storage_dtype, compute_dtype):
+    def test_group_offloading_with_layerwise_casting(self, record_stream, offload_type):
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
@@ -1597,26 +1597,15 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        storage_dtype, compute_dtype = torch.float16, torch.float32
         inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
         model = self.model_class(**init_dict)
         model.eval()
-        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1)
-        model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
-        _ = model(**inputs_dict)[0]
-
-        torch.manual_seed(0)
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
-        model = self.model_class(**init_dict)
-        model.eval()
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
         model.enable_group_offload(
-            torch_device,
-            offload_type="block_level",
-            num_blocks_per_group=1,
-            use_stream=True,
-            non_blocking=True,
-            record_stream=record_stream,
+            torch_device, offload_type=offload_type, use_stream=True, record_stream=record_stream, **additional_kwargs
         )
+        model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
         _ = model(**inputs_dict)[0]
 
     def test_auto_model(self, expected_max_diff=5e-5):
