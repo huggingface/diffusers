@@ -464,13 +464,13 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: int = 512, # TODO: check
-        overlap_history: Optional[int] = None,
-        shift: float = 1.0,
-        addnoise_condition: float = 0.0,
+        max_sequence_length: int = 512,
+        overlap_history: Optional[int] = 17,
+        shift: float = 1.0,  # TODO: check this
+        addnoise_condition: float = 20.0,
         base_num_frames: int = 97,
         ar_step: int = 5,
-        causal_block_size: Optional[int] = None,
+        causal_block_size: Optional[int] = 5,
         fps: int = 24,
     ):
         r"""
@@ -534,17 +534,16 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
             shift (`float`, *optional*, defaults to `1.0`):
-
-            overlap_history (`int`, *optional*):
-
-            addnoise_condition (`float`, *optional*, defaults to `0.0`):
-
+            overlap_history (`int`, *optional*, defaults to `17`):
+                Number of frames to overlap for smooth transitions in long videos
+            addnoise_condition (`float`, *optional*, defaults to `20`):
+                Improves consistency in long video generation
             base_num_frames (`int`, *optional*, defaults to `97`):
-
+                97 or 121 | Base frame count (**97 for 540P**, **121 for 720P**)
             ar_step (`int`, *optional*, defaults to `5`):
-                The step of the autoregressive steps.
-            causal_block_size (`int`, *optional*):
-
+                Controls asynchronous inference (0 for synchronous mode)
+            causal_block_size (`int`, *optional*, defaults to `5`):
+                Recommended when using asynchronous inference (--ar_step > 0)
             fps (`int`, *optional*, defaults to `24`):
 
         Examples:
