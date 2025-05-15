@@ -575,6 +575,8 @@
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
+    - local: api/pipelines/visualcloze
+      title: VisualCloze
     - local: api/pipelines/wan
       title: Wan
     - local: api/pipelines/wuerstchen
