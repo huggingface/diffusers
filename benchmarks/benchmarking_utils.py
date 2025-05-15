@@ -11,7 +11,7 @@ def benchmark_fn(f, *args, **kwargs):
     t0 = benchmark.Timer(
         stmt="f(*args, **kwargs)",
         globals={"args": args, "kwargs": kwargs, "f": f},
-        num_threads=torch.get_num_threads(),
+        num_threads=1,
     )
     return f"{(t0.blocked_autorange().mean):.3f}"
 
@@ -53,10 +53,6 @@ class BenchmarkMixin:
         model = self.initialize_model()  # Takes care of device placement.
         input_dict = self.get_input_dict()  # Takes care of device placement.
 
-        # warmup
-        for _ in range(5):
-            _ = model(**input_dict)
-
         time = benchmark_fn(lambda model, input_dict: model(**input_dict), model, input_dict)
         memory = torch.cuda.max_memory_allocated() / (1024**3)
         memory = float(f"{memory:.2f}")
@@ -69,9 +65,9 @@ class BenchmarkMixin:
         compile_stats = None
         if self.compile_kwargs is not None:
             model = self.initialize_model()
-            with torch._inductor.utils.fresh_inductor_cache():
-                model.compile(**self.compile_kwargs)
-                time = benchmark_fn(lambda model, input_dict: model(**input_dict), model, input_dict)
+            input_dict = self.get_input_dict()
+            model.compile(**self.compile_kwargs)
+            time = benchmark_fn(lambda model, input_dict: model(**input_dict), model, input_dict)
             memory = torch.cuda.max_memory_allocated() / (1024**3)
             memory = float(f"{memory:.2f}")
             compile_stats = {"time": time, "memory": memory}

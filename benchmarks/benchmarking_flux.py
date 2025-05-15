@@ -7,7 +7,7 @@ from diffusers.utils.testing_utils import torch_device
 
 class BenchmarkFlux(BenchmarkMixin):
     model_class = FluxTransformer2DModel
-    compile_kwargs = {"fullgraph": True, "mode": "max-autotune"}
+    compile_kwargs = {"fullgraph": True}
 
     def get_model_init_dict(self):
         return {
@@ -29,8 +29,8 @@ class BenchmarkFlux(BenchmarkMixin):
         pooled_prompt_embeds = torch.randn(1, 768, device=torch_device, dtype=torch.bfloat16)
         image_ids = torch.ones(512, 3, device=torch_device, dtype=torch.bfloat16)
         text_ids = torch.ones(4096, 3, device=torch_device, dtype=torch.bfloat16)
-        timestep = torch.tensor([1.0], device=torch_device)
-        guidance = torch.tensor([1.0], device=torch_device)
+        timestep = torch.tensor([1.0], device=torch_device, dtype=torch.bfloat16)
+        guidance = torch.tensor([1.0], device=torch_device, dtype=torch.bfloat16)
 
         return {
             "hidden_states": hidden_states,
