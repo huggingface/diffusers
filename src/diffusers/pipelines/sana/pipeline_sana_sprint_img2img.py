@@ -631,6 +631,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             pass
         else:
             image = self.image_processor.preprocess(image, height=height, width=width)
+            image = image.to(device=device, dtype=self.vae.dtype)
 
         if image.shape[1] != num_channels_latents:
             image = self.vae.encode(image).latent
