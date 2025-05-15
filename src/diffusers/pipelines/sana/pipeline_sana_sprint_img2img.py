@@ -633,7 +633,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             )
 
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self.scheduler.scale_noise(image_latents, timestep, noise)
+        latents = self.scheduler.add_noise(image_latents, timestep, noise)
         return latents
 
     @property
