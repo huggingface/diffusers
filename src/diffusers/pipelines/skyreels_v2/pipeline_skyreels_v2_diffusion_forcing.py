@@ -18,7 +18,9 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
 import numpy as np
+import math
 import torch
+from copy import deepcopy
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -360,7 +362,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             infer_step_num = len(step_template)
             gen_block = base_num_frames_block
             min_ar_step = infer_step_num / gen_block
-            assert ar_step >= min_ar_step, f"ar_step should be at least {math.ceil(min_ar_step)} in your setting"
+            if ar_step < min_ar_step:
+                raise ValueError(f"ar_step should be at least {math.ceil(min_ar_step)} in your setting")
         # print(num_frames, step_template, base_num_frames, ar_step, num_pre_ready, casual_block_size, num_frames_block, base_num_frames_block)
         step_template = torch.cat(
             [
@@ -608,7 +611,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
         timesteps = self.scheduler.timesteps
 
         prefix_video = None
@@ -640,14 +642,18 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latent_length, timesteps, base_num_frames, ar_step, predix_video_latent_length, causal_block_size
             )
 
-            sample_schedulers = []
-            for _ in range(latent_length):
-                sample_scheduler = FlowMatchUniPCMultistepScheduler(
-                    num_train_timesteps=1000, shift=1, use_dynamic_shifting=False
-                )
+            # Prepare sample schedulers
+            self.scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device, shift=shift)
+            sample_schedulers = [self.scheduler]
+            for _ in range(latent_length - 1):
+                sample_scheduler = deepcopy(self.scheduler)
                 sample_scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
             sample_schedulers_counter = [0] * latent_length
+
+            # 6. Denoising loop
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            self._num_timesteps = len(timesteps)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, timestep_i in enumerate(step_matrix):
@@ -670,25 +676,16 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             * noise_factor
                         )
                         timestep[:, valid_interval_start:predix_video_latent_length] = timestep_for_noised_condition
-                    if not self.do_classifier_free_guidance:
-                        noise_pred = self.transformer(
-                            hidden_states=latent_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=prompt_embeds,
-                            fps=fps_embeds,
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0]
-                    else:
-                        noise_pred_cond = self.transformer(
-                            hidden_states=latent_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=prompt_embeds,
-                            fps=fps_embeds,
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0]
-                        noise_pred_uncond = self.transformer(
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        fps=fps_embeds,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )[0]
+                    if self.do_classifier_free_guidance:
+                        noise_uncond = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=negative_prompt_embeds,
@@ -696,7 +693,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
+
                     for idx in range(valid_interval_start, valid_interval_end):
                         if update_mask_i[idx].item():
                             latents[:, idx] = sample_schedulers[idx].step(
@@ -707,6 +705,24 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 generator=generator,
                             )[0]
                             sample_schedulers_counter[idx] += 1
+
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {}
+                        for k in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[k] = locals()[k]
+                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                        latents = callback_outputs.pop("latents", latents)
+                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
+                    # call the callback, if provided
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
+
+                    if XLA_AVAILABLE:
+                        xm.mark_step()
+
                 x0 = latents.unsqueeze(0)
                 videos = self.vae.decode(x0)
                 videos = (videos / 2 + 0.5).clamp(0, 1)
@@ -731,7 +747,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     finished_frame_num = i * (base_num_frames - overlap_history_frames) + overlap_history_frames
                     left_frame_num = latent_length - finished_frame_num
                     base_num_frames_iter = min(left_frame_num + overlap_history_frames, base_num_frames)
-                    if ar_step > 0 and self.transformer.enable_teacache:
+                    if ar_step > 0:
                         num_steps = num_inference_steps + ((base_num_frames_iter - overlap_history_frames) // causal_block_size - 1) * ar_step
                         self.transformer.num_steps = num_steps
                 else:  # i == 0
@@ -758,14 +774,18 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     causal_block_size,
                 )
 
-                sample_schedulers = []
-                for _ in range(base_num_frames_iter):
-                    sample_scheduler = FlowMatchUniPCMultistepScheduler(
-                        num_train_timesteps=1000, shift=1, use_dynamic_shifting=False
-                    )
+                # Prepare sample schedulers
+                self.scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device, shift=shift)
+                sample_schedulers = [self.scheduler]
+                for _ in range(base_num_frames_iter - 1):
+                    sample_scheduler = deepcopy(self.scheduler)
                     sample_scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device, shift=shift)
                     sample_schedulers.append(sample_scheduler)
                 sample_schedulers_counter = [0] * base_num_frames_iter
+
+                # 6. Denoising loop
+                num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+                self._num_timesteps = len(timesteps)
 
                 with self.progress_bar(total=num_inference_steps) as progress_bar:
                     for i, timestep_i in enumerate(step_matrix):
@@ -790,25 +810,17 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 * noise_factor
                             )
                             timestep[:, valid_interval_start:predix_video_latent_length] = timestep_for_noised_condition
-                        if not self.do_classifier_free_guidance:
-                            noise_pred = self.transformer(
-                                hidden_states=latent_model_input,
-                                timestep=timestep,
-                                encoder_hidden_states=prompt_embeds,
-                                fps=fps_embeds,
-                                attention_kwargs=attention_kwargs,
-                                return_dict=False,
-                            )[0]
-                        else:
-                            noise_pred_cond = self.transformer(
-                                hidden_states=latent_model_input,
-                                timestep=timestep,
-                                encoder_hidden_states=prompt_embeds,
-                                fps=fps_embeds,
-                                attention_kwargs=attention_kwargs,
-                                return_dict=False,
-                            )[0]
-                            noise_pred_uncond = self.transformer(
+
+                        noise_pred = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=prompt_embeds,
+                            fps=fps_embeds,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                        if self.do_classifier_free_guidance:
+                            noise_uncond = self.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
                                 encoder_hidden_states=negative_prompt_embeds,
@@ -816,7 +828,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]
-                            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                            noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
                         for idx in range(valid_interval_start, valid_interval_end):
                             if update_mask_i[idx].item():
                                 latents[:, idx] = sample_schedulers[idx].step(
@@ -827,6 +839,24 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                     generator=generator,
                                 )[0]
                                 sample_schedulers_counter[idx] += 1
+
+                        if callback_on_step_end is not None:
+                            callback_kwargs = {}
+                            for k in callback_on_step_end_tensor_inputs:
+                                callback_kwargs[k] = locals()[k]
+                            callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                            latents = callback_outputs.pop("latents", latents)
+                            prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                            negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
+                        # call the callback, if provided
+                        if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                            progress_bar.update()
+
+                        if XLA_AVAILABLE:
+                            xm.mark_step()
+
                     x0 = latents.unsqueeze(0)
                     videos = [self.vae.decode(x0)[0]]
                     if output_video is None:
@@ -839,6 +869,24 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 output_video = [video for video in output_video]
                 output_video = [video.permute(1, 2, 3, 0) * 255 for video in output_video]
                 video = [video.cpu().numpy().astype(np.uint8) for video in output_video]
+
+        self._current_timestep = None
+
+        if not output_type == "latent":
+            latents = latents.to(self.vae.dtype)
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                latents.device, latents.dtype
+            )
+            latents = latents / latents_std + latents_mean
+            video = self.vae.decode(latents, return_dict=False)[0]
+            video = self.video_processor.postprocess_video(video, output_type=output_type)
+        else:
+            video = latents
 
         # Offload all models
         self.maybe_free_model_hooks()
