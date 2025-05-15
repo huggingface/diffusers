@@ -399,14 +399,14 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
         inject_sample_info: bool = False,
+        num_frame_per_block: int = 1,
+        flag_causal_attention: bool = False,
     ) -> None:
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
 
-        self.num_frame_per_block = 1
-        self.flag_causal_attention = False
 
         # 1. Patch & position embedding
         self.rope = SkyReelsV2RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
@@ -427,7 +427,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         self.blocks = nn.ModuleList(
             [
                 SkyReelsV2TransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim=inner_dim
+                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
                 )
                 for _ in range(num_layers)
             ]
@@ -482,11 +482,11 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         hidden_states = self.patch_embedding(hidden_states)
         grid_sizes = torch.tensor(hidden_states.shape[2:], dtype=torch.long)
 
-        if self.flag_causal_attention:
+        if self.config.flag_causal_attention:
             frame_num, height, width = grid_sizes
-            block_num = frame_num // self.num_frame_per_block
+            block_num = frame_num // self.config.num_frame_per_block
             range_tensor = torch.arange(block_num, device=hidden_states.device).view(-1, 1)
-            range_tensor = range_tensor.repeat(1, self.num_frame_per_block).flatten()
+            range_tensor = range_tensor.repeat(1, self.config.num_frame_per_block).flatten()
             causal_mask = range_tensor.unsqueeze(0) <= range_tensor.unsqueeze(1)  # f, f
             causal_mask = causal_mask.view(frame_num, 1, 1, frame_num, 1, 1)
             causal_mask = causal_mask.repeat(1, height, width, 1, height, width)
@@ -516,7 +516,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 hidden_states = self._gradient_checkpointing_func(
                     block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask
                 )
-        if self.inject_sample_info:
+        if self.config.inject_sample_info:
             fps = torch.tensor(fps, dtype=torch.long, device=hidden_states.device)
 
             fps_emb = self.fps_embedding(fps).float()
@@ -570,8 +570,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         return Transformer2DModelOutput(sample=output)
 
     def set_ar_attention(self, causal_block_size):
-        self.num_frame_per_block = causal_block_size
-        self.flag_causal_attention = True
+        self.config.num_frame_per_block = causal_block_size
+        self.config.flag_causal_attention = True
         for block in self.blocks:
             block.set_ar_attention()
 
