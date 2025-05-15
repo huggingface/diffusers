@@ -1,7 +1,7 @@
 import gc
 
 import torch
-from torch.utils.benchmark import benchmark
+import torch.utils.benchmark as benchmark
 
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils.testing_utils import require_torch_gpu

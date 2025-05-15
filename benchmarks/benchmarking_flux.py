@@ -1,9 +1,8 @@
 import torch
+from benchmarking_utils import BenchmarkMixin
 
 from diffusers import FluxTransformer2DModel
 from diffusers.utils.testing_utils import torch_device
-
-from .benchmarking_utils import BenchmarkMixin
 
 
 class BenchmarkFlux(BenchmarkMixin):
@@ -11,7 +10,11 @@ class BenchmarkFlux(BenchmarkMixin):
     compile_kwargs = {"fullgraph": True, "mode": "max-autotune"}
 
     def get_model_init_dict(self):
-        return {"ckpt_id": "black-forest-labs/FLUX.1-dev", "subfolder": "transformer", "torch_dtype": torch.bfloat16}
+        return {
+            "pretrained_model_name_or_path": "black-forest-labs/FLUX.1-dev",
+            "subfolder": "transformer",
+            "torch_dtype": torch.bfloat16,
+        }
 
     def initialize_model(self):
         model = self.model_class.from_pretrained(**self.get_model_init_dict())
