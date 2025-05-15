@@ -36,11 +36,11 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from transformers import PreTrainedTokenizerFast, LlamaForCausalLM
-        >>> from diffusers import UniPCMultistepScheduler, HiDreamImagePipeline
+        >>> from transformers import AutoTokenizer, LlamaForCausalLM
+        >>> from diffusers import HiDreamImagePipeline
 
 
-        >>> tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        >>> tokenizer_4 = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
         >>> text_encoder_4 = LlamaForCausalLM.from_pretrained(
         ...     "meta-llama/Meta-Llama-3.1-8B-Instruct",
         ...     output_hidden_states=True,
