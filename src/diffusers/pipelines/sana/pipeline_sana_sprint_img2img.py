@@ -627,8 +627,14 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         )
 
         image = image.to(device=device, dtype=dtype)
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
         if image.shape[1] != num_channels_latents:
-            image_latents = self._encode_vae_image(image=image, generator=generator)
+            image = self.vae.encode(image=image, generator=generator).latent
+            image_latents = image * self.vae.config.scaling_factor
         else:
             image_latents = image
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
