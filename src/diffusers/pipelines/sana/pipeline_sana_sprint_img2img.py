@@ -575,32 +575,15 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             image,
             width,
             height,
-            batch_size,
-            num_images_per_prompt,
             device,
             dtype,
-            do_classifier_free_guidance=False,
-            guess_mode=False,
     ):
         if isinstance(image, torch.Tensor):
             pass
         else:
             image = self.image_processor.preprocess(image, height=height, width=width)
 
-        image_batch_size = image.shape[0]
-
-        if image_batch_size == 1:
-            repeat_by = batch_size
-        else:
-            # image batch size is the same as prompt batch size
-            repeat_by = num_images_per_prompt
-
-        image = image.repeat_interleave(repeat_by, dim=0)
-
         image = image.to(device=device, dtype=dtype)
-
-        if do_classifier_free_guidance and not guess_mode:
-            image = torch.cat([image] * 2)
 
         return image
 
@@ -626,12 +609,6 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             int(width) // self.vae_scale_factor,
         )
 
-        image = image.to(device=device, dtype=dtype)
-        if isinstance(image, torch.Tensor):
-            pass
-        else:
-            image = self.image_processor.preprocess(image, height=height, width=width)
-            image = image.to(device=device, dtype=self.vae.dtype)
 
         if image.shape[1] != num_channels_latents:
             image = self.vae.encode(image).latent
@@ -840,8 +817,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
 
         # 2. Preprocess image
-        init_image = self.image_processor.preprocess(image, height=height, width=width)
-        init_image = init_image.to(dtype=torch.float32)
+        init_image = self.prepare_image(image, width, height, device, self.vae.dtype)
 
         # 3. Encode input prompt
         (
