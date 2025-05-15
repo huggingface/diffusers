@@ -14,6 +14,7 @@
 
 import copy
 import inspect
+import json
 import os
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -45,6 +46,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from ..utils.state_dict_utils import _maybe_populate_state_dict_with_metadata
 
 
 if is_transformers_available():
@@ -62,6 +64,7 @@ logger = logging.get_logger(__name__)
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
+LORA_ADAPTER_METADATA_KEY = "lora_adapter_metadata"
 
 
 def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
@@ -223,6 +226,7 @@ def _fetch_state_dict(
                         file_extension=".safetensors",
                         local_files_only=local_files_only,
                     )
+
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
                     weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
@@ -236,6 +240,8 @@ def _fetch_state_dict(
                     user_agent=user_agent,
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                state_dict = _maybe_populate_state_dict_with_metadata(state_dict, model_file)
+
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:
                     raise e
@@ -347,8 +353,13 @@ def _load_lora_into_text_encoder(
         raise ValueError("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`.")
 
     # Load the layers corresponding to text encoder and make necessary adjustments.
+    metadata = None
+    if LORA_ADAPTER_METADATA_KEY in state_dict:
+        metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
     if prefix is not None:
         state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+    if metadata is not None:
+        state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
 
     if len(state_dict) > 0:
         logger.info(f"Loading {prefix}.")
@@ -376,7 +387,7 @@ def _load_lora_into_text_encoder(
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
             network_alphas = {k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys}
 
-        lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False)
+        lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False, prefix=prefix)
 
         if "use_dora" in lora_config_kwargs:
             if lora_config_kwargs["use_dora"]:
@@ -398,7 +409,10 @@ def _load_lora_into_text_encoder(
                 if is_peft_version("<=", "0.13.2"):
                     lora_config_kwargs.pop("lora_bias")
 
-        lora_config = LoraConfig(**lora_config_kwargs)
+            try:
+                lora_config = LoraConfig(**lora_config_kwargs)
+            except TypeError as e:
+                raise TypeError(f"`LoraConfig` class could not be instantiated:\n{e}.")
 
         # adapter_name
         if adapter_name is None:
@@ -882,16 +896,30 @@ class LoraBaseMixin:
         weight_name: str,
         save_function: Callable,
         safe_serialization: bool,
+        lora_adapter_metadata: Optional[dict] = None,
     ):
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
+        if lora_adapter_metadata and not safe_serialization:
+            raise ValueError("`lora_adapter_metadata` cannot be specified when not using `safe_serialization`.")
+        if lora_adapter_metadata and not isinstance(lora_adapter_metadata, dict):
+            raise ValueError("`lora_adapter_metadata` must be of type `dict`.")
+
         if save_function is None:
             if safe_serialization:
 
                 def save_function(weights, filename):
-                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+                    # Inject framework format.
+                    metadata = {"format": "pt"}
+                    if lora_adapter_metadata:
+                        for key, value in lora_adapter_metadata.items():
+                            if isinstance(value, set):
+                                lora_adapter_metadata[key] = list(value)
+                        metadata["lora_adapter_metadata"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+
+                    return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
             else:
                 save_function = torch.save
