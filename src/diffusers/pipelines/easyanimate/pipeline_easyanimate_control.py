@@ -810,12 +810,18 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
         )
 
         # 4. Prepare timesteps
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         if isinstance(self.scheduler, FlowMatchEulerDiscreteScheduler):
             timesteps, num_inference_steps = retrieve_timesteps(
-                self.scheduler, num_inference_steps, device, timesteps, mu=1
+                self.scheduler, num_inference_steps, timestep_device, timesteps, mu=1
             )
         else:
-            timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler, num_inference_steps, timestep_device, timesteps
+            )
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
