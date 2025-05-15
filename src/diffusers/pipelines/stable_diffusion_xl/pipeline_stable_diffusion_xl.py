@@ -256,6 +256,12 @@ class StableDiffusionXLPipeline(
         add_watermarker: Optional[bool] = None,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._guidance_rescale=0.0
+        self._cross_attention_kwargs=None
+        self._denoising_end=None
+        self._num_timesteps=0
+        self._interrupt=False
 
         self.register_modules(
             vae=vae,
@@ -1069,7 +1075,6 @@ class StableDiffusionXLPipeline(
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
         self._denoising_end = denoising_end
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
