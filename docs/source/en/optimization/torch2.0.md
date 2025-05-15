@@ -84,7 +84,7 @@ Compiling the whole model usually has a big problem space for optimization. Mode
 
 Enabling regional compilation might require simple yet intrusive changes to the
 modeling code. However, 🤗 Accelerate provides a utility [`compile_regions()`](https://huggingface.co/docs/accelerate/main/en/usage_guides/compilation#how-to-use-regional-compilation) which automatically compiles
-the repeated blocks of the provided `nn.Module` along with other parts of it that are non-repeating. This helps with not only just cold start time but also the inference latency.
+the repeated blocks of the provided `nn.Module` sequentially, and the rest of the model separately. This helps with reducing cold start time while keeping most (if not all) of the speedup you would get from full compilation.
 
 ```py
 # Make sure you're on the latest `accelerate`: `pip install -U accelerate`.
