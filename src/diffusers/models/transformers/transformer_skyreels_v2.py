@@ -407,7 +407,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         self.num_frame_per_block = 1
         self.flag_causal_attention = False
-        self.enable_teacache = False
 
         # 1. Patch & position embedding
         self.rope = SkyReelsV2RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
@@ -535,75 +534,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             timestep_proj = timestep_proj.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1, 1).flatten(1, 3)
             timestep_proj = timestep_proj.transpose(1, 2).contiguous()
 
-        if self.enable_teacache:
-            modulated_inp = timestep_proj if self.use_ref_steps else temb
-            # teacache
-            if self.cnt % 2 == 0:  # even -> condition
-                self.is_even = True
-                if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
-                    should_calc_even = True
-                    self.accumulated_rel_l1_distance_even = 0
-                else:
-                    rescale_func = np.poly1d(self.coefficients)
-                    self.accumulated_rel_l1_distance_even += rescale_func(
-                        ((modulated_inp - self.previous_e0_even).abs().mean() / self.previous_e0_even.abs().mean())
-                        .cpu()
-                        .item()
-                    )
-                    if self.accumulated_rel_l1_distance_even < self.teacache_thresh:
-                        should_calc_even = False
-                    else:
-                        should_calc_even = True
-                        self.accumulated_rel_l1_distance_even = 0
-                self.previous_e0_even = modulated_inp.clone()
-
-            else:  # odd -> unconditon
-                self.is_even = False
-                if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
-                    should_calc_odd = True
-                    self.accumulated_rel_l1_distance_odd = 0
-                else:
-                    rescale_func = np.poly1d(self.coefficients)
-                    self.accumulated_rel_l1_distance_odd += rescale_func(
-                        ((modulated_inp - self.previous_e0_odd).abs().mean() / self.previous_e0_odd.abs().mean())
-                        .cpu()
-                        .item()
-                    )
-                    if self.accumulated_rel_l1_distance_odd < self.teacache_thresh:
-                        should_calc_odd = False
-                    else:
-                        should_calc_odd = True
-                        self.accumulated_rel_l1_distance_odd = 0
-                self.previous_e0_odd = modulated_inp.clone()
-
-        if self.enable_teacache:
-            if self.is_even:
-                if not should_calc_even:
-                    hidden_states += self.previous_residual_even
-                else:
-                    ori_hidden_states = hidden_states.clone()
-                    for block in self.blocks:
-                        hidden_states = block(
-                            hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask
-                        )
-                    self.previous_residual_even = hidden_states - ori_hidden_states
-            else:
-                if not should_calc_odd:
-                    hidden_states += self.previous_residual_odd
-                else:
-                    ori_hidden_states = hidden_states.clone()
-                    for block in self.blocks:
-                        hidden_states = block(
-                            hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask
-                        )
-                    self.previous_residual_odd = hidden_states - ori_hidden_states
-
-            self.cnt += 1
-            if self.cnt >= self.num_steps:
-                self.cnt = 0
-        else:
-            for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask)
+        for block in self.blocks:
+            hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask)
 
         # 5. Output norm, projection & unpatchify
         if temb.dim() == 2:
@@ -679,49 +611,3 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         )
 
         return block_mask
-
-    def initialize_teacache(
-        self, enable_teacache=True, num_steps=25, teacache_thresh=0.15, use_ret_steps=False, ckpt_dir=""
-    ):
-        self.enable_teacache = enable_teacache
-        print("using teacache")
-        self.cnt = 0
-        self.num_steps = num_steps
-        self.teacache_thresh = teacache_thresh
-        self.accumulated_rel_l1_distance_even = 0
-        self.accumulated_rel_l1_distance_odd = 0
-        self.previous_e0_even = None
-        self.previous_e0_odd = None
-        self.previous_residual_even = None
-        self.previous_residual_odd = None
-        self.use_ref_steps = use_ret_steps
-        if "I2V" in ckpt_dir:
-            if use_ret_steps:
-                if "540P" in ckpt_dir:
-                    self.coefficients = [2.57151496e05, -3.54229917e04, 1.40286849e03, -1.35890334e01, 1.32517977e-01]
-                if "720P" in ckpt_dir:
-                    self.coefficients = [8.10705460e03, 2.13393892e03, -3.72934672e02, 1.66203073e01, -4.17769401e-02]
-                self.ret_steps = 5 * 2
-                self.cutoff_steps = num_steps * 2
-            else:
-                if "540P" in ckpt_dir:
-                    self.coefficients = [-3.02331670e02, 2.23948934e02, -5.25463970e01, 5.87348440e00, -2.01973289e-01]
-                if "720P" in ckpt_dir:
-                    self.coefficients = [-114.36346466, 65.26524496, -18.82220707, 4.91518089, -0.23412683]
-                self.ret_steps = 1 * 2
-                self.cutoff_steps = num_steps * 2 - 2
-        else:
-            if use_ret_steps:
-                if "1.3B" in ckpt_dir:
-                    self.coefficients = [-5.21862437e04, 9.23041404e03, -5.28275948e02, 1.36987616e01, -4.99875664e-02]
-                if "14B" in ckpt_dir:
-                    self.coefficients = [-3.03318725e05, 4.90537029e04, -2.65530556e03, 5.87365115e01, -3.15583525e-01]
-                self.ret_steps = 5 * 2
-                self.cutoff_steps = num_steps * 2
-            else:
-                if "1.3B" in ckpt_dir:
-                    self.coefficients = [2.39676752e03, -1.31110545e03, 2.01331979e02, -8.29855975e00, 1.37887774e-01]
-                if "14B" in ckpt_dir:
-                    self.coefficients = [-5784.54975374, 5449.50911966, -1811.16591783, 256.27178429, -13.02252404]
-                self.ret_steps = 1 * 2
-                self.cutoff_steps = num_steps * 2 - 2
