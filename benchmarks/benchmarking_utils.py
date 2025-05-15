@@ -37,15 +37,6 @@ class BenchmarkScenario:
 
 @require_torch_gpu
 class BenchmarkMixin:
-    def get_model_init_dict(self):
-        raise NotImplementedError
-
-    def initialize_model(self):
-        raise NotImplementedError
-
-    def get_input_dict(self):
-        raise NotImplementedError
-
     def pre_benchmark(self):
         flush()
         torch.compiler.reset()
