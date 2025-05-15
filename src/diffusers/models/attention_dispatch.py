@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import contextlib
+import functools
 import inspect
 from enum import Enum
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -69,17 +70,10 @@ else:
 
 
 if is_torch_version(">=", "2.5.0"):
-    from torch.nn.attention.flex_attention import BlockMask, create_block_mask
-    from torch.nn.attention.flex_attention import flex_attention as torch_flex_attention
-else:
-    create_block_mask = None
-    torch_flex_attention = None
-
-    class BlockMask:
-        def __init__(self, *args, **kwargs):
-            raise OptionalDependencyNotAvailable(
-                "The `torch` library version is too old for using Flex Attention. Please update it to at least 2.5.0."
-            )
+    # We cannot import the flex_attention function from the package directly because it is expected (from the
+    # pytorch documentation) that the user may compile it. If we import directly, we will not have access to the
+    # compiled function.
+    import torch.nn.attention.flex_attention as flex_attention
 
 
 if is_xformers_available():
@@ -175,7 +169,7 @@ def attention_backend(backend: AttentionBackendName = AttentionBackendName.NATIV
         _AttentionBackendRegistry._active_backend = old_backend
 
 
-def attention_dispatch(
+def dispatch_attention_fn(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
@@ -209,6 +203,10 @@ def attention_dispatch(
 
     kwargs = {k: v for k, v in kwargs.items() if k in _AttentionBackendRegistry._supported_arg_names[backend_name]}
     return backend_fn(**kwargs)
+
+
+# ===== Checks =====
+# A list of very simple functions to catch common errors quickly when debugging.
 
 
 def _check_attn_mask_is_none(attn_mask: Optional[torch.Tensor], **kwargs) -> None:
@@ -273,6 +271,10 @@ def _check_shape(
         raise ValueError("Attention mask must match the key's second to last dimension.")
 
 
+# ===== Helper functions =====
+
+
+@functools.lru_cache(maxsize=1)
 def _prepare_for_flash_attn_or_sage_varlen(
     batch_size: int,
     seq_len_q: int,
@@ -296,7 +298,7 @@ def _prepare_for_flash_attn_or_sage_varlen(
 
 def _normalize_attn_mask(attn_mask: torch.Tensor, batch_size: int, seq_len_k: int) -> torch.Tensor:
     """
-    Normalize an attention mask to shape [batch_size, seq_len_k] (bool) suitable for inferring seqlens_k in
+    Normalize an attention mask to shape [batch_size, seq_len_k] (bool) suitable for inferring seqlens_[q|k] in
     FlashAttention/Sage varlen.
 
     Supports 1D to 4D shapes and common broadcasting patterns.
@@ -318,6 +320,7 @@ def _normalize_attn_mask(attn_mask: torch.Tensor, batch_size: int, seq_len_k: in
 
     elif attn_mask.ndim == 3:
         # [batch_size, seq_len_q, seq_len_k] -> reduce over query dimension
+        # We do this reduction because we know that arbitrary QK masks is not supported in Flash/Sage varlen.
         if attn_mask.size(0) not in [1, batch_size]:
             raise ValueError(
                 f"attn_mask.shape[0] ({attn_mask.shape[0]}) must be 1 or {batch_size} for 3D attention mask."
@@ -349,6 +352,9 @@ def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
     return q_idx >= kv_idx
 
 
+# ===== Attention backends =====
+
+
 @_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH,
     constraints=[_check_attn_mask_is_none, _check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
@@ -369,11 +375,9 @@ def _flash_attention(
     enable_gqa: bool = False,
 ) -> torch.Tensor:
     if enable_gqa:
-        # TODO
-        pass
+        raise NotImplementedError("GQA is not yet supported.")
 
     query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
-
     out = flash_attn_func(
         q=query,
         k=key,
@@ -388,6 +392,7 @@ def _flash_attention(
         return_attn_probs=return_attn_probs,
     )
     out = out.permute(0, 2, 1, 3)
+
     return out
 
 
@@ -421,8 +426,7 @@ def _flash_varlen_attention(
         attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
 
     if enable_gqa:
-        # TODO
-        pass
+        raise NotImplementedError("GQA is not yet supported.")
 
     if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
         (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
@@ -477,8 +481,7 @@ def _native_flex_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    attn_mask: Optional[Union[torch.Tensor, BlockMask]] = None,
-    dropout_p: float = 0.0,
+    attn_mask: Optional[Union[torch.Tensor, "flex_attention.BlockMask"]] = None,
     is_causal: bool = False,
     scale: Optional[float] = None,
     enable_gqa: bool = False,
@@ -491,10 +494,10 @@ def _native_flex_attention(
     batch_size, num_heads, seq_len_q, _ = query.shape
     _, _, seq_len_kv, _ = key.shape
 
-    if attn_mask is None or isinstance(attn_mask, BlockMask):
+    if attn_mask is None or isinstance(attn_mask, flex_attention.BlockMask):
         block_mask = attn_mask
     elif is_causal:
-        block_mask = create_block_mask(
+        block_mask = flex_attention.create_block_mask(
             _flex_attention_causal_mask_mod, batch_size, num_heads, seq_len_q, seq_len_kv, query.device
         )
     elif torch.is_tensor(attn_mask):
@@ -508,7 +511,9 @@ def _native_flex_attention(
             def mask_mod(batch_idx, head_idx, q_idx, kv_idx):
                 return attn_mask[batch_idx, head_idx, q_idx, kv_idx]
 
-            block_mask = create_block_mask(mask_mod, batch_size, None, seq_len_q, seq_len_kv, query.device)
+            block_mask = flex_attention.create_block_mask(
+                mask_mod, batch_size, None, seq_len_q, seq_len_kv, query.device
+            )
         else:
 
             def score_mod(score, batch_idx, head_idx, q_idx, kv_idx):
@@ -516,7 +521,7 @@ def _native_flex_attention(
     else:
         raise ValueError("Attention mask must be either None, a BlockMask, or a 2D/4D tensor.")
 
-    return torch_flex_attention(
+    return flex_attention.flex_attention(
         query=query,
         key=key,
         value=value,
@@ -525,7 +530,7 @@ def _native_flex_attention(
         scale=scale,
         enable_gqa=enable_gqa,
         return_lse=return_lse,
-        kernel_options=None,
+        kernel_options=kernel_options,
     )
 
 
@@ -711,8 +716,7 @@ def _sage_varlen_attention(
         attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
 
     if enable_gqa:
-        # TODO
-        pass
+        raise NotImplementedError("GQA is not yet supported.")
 
     if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
         (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
@@ -825,7 +829,7 @@ def _sage_qk_int8_pv_fp16_cuda_attention(
     is_causal: bool = False,
     scale: Optional[float] = None,
     qk_quant_gran: _SAGE_ATTENTION_QK_QUANT_GRAN = "per_thread",
-    pv_accum_dtype: _SAGE_ATTENTION_PV_ACCUM_DTYPE = "fp32+fp32",
+    pv_accum_dtype: _SAGE_ATTENTION_PV_ACCUM_DTYPE = "fp32",
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,

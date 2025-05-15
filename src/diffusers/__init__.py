@@ -143,7 +143,7 @@ else:
         [
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
-            "AttentionBackend",
+            "AttentionBackendName",
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
