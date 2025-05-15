@@ -25,6 +25,7 @@ else:
     _import_structure["pipeline_sana"] = ["SanaPipeline"]
     _import_structure["pipeline_sana_controlnet"] = ["SanaControlNetPipeline"]
     _import_structure["pipeline_sana_sprint"] = ["SanaSprintPipeline"]
+    _import_structure["pipeline_sana_sprint_img2img"] = ["SanaSprintImg2ImgPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
