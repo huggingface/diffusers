@@ -1120,7 +1120,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 automatically detect the available accelerator and use.
         """
-
+ 
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
 
         is_pipeline_device_mapped = hasattr(self, "hf_device_map") and self.hf_device_map is not None and len(self.hf_device_map) > 1

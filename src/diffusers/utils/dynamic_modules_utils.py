@@ -14,8 +14,8 @@
 # limitations under the License.
 """Utilities to dynamically load objects from the Hub."""
 
-import hashlib
 import importlib
+import signal
 import inspect
 import json
 import os
@@ -24,7 +24,8 @@ import shutil
 import sys
 import threading
 from pathlib import Path
-from typing import Dict, ModuleType, Optional, Union
+from types import ModuleType
+from typing import Dict, Optional, Union
 from urllib import request
 
 from huggingface_hub import hf_hub_download, model_info
@@ -39,6 +40,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # See https://huggingface.co/datasets/diffusers/community-pipelines-mirror
 COMMUNITY_PIPELINES_MIRROR_ID = "diffusers/community-pipelines-mirror"
+TIME_OUT_REMOTE_CODE = int(os.getenv("DIFFUSERS_TIMEOUT_REMOTE_CODE", 15))
 _HF_REMOTE_CODE_LOCK = threading.Lock()
 
 
@@ -157,11 +159,16 @@ def check_imports(filename):
     return get_relative_imports(filename)
 
 
-def resolve_trust_remote_code(trust_remote_code, model_name, has_local_code, has_remote_code):
+def _raise_timeout_error(signum, frame):
+    raise ValueError(
+        "Loading this model requires you to execute custom code contained in the model repository on your local "
+        "machine. Please set the option `trust_remote_code=True` to permit loading of this model."
+    )
+
+
+def resolve_trust_remote_code(trust_remote_code, model_name, has_remote_code):
     if trust_remote_code is None:
-        if has_local_code:
-            trust_remote_code = False
-        elif has_remote_code and TIME_OUT_REMOTE_CODE > 0:
+        if has_remote_code and TIME_OUT_REMOTE_CODE > 0:
             prev_sig_handler = None
             try:
                 prev_sig_handler = signal.signal(signal.SIGALRM, _raise_timeout_error)
@@ -193,7 +200,7 @@ def resolve_trust_remote_code(trust_remote_code, model_name, has_local_code, has
             # For the CI which puts the timeout at 0
             _raise_timeout_error(None, None)
 
-    if has_remote_code and not has_local_code and not trust_remote_code:
+    if has_remote_code and not trust_remote_code:
         raise ValueError(
             f"Loading {model_name} requires you to execute the configuration file in that"
             " repo on your local machine. Make sure you have read the code there to avoid malicious use, then"
@@ -201,56 +208,6 @@ def resolve_trust_remote_code(trust_remote_code, model_name, has_local_code, has
         )
 
     return trust_remote_code
-
-
-def get_class_in_modular_module(
-    class_name: str,
-    module_path: Union[str, os.PathLike],
-    *,
-    force_reload: bool = False,
-) -> type:
-    """
-    Import a module on the cache directory for modules and extract a class from it.
-
-    Args:
-        class_name (`str`): The name of the class to import.
-        module_path (`str` or `os.PathLike`): The path to the module to import.
-        force_reload (`bool`, *optional*, defaults to `False`):
-            Whether to reload the dynamic module from file if it already exists in `sys.modules`.
-            Otherwise, the module is only reloaded if the file has changed.
-
-    Returns:
-        `typing.Type`: The class looked for.
-    """
-    name = os.path.normpath(module_path)
-    if name.endswith(".py"):
-        name = name[:-3]
-    name = name.replace(os.path.sep, ".")
-    module_file: Path = Path(HF_MODULES_CACHE) / module_path
-    with _HF_REMOTE_CODE_LOCK:
-        if force_reload:
-            sys.modules.pop(name, None)
-            importlib.invalidate_caches()
-        cached_module: Optional[ModuleType] = sys.modules.get(name)
-        module_spec = importlib.util.spec_from_file_location(name, location=module_file)
-
-        # Hash the module file and all its relative imports to check if we need to reload it
-        module_files: list[Path] = [module_file] + sorted(map(Path, get_relative_import_files(module_file)))
-        module_hash: str = hashlib.sha256(b"".join(bytes(f) + f.read_bytes() for f in module_files)).hexdigest()
-
-        module: ModuleType
-        if cached_module is None:
-            module = importlib.util.module_from_spec(module_spec)
-            # insert it into sys.modules before any loading begins
-            sys.modules[name] = module
-        else:
-            module = cached_module
-        # reload in both cases, unless the module is already imported and the hash hits
-        if getattr(module, "__transformers_module_hash__", "") != module_hash:
-            module_spec.loader.exec_module(module)
-            module.__transformers_module_hash__ = module_hash
-
-        return getattr(module, class_name)
 
 
 def get_class_in_module(class_name, module_path, force_reload=False):
@@ -323,7 +280,6 @@ def get_cached_module_file(
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
-    is_modular: bool = False,
 ):
     """
     Prepares Downloads a module from a local folder or a distant repo and returns its path inside the cached
@@ -378,7 +334,7 @@ def get_cached_module_file(
     if os.path.isfile(module_file_or_url):
         resolved_module_file = module_file_or_url
         submodule = "local"
-    elif pretrained_model_name_or_path.count("/") == 0 and not is_modular:
+    elif pretrained_model_name_or_path.count("/") == 0:
         available_versions = get_diffusers_versions()
         # cut ".dev0"
         latest_version = "v" + ".".join(__version__.split(".")[:3])
@@ -418,24 +374,6 @@ def get_cached_module_file(
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
-
-    elif is_modular:
-        try:
-            # Load from URL or cache if already cached
-            resolved_module_file = hf_hub_download(
-                pretrained_model_name_or_path,
-                module_file,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-            )
-            submodule = pretrained_model_name_or_path.replace("/", os.path.sep)
-        except EnvironmentError:
-            logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
-            raise
-
     else:
         try:
             # Load from URL or cache if already cached
@@ -520,7 +458,6 @@ def get_class_from_dynamic_module(
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
-    is_modular: bool = False,
     **kwargs,
 ):
     """
@@ -593,7 +530,5 @@ def get_class_from_dynamic_module(
         token=token,
         revision=revision,
         local_files_only=local_files_only,
-        is_modular=is_modular,
     )
-    __import__("ipdb").set_trace()
     return get_class_in_module(class_name, final_module)

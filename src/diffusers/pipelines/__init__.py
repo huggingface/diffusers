@@ -703,12 +703,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
         from .stable_diffusion_sag import StableDiffusionSAGPipeline
         from .stable_diffusion_xl import (
-            StableDiffusionXLAutoPipeline,
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,
             StableDiffusionXLInstructPix2PixPipeline,
             StableDiffusionXLModularLoader,
             StableDiffusionXLPipeline,
+            StableDiffusionXLAutoPipeline,
         )
         from .stable_video_diffusion import StableVideoDiffusionPipeline
         from .t2i_adapter import (

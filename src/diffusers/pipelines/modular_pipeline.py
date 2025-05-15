@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import importlib
 import os
 import traceback
@@ -159,6 +160,15 @@ class ModularPipelineMixin(ConfigMixin):
     config_name = "config.json"
 
     @classmethod
+    def _get_signature_keys(cls, obj):
+        parameters = inspect.signature(obj.__init__).parameters
+        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+        expected_modules = set(required_parameters.keys()) - {"self"}
+
+        return expected_modules, optional_parameters
+
+    @classmethod
     def from_pretrained(
         cls,
         pretrained_model_name_or_path: str,
@@ -180,7 +190,7 @@ class ModularPipelineMixin(ConfigMixin):
         config = cls.load_config(pretrained_model_name_or_path)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
         trust_remote_code = resolve_trust_remote_code(
-            trust_remote_code, pretrained_model_name_or_path, False, has_remote_code
+            trust_remote_code, pretrained_model_name_or_path, has_remote_code
         )
         if not (has_remote_code and trust_remote_code):
             raise ValueError("")
@@ -196,7 +206,12 @@ class ModularPipelineMixin(ConfigMixin):
             **hub_kwargs,
             **kwargs,
         )
-        return block_cls()
+        expected_kwargs, optional_kwargs = block_cls._get_signature_keys(block_cls)
+        block_kwargs = {
+            name: kwargs.pop(name) for name in kwargs if name in expected_kwargs or name in optional_kwargs
+        }
+
+        return block_cls(**block_kwargs)
 
     def setup_loader(
         self,
