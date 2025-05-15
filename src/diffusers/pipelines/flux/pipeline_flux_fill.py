@@ -15,6 +15,8 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import cv2
+import copy
 import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
@@ -413,7 +415,7 @@ class FluxFillPipeline(
         )
         mask = mask.to(device=device, dtype=dtype)
 
-        return mask, masked_image_latents
+        return mask, masked_image_latents, height, width
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
@@ -750,6 +752,7 @@ class FluxFillPipeline(
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        iterations: Optional[int] = 30,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -941,17 +944,75 @@ class FluxFillPipeline(
             latents,
         )
 
+        ## prepare mask gradient
+        def apply_dilate_to_mask_image(mask,iterations):
+            kernel = np.ones((3, 3), np.uint8)
+            mask = np.array(mask, dtype=bool)
+            mask = mask.astype(np.uint8)
+            mask = cv2.dilate(mask, kernel, iterations=iterations)
+            mask = mask.astype(np.uint8)
+            #mask = Image.fromarray(mask * 255)
+
+            return mask
+
+        def mask_gradienting(mask_array, iterations=3):
+            # gradent 1
+            dilated_mask_image = apply_dilate_to_mask_image(mask_array,iterations = iterations)
+            original_mask_array_bool = np.array(mask_array,dtype=bool)
+            dilated_mask_array_bool = np.array(dilated_mask_image, dtype=bool)
+            gray_array = np.ones_like(mask_array) * 200
+            gray_array = gray_array * (~original_mask_array_bool)
+            gray_array = gray_array * dilated_mask_array_bool
+            mask1_array = np.where(mask_array>0, mask_array* 255, gray_array)
+
+            # gradent 2
+            dilated_mask1_image = apply_dilate_to_mask_image(mask1_array,iterations = iterations)
+            mask1_array_bool = np.array(mask1_array,dtype=bool)
+            dilated_mask1_image_bool = np.array(dilated_mask1_image, dtype=bool)
+            gray1_array = np.ones_like(mask_array) * 150
+            gray1_array = gray1_array * (~mask1_array_bool)
+            gray1_array = gray1_array * dilated_mask1_image_bool
+            mask2_array = np.where(mask1_array>0,mask1_array,gray1_array)
+
+            # gradent 3
+            dilated_mask2_image = apply_dilate_to_mask_image(mask2_array,iterations = iterations)
+            mask2_array_bool = np.array(mask2_array,dtype=bool)
+            dilated_mask2_image_bool = np.array(dilated_mask2_image, dtype=bool)
+            gray2_array = np.ones_like(mask_array) * 100
+            gray2_array = gray2_array * (~mask2_array_bool)
+            gray2_array = gray2_array * dilated_mask2_image_bool
+            mask3_array = np.where(mask2_array>0,mask2_array,gray2_array)
+
+            # gradent 4
+            dilated_mask3_image = apply_dilate_to_mask_image(mask3_array,iterations = iterations)
+            mask3_array_bool = np.array(mask3_array,dtype=bool)
+            dilated_mask3_image_bool = np.array(dilated_mask3_image, dtype=bool)
+            gray3_array = np.ones_like(mask_array) * 50
+            gray3_array = gray3_array * (~mask3_array_bool)
+            gray3_array = gray3_array * dilated_mask3_image_bool
+            mask4_array = np.where(mask3_array>0,mask3_array,gray3_array)
+
+            # rescale to 1.0, 0.8, 0.6, 0.4, 0.2, 0.0
+            final_mask_array = np.zeros_like(mask_array)
+            final_mask_array = np.where(mask4_array==255, 1.0, final_mask_array)
+            final_mask_array = np.where(mask4_array==200, 0.8, final_mask_array)
+            final_mask_array = np.where(mask4_array==150, 0.6, final_mask_array)
+            final_mask_array = np.where(mask4_array==100, 0.4, final_mask_array)
+            final_mask_array = np.where(mask4_array==50, 0.2, final_mask_array)
+
+            return final_mask_array
+
         # 6. Prepare mask and masked image latents
         if masked_image_latents is not None:
             masked_image_latents = masked_image_latents.to(latents.device)
         else:
             mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
-
+        
             masked_image = init_image * (1 - mask_image)
             masked_image = masked_image.to(device=device, dtype=prompt_embeds.dtype)
-
+            
             height, width = init_image.shape[-2:]
-            mask, masked_image_latents = self.prepare_mask_latents(
+            mask, masked_image_latents, height_latent, width_latent = self.prepare_mask_latents(
                 mask_image,
                 masked_image,
                 batch_size,
@@ -963,6 +1024,18 @@ class FluxFillPipeline(
                 device,
                 generator,
             )
+            height_latent, width_latent = height_latent // 2, width_latent // 2,
+
+            mask = mask.view(mask.shape[0], height_latent, width_latent, -1)
+            mask = mask.to(dtype=torch.float16)
+            mask_gradient  = mask_gradienting(mask[0,:,:,:].cpu().numpy(), iterations=iterations)
+            mask_gradient = torch.from_numpy(mask_gradient)
+            mask_gradient = mask_gradient.to(device=masked_image_latents.device, dtype=masked_image_latents.dtype)
+
+            mask = [mask_gradient] * mask.shape[0]
+            mask = torch.stack(mask,dim=0)
+            mask = mask.view(mask.shape[0], height_latent*width_latent, -1)
+
             masked_image_latents = torch.cat((masked_image_latents, mask), dim=-1)
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -980,7 +1053,7 @@ class FluxFillPipeline(
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
+                
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
@@ -1035,6 +1108,6 @@ class FluxFillPipeline(
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,mask_image)
+            return (image,)
 
         return FluxPipelineOutput(images=image)
