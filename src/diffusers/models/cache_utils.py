@@ -122,9 +122,9 @@ class CacheMixin:
         r"""Context manager that provides additional methods for cache management."""
         from ..hooks import HookRegistry
 
-        if self.is_cache_enabled:
-            registry = HookRegistry.check_if_exists_or_initialize(self)
-            registry._set_context(name)
+        registry = HookRegistry.check_if_exists_or_initialize(self)
+        registry._set_context(name)
+
         yield
-        if self.is_cache_enabled:
-            registry._set_context(None)
+
+        registry._set_context(None)
