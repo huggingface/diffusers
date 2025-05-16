@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import html
+import math
 import re
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
 import numpy as np
-import math
 import torch
-from copy import deepcopy
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -376,7 +376,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if num_pre_ready > 0:
             pre_row[: num_pre_ready // casual_block_size] = num_iterations
 
-        while torch.all(pre_row >= (num_iterations - 1)) == False:
+        while not torch.all(pre_row >= (num_iterations - 1)):
             new_row = torch.zeros(num_frames_block, dtype=torch.long)
             for i in range(num_frames_block):
                 if i == 0 or pre_row[i - 1] >= (
@@ -549,8 +549,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Recommended when using asynchronous inference (--ar_step > 0)
             fps (`int`, *optional*, defaults to `24`):
 
-        Examples:
-        Returns:
+        Examples: Returns:
             [`~SkyReelsV2PipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`SkyReelsV2PipelineOutput`] is returned, otherwise a `tuple` is returned
                 where the first element is a list with the generated images and the second element is a list of `bool`s
@@ -665,12 +664,15 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     valid_interval_i = valid_interval[i]
                     valid_interval_start, valid_interval_end = valid_interval_i
                     timestep = timestep_i[None, valid_interval_start:valid_interval_end].clone()
-                    latent_model_input = latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
+                    latent_model_input = (
+                        latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
+                    )
                     if addnoise_condition > 0 and valid_interval_start < predix_video_latent_length:
                         noise_factor = 0.001 * addnoise_condition
                         timestep_for_noised_condition = addnoise_condition
                         latent_model_input[:, valid_interval_start:predix_video_latent_length] = (
-                            latent_model_input[:, valid_interval_start:predix_video_latent_length] * (1.0 - noise_factor)
+                            latent_model_input[:, valid_interval_start:predix_video_latent_length]
+                            * (1.0 - noise_factor)
                             + torch.randn_like(latent_model_input[:, valid_interval_start:predix_video_latent_length])
                             * noise_factor
                         )
@@ -716,7 +718,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                     # call the callback, if provided
-                    if i == len(step_matrix) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    if i == len(step_matrix) - 1 or (
+                        (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                    ):
                         progress_bar.update()
 
                     if XLA_AVAILABLE:
@@ -724,8 +728,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 x0 = latents.unsqueeze(0)
                 videos = self.vae.decode(x0)
-                videos = (videos / 2 + 0.5).clamp(0, 1)
-                videos = [video for video in videos]
+                videos = [(videos / 2 + 0.5).clamp(0, 1)]
                 videos = [video.permute(1, 2, 3, 0) * 255 for video in videos]
                 video = [video.cpu().numpy().astype(np.uint8) for video in videos]
         else:
@@ -747,7 +750,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     left_frame_num = latent_length - finished_frame_num
                     base_num_frames_iter = min(left_frame_num + overlap_history_frames, base_num_frames)
                     if ar_step > 0:
-                        num_steps = num_inference_steps + ((base_num_frames_iter - overlap_history_frames) // causal_block_size - 1) * ar_step
+                        num_steps = (
+                            num_inference_steps
+                            + ((base_num_frames_iter - overlap_history_frames) // causal_block_size - 1) * ar_step
+                        )
                         self.transformer.num_steps = num_steps
                 else:  # i == 0
                     base_num_frames_iter = base_num_frames
@@ -800,7 +806,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         valid_interval_i = valid_interval[i]
                         valid_interval_start, valid_interval_end = valid_interval_i
                         timestep = timestep_i[None, valid_interval_start:valid_interval_end].clone()
-                        latent_model_input = latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
+                        latent_model_input = (
+                            latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
+                        )
                         if addnoise_condition > 0 and valid_interval_start < predix_video_latent_length:
                             noise_factor = 0.001 * addnoise_condition
                             timestep_for_noised_condition = addnoise_condition
@@ -812,7 +820,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 )
                                 * noise_factor
                             )
-                            timestep[:, valid_interval_start:predix_video_latent_length] = timestep_for_noised_condition
+                            timestep[:, valid_interval_start:predix_video_latent_length] = (
+                                timestep_for_noised_condition
+                            )
 
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
@@ -851,10 +861,14 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                             latents = callback_outputs.pop("latents", latents)
                             prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                            negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                            negative_prompt_embeds = callback_outputs.pop(
+                                "negative_prompt_embeds", negative_prompt_embeds
+                            )
 
                         # call the callback, if provided
-                        if i == len(step_matrix) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        if i == len(step_matrix) - 1 or (
+                            (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                        ):
                             progress_bar.update()
 
                         if XLA_AVAILABLE:
@@ -869,7 +883,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             [output_video, videos[0][:, overlap_history:].clamp(-1, 1).cpu()], 1
                         )  # c, f, h, w
                 output_video = [(output_video / 2 + 0.5).clamp(0, 1)]
-                output_video = [video for video in output_video]
                 output_video = [video.permute(1, 2, 3, 0) * 255 for video in output_video]
                 video = [video.cpu().numpy().astype(np.uint8) for video in output_video]
 
