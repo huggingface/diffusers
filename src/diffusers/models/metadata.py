@@ -44,20 +44,10 @@ class TransformerBlockMetadata:
         return args[index]
 
 
-class TransformerBlockRegistry:
-    _registry = {}
+def register_transformer_block(metadata: TransformerBlockMetadata):
+    def inner(model_class: Type):
+        metadata._cls = model_class
+        model_class._diffusers_transformer_block_metadata = metadata
+        return model_class
 
-    @classmethod
-    def register(cls, metadata: TransformerBlockMetadata):
-        def inner(model_class: Type):
-            metadata._cls = model_class
-            cls._registry[model_class] = metadata
-            return model_class
-
-        return inner
-
-    @classmethod
-    def get(cls, model_class: Type) -> TransformerBlockMetadata:
-        if model_class not in cls._registry:
-            raise ValueError(f"Model class {model_class} not registered.")
-        return cls._registry[model_class]
+    return inner

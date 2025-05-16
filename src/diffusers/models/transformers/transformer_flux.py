@@ -34,7 +34,7 @@ from ..attention_processor import (
 )
 from ..cache_utils import CacheMixin
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
-from ..metadata import TransformerBlockMetadata, TransformerBlockRegistry
+from ..metadata import TransformerBlockMetadata, register_transformer_block
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
@@ -44,7 +44,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @maybe_allow_in_graph
-@TransformerBlockRegistry.register(
+@register_transformer_block(
     metadata=TransformerBlockMetadata(
         return_hidden_states_index=1,
         return_encoder_hidden_states_index=0,
@@ -116,7 +116,7 @@ class FluxSingleTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-@TransformerBlockRegistry.register(
+@register_transformer_block(
     metadata=TransformerBlockMetadata(
         return_hidden_states_index=1,
         return_encoder_hidden_states_index=0,

@@ -26,7 +26,7 @@ from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
-from ..metadata import TransformerBlockMetadata, TransformerBlockRegistry
+from ..metadata import TransformerBlockMetadata, register_transformer_block
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous
@@ -456,7 +456,7 @@ class CogView4TrainingAttnProcessor:
 
 
 @maybe_allow_in_graph
-@TransformerBlockRegistry.register(
+@register_transformer_block(
     metadata=TransformerBlockMetadata(
         return_hidden_states_index=0,
         return_encoder_hidden_states_index=1,

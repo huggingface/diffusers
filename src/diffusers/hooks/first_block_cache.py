@@ -17,7 +17,6 @@ from typing import Tuple, Union
 
 import torch
 
-from ..models.metadata import TransformerBlockRegistry
 from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
 from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS
@@ -72,7 +71,13 @@ class FBCHeadBlockHook(ModelHook):
         self._metadata = None
 
     def initialize_hook(self, module):
-        self._metadata = TransformerBlockRegistry.get(unwrap_module(module).__class__)
+        unwrapped_module = unwrap_module(module)
+        if not hasattr(unwrapped_module, "_diffusers_transformer_block_metadata"):
+            raise ValueError(
+                f"Module {unwrapped_module} does not have any registered metadata. "
+                "Make sure to register the metadata using `diffusers.models.metadata.register_transformer_block`."
+            )
+        self._metadata = unwrapped_module._diffusers_transformer_block_metadata
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -150,7 +155,13 @@ class FBCBlockHook(ModelHook):
         self._metadata = None
 
     def initialize_hook(self, module):
-        self._metadata = TransformerBlockRegistry.get(unwrap_module(module).__class__)
+        unwrapped_module = unwrap_module(module)
+        if not hasattr(unwrapped_module, "_diffusers_transformer_block_metadata"):
+            raise ValueError(
+                f"Module {unwrapped_module} does not have any registered metadata. "
+                "Make sure to register the metadata using `diffusers.models.metadata.register_transformer_block`."
+            )
+        self._metadata = unwrapped_module._diffusers_transformer_block_metadata
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
