@@ -33,6 +33,7 @@ from diffusers.utils.testing_utils import (
 
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
     to_np,
@@ -43,7 +44,11 @@ enable_full_determinism()
 
 
 class HunyuanVideoPipelineFastTests(
-    PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase
+    PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = HunyuanVideoPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])

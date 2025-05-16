@@ -12,13 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ..utils import is_torch_available
+from ..models.attention_processor import Attention, MochiAttention
 
 
-if is_torch_available():
-    from .faster_cache import FasterCacheConfig, apply_faster_cache
-    from .first_block_cache import FirstBlockCacheConfig, apply_first_block_cache
-    from .group_offloading import apply_group_offloading
-    from .hooks import HookRegistry, ModelHook
-    from .layerwise_casting import apply_layerwise_casting, apply_layerwise_casting_hook
-    from .pyramid_attention_broadcast import PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+_ATTENTION_CLASSES = (Attention, MochiAttention)
+
+_SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks", "layers")
+_TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
+_CROSS_TRANSFORMER_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "layers")
+
+_ALL_TRANSFORMER_BLOCK_IDENTIFIERS = tuple(
+    {
+        *_SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS,
+        *_TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS,
+        *_CROSS_TRANSFORMER_BLOCK_IDENTIFIERS,
+    }
+)
