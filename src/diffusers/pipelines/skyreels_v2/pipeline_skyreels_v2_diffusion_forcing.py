@@ -611,6 +611,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         prefix_video = None
         predix_video_latent_length = 0
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else num_latent_frames
 
         if causal_block_size is None:
             causal_block_size = self.transformer.num_frame_per_block
@@ -619,20 +621,17 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if overlap_history is None or base_num_frames is None or num_frames <= base_num_frames:
             # Short video generation
-
             # 4. Prepare sample schedulers and timestep matrix
-            self.scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device, shift=shift)
+            self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
             timesteps = self.scheduler.timesteps
-            latent_length = (num_frames - 1) // self.vae_scale_factor_temporal + 1
             sample_schedulers = [self.scheduler]
-            for _ in range(latent_length - 1):
+            for _ in range(num_latent_frames - 1):
                 sample_scheduler = deepcopy(self.scheduler)
-                sample_scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device, shift=shift)
+                sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
-            sample_schedulers_counter = [0] * latent_length
-            base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else latent_length
+            sample_schedulers_counter = [0] * num_latent_frames
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                latent_length, timesteps, base_num_frames, ar_step, predix_video_latent_length, causal_block_size
+                num_latent_frames, timesteps, base_num_frames, ar_step, predix_video_latent_length, causal_block_size
             )
 
             # 5. Prepare latent variables
@@ -650,8 +649,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             # 6. Denoising loop
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            self._num_timesteps = len(timesteps)
+            num_warmup_steps = len(step_matrix) - num_inference_steps * self.scheduler.order
+            self._num_timesteps = len(step_matrix)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, timestep_i in enumerate(step_matrix):
@@ -733,9 +732,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 video = [video.cpu().numpy().astype(np.uint8) for video in videos]
         else:
             # Long video generation
-            base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else latent_length
             overlap_history_frames = (overlap_history - 1) // 4 + 1
-            n_iter = 1 + (latent_length - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
+            n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
             output_video = None
             for i in range(n_iter):
                 if output_video is not None:  # i !=0
@@ -747,7 +745,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         prefix_video[0] = prefix_video[0][:, : prefix_video[0].shape[1] - truncate_len]
                     predix_video_latent_length = prefix_video[0].shape[1]
                     finished_frame_num = i * (base_num_frames - overlap_history_frames) + overlap_history_frames
-                    left_frame_num = latent_length - finished_frame_num
+                    left_frame_num = num_latent_frames - finished_frame_num
                     base_num_frames_iter = min(left_frame_num + overlap_history_frames, base_num_frames)
                     if ar_step > 0:
                         num_steps = (
@@ -759,12 +757,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     base_num_frames_iter = base_num_frames
 
                 # 4. Prepare sample schedulers and timestep matrix
-                self.scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device, shift=shift)
+                self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 timesteps = self.scheduler.timesteps
-                sample_schedulers = [self.scheduler]
+                sample_schedulers = [deepcopy(self.scheduler)]
                 for _ in range(base_num_frames_iter - 1):
                     sample_scheduler = deepcopy(self.scheduler)
-                    sample_scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device, shift=shift)
+                    sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                     sample_schedulers.append(sample_scheduler)
                 sample_schedulers_counter = [0] * base_num_frames_iter
                 step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
