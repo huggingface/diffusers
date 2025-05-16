@@ -289,7 +289,3 @@ class HookRegistry:
             if i < len(self._hook_order) - 1:
                 registry_repr += "\n"
         return f"HookRegistry(\n{registry_repr}\n)"
-
-
-def _is_dunder_method(name: str) -> bool:
-    return name.startswith("__") and name.endswith("__") and name in dir(object)
