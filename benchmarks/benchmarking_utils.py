@@ -8,7 +8,11 @@ import torch
 import torch.utils.benchmark as benchmark
 
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import require_torch_gpu, torch_device
+
+
+logger = logging.get_logger(__name__)
 
 
 def benchmark_fn(f, *args, **kwargs):
@@ -27,6 +31,8 @@ def flush():
     torch.cuda.reset_peak_memory_stats()
 
 
+# Users can define their own in case this doesn't suffice. For most cases,
+# it should be sufficient.
 def model_init_fn(model_cls, group_offload_kwargs=None, layerwise_upcasting=False, **init_kwargs):
     model = model_cls.from_pretrained(**init_kwargs).eval()
     if group_offload_kwargs and isinstance(group_offload_kwargs, dict):
@@ -64,24 +70,35 @@ class BenchmarkMixin:
     @torch.no_grad()
     def run_benchmark(self, scenario: BenchmarkScenario):
         # 1) plain stats
-        plain = self._run_phase(
-            model_cls=scenario.model_cls,
-            init_fn=scenario.model_init_fn,
-            init_kwargs=scenario.model_init_kwargs,
-            get_input_fn=scenario.get_model_input_dict,
-            compile_kwargs=None,
-        )
-
-        # 2) compiled stats (if any)
-        compiled = {"time": None, "memory": None}
-        if scenario.compile_kwargs:
-            compiled = self._run_phase(
+        results = {}
+        plain = None
+        try:
+            plain = self._run_phase(
                 model_cls=scenario.model_cls,
                 init_fn=scenario.model_init_fn,
                 init_kwargs=scenario.model_init_kwargs,
                 get_input_fn=scenario.get_model_input_dict,
-                compile_kwargs=scenario.compile_kwargs,
+                compile_kwargs=None,
             )
+        except Exception as e:
+            logger.error(f"Benchmark could not be run with the following error\n: {e}")
+            return results
+
+        # 2) compiled stats (if any)
+        compiled = {"time": None, "memory": None}
+        if scenario.compile_kwargs:
+            try:
+                compiled = self._run_phase(
+                    model_cls=scenario.model_cls,
+                    init_fn=scenario.model_init_fn,
+                    init_kwargs=scenario.model_init_kwargs,
+                    get_input_fn=scenario.get_model_input_dict,
+                    compile_kwargs=scenario.compile_kwargs,
+                )
+            except Exception as e:
+                logger.error(f"Compilation benchmark could not be run with the following error\n: {e}")
+                if plain is None:
+                    return results
 
         # 3) merge
         result = {
@@ -103,8 +120,9 @@ class BenchmarkMixin:
         if not isinstance(scenarios, list):
             scenarios = [scenarios]
         records = [self.run_benchmark(s) for s in scenarios]
-        df = pd.DataFrame.from_records(records)
+        df = pd.DataFrame.from_records([r for r in records if r])
         df.to_csv(filename, index=False)
+        logger.info(f"Results serialized to {filename=}.")
 
     def _run_phase(
         self,
