@@ -23,6 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import FeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
@@ -89,13 +90,13 @@ class WanAttnProcessor2_0:
             key_img = key_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
             value_img = value_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
-            hidden_states_img = F.scaled_dot_product_attention(
+            hidden_states_img = dispatch_attention_fn(
                 query, key_img, value_img, attn_mask=None, dropout_p=0.0, is_causal=False
             )
             hidden_states_img = hidden_states_img.transpose(1, 2).flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
 
-        hidden_states = F.scaled_dot_product_attention(
+        hidden_states = dispatch_attention_fn(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)

@@ -1074,9 +1074,7 @@ class MochiAttnProcessor2_0:
             valid_key = torch.cat([key[idx : idx + 1], valid_encoder_key], dim=2)
             valid_value = torch.cat([value[idx : idx + 1], valid_encoder_value], dim=2)
 
-            attn_output = F.scaled_dot_product_attention(
-                valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False
-            )
+            attn_output = dispatch_attention_fn(valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False)
             valid_sequence_length = attn_output.size(2)
             attn_output = F.pad(attn_output, (0, 0, 0, total_length - valid_sequence_length))
             attn_outputs.append(attn_output)
@@ -2450,7 +2448,7 @@ class FluxAttnProcessor2_0_NPU:
                 inner_precise=0,
             )[0]
         else:
-            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+            hidden_states = dispatch_attention_fn(query, key, value, dropout_p=0.0, is_causal=False)
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2655,7 +2653,7 @@ class FusedFluxAttnProcessor2_0_NPU:
                 inner_precise=0,
             )[0]
         else:
-            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+            hidden_states = dispatch_attention_fn(query, key, value, dropout_p=0.0, is_causal=False)
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -2777,7 +2775,7 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = dispatch_attention_fn(query, key, value, dropout_p=0.0, is_causal=False)
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2807,7 +2805,7 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
                 ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 # the output of sdp = (batch, num_heads, seq_len, head_dim)
                 # TODO: add support for attn.scale when we move to Torch 2.1
-                current_ip_hidden_states = F.scaled_dot_product_attention(
+                current_ip_hidden_states = dispatch_attention_fn(
                     ip_query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
                 )
                 current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
@@ -2873,7 +2871,7 @@ class CogVideoXAttnProcessor2_0:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(
+        hidden_states = dispatch_attention_fn(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
@@ -2944,7 +2942,7 @@ class FusedCogVideoXAttnProcessor2_0:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(
+        hidden_states = dispatch_attention_fn(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
@@ -3217,7 +3215,7 @@ class AttnProcessorNPU:
             )[0]
         else:
             # TODO: add support for attn.scale when we move to Torch 2.1
-            hidden_states = F.scaled_dot_product_attention(
+            hidden_states = dispatch_attention_fn(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
 
@@ -3311,7 +3309,7 @@ class AttnProcessor2_0:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
+        hidden_states = dispatch_attention_fn(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
@@ -3615,7 +3613,7 @@ class MochiVaeAttnProcessor2_0:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
+        hidden_states = dispatch_attention_fn(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=attn.is_causal
         )
 
