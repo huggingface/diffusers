@@ -93,6 +93,10 @@ latents = pipe(
     height=downscaled_height,
     num_frames=num_frames,
     num_inference_steps=30,
+    decode_timestep=0.05,
+    decode_noise_scale=0.025,
+    image_cond_noise_scale=0.0,
+    guidance_rescale=0.7,
     generator=torch.Generator().manual_seed(0),
     output_type="latent",
 ).frames
@@ -117,7 +121,9 @@ video = pipe(
     num_inference_steps=10,
     latents=upscaled_latents,
     decode_timestep=0.05,
-    image_cond_noise_scale=0.025,
+    decode_noise_scale=0.025,
+    image_cond_noise_scale=0.0,
+    guidance_rescale=0.7,
     generator=torch.Generator().manual_seed(0),
     output_type="pil",
 ).frames[0]
