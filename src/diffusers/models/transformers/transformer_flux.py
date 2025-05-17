@@ -33,22 +33,49 @@ from ..attention_processor import (
     FusedFluxAttnProcessor2_0,
 )
 from ..cache_utils import CacheMixin
-from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
+from ..embeddings import (
+    CombinedTimestepGuidanceTextProjEmbeddings,
+    CombinedTimestepTextProjChromaEmbeddings,
+    CombinedTimestepTextProjEmbeddings,
+    FluxPosEmbed,
+)
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+from ..normalization import (
+    AdaLayerNormContinuous,
+    AdaLayerNormContinuousPruned,
+    AdaLayerNormZero,
+    AdaLayerNormZeroPruned,
+    AdaLayerNormZeroSingle,
+    AdaLayerNormZeroSinglePruned,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+INVALID_VARIANT_ERRMSG = "`variant` must be `'flux' or `'chroma'`."
+
 
 @maybe_allow_in_graph
 class FluxSingleTransformerBlock(nn.Module):
-    def __init__(self, dim: int, num_attention_heads: int, attention_head_dim: int, mlp_ratio: float = 4.0):
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        mlp_ratio: float = 4.0,
+        variant: str = "flux",
+    ):
         super().__init__()
         self.mlp_hidden_dim = int(dim * mlp_ratio)
 
-        self.norm = AdaLayerNormZeroSingle(dim)
+        if variant == "flux":
+            self.norm = AdaLayerNormZeroSingle(dim)
+        elif variant == "chroma":
+            self.norm = AdaLayerNormZeroSinglePruned(dim)
+        else:
+            raise ValueError(INVALID_VARIANT_ERRMSG)
+
         self.proj_mlp = nn.Linear(dim, self.mlp_hidden_dim)
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
@@ -106,12 +133,24 @@ class FluxSingleTransformerBlock(nn.Module):
 @maybe_allow_in_graph
 class FluxTransformerBlock(nn.Module):
     def __init__(
-        self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        qk_norm: str = "rms_norm",
+        eps: float = 1e-6,
+        variant: str = "flux",
     ):
         super().__init__()
 
-        self.norm1 = AdaLayerNormZero(dim)
-        self.norm1_context = AdaLayerNormZero(dim)
+        if variant == "flux":
+            self.norm1 = AdaLayerNormZero(dim)
+            self.norm1_context = AdaLayerNormZero(dim)
+        elif variant == "chroma":
+            self.norm1 = AdaLayerNormZeroPruned(dim)
+            self.norm1_context = AdaLayerNormZeroPruned(dim)
+        else:
+            raise ValueError(INVALID_VARIANT_ERRMSG)
 
         self.attn = Attention(
             query_dim=dim,
@@ -141,10 +180,11 @@ class FluxTransformerBlock(nn.Module):
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        temb_img, temb_txt = temb[:, :6], temb[:, 6:]
+        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb_img)
 
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
-            encoder_hidden_states, emb=temb
+            encoder_hidden_states, emb=temb_txt
         )
         joint_attention_kwargs = joint_attention_kwargs or {}
         # Attention.
@@ -241,7 +281,11 @@ class FluxTransformer2DModel(
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
-        axes_dims_rope: Tuple[int] = (16, 56, 56),
+        axes_dims_rope: Tuple[int, ...] = (16, 56, 56),
+        variant: str = "flux",
+        approximator_in_factor: int = 16,
+        approximator_hidden_dim: int = 5120,
+        approximator_layers: int = 5,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -249,12 +293,23 @@ class FluxTransformer2DModel(
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
-        text_time_guidance_cls = (
-            CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
-        )
-        self.time_text_embed = text_time_guidance_cls(
-            embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
-        )
+        if variant == "flux":
+            text_time_guidance_cls = (
+                CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
+            )
+            self.time_text_embed = text_time_guidance_cls(
+                embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
+            )
+        elif variant == "chroma":
+            self.time_text_embed = CombinedTimestepTextProjChromaEmbeddings(
+                factor=approximator_in_factor,
+                hidden_dim=approximator_hidden_dim,
+                out_dim=3 * num_single_layers + 2 * 6 * num_layers + 2,
+                embedding_dim=self.inner_dim,
+                n_layers=approximator_layers,
+            )
+        else:
+            raise ValueError(INVALID_VARIANT_ERRMSG)
 
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = nn.Linear(in_channels, self.inner_dim)
@@ -265,6 +320,7 @@ class FluxTransformer2DModel(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
+                    variant=variant,
                 )
                 for _ in range(num_layers)
             ]
@@ -276,12 +332,14 @@ class FluxTransformer2DModel(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
+                    variant=variant,
                 )
                 for _ in range(num_single_layers)
             ]
         )
 
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
+        norm_out_cls = AdaLayerNormContinuous if variant != "chroma" else AdaLayerNormContinuousPruned
+        self.norm_out = norm_out_cls(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
@@ -442,19 +500,22 @@ class FluxTransformer2DModel(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
+        is_chroma = isinstance(self.time_text_embed, CombinedTimestepTextProjChromaEmbeddings)
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000
-        else:
-            guidance = None
 
-        temb = (
-            self.time_text_embed(timestep, pooled_projections)
-            if guidance is None
-            else self.time_text_embed(timestep, guidance, pooled_projections)
-        )
+        if not is_chroma:
+            temb = (
+                self.time_text_embed(timestep, pooled_projections)
+                if guidance is None
+                else self.time_text_embed(timestep, guidance, pooled_projections)
+            )
+        else:
+            pooled_temb = self.time_text_embed(timestep, guidance, pooled_projections)
+
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         if txt_ids.ndim == 3:
@@ -479,6 +540,12 @@ class FluxTransformer2DModel(
             joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
         for index_block, block in enumerate(self.transformer_blocks):
+            if is_chroma:
+                start_idx1 = 3 * len(self.single_transformer_blocks) + 6 * index_block
+                start_idx2 = start_idx1 + 6 * len(self.transformer_blocks)
+                temb = torch.cat(
+                    (pooled_temb[:, start_idx1 : start_idx1 + 6], pooled_temb[:, start_idx2 : start_idx2 + 6]), dim=1
+                )
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -511,6 +578,9 @@ class FluxTransformer2DModel(
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         for index_block, block in enumerate(self.single_transformer_blocks):
+            if is_chroma:
+                start_idx = 3 * index_block
+                temb = pooled_temb[:, start_idx : start_idx + 3]
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -538,6 +608,8 @@ class FluxTransformer2DModel(
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
+        if is_chroma:
+            temb = pooled_temb[:, -2:]
         hidden_states = self.norm_out(hidden_states, temb)
         output = self.proj_out(hidden_states)
 
