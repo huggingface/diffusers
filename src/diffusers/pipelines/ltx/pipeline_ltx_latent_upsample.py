@@ -91,6 +91,34 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         init_latents = self._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
         return init_latents
 
+    def adain_filter_latent(self, latents: torch.Tensor, reference_latents: torch.Tensor, factor: float = 1.0):
+        """
+        Applies Adaptive Instance Normalization (AdaIN) to a latent tensor based on statistics from a reference latent
+        tensor.
+
+        Args:
+            latent (`torch.Tensor`):
+                Input latents to normalize
+            reference_latents (`torch.Tensor`):
+                The reference latents providing style statistics.
+            factor (`float`):
+                Blending factor between original and transformed latent. Range: -10.0 to 10.0, Default: 1.0
+
+        Returns:
+            torch.Tensor: The transformed latent tensor
+        """
+        result = latents.clone()
+
+        for i in range(latents.size(0)):
+            for c in range(latents.size(1)):
+                r_sd, r_mean = torch.std_mean(reference_latents[i, c], dim=None)  # index by original dim order
+                i_sd, i_mean = torch.std_mean(result[i, c], dim=None)
+
+                result[i, c] = ((result[i, c] - i_mean) / i_sd) * r_sd + r_mean
+
+        result = torch.lerp(latents, result, factor)
+        return result
+
     @staticmethod
     # Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._normalize_latents
     def _normalize_latents(
@@ -160,6 +188,7 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         decode_timestep: Union[float, List[float]] = 0.0,
         decode_noise_scale: Optional[Union[float, List[float]]] = None,
+        adain_factor: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -204,7 +233,12 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
             latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
         latents = latents.to(self.latent_upsampler.dtype)
-        latents = self.latent_upsampler(latents)
+        latents_upsampled = self.latent_upsampler(latents)
+
+        if adain_factor > 0.0:
+            latents = self.adain_filter_latent(latents_upsampled, latents, adain_factor)
+        else:
+            latents = latents_upsampled
 
         if output_type == "latent":
             latents = self._normalize_latents(
