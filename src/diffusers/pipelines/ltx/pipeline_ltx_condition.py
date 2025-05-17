@@ -1101,9 +1101,11 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
         latent_height = height // self.vae_spatial_compression_ratio
         latent_width = width // self.vae_spatial_compression_ratio
-        sigmas = linear_quadratic_schedule(num_inference_steps)
-        timesteps = sigmas * 1000
+        if timesteps is None:
+            sigmas = linear_quadratic_schedule(num_inference_steps)
+            timesteps = sigmas * 1000
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        sigmas = self.scheduler.sigmas
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         latent_sigma = None
