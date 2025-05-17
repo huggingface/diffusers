@@ -96,6 +96,7 @@ latents = pipe(
     decode_timestep=0.05,
     decode_noise_scale=0.025,
     image_cond_noise_scale=0.0,
+    guidance_scale=5.0,
     guidance_rescale=0.7,
     generator=torch.Generator().manual_seed(0),
     output_type="latent",
@@ -123,6 +124,7 @@ video = pipe(
     decode_timestep=0.05,
     decode_noise_scale=0.025,
     image_cond_noise_scale=0.0,
+    guidance_scale=5.0,
     guidance_rescale=0.7,
     generator=torch.Generator().manual_seed(0),
     output_type="pil",
@@ -133,6 +135,95 @@ video = [frame.resize((expected_width, expected_height)) for frame in video]
 
 export_to_video(video, "output.mp4", fps=24)
 ```
+
+## Using LTX Video 0.9.7 (distilled)
+
+The same example as above can be used with the exception of the `guidance_scale` parameter. The model is both guidance and timestep distilled in order to speedup generation. It requires `guidance_scale` to be set to `1.0`. Additionally, to benefit from the timestep distillation, `num_inference_steps` can be set between `4` and `10` for good generation quality.
+
+Additionally, custom timesteps can also be used for conditioning the generation. The authors recommend using the following timesteps for best results:
+- Base model inference to prepare for upscaling: `[1000, 993, 987, 981, 975, 909, 725, 0.03]`
+- Upscaling: `[1000, 909, 725, 421, 0]`
+
+<details>
+<summary> Full example </summary>
+
+```python
+import torch
+from diffusers import LTXConditionPipeline, LTXLatentUpsamplePipeline
+from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
+from diffusers.utils import export_to_video, load_video
+
+pipe = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-distilled", torch_dtype=torch.bfloat16)
+pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained("a-r-r-o-w/LTX-Video-0.9.7-Latent-Spatial-Upsampler-diffusers", vae=pipe.vae, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+pipe_upsample.to("cuda")
+pipe.vae.enable_tiling()
+
+def round_to_nearest_resolution_acceptable_by_vae(height, width):
+    height = height - (height % pipe.vae_temporal_compression_ratio)
+    width = width - (width % pipe.vae_temporal_compression_ratio)
+    return height, width
+
+prompt = "artistic anatomical 3d render, utlra quality, human half full male body with transparent skin revealing structure instead of organs, muscular, intricate creative patterns, monochromatic with backlighting, lightning mesh, scientific concept art, blending biology with botany, surreal and ethereal quality, unreal engine 5, ray tracing, ultra realistic, 16K UHD, rich details. camera zooms out in a rotating fashion"
+negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
+expected_height, expected_width = 768, 1152
+downscale_factor = 2 / 3
+num_frames = 161
+
+# Part 1. Generate video at smaller resolution
+downscaled_height, downscaled_width = int(expected_height * downscale_factor), int(expected_width * downscale_factor)
+downscaled_height, downscaled_width = round_to_nearest_resolution_acceptable_by_vae(downscaled_height, downscaled_width)
+latents = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=downscaled_width,
+    height=downscaled_height,
+    num_frames=num_frames,
+    timesteps=[1000, 993, 987, 981, 975, 909, 725, 0.03],
+    decode_timestep=0.05,
+    decode_noise_scale=0.025,
+    image_cond_noise_scale=0.0,
+    guidance_scale=1.0,
+    guidance_rescale=0.7,
+    generator=torch.Generator().manual_seed(0),
+    output_type="latent",
+).frames
+
+# Part 2. Upscale generated video using latent upsampler with fewer inference steps
+# The available latent upsampler upscales the height/width by 2x
+upscaled_height, upscaled_width = downscaled_height * 2, downscaled_width * 2
+upscaled_latents = pipe_upsample(
+    latents=latents,
+    adain_factor=1.0,
+    output_type="latent"
+).frames
+
+# Part 3. Denoise the upscaled video with few steps to improve texture (optional, but recommended)
+video = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=upscaled_width,
+    height=upscaled_height,
+    num_frames=num_frames,
+    denoise_strength=0.999,  # Effectively, 4 inference steps out of 5
+    timesteps=[1000, 909, 725, 421, 0],
+    latents=upscaled_latents,
+    decode_timestep=0.05,
+    decode_noise_scale=0.025,
+    image_cond_noise_scale=0.0,
+    guidance_scale=1.0,
+    guidance_rescale=0.7,
+    generator=torch.Generator().manual_seed(0),
+    output_type="pil",
+).frames[0]
+
+# Part 4. Downscale the video to the expected resolution
+video = [frame.resize((expected_width, expected_height)) for frame in video]
+
+export_to_video(video, "output.mp4", fps=24)
+```
+
+</details>
 
 ## Loading Single Files
 
