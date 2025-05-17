@@ -585,7 +585,7 @@ def main(args):
 
     def enforce_zero_terminal_snr(scheduler):
         # Modified from https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_ddpm.py#L93
-        # Original implementation https://arxiv.org/pdf/2305.08891.pdf
+        # Original implementation https://huggingface.co/papers/2305.08891
         # Turbo needs zero terminal SNR
         # Turbo: https://static1.squarespace.com/static/6213c340453c3f502425776e/t/65663480a92fba51d0e1023f/1701197769659/adversarial_diffusion_distillation.pdf
         # Convert betas to alphas_bar_sqrt

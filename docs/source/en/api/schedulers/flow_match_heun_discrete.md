@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # FlowMatchHeunDiscreteScheduler
 
-`FlowMatchHeunDiscreteScheduler` is based on the flow-matching sampling introduced in [EDM](https://arxiv.org/abs/2403.03206).
+`FlowMatchHeunDiscreteScheduler` is based on the flow-matching sampling introduced in [EDM](https://huggingface.co/papers/2403.03206).
 
 ## FlowMatchHeunDiscreteScheduler
 [[autodoc]] FlowMatchHeunDiscreteScheduler

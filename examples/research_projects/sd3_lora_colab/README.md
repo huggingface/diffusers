@@ -17,7 +17,7 @@ For setup, inference code, and details on how to run the code, please follow the
 
 We make use of several techniques to make this possible:
 
-* Compute the embeddings from the instance prompt and serialize them for later reuse. This is implemented in the [`compute_embeddings.py`](./compute_embeddings.py) script. We use an 8bit (as introduced in [`LLM.int8()`](https://arxiv.org/abs/2208.07339)) T5 to reduce memory requirements to ~10.5GB.
+* Compute the embeddings from the instance prompt and serialize them for later reuse. This is implemented in the [`compute_embeddings.py`](./compute_embeddings.py) script. We use an 8bit (as introduced in [`LLM.int8()`](https://huggingface.co/papers/2208.07339)) T5 to reduce memory requirements to ~10.5GB.
 * In the `train_dreambooth_sd3_lora_miniature.py` script, we make use of:
   * 8bit Adam for optimization through the `bitsandbytes` library.
   * Gradient checkpointing and gradient accumulation.

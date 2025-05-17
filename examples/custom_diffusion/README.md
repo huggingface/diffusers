@@ -1,6 +1,6 @@
 # Custom Diffusion training example
 
-[Custom Diffusion](https://arxiv.org/abs/2212.04488) is a method to customize text-to-image models like Stable Diffusion given just a few (4~5) images of a subject.
+[Custom Diffusion](https://huggingface.co/papers/2212.04488) is a method to customize text-to-image models like Stable Diffusion given just a few (4~5) images of a subject.
 The `train_custom_diffusion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
 ## Running locally with PyTorch

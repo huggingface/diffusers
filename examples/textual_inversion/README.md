@@ -1,6 +1,6 @@
 ## Textual Inversion fine-tuning example
 
-[Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
+[Textual inversion](https://huggingface.co/papers/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
 The `textual_inversion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
 ## Running on Colab
@@ -86,7 +86,7 @@ accelerate launch textual_inversion.py \
 
 A full training run takes ~1 hour on one V100 GPU.
 
-**Note**: As described in [the official paper](https://arxiv.org/abs/2208.01618)
+**Note**: As described in [the official paper](https://huggingface.co/papers/2208.01618)
 only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
 However, one can also add multiple embedding vectors for the placeholder token
 to increase the number of fine-tuneable parameters. This can help the model to learn

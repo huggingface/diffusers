@@ -428,7 +428,7 @@ class EasyAnimateMidBlock3d(nn.Module):
 
 class EasyAnimateEncoder(nn.Module):
     r"""
-    Causal encoder for 3D video-like data used in [EasyAnimate](https://arxiv.org/abs/2405.18991).
+    Causal encoder for 3D video-like data used in [EasyAnimate](https://huggingface.co/papers/2405.18991).
     """
 
     _supports_gradient_checkpointing = True
@@ -544,7 +544,7 @@ class EasyAnimateEncoder(nn.Module):
 
 class EasyAnimateDecoder(nn.Module):
     r"""
-    Causal decoder for 3D video-like data used in [EasyAnimate](https://arxiv.org/abs/2405.18991).
+    Causal decoder for 3D video-like data used in [EasyAnimate](https://huggingface.co/papers/2405.18991).
     """
 
     _supports_gradient_checkpointing = True
@@ -666,7 +666,7 @@ class EasyAnimateDecoder(nn.Module):
 class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images. This
-    model is used in [EasyAnimate](https://arxiv.org/abs/2405.18991).
+    model is used in [EasyAnimate](https://huggingface.co/papers/2405.18991).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).

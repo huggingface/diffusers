@@ -198,7 +198,7 @@ class OmniGenCollator:
     def create_mask(self, attention_mask, num_tokens_for_output_images):
         """
         OmniGen applies causal attention to each element in the sequence, but applies bidirectional attention within
-        each image sequence References: [OmniGen](https://arxiv.org/pdf/2409.11340)
+        each image sequence References: [OmniGen](https://huggingface.co/papers/2409.11340)
         """
         extended_mask = []
         padding_images = []

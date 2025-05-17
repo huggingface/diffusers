@@ -24,7 +24,7 @@ class UnCLIPTextProjModel(ModelMixin, ConfigMixin):
     Utility class for CLIP embeddings. Used to combine the image and text embeddings into a format usable by the
     decoder.
 
-    For more details, see the original paper: https://arxiv.org/abs/2204.06125 section 2.1
+    For more details, see the original paper: https://huggingface.co/papers/2204.06125 section 2.1
     """
 
     @register_to_config

@@ -308,7 +308,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
                     activation_fn=activation_fn,
                     ff_inner_dim=int(self.inner_dim * mlp_ratio),
                     cross_attention_dim=cross_attention_dim,
-                    qk_norm=True,  # See http://arxiv.org/abs/2302.05442 for details.
+                    qk_norm=True,  # See https://huggingface.co/papers/2302.05442 for details.
                     skip=layer > num_layers // 2,
                 )
                 for layer in range(num_layers)

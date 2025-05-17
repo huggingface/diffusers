@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # FlowMatchEulerDiscreteScheduler
 
-`FlowMatchEulerDiscreteScheduler` is based on the flow-matching sampling introduced in [Stable Diffusion 3](https://arxiv.org/abs/2403.03206).
+`FlowMatchEulerDiscreteScheduler` is based on the flow-matching sampling introduced in [Stable Diffusion 3](https://huggingface.co/papers/2403.03206).
 
 ## FlowMatchEulerDiscreteScheduler
 [[autodoc]] FlowMatchEulerDiscreteScheduler

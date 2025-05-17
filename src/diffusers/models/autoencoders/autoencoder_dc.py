@@ -379,8 +379,8 @@ class Decoder(nn.Module):
 
 class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
-    An Autoencoder model introduced in [DCAE](https://arxiv.org/abs/2410.10733) and used in
-    [SANA](https://arxiv.org/abs/2410.10629).
+    An Autoencoder model introduced in [DCAE](https://huggingface.co/papers/2410.10733) and used in
+    [SANA](https://huggingface.co/papers/2410.10629).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).

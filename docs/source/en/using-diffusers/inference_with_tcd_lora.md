@@ -25,7 +25,7 @@ The major advantages of TCD are:
 - Freely change detail level: During inference, the level of detail in the image can be adjusted with a single hyperparameter, *gamma*.
 
 > [!TIP]
-> For more technical details of TCD, please refer to the [paper](https://arxiv.org/abs/2402.19159) or official [project page](https://mhh0318.github.io/tcd/)).
+> For more technical details of TCD, please refer to the [paper](https://huggingface.co/papers/2402.19159) or official [project page](https://mhh0318.github.io/tcd/).
 
 For large models like SDXL, TCD is trained with [LoRA](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) to reduce memory usage. This is also useful because you can reuse LoRAs between different finetuned models, as long as they share the same base model, without further training.
 

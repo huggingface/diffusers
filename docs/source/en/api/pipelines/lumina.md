@@ -28,7 +28,7 @@ Lumina-Next has the following components:
 
 ---
 
-[Lumina-T2X: Transforming Text into Any Modality, Resolution, and Duration via Flow-based Large Diffusion Transformers](https://arxiv.org/abs/2405.05945) from Alpha-VLLM, OpenGVLab, Shanghai AI Laboratory.
+[Lumina-T2X: Transforming Text into Any Modality, Resolution, and Duration via Flow-based Large Diffusion Transformers](https://huggingface.co/papers/2405.05945) from Alpha-VLLM, OpenGVLab, Shanghai AI Laboratory.
 
 The abstract from the paper is:
 
