@@ -49,7 +49,7 @@ The LPL implementation follows the paper's methodology and includes several key 
 To use LPL in your training, add the following arguments to your training command:
 
 ```bash
-python examples/research_projects/lpl/lpl_sdxl.py \
+python examples/research_projects/lpl/train_sdxl_lpl.py \
     --use_lpl \
     --lpl_weight 1.0 \                    # Weight for LPL loss (1.0-2.0 recommended)
     --lpl_t_threshold 200 \              # Apply LPL only for timesteps < threshold (high SNR)
