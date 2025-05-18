@@ -725,19 +725,15 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-            x0 = latents.unsqueeze(0)
-            videos = self.vae.decode(x0)
-            videos = [(videos / 2 + 0.5).clamp(0, 1)]
-            videos = [video.permute(1, 2, 3, 0) * 255 for video in videos]
-            video = [video.cpu().numpy().astype(np.uint8) for video in videos]
+            latents = latents.unsqueeze(0)
         else:
             # Long video generation
             overlap_history_frames = (overlap_history - 1) // 4 + 1
             n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
-            output_video = None
+            video = None
             for i in range(n_iter):
-                if output_video is not None:  # i !=0
-                    prefix_video = output_video[:, -overlap_history:].to(prompt_embeds.device)
+                if video is not None:  # i !=0
+                    prefix_video = video[:, -overlap_history:].to(prompt_embeds.device)
                     prefix_video = [self.vae.encode(prefix_video.unsqueeze(0))[0]]  # [(c, f, h, w)]
                     if prefix_video[0].shape[1] % causal_block_size != 0:
                         truncate_len = prefix_video[0].shape[1] % causal_block_size
@@ -885,33 +881,30 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     )
                     latents = latents / latents_std + latents_mean
                     videos = self.vae.decode(latents, return_dict=False)[0]
-                    if output_video is None:
-                        output_video = videos  # c, f, h, w
+                    if video is None:
+                        video = videos  # c, f, h, w
                     else:
-                        output_video = torch.cat(
-                            [output_video, videos[:, overlap_history:]], 1
+                        video = torch.cat(
+                            [video, videos[:, overlap_history:]], 1
                         )  # c, f, h, w
                 else:
-                    output_video = latents
-
-            output_video = [(output_video / 2 + 0.5).clamp(0, 1)]
-            output_video = [video.permute(1, 2, 3, 0) * 255 for video in output_video]
-            video = [video.cpu().numpy().astype(np.uint8) for video in output_video]
+                    video = latents
 
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype)
-            latents_mean = (
-                torch.tensor(self.vae.config.latents_mean)
-                .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(latents.device, latents.dtype)
-            )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                latents.device, latents.dtype
-            )
-            latents = latents / latents_std + latents_mean
-            video = self.vae.decode(latents, return_dict=False)[0]
+            if overlap_history is None:
+                latents = latents.to(self.vae.dtype)
+                latents_mean = (
+                    torch.tensor(self.vae.config.latents_mean)
+                    .view(1, self.vae.config.z_dim, 1, 1, 1)
+                    .to(latents.device, latents.dtype)
+                )
+                latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                    latents.device, latents.dtype
+                )
+                latents = latents / latents_std + latents_mean
+                video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
