@@ -575,7 +575,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
     @staticmethod
     def _prepare_blockwise_causal_attn_mask(
-        device: torch.device | str, num_frames: int = 21, frame_seqlen: int = 1560, num_frame_per_block=1
+        device: Union[torch.device, str], num_frames: int = 21, frame_seqlen: int = 1560, num_frame_per_block=1
     ) -> BlockMask:
         """
         we will divide the token sequence into the following format [1 latent frame] [1 latent frame] ... [1 latent
