@@ -1330,7 +1330,9 @@ def main(args):
                                 if args.snr_gamma is not None:
                                     # Use SNR-based weights if available
                                     snr = compute_snr(noise_scheduler, t_masked)
-                                    snr_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(t_masked)], dim=1).min(dim=1)[0]
+                                    snr_weights = torch.stack(
+                                        [snr, args.snr_gamma * torch.ones_like(t_masked)], dim=1
+                                    ).min(dim=1)[0]
                                     if noise_scheduler.config.prediction_type == "epsilon":
                                         snr_weights = snr_weights / snr
                                     elif noise_scheduler.config.prediction_type == "v_prediction":
