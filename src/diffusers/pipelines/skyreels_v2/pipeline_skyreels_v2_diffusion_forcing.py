@@ -609,7 +609,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         prefix_video = None
-        predix_video_latent_length = 0
+        prefix_video_latent_length = 0
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else num_latent_frames
 
@@ -630,7 +630,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 sample_schedulers.append(sample_scheduler)
             sample_schedulers_counter = [0] * num_latent_frames
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                num_latent_frames, timesteps, base_num_frames, ar_step, predix_video_latent_length, causal_block_size
+                num_latent_frames, timesteps, base_num_frames, ar_step, prefix_video_latent_length, causal_block_size
             )
 
             # 5. Prepare latent variables
@@ -665,16 +665,16 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     latent_model_input = (
                         latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                     )
-                    if addnoise_condition > 0 and valid_interval_start < predix_video_latent_length:
+                    if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
                         noise_factor = 0.001 * addnoise_condition
                         timestep_for_noised_condition = addnoise_condition
-                        latent_model_input[:, valid_interval_start:predix_video_latent_length] = (
-                            latent_model_input[:, valid_interval_start:predix_video_latent_length]
+                        latent_model_input[:, valid_interval_start:prefix_video_latent_length] = (
+                            latent_model_input[:, valid_interval_start:prefix_video_latent_length]
                             * (1.0 - noise_factor)
-                            + torch.randn_like(latent_model_input[:, valid_interval_start:predix_video_latent_length])
+                            + torch.randn_like(latent_model_input[:, valid_interval_start:prefix_video_latent_length])
                             * noise_factor
                         )
-                        timestep[:, valid_interval_start:predix_video_latent_length] = timestep_for_noised_condition
+                        timestep[:, valid_interval_start:prefix_video_latent_length] = timestep_for_noised_condition
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
@@ -739,14 +739,14 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latents.device, latents.dtype
             )
             for i in range(n_iter):
-                if video is not None:  # i !=0
+                if video is not None:
                     prefix_video = video[:, -overlap_history:].to(prompt_embeds.device)
                     prefix_video = [self.vae.encode(prefix_video.unsqueeze(0))[0]]  # [(c, f, h, w)]
                     if prefix_video[0].shape[1] % causal_block_size != 0:
                         truncate_len = prefix_video[0].shape[1] % causal_block_size
                         print("the length of prefix video is truncated for the casual block size alignment.")
                         prefix_video[0] = prefix_video[0][:, : prefix_video[0].shape[1] - truncate_len]
-                    predix_video_latent_length = prefix_video[0].shape[1]
+                    prefix_video_latent_length = prefix_video[0].shape[1]
                     finished_frame_num = i * (base_num_frames - overlap_history_frames) + overlap_history_frames
                     left_frame_num = num_latent_frames - finished_frame_num
                     base_num_frames_iter = min(left_frame_num + overlap_history_frames, base_num_frames)
@@ -756,7 +756,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             + ((base_num_frames_iter - overlap_history_frames) // causal_block_size - 1) * ar_step
                         )
                         self.transformer.num_steps = num_steps
-                else:  # i == 0
+                else:
                     base_num_frames_iter = base_num_frames
 
                 # 4. Prepare sample schedulers and timestep matrix
@@ -773,7 +773,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     timesteps,
                     base_num_frames_iter,
                     ar_step,
-                    predix_video_latent_length,
+                    prefix_video_latent_length,
                     causal_block_size,
                 )
 
@@ -791,7 +791,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     latents,
                 )
                 if prefix_video is not None:
-                    latents[:, :predix_video_latent_length] = prefix_video[0].to(transformer_dtype)
+                    latents[:, :prefix_video_latent_length] = prefix_video[0].to(transformer_dtype)
 
                 # 6. Denoising loop
                 num_warmup_steps = len(step_matrix) - num_inference_steps * self.scheduler.order
@@ -810,18 +810,18 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         latent_model_input = (
                             latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                         )
-                        if addnoise_condition > 0 and valid_interval_start < predix_video_latent_length:
+                        if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
                             noise_factor = 0.001 * addnoise_condition
                             timestep_for_noised_condition = addnoise_condition
-                            latent_model_input[:, valid_interval_start:predix_video_latent_length] = (
-                                latent_model_input[:, valid_interval_start:predix_video_latent_length]
+                            latent_model_input[:, valid_interval_start:prefix_video_latent_length] = (
+                                latent_model_input[:, valid_interval_start:prefix_video_latent_length]
                                 * (1.0 - noise_factor)
                                 + torch.randn_like(
-                                    latent_model_input[:, valid_interval_start:predix_video_latent_length]
+                                    latent_model_input[:, valid_interval_start:prefix_video_latent_length]
                                 )
                                 * noise_factor
                             )
-                            timestep[:, valid_interval_start:predix_video_latent_length] = (
+                            timestep[:, valid_interval_start:prefix_video_latent_length] = (
                                 timestep_for_noised_condition
                             )
 
@@ -879,7 +879,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 if not output_type == "latent":
                     latents = latents.to(self.vae.dtype)
                     latents = latents / latents_std + latents_mean
-                    # TODO: Or collect all latents and decode at once in the end?
                     videos = self.vae.decode(latents, return_dict=False)[0]
                     if video is None:
                         video = videos  # c, f, h, w
