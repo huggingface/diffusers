@@ -614,7 +614,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else num_latent_frames
 
         if causal_block_size is None:
-            causal_block_size = self.transformer.num_frame_per_block
+            causal_block_size = self.transformer.config.num_frame_per_block
         fps_embeds = [fps] * prompt_embeds.shape[0]
         fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
 
@@ -755,7 +755,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             num_inference_steps
                             + ((base_num_frames_iter - overlap_history_frames) // causal_block_size - 1) * ar_step
                         )
-                        self.transformer.num_steps = num_steps
+                        self.transformer.config.num_steps = num_steps
                 else:
                     base_num_frames_iter = base_num_frames
 
