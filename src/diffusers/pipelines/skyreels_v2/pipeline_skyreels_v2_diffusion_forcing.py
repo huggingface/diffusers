@@ -349,21 +349,21 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         base_num_frames,
         ar_step=5,
         num_pre_ready=0,
-        casual_block_size=1,
+        causal_block_size=1,
         shrink_interval_with_mask=False,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[tuple]]:
         step_matrix, step_index = [], []
         update_mask, valid_interval = [], []
         num_iterations = len(step_template) + 1
-        num_frames_block = num_frames // casual_block_size
-        base_num_frames_block = base_num_frames // casual_block_size
+        num_frames_block = num_frames // causal_block_size
+        base_num_frames_block = base_num_frames // causal_block_size
         if base_num_frames_block < num_frames_block:
             infer_step_num = len(step_template)
             gen_block = base_num_frames_block
             min_ar_step = infer_step_num / gen_block
             if ar_step < min_ar_step:
                 raise ValueError(f"ar_step should be at least {math.ceil(min_ar_step)} in your setting")
-        # print(num_frames, step_template, base_num_frames, ar_step, num_pre_ready, casual_block_size, num_frames_block, base_num_frames_block)
+        # print(num_frames, step_template, base_num_frames, ar_step, num_pre_ready, causal_block_size, num_frames_block, base_num_frames_block)
         step_template = torch.cat(
             [
                 torch.tensor([999], dtype=torch.int64, device=step_template.device),
@@ -373,7 +373,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )  # to handle the counter in row works starting from 1
         pre_row = torch.zeros(num_frames_block, dtype=torch.long)
         if num_pre_ready > 0:
-            pre_row[: num_pre_ready // casual_block_size] = num_iterations
+            pre_row[: num_pre_ready // causal_block_size] = num_iterations
 
         while not torch.all(pre_row >= (num_iterations - 1)):
             new_row = torch.zeros(num_frames_block, dtype=torch.long)
@@ -411,11 +411,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         step_index = torch.stack(step_index, dim=0)
         step_matrix = torch.stack(step_matrix, dim=0)
 
-        if casual_block_size > 1:
-            step_update_mask = step_update_mask.unsqueeze(-1).repeat(1, 1, casual_block_size).flatten(1).contiguous()
-            step_index = step_index.unsqueeze(-1).repeat(1, 1, casual_block_size).flatten(1).contiguous()
-            step_matrix = step_matrix.unsqueeze(-1).repeat(1, 1, casual_block_size).flatten(1).contiguous()
-            valid_interval = [(s * casual_block_size, e * casual_block_size) for s, e in valid_interval]
+        if causal_block_size > 1:
+            step_update_mask = step_update_mask.unsqueeze(-1).repeat(1, 1, causal_block_size).flatten(1).contiguous()
+            step_index = step_index.unsqueeze(-1).repeat(1, 1, causal_block_size).flatten(1).contiguous()
+            step_matrix = step_matrix.unsqueeze(-1).repeat(1, 1, causal_block_size).flatten(1).contiguous()
+            valid_interval = [(s * causal_block_size, e * causal_block_size) for s, e in valid_interval]
 
         return step_matrix, step_index, step_update_mask, valid_interval
 
@@ -744,7 +744,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     prefix_video = [self.vae.encode(prefix_video.unsqueeze(0))[0]]  # [(c, f, h, w)]
                     if prefix_video[0].shape[1] % causal_block_size != 0:
                         truncate_len = prefix_video[0].shape[1] % causal_block_size
-                        print("the length of prefix video is truncated for the casual block size alignment.")
+                        logger.warning("The length of prefix video is truncated for the causal block size alignment.")
                         prefix_video[0] = prefix_video[0][:, : prefix_video[0].shape[1] - truncate_len]
                     prefix_video_latent_length = prefix_video[0].shape[1]
                     finished_frame_num = i * (base_num_frames - overlap_history_frames) + overlap_history_frames
