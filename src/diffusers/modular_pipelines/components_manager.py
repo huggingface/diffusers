@@ -243,78 +243,112 @@ class ComponentsManager:
         self._auto_offload_enabled = False
 
     
-    def _get_by_collection(self, collection: str):
+    def _lookup_ids(self, name=None, collection=None, load_id=None, components: OrderedDict = None):
         """
-        Select components by collection name.
+        Lookup component_ids by name, collection, or load_id.
         """
-        selected_components = {}
-        if collection in self.collections:
-            component_ids = self.collections[collection]
-            for component_id in component_ids:
-                selected_components[component_id] = self.components[component_id]
-        return selected_components
+        if components is None:
+            components = self.components
+
+        if name:
+            ids_by_name = set() 
+            for component_id, component in components.items():
+                comp_name = "_".join(component_id.split("_")[:-1])
+                if comp_name == name:
+                    ids_by_name.add(component_id)
+        else:
+            ids_by_name = set(components.keys())
+        if collection:
+            ids_by_collection = set()
+            for component_id, component in components.items():
+                if component_id in self.collections[collection]:
+                    ids_by_collection.add(component_id)
+        else:
+            ids_by_collection = set(self.collections.keys())
+        if load_id:
+            ids_by_load_id = set()
+            for name, component in components.items():
+                if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id == load_id:
+                    ids_by_load_id.add(name)
+        else:
+            ids_by_load_id = set(components.keys())
         
-    
-    def _get_by_load_id(self, load_id: str):
-        """
-        Select components by its load_id.
-        """
-        selected_components = {}
-        for name, component in self.components.items():
-            if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id == load_id:
-                selected_components[name] = component
-        return selected_components
+        ids = ids_by_name.intersection(ids_by_collection).intersection(ids_by_load_id)
+        return ids
     
     
     def add(self, name, component, collection: Optional[str] = None):
-
-        for comp_id, comp in self.components.items():
-            if comp == component:
-                logger.warning(f"Component '{name}' already exists in ComponentsManager")
-                return comp_id
-
+        
         component_id = f"{name}_{uuid.uuid4()}"
 
-        if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id != "null":
-            components_with_same_load_id = self._get_by_load_id(component._diffusers_load_id)
-            if components_with_same_load_id:
-                existing = ", ".join(components_with_same_load_id.keys())
+        # check for duplicated components
+        for comp_id, comp in self.components.items():
+            if comp == component:
                 logger.warning(
-                    f"Component '{name}' has duplicate load_id '{component._diffusers_load_id}' with existing components: {existing}. "
-                    f"To remove a duplicate, call `components_manager.remove('<component_name>')`."
+                    f"component '{component}' already exists as '{comp_id}'"
                 )
-        
+                # if name is the same, use the existing component_id
+                if comp_id.split("_")[:-1] == component_id.split("_")[:-1]:
+                    component_id = comp_id
+                    break
+
+
+        # check for duplicated load_id and warn (we do not delete for you)
+        if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id != "null":
+            components_with_same_load_id = self._lookup_ids(load_id=component._diffusers_load_id)
+            
+            if components_with_same_load_id:
+                existing = ", ".join(components_with_same_load_id)
+                logger.warning(
+                    f"Adding component '{component_id}', but it has duplicate load_id '{component._diffusers_load_id}' with existing components: {existing}. "
+                    f"To remove a duplicate, call `components_manager.remove('<component_id>')`."
+                )
 
         # add component to components manager
         self.components[component_id] = component
         self.added_time[component_id] = time.time()
+
         if collection:
             if collection not in self.collections:
                 self.collections[collection] = set()
+            comp_ids_in_collection = self._lookup_ids(name=name, collection=collection)
+            for comp_id in comp_ids_in_collection:
+                logger.info(f"Removing existing {name} from collection '{collection}': {comp_id}")
+                self.remove(comp_id)
             self.collections[collection].add(component_id)
+            logger.info(f"Added component '{name}' in collection '{collection}': {component_id}")
+        else:
+            logger.info(f"Added component '{name}' as '{component_id}'")
 
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)   
         
-        logger.info(f"Added component '{name}' to ComponentsManager as '{component_id}'")
         return component_id
 
 
-    def remove(self, name: Union[str, List[str]]):
+    def remove(self, component_id: str = None):
 
-        if name not in self.components:
-            logger.warning(f"Component '{name}' not found in ComponentsManager")
+        if component_id not in self.components:
+            logger.warning(f"Component '{component_id}' not found in ComponentsManager")
             return
-            
-        self.components.pop(name)
-        self.added_time.pop(name)
+      
+        component = self.components.pop(component_id)
+        self.added_time.pop(component_id)
 
         for collection in self.collections:
-            if name in self.collections[collection]:
-                self.collections[collection].remove(name)
+            if component_id in self.collections[collection]:
+                self.collections[collection].remove(component_id)
         
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)
+        else:
+            if isinstance(component, torch.nn.Module):
+                component.to("cpu")
+            del component
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     def get(self, names: Union[str, List[str]] = None, collection: Optional[str] = None, load_id: Optional[str] = None,
              as_name_component_tuples: bool = False):
@@ -343,16 +377,8 @@ class ComponentsManager:
             or list of (base_name, component) tuples if as_name_component_tuples=True
         """
         
-        if collection:
-            if collection not in self.collections:
-                logger.warning(f"Collection '{collection}' not found in ComponentsManager")
-                return [] if as_name_component_tuples else {}
-            components = self._get_by_collection(collection)
-        else:
-            components = self.components
-
-        if load_id:
-            components = self._get_by_load_id(load_id)
+        selected_ids = self._lookup_ids(collection=collection, load_id=load_id)
+        components = {k: self.components[k] for k in selected_ids}
 
         # Helper to extract base name from component_id
         def get_base_name(component_id):
@@ -542,11 +568,11 @@ class ComponentsManager:
         self._auto_offload_enabled = False
 
     # YiYi TODO: add quantization info
-    def get_model_info(self, name: str, fields: Optional[Union[str, List[str]]] = None) -> Optional[Dict[str, Any]]:
+    def get_model_info(self, component_id: str, fields: Optional[Union[str, List[str]]] = None) -> Optional[Dict[str, Any]]:
         """Get comprehensive information about a component.
         
         Args:
-            name: Name of the component to get info for
+            component_id: Name of the component to get info for
             fields: Optional field(s) to return. Can be a string for single field or list of fields.
                    If None, returns all fields.
                    
@@ -555,16 +581,16 @@ class ComponentsManager:
             If fields is specified, returns only those fields.
             If a single field is requested as string, returns just that field's value.
         """
-        if name not in self.components:
-            raise ValueError(f"Component '{name}' not found in ComponentsManager")
+        if component_id not in self.components:
+            raise ValueError(f"Component '{component_id}' not found in ComponentsManager")
 
-        component = self.components[name]
+        component = self.components[component_id]
         
         # Build complete info dict first
         info = {
-            "model_id": name,
-            "added_time": self.added_time[name],
-            "collection": next((coll for coll, comps in self.collections.items() if name in comps), None),
+            "model_id": component_id,
+            "added_time": self.added_time[component_id],
+            "collection": next((coll for coll, comps in self.collections.items() if component_id in comps), None),
         }
         
         # Additional info for torch.nn.Module components
@@ -776,7 +802,7 @@ class ComponentsManager:
                         f"2. Use a different prefix: add_from_pretrained(..., prefix='{prefix}_2')"
                     )
 
-    def get_one(self, name: Optional[str] = None, collection: Optional[str] = None, load_id: Optional[str] = None) -> Any:
+    def get_one(self, component_id: Optional[str] = None, name: Optional[str] = None, collection: Optional[str] = None, load_id: Optional[str] = None) -> Any:
         """
         Get a single component by name. Raises an error if multiple components match or none are found.
         
@@ -791,6 +817,15 @@ class ComponentsManager:
         Raises:
             ValueError: If no components match or multiple components match
         """
+
+        # if component_id is provided, return the component
+        if component_id is not None and (name is not None or collection is not None or load_id is not None):
+            raise ValueError(" if component_id is provided, name, collection, and load_id must be None")
+        elif component_id is not None:
+            if component_id not in self.components:
+                raise ValueError(f"Component '{component_id}' not found in ComponentsManager")
+            return self.components[component_id]
+        
         results = self.get(name, collection, load_id)
         
         if not results:
