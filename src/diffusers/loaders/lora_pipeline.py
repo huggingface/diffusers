@@ -4819,6 +4819,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if any(k.startswith("transformer.blocks.") for k in state_dict):
             num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict if "blocks." in k})
             is_i2v_lora = any("add_k_proj" in k for k in state_dict) and any("add_v_proj" in k for k in state_dict)
+            is_bias = any("bias" in k for k in state_dict)
 
             if is_i2v_lora:
                 return state_dict
@@ -4831,6 +4832,10 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
                         state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"]
                     )
+                    if is_bias:
+                        converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.bias"] = torch.zeros_like(
+                            state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"]
+                        )
         print("AFTER:", set(state_dict.keys()) - orig_keys)
 
         return state_dict
