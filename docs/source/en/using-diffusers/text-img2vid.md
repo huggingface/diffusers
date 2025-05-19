@@ -86,22 +86,25 @@ export_to_video(output, "output.mp4", fps=16)
 
 ```py
 import torch
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, HunyuanVideoPipeline
+from diffusers importAutoModel, HunyuanVideoPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
 
 # quantize weights to int4 with bitsandbytes
-quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-transformer = AutoModel.from_pretrained(
-    "hunyuanvideo-community/HunyuanVideo",
-    subfolder="transformer",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
+pipeline_quant_config = PipelineQuantizationConfig(
+  quant_backend="bitsandbytes_4bit",
+  quant_kwargs={
+    "load_in_4bit": True,
+    "bnb_4bit_quant_type": "nf4",
+    "bnb_4bit_compute_dtype": torch.bfloat16
+    },
+  components_to_quantize=["transformer"]
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
-    transformer=transformer,
-    torch_dtype=torch.float16,
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
 )
 
 # model-offloading and tiling
@@ -360,33 +363,24 @@ The example below uses [bitsandbytes](../quantization/bitsandbytes) to quantize 
 
 import torch
 from diffusers import WanPipeline
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, WanPipeline
+from diffusers import AutoModel, WanPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from transformers import UMT5EncoderModel
 from diffusers.utils import export_to_video
 
 # quantize transformer and text encoder weights with bitsandbytes
-quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-transformer = AutoModel.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
-    subfolder="transformer",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
-)
-
-quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-text_encoder = UMT5EncoderModel.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
-    subfolder="text_encoder",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
+pipeline_quant_config = PipelineQuantizationConfig(
+  quant_backend="bitsandbytes_4bit",
+  quant_kwargs={"load_in_4bit": True},
+  components_to_quantize=["transformer", "text_encoder"]
 )
 
 vae = AutoModel.from_pretrained(
   "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32
 )
 pipeline = WanPipeline.from_pretrained(
-  "Wan-AI/Wan2.1-T2V-14B-Diffusers", transformer=transformer, text_encoder=text_encoder, vae=vae, torch_dtype=torch.bfloat16
+  "Wan-AI/Wan2.1-T2V-14B-Diffusers", vae=vae, quantization_config=pipeline_quant_config, torch_dtype=torch.bfloat16
 )
 pipeline.scheduler = UniPCMultistepScheduler.from_config(
   pipeline.scheduler.config, flow_shift=5.0

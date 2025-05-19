@@ -41,6 +41,7 @@ The Wan2.1 text-to-video model below requires ~13GB of VRAM.
 import torch
 import numpy as np
 from diffusers import AutoModel, WanPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
