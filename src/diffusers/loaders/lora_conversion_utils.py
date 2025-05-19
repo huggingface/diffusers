@@ -1712,3 +1712,11 @@ def _convert_non_diffusers_hidream_lora_to_diffusers(state_dict, non_diffusers_p
     converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
     converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
     return converted_state_dict
+
+
+def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_prefix="diffusion_model"):
+    if not all(k.startswith(f"{non_diffusers_prefix}.") for k in state_dict):
+        raise ValueError("Invalid LoRA state dict for LTX-Video.")
+    converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
+    converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+    return converted_state_dict
