@@ -215,6 +215,7 @@ else:
             "UVit2DModel",
             "VQModel",
             "WanTransformer3DModel",
+            "WanVACETransformer3DModel",
         ]
     )
     _import_structure["optimization"] = [
@@ -526,6 +527,7 @@ else:
             "VQDiffusionPipeline",
             "WanImageToVideoPipeline",
             "WanPipeline",
+            "WanVACEPipeline",
             "WanVideoToVideoPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
@@ -819,6 +821,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UVit2DModel,
             VQModel,
             WanTransformer3DModel,
+            WanVACETransformer3DModel,
         )
         from .optimization import (
             get_constant_schedule,
@@ -1109,6 +1112,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionPipeline,
             WanImageToVideoPipeline,
             WanPipeline,
+            WanVACEPipeline,
             WanVideoToVideoPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
