@@ -298,7 +298,7 @@ The `low_cpu_mem_usage` parameter can be set to `True` to reduce CPU memory usag
 <Tip>
 
 The offloading strategies can be combined with [quantization](../quantization/overview.md) to enable further memory savings. For image generation, combining [quantization and model offloading](#model-offloading) can often give the best trade-off between quality, speed, and memory. However, for video generation, as the models are more
-compute-bound, [group-offloading](#group-offloading) tends to be better. Group offloading benefits considerably from overlapping weight transfers and computation. When applying group offloading with quantization on image generation models at typical resolutions (1024x1024, for example), it usually cannot overlap weight transfer if the compute kernel finishes before weight transfer, making it communication bound between CPU/GPU.
+compute-bound, [group-offloading](#group-offloading) tends to be better. Group offloading provides considerable benefits when weight transfers can be overlapped with computation (must use streams). When applying group offloading with quantization on image generation models at typical resolutions (1024x1024, for example), it is usually not possible to *fully* overlap weight transfers if the compute kernel finishes faster, making it communication bound between CPU/GPU (due to device synchronizations).
 
 </Tip>
 
