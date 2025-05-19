@@ -881,10 +881,14 @@ class LatentConsistencyModelImg2ImgPipeline(
         image = self.image_processor.preprocess(image)
 
         # 5. Prepare timesteps
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
-            device,
+            timestep_device,
             timesteps,
             original_inference_steps=original_inference_steps,
             strength=strength,
