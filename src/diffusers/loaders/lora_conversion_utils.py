@@ -1610,7 +1610,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                 logger.debug(f"Removed {diff_k} key from the state dict as it's all zeros.")
                 original_state_dict.pop(diff_k)
 
-    # For the `diff_b` keys, we treat them as lora_Bias.
+    # For the `diff_b` keys, we treat them as lora_bias.
     # https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraConfig.lora_bias
 
     for i in range(num_blocks):
@@ -1711,8 +1711,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
         if diff:
             diff_keys = {k for k in original_state_dict if k.endswith(".diff")}
             assert all("lora" not in k for k in diff_keys)
-            print(f"{(diff_keys)}")
-        if not diff:
+        else:
             raise ValueError(f"`state_dict` should be empty at this point but has {original_state_dict.keys()=}")
 
     for key in list(converted_state_dict.keys()):
