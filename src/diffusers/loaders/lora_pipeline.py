@@ -4833,7 +4833,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                         state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"]
                     )
                     if is_bias:
-                        converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.bias"] = torch.zeros_like(
+                        state_dict[f"blocks.{i}.attn2.{c}.lora_B.bias"] = torch.zeros_like(
                             state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"]
                         )
         print("AFTER:", set(state_dict.keys()) - orig_keys)
