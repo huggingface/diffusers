@@ -35,6 +35,7 @@ Available models:
 | [`LTX Video 2B 0.9.1`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.1.safetensors) | `torch.bfloat16` |
 | [`LTX Video 2B 0.9.5`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.5.safetensors) | `torch.bfloat16` |
 | [`LTX Video 13B 0.9.7`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltxv-13b-0.9.7-dev.safetensors) | `torch.bfloat16` |
+| [`LTX Video 13B 0.9.7 (distilled)`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltxv-13b-0.9.7-distilled.safetensors) | `torch.bfloat16` |
 | [`LTX Video Spatial Upscaler 0.9.7`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltxv-spatial-upscaler-0.9.7.safetensors) | `torch.bfloat16` |
 
 Note: The recommended dtype is for the transformer component. The VAE and text encoders can be either `torch.float32`, `torch.bfloat16` or `torch.float16` but the recommended dtype is `torch.bfloat16` as used in the original repository.
@@ -46,6 +47,14 @@ For the best results, it is recommended to follow the guidelines mentioned in th
 - Some variants of LTX Video are guidance-distilled. For guidance-distilled models, `guidance_scale` must be set to `1.0`. For any other models, `guidance_scale` should be set higher (e.g., `5.0`) for good generation quality.
 - For variants with a timestep-aware VAE (LTXV 0.9.1 and above), it is recommended to set `decode_timestep` to `0.05` and `image_cond_noise_scale` to `0.025`.
 - For variants that support interpolation between multiple conditioning images and videos (LTXV 0.9.5 and above), it is recommended to use similar looking images/videos for the best results. High divergence between the conditionings may lead to abrupt transitions in the generated video.
+
+<!-- TODO(aryan): remove this warning when modular diffusers is ready -->
+
+<Tip warning={true}>
+
+The examples below show some recommended generation settings, but note that all features supported in the original [LTX Video repository](https://github.com/Lightricks/LTX-Video) are not supported in `diffusers` yet (for example, Spatio-temporal Guidance and CRF compression for image inputs). This will gradually be supported in the future. For the best possible generation quality, we recommend using the code from the original repository.
+
+</Tip>
 
 ## Using LTX Video 13B 0.9.7
 
