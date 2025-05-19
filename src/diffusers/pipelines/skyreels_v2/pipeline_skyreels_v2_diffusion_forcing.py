@@ -344,13 +344,13 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     def generate_timestep_matrix(
         self,
-        num_frames,
-        step_template,
-        base_num_frames,
-        ar_step=5,
-        num_pre_ready=0,
-        causal_block_size=1,
-        shrink_interval_with_mask=False,
+        num_frames: int,
+        step_template: torch.Tensor,
+        base_num_frames: int,
+        ar_step: int = 5,
+        num_pre_ready: int = 0,
+        causal_block_size: int = 1,
+        shrink_interval_with_mask: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[tuple]]:
         step_matrix, step_index = [], []
         update_mask, valid_interval = [], []
@@ -401,7 +401,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             update_mask_idx = idx_sequence[update_mask]
             last_update_idx = update_mask_idx[-1].item()
             terminal_flag = last_update_idx + 1
-        # for i in range(0, len(update_mask)):
+
         for curr_mask in update_mask:
             if terminal_flag < num_frames_block and curr_mask[terminal_flag]:
                 terminal_flag += 1
@@ -468,7 +468,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         overlap_history: Optional[int] = 17,
-        shift: float = 1.0,  # TODO: check this
+        shift: float = 8.0,
         addnoise_condition: float = 20.0,
         base_num_frames: int = 97,
         ar_step: int = 5,
@@ -535,10 +535,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
-            shift (`float`, *optional*, defaults to `1.0`):
+            shift (`float`, *optional*, defaults to `8.0`):
             overlap_history (`int`, *optional*, defaults to `17`):
                 Number of frames to overlap for smooth transitions in long videos
-            addnoise_condition (`float`, *optional*, defaults to `20`):
+            addnoise_condition (`float`, *optional*, defaults to `20.0`):
                 Improves consistency in long video generation
             base_num_frames (`int`, *optional*, defaults to `97`):
                 97 or 121 | Base frame count (**97 for 540P**, **121 for 720P**)
@@ -611,7 +611,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prefix_video = None
         prefix_video_latent_length = 0
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        base_num_frames = (base_num_frames - 1) // 4 + 1 if base_num_frames is not None else num_latent_frames
+        base_num_frames = (
+            (base_num_frames - 1) // self.vae_scale_factor_temporal + 1
+            if base_num_frames is not None
+            else num_latent_frames
+        )
 
         if causal_block_size is None:
             causal_block_size = self.transformer.config.num_frame_per_block
@@ -652,33 +656,33 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             self._num_timesteps = len(step_matrix)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                for i, timestep_i in enumerate(step_matrix):
+                for i, t in enumerate(step_matrix):
                     if self.interrupt:
                         continue
 
-                    self._current_timestep = timestep_i
+                    self._current_timestep = t
 
                     update_mask_i = step_update_mask[i]
-                    valid_interval_i = valid_interval[i]
-                    valid_interval_start, valid_interval_end = valid_interval_i
-                    timestep = timestep_i[None, valid_interval_start:valid_interval_end].clone()
+                    valid_interval_start, valid_interval_end = valid_interval[i]
+                    timestep = t.expand(latents.shape[0])[:, valid_interval_start:valid_interval_end].clone()
                     latent_model_input = (
                         latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                     )
                     if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
                         noise_factor = 0.001 * addnoise_condition
-                        timestep_for_noised_condition = addnoise_condition
                         latent_model_input[:, valid_interval_start:prefix_video_latent_length] = (
                             latent_model_input[:, valid_interval_start:prefix_video_latent_length]
                             * (1.0 - noise_factor)
                             + torch.randn_like(latent_model_input[:, valid_interval_start:prefix_video_latent_length])
                             * noise_factor
                         )
-                        timestep[:, valid_interval_start:prefix_video_latent_length] = timestep_for_noised_condition
+                        timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
+
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
                         encoder_hidden_states=prompt_embeds,
+                        flag_df=True,
                         fps=fps_embeds,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
@@ -688,6 +692,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=negative_prompt_embeds,
+                            flag_df=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
@@ -698,7 +703,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         if update_mask_i[idx].item():
                             latents[:, idx] = sample_schedulers[idx].step(
                                 noise_pred[:, idx - valid_interval_start],
-                                timestep_i[idx],
+                                t[idx],
                                 latents[:, idx],
                                 return_dict=False,
                                 generator=generator,
@@ -709,7 +714,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
                             callback_kwargs[k] = locals()[k]
-                        callback_outputs = callback_on_step_end(self, i, timestep_i, callback_kwargs)
+                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                         latents = callback_outputs.pop("latents", latents)
                         prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
@@ -798,21 +803,19 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 self._num_timesteps = len(step_matrix)
 
                 with self.progress_bar(total=num_inference_steps) as progress_bar:
-                    for i, timestep_i in enumerate(step_matrix):
+                    for i, t in enumerate(step_matrix):
                         if self.interrupt:
                             continue
 
-                        self._current_timestep = timestep_i
+                        self._current_timestep = t
                         update_mask_i = step_update_mask[i]
-                        valid_interval_i = valid_interval[i]
-                        valid_interval_start, valid_interval_end = valid_interval_i
-                        timestep = timestep_i[None, valid_interval_start:valid_interval_end].clone()
+                        valid_interval_start, valid_interval_end = valid_interval[i]
+                        timestep = t.expand(latents.shape[0])[:, valid_interval_start:valid_interval_end].clone()
                         latent_model_input = (
                             latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                         )
                         if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
                             noise_factor = 0.001 * addnoise_condition
-                            timestep_for_noised_condition = addnoise_condition
                             latent_model_input[:, valid_interval_start:prefix_video_latent_length] = (
                                 latent_model_input[:, valid_interval_start:prefix_video_latent_length]
                                 * (1.0 - noise_factor)
@@ -821,14 +824,13 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 )
                                 * noise_factor
                             )
-                            timestep[:, valid_interval_start:prefix_video_latent_length] = (
-                                timestep_for_noised_condition
-                            )
+                            timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
 
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=prompt_embeds,
+                            flag_df=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
@@ -838,6 +840,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
                                 encoder_hidden_states=negative_prompt_embeds,
+                                flag_df=True,
                                 fps=fps_embeds,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
@@ -847,7 +850,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             if update_mask_i[idx].item():
                                 latents[:, idx] = sample_schedulers[idx].step(
                                     noise_pred[:, idx - valid_interval_start],
-                                    timestep_i[idx],
+                                    t[idx],
                                     latents[:, idx],
                                     return_dict=False,
                                     generator=generator,
@@ -858,7 +861,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             callback_kwargs = {}
                             for k in callback_on_step_end_tensor_inputs:
                                 callback_kwargs[k] = locals()[k]
-                            callback_outputs = callback_on_step_end(self, i, timestep_i, callback_kwargs)
+                            callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                             latents = callback_outputs.pop("latents", latents)
                             prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
