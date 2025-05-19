@@ -4813,6 +4813,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if transformer.config.image_dim is None:
             return state_dict
 
+        orig_keys = set(state_dict.keys())
+        print("BEFORE:", state_dict.keys())
+
         if any(k.startswith("transformer.blocks.") for k in state_dict):
             num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict if "blocks." in k})
             is_i2v_lora = any("add_k_proj" in k for k in state_dict) and any("add_v_proj" in k for k in state_dict)
@@ -4828,6 +4831,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
                         state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"]
                     )
+        print("AFTER:", set(state_dict.keys()) - orig_keys)
 
         return state_dict
 
