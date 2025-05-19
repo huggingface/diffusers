@@ -1641,7 +1641,6 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                 )
 
         if is_i2v_lora:
-            # TODO: `diff_b`
             for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
                 converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = original_state_dict.pop(
                     f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
@@ -1649,6 +1648,10 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                 converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
                     f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
                 )
+                if f"blocks.{i}.cross_attn.{o}.diff_b" in original_state_dict:
+                    converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.bias"] = original_state_dict.pop(
+                        f"blocks.{i}.cross_attn.{o}.diff_b"
+                    )
 
         # FFN
         for o, c in zip(["ffn.0", "ffn.2"], ["net.0.proj", "net.2"]):
@@ -1710,7 +1713,12 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
         diff = all(".diff" in k for k in original_state_dict)
         if diff:
             diff_keys = {k for k in original_state_dict if k.endswith(".diff")}
-            assert all("lora" not in k for k in diff_keys)
+            if not all("lora" not in k for k in diff_keys):
+                raise ValueError
+            logger.info(
+                "The remaining `state_dict` contains `diff` keys which we do not handle yet. If you see performance issues, please file an issue: "
+                "https://github.com/huggingface/diffusers//issues/new"
+            )
         else:
             raise ValueError(f"`state_dict` should be empty at this point but has {original_state_dict.keys()=}")
 
