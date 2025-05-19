@@ -588,8 +588,8 @@ class TextToVideoZeroPipeline(
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -610,11 +610,11 @@ class TextToVideoZeroPipeline(
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
             motion_field_strength_x (`float`, *optional*, defaults to 12):
-                Strength of motion in generated video along x-axis. See the [paper](https://huggingface.co/papers/2303.13439),
-                Sect. 3.3.1.
+                Strength of motion in generated video along x-axis. See the
+                [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1.
             motion_field_strength_y (`float`, *optional*, defaults to 12):
-                Strength of motion in generated video along y-axis. See the [paper](https://huggingface.co/papers/2303.13439),
-                Sect. 3.3.1.
+                Strength of motion in generated video along y-axis. See the
+                [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1.
             t0 (`int`, *optional*, defaults to 44):
                 Timestep t0. Should be in the range [0, num_inference_steps - 1]. See the
                 [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1.

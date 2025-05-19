@@ -324,7 +324,8 @@ class FlaxUpBlock2D(nn.Module):
 
 class FlaxUNetMidBlock2DCrossAttn(nn.Module):
     r"""
-    Cross Attention 2D Mid-level block - original architecture from Unet transformers: https://huggingface.co/papers/2103.06104
+    Cross Attention 2D Mid-level block - original architecture from Unet transformers:
+    https://huggingface.co/papers/2103.06104
 
     Parameters:
         in_channels (:obj:`int`):

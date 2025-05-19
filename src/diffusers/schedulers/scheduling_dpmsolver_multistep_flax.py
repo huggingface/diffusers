@@ -80,14 +80,15 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
     the convergence order guarantee. Empirically, sampling by DPM-Solver with only 20 steps can generate high-quality
     samples, and it can generate quite good samples even in only 10 steps.
 
-    For more details, see the original paper: https://huggingface.co/papers/2206.00927 and https://huggingface.co/papers/2211.01095
+    For more details, see the original paper: https://huggingface.co/papers/2206.00927 and
+    https://huggingface.co/papers/2211.01095
 
     Currently, we support the multistep DPM-Solver for both noise prediction models and data prediction models. We
     recommend to use `solver_order=2` for guided sampling, and `solver_order=3` for unconditional sampling.
 
-    We also support the "dynamic thresholding" method in Imagen (https://huggingface.co/papers/2205.11487). For pixel-space
-    diffusion models, you can set both `algorithm_type="dpmsolver++"` and `thresholding=True` to use the dynamic
-    thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models (such as
+    We also support the "dynamic thresholding" method in Imagen (https://huggingface.co/papers/2205.11487). For
+    pixel-space diffusion models, you can set both `algorithm_type="dpmsolver++"` and `thresholding=True` to use the
+    dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models (such as
     stable-diffusion).
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
@@ -95,7 +96,8 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
     [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
     [`~SchedulerMixin.from_pretrained`] functions.
 
-    For more details, see the original paper: https://huggingface.co/papers/2206.00927 and https://huggingface.co/papers/2211.01095
+    For more details, see the original paper: https://huggingface.co/papers/2206.00927 and
+    https://huggingface.co/papers/2211.01095
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -113,10 +115,10 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             indicates whether the model predicts the noise (epsilon), or the data / `x0`. One of `epsilon`, `sample`,
             or `v-prediction`.
         thresholding (`bool`, default `False`):
-            whether to use the "dynamic thresholding" method (introduced by Imagen, https://huggingface.co/papers/2205.11487).
-            For pixel-space diffusion models, you can set both `algorithm_type=dpmsolver++` and `thresholding=True` to
-            use the dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion
-            models (such as stable-diffusion).
+            whether to use the "dynamic thresholding" method (introduced by Imagen,
+            https://huggingface.co/papers/2205.11487). For pixel-space diffusion models, you can set both
+            `algorithm_type=dpmsolver++` and `thresholding=True` to use the dynamic thresholding. Note that the
+            thresholding method is unsuitable for latent-space diffusion models (such as stable-diffusion).
         dynamic_thresholding_ratio (`float`, default `0.995`):
             the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
             (https://huggingface.co/papers/2205.11487).
@@ -125,9 +127,9 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             `algorithm_type="dpmsolver++`.
         algorithm_type (`str`, default `dpmsolver++`):
             the algorithm type for the solver. Either `dpmsolver` or `dpmsolver++`. The `dpmsolver` type implements the
-            algorithms in https://huggingface.co/papers/2206.00927, and the `dpmsolver++` type implements the algorithms in
-            https://huggingface.co/papers/2211.01095. We recommend to use `dpmsolver++` with `solver_order=2` for guided
-            sampling (e.g. stable-diffusion).
+            algorithms in https://huggingface.co/papers/2206.00927, and the `dpmsolver++` type implements the
+            algorithms in https://huggingface.co/papers/2211.01095. We recommend to use `dpmsolver++` with
+            `solver_order=2` for guided sampling (e.g. stable-diffusion).
         solver_type (`str`, default `midpoint`):
             the solver type for the second-order solver. Either `midpoint` or `heun`. The solver type slightly affects
             the sample quality, especially for small number of steps. We empirically find that `midpoint` solvers are

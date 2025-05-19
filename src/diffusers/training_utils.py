@@ -149,9 +149,9 @@ def compute_dream_and_update_latents(
     dream_detail_preservation: float = 1.0,
 ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
     """
-    Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from https://huggingface.co/papers/2312.00210.
-    DREAM helps align training with sampling to help training be more efficient and accurate at the cost of an extra
-    forward step without gradients.
+    Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from
+    https://huggingface.co/papers/2312.00210. DREAM helps align training with sampling to help training be more
+    efficient and accurate at the cost of an extra forward step without gradients.
 
     Args:
         `unet`: The state unet to use to make a prediction.

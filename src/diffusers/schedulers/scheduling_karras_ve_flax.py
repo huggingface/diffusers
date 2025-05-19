@@ -72,8 +72,8 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
     [`~SchedulerMixin.from_pretrained`] functions.
 
     For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
-    Diffusion-Based Generative Models." https://huggingface.co/papers/2206.00364. The grid search values used to find the
-    optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
+    Diffusion-Based Generative Models." https://huggingface.co/papers/2206.00364. The grid search values used to find
+    the optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
 
     Args:
         sigma_min (`float`): minimum noise magnitude

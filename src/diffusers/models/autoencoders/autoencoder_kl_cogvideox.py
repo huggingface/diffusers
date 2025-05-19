@@ -148,8 +148,8 @@ class CogVideoXCausalConv3d(nn.Module):
 
 class CogVideoXSpatialNorm3D(nn.Module):
     r"""
-    Spatially conditioned normalization as defined in https://huggingface.co/papers/2209.09002. This implementation is specific
-    to 3D-video like data.
+    Spatially conditioned normalization as defined in https://huggingface.co/papers/2209.09002. This implementation is
+    specific to 3D-video like data.
 
     CogVideoXSafeConv3d is used instead of nn.Conv3d to avoid OOM in CogVideoX Model.
 

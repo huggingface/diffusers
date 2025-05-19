@@ -892,8 +892,8 @@ class FreeNoiseTransformerBlock(nn.Module):
             The number of frames to be skipped before starting to process a new batch of `context_length` frames.
         weighting_scheme (`str`, defaults to `"pyramid"`):
             The weighting scheme to use for weighting averaging of processed latent frames. As described in the
-            Equation 9. of the [FreeNoise](https://huggingface.co/papers/2310.15169) paper, "pyramid" is the default setting
-            used.
+            Equation 9. of the [FreeNoise](https://huggingface.co/papers/2310.15169) paper, "pyramid" is the default
+            setting used.
     """
 
     def __init__(

@@ -125,8 +125,8 @@ class GEGLU(nn.Module):
 
 class SwiGLU(nn.Module):
     r"""
-    A [variant](https://huggingface.co/papers/2002.05202) of the gated linear unit activation function. It's similar to `GEGLU`
-    but uses SiLU / Swish instead of GeLU.
+    A [variant](https://huggingface.co/papers/2002.05202) of the gated linear unit activation function. It's similar to
+    `GEGLU` but uses SiLU / Swish instead of GeLU.
 
     Parameters:
         dim_in (`int`): The number of channels in the input.

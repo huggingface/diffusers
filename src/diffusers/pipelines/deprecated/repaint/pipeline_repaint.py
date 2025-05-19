@@ -124,7 +124,8 @@ class RePaintPipeline(DiffusionPipeline):
                 DDIM and 1.0 is the DDPM scheduler.
             jump_length (`int`, *optional*, defaults to 10):
                 The number of steps taken forward in time before going backward in time for a single jump ("j" in
-                RePaint paper). Take a look at Figure 9 and 10 in the [paper](https://huggingface.co/papers/2201.09865).
+                RePaint paper). Take a look at Figure 9 and 10 in the
+                [paper](https://huggingface.co/papers/2201.09865).
             jump_n_sample (`int`, *optional*, defaults to 10):
                 The number of times to make a forward time jump for a given chosen time sample. Take a look at Figure 9
                 and 10 in the [paper](https://huggingface.co/papers/2201.09865).

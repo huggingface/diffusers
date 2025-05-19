@@ -883,7 +883,8 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                 inputs will be passed, facilitating enhanced logging or monitoring of the generation process.
             guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Rescale parameter for adjusting noise configuration based on guidance rescale. Based on findings from
-                [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891).
+                [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://huggingface.co/papers/2305.08891).
             strength (`float`, *optional*, defaults to 1.0):
                 Affects the overall styling or quality of the generated output. Values closer to 1 usually provide
                 direct adherence to prompts.

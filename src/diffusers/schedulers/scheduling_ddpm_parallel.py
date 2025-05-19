@@ -161,9 +161,9 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
         thresholding (`bool`, default `False`):
-            whether to use the "dynamic thresholding" method (introduced by Imagen, https://huggingface.co/papers/2205.11487).
-            Note that the thresholding method is unsuitable for latent-space diffusion models (such as
-            stable-diffusion).
+            whether to use the "dynamic thresholding" method (introduced by Imagen,
+            https://huggingface.co/papers/2205.11487). Note that the thresholding method is unsuitable for latent-space
+            diffusion models (such as stable-diffusion).
         dynamic_thresholding_ratio (`float`, default `0.995`):
             the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
             (https://huggingface.co/papers/2205.11487). Valid only when `thresholding=True`.

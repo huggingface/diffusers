@@ -122,7 +122,8 @@ def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name
     References:
         * `bnb.nn.Linear8bit`: [LLM.int8(): 8-bit Matrix Multiplication for Transformers at
           Scale](https://huggingface.co/papers/2208.07339)
-        * `bnb.nn.Linear4bit`: [QLoRA: Efficient Finetuning of Quantized LLMs](https://huggingface.co/papers/2305.14314)
+        * `bnb.nn.Linear4bit`: [QLoRA: Efficient Finetuning of Quantized
+          LLMs](https://huggingface.co/papers/2305.14314)
 
     Parameters:
         model (`torch.nn.Module`):

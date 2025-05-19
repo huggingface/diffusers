@@ -165,9 +165,9 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
         thresholding (`bool`, default `False`):
-            whether to use the "dynamic thresholding" method (introduced by Imagen, https://huggingface.co/papers/2205.11487).
-            Note that the thresholding method is unsuitable for latent-space diffusion models (such as
-            stable-diffusion).
+            whether to use the "dynamic thresholding" method (introduced by Imagen,
+            https://huggingface.co/papers/2205.11487). Note that the thresholding method is unsuitable for latent-space
+            diffusion models (such as stable-diffusion).
         dynamic_thresholding_ratio (`float`, default `0.995`):
             the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
             (https://huggingface.co/papers/2205.11487). Valid only when `thresholding=True`.
@@ -177,9 +177,9 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
             Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         rescale_betas_zero_snr (`bool`, default `False`):
-            whether to rescale the betas to have zero terminal SNR (proposed by https://huggingface.co/papers/2305.08891).
-            This can enable the model to generate very bright and dark samples instead of limiting it to samples with
-            medium brightness. Loosely related to
+            whether to rescale the betas to have zero terminal SNR (proposed by
+            https://huggingface.co/papers/2305.08891). This can enable the model to generate very bright and dark
+            samples instead of limiting it to samples with medium brightness. Loosely related to
             [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 

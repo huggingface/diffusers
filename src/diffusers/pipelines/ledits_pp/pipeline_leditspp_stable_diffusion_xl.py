@@ -902,8 +902,9 @@ class LEditsPPPipelineStableDiffusionXL(
             guidance_rescale (`float`, *optional*, defaults to 0.7):
                 Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://huggingface.co/papers/2305.08891) `guidance_scale` is defined as `φ` in equation 16. of
-                [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891).
-                Guidance rescale factor should fix overexposure when using zero terminal SNR.
+                [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
+                using zero terminal SNR.
             crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
                 `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
                 `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
