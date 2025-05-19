@@ -280,7 +280,7 @@ class ConsisIDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generator_device = "cpu"
         components = self.get_dummy_components()
 
-        # The reason to modify it this way is because ConsisID Transformer limits the generation to resolutions used during initalization.
+        # The reason to modify it this way is because ConsisID Transformer limits the generation to resolutions used during initialization.
         # This limitation comes from using learned positional embeddings which cannot be generated on-the-fly like sincos or RoPE embeddings.
         # See the if-statement on "self.use_learned_positional_embeddings" in diffusers/models/embeddings.py
         components["transformer"] = ConsisIDTransformer3DModel.from_config(

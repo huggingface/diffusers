@@ -2096,11 +2096,11 @@ class PipelineTesterMixin:
         with torch.no_grad():
             encoded_prompt_outputs = pipe_with_just_text_encoder.encode_prompt(**encode_prompt_inputs)
 
-        # Programatically determine the reutrn names of `encode_prompt.`
-        ast_vistor = ReturnNameVisitor()
-        encode_prompt_tree = ast_vistor.get_ast_tree(cls=self.pipeline_class)
-        ast_vistor.visit(encode_prompt_tree)
-        prompt_embed_kwargs = ast_vistor.return_names
+        # Programmatically determine the return names of `encode_prompt.`
+        ast_visitor = ReturnNameVisitor()
+        encode_prompt_tree = ast_visitor.get_ast_tree(cls=self.pipeline_class)
+        ast_visitor.visit(encode_prompt_tree)
+        prompt_embed_kwargs = ast_visitor.return_names
         prompt_embeds_kwargs = dict(zip(prompt_embed_kwargs, encoded_prompt_outputs))
 
         # Pack the outputs of `encode_prompt`.
