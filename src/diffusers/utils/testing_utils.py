@@ -1212,8 +1212,8 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 
     # Some device agnostic functions return values. Need to guard against 'None' instead at
     # user level
-    if fn is None:
-        return None
+    if not callable(fn):
+        return fn
 
     return fn(*args, **kwargs)
 
