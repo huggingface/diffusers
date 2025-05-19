@@ -450,6 +450,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        flag_df: bool = False,
         fps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -493,13 +494,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
-        # TODO: check here
-        if timestep.dim() == 2:
-            b, f = timestep.shape
-            _flag_df = True
-        else:
-            _flag_df = False
-
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
             timestep, encoder_hidden_states, encoder_hidden_states_image
         )
@@ -518,14 +512,15 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             fps = torch.tensor(fps, dtype=torch.long, device=hidden_states.device)
 
             fps_emb = self.fps_embedding(fps).float()
-            if _flag_df:
+            if flag_df:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, self.dim)).repeat(
                     timestep.shape[1], 1, 1
                 )
             else:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, self.dim))
 
-        if _flag_df:
+        if flag_df:
+            b, f = timestep.shape
             temb = temb.view(b, f, 1, 1, self.dim)
             timestep_proj = timestep_proj.view(b, f, 1, 1, 6, self.dim)
             temb = temb.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1).flatten(1, 3)
