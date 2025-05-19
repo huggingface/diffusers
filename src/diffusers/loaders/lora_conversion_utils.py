@@ -1601,7 +1601,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     lora_down_key = "lora_A" if any("lora_A" in k for k in original_state_dict) else "lora_down"
     lora_up_key = "lora_B" if any("lora_B" in k for k in original_state_dict) else "lora_up"
 
-    diff_keys = [k for k in original_state_dict if k.endswith(("diff_b", "diff"))]
+    diff_keys = [k for k in original_state_dict if k.endswith((".diff_b", ".diff"))]
     if diff_keys:
         for diff_k in diff_keys:
             param = original_state_dict[diff_k]
@@ -1609,6 +1609,9 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             if all_zero:
                 logger.debug(f"Removed {diff_k} key from the state dict as it's all zeros.")
                 original_state_dict.pop(diff_k)
+
+    # For the `diff_b` keys, we treat them as lora_Bias.
+    # https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraConfig.lora_bias
 
     for i in range(num_blocks):
         # Self-attention
@@ -1619,6 +1622,10 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             converted_state_dict[f"blocks.{i}.attn1.{c}.lora_B.weight"] = original_state_dict.pop(
                 f"blocks.{i}.self_attn.{o}.{lora_up_key}.weight"
             )
+            if f"blocks.{i}.self_attn.{o}.diff_b" in original_state_dict:
+                converted_state_dict[f"blocks.{i}.attn1.{c}.lora_B.bias"] = original_state_dict.pop(
+                    f"blocks.{i}.self_attn.{o}.diff_b"
+                )
 
         # Cross-attention
         for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
@@ -1628,8 +1635,13 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
                 f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
             )
+            if f"blocks.{i}.cross_attn.{o}.diff_b" in original_state_dict:
+                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.bias"] = original_state_dict.pop(
+                    f"blocks.{i}.cross_attn.{o}.diff_b"
+                )
 
         if is_i2v_lora:
+            # TODO: `diff_b`
             for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
                 converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = original_state_dict.pop(
                     f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
@@ -1646,6 +1658,10 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             converted_state_dict[f"blocks.{i}.ffn.{c}.lora_B.weight"] = original_state_dict.pop(
                 f"blocks.{i}.{o}.{lora_up_key}.weight"
             )
+            if f"blocks.{i}.{o}.diff_b" in original_state_dict:
+                converted_state_dict[f"blocks.{i}.ffn.{c}.lora_B.bias"] = original_state_dict.pop(
+                    f"blocks.{i}.{o}.diff_b"
+                )
 
     # Remaining.
     if original_state_dict:
@@ -1656,12 +1672,18 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             converted_state_dict["condition_embedder.time_proj.lora_B.weight"] = original_state_dict.pop(
                 f"time_projection.1.{lora_up_key}.weight"
             )
+            if "time_projection.1.diff_b" in original_state_dict:
+                converted_state_dict["condition_embedder.time_proj.lora_B.bias"] = original_state_dict.pop(
+                    "time_projection.1.diff_b"
+                )
 
         if any("head.head" in k for k in state_dict):
             converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(
                 f"head.head.{lora_down_key}.weight"
             )
             converted_state_dict["proj_out.lora_B.weight"] = original_state_dict.pop(f"head.head.{lora_up_key}.weight")
+            if "head.head.diff_b" in original_state_dict:
+                converted_state_dict["proj_out.lora_B.bias"] = original_state_dict.pop("head.head.diff_b")
 
         for text_time in ["text_embedding", "time_embedding"]:
             if any(text_time in k for k in original_state_dict):
@@ -1679,12 +1701,17 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                         converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_B.weight"] = (
                             original_state_dict.pop(f"{text_time}.{b_n}.{lora_up_key}.weight")
                         )
+                    if f"{text_time}.{b_n}.diff_b" in original_state_dict:
+                        converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_B.bias"] = (
+                            original_state_dict.pop(f"{text_time}.{b_n}.diff_b")
+                        )
 
     if len(original_state_dict) > 0:
         diff = all(".diff" in k for k in original_state_dict)
         if diff:
             diff_keys = {k for k in original_state_dict if k.endswith(".diff")}
-            print(f"{len(diff_keys)}")
+            assert all("lora" not in k for k in diff_keys)
+            print(f"{(diff_keys)}")
         if not diff:
             raise ValueError(f"`state_dict` should be empty at this point but has {original_state_dict.keys()=}")
 
