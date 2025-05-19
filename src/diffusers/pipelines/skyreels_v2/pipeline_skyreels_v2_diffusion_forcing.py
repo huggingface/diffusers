@@ -621,13 +621,13 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if overlap_history is None or base_num_frames is None or num_frames <= base_num_frames:
             # Short video generation
             # 4. Prepare sample schedulers and timestep matrix
-            self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
-            timesteps = self.scheduler.timesteps
             sample_schedulers = [self.scheduler]
             for _ in range(num_latent_frames - 1):
                 sample_scheduler = deepcopy(self.scheduler)
                 sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
+            self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
+            timesteps = self.scheduler.timesteps
             sample_schedulers_counter = [0] * num_latent_frames
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                 num_latent_frames, timesteps, base_num_frames, ar_step, prefix_video_latent_length, causal_block_size
@@ -760,13 +760,13 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     base_num_frames_iter = base_num_frames
 
                 # 4. Prepare sample schedulers and timestep matrix
-                self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
-                timesteps = self.scheduler.timesteps
                 sample_schedulers = [deepcopy(self.scheduler)]
                 for _ in range(base_num_frames_iter - 1):
                     sample_scheduler = deepcopy(self.scheduler)
                     sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                     sample_schedulers.append(sample_scheduler)
+                self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
+                timesteps = self.scheduler.timesteps
                 sample_schedulers_counter = [0] * base_num_frames_iter
                 step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                     base_num_frames_iter,
