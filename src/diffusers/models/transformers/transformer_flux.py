@@ -345,6 +345,10 @@ class FluxTransformer2DModel(
         self.gradient_checkpointing = False
 
     @property
+    def is_chroma(self) -> bool:
+        return isinstance(self.time_text_embed, CombinedTimestepTextProjChromaEmbeddings)
+
+    @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
@@ -500,7 +504,7 @@ class FluxTransformer2DModel(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        is_chroma = isinstance(self.time_text_embed, CombinedTimestepTextProjChromaEmbeddings)
+        is_chroma = self.is_chroma
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
