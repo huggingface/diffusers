@@ -253,7 +253,7 @@ class ComponentsManager:
         if name:
             ids_by_name = set() 
             for component_id, component in components.items():
-                comp_name = "_".join(component_id.split("_")[:-1])
+                comp_name = self._id_to_name(component_id)
                 if comp_name == name:
                     ids_by_name.add(component_id)
         else:
@@ -264,7 +264,7 @@ class ComponentsManager:
                 if component_id in self.collections[collection]:
                     ids_by_collection.add(component_id)
         else:
-            ids_by_collection = set(self.collections.keys())
+            ids_by_collection = set(components.keys())
         if load_id:
             ids_by_load_id = set()
             for name, component in components.items():
@@ -276,6 +276,9 @@ class ComponentsManager:
         ids = ids_by_name.intersection(ids_by_collection).intersection(ids_by_load_id)
         return ids
     
+    @staticmethod
+    def _id_to_name(component_id: str):
+        return "_".join(component_id.split("_")[:-1])
     
     def add(self, name, component, collection: Optional[str] = None):
         
@@ -284,18 +287,24 @@ class ComponentsManager:
         # check for duplicated components
         for comp_id, comp in self.components.items():
             if comp == component:
-                logger.warning(
-                    f"component '{component}' already exists as '{comp_id}'"
-                )
-                # if name is the same, use the existing component_id
-                if comp_id.split("_")[:-1] == component_id.split("_")[:-1]:
+                comp_name = self._id_to_name(comp_id)
+                if comp_name == name:
+                    logger.warning(
+                        f"component '{name}' already exists as '{comp_id}'"
+                    )
                     component_id = comp_id
                     break
+                else:
+                    logger.warning(
+                        f"Adding component '{name}' as '{component_id}', but it is duplicate of '{comp_id}'"
+                        f"To remove a duplicate, call `components_manager.remove('<component_id>')`."
+                        )
 
 
         # check for duplicated load_id and warn (we do not delete for you)
         if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id != "null":
             components_with_same_load_id = self._lookup_ids(load_id=component._diffusers_load_id)
+            components_with_same_load_id = [id for id in components_with_same_load_id if id != component_id]
             
             if components_with_same_load_id:
                 existing = ", ".join(components_with_same_load_id)
@@ -311,12 +320,13 @@ class ComponentsManager:
         if collection:
             if collection not in self.collections:
                 self.collections[collection] = set()
-            comp_ids_in_collection = self._lookup_ids(name=name, collection=collection)
-            for comp_id in comp_ids_in_collection:
-                logger.info(f"Removing existing {name} from collection '{collection}': {comp_id}")
-                self.remove(comp_id)
-            self.collections[collection].add(component_id)
-            logger.info(f"Added component '{name}' in collection '{collection}': {component_id}")
+            if not component_id in self.collections[collection]:
+                comp_ids_in_collection = self._lookup_ids(name=name, collection=collection)
+                for comp_id in comp_ids_in_collection:
+                    logger.info(f"Removing existing {name} from collection '{collection}': {comp_id}")
+                    self.remove(comp_id)
+                self.collections[collection].add(component_id)
+                logger.info(f"Added component '{name}' in collection '{collection}': {component_id}")
         else:
             logger.info(f"Added component '{name}' as '{component_id}'")
 
@@ -590,7 +600,7 @@ class ComponentsManager:
         info = {
             "model_id": component_id,
             "added_time": self.added_time[component_id],
-            "collection": next((coll for coll, comps in self.collections.items() if component_id in comps), None),
+            "collection": ", ".join([coll for coll, comps in self.collections.items() if component_id in comps]) or None,
         }
         
         # Additional info for torch.nn.Module components
@@ -676,11 +686,19 @@ class ComponentsManager:
         ]
         max_load_id_len = max([15] + [len(str(lid)) for lid in load_ids]) if load_ids else 15
         
-        # Collection names
-        collection_names = [
-            next((coll for coll, comps in self.collections.items() if name in comps), "N/A")
-            for name in self.components.keys()
-        ]
+        # Get all collections for each component
+        component_collections = {}
+        for name in self.components.keys():
+            component_collections[name] = []
+            for coll, comps in self.collections.items():
+                if name in comps:
+                    component_collections[name].append(coll)
+            if not component_collections[name]:
+                component_collections[name] = ["N/A"]
+        
+        # Find the maximum collection name length
+        all_collections = [coll for colls in component_collections.values() for coll in colls]
+        max_collection_len = max(10, max(len(str(c)) for c in all_collections)) if all_collections else 10
         
         col_widths = {
             "name": max(15, max(len(name) for name in simple_names)),
@@ -689,7 +707,7 @@ class ComponentsManager:
             "dtype": 15,
             "size": 10,
             "load_id": max_load_id_len,
-            "collection": max(10, max(len(str(c)) for c in collection_names))
+            "collection": max_collection_len
         }
 
         # Create the header lines
@@ -718,11 +736,21 @@ class ComponentsManager:
                 device_str = format_device(component, info)
                 dtype = str(component.dtype) if hasattr(component, "dtype") else "N/A"
                 load_id = get_load_id(component)
-                collection = info["collection"] or "N/A"
+                
+                # Print first collection on the main line
+                first_collection = component_collections[name][0] if component_collections[name] else "N/A"
                 
                 output += f"{simple_name:<{col_widths['name']}} | {info['class_name']:<{col_widths['class']}} | "
                 output += f"{device_str:<{col_widths['device']}} | {dtype:<{col_widths['dtype']}} | "
-                output += f"{info['size_gb']:<{col_widths['size']}.2f} | {load_id:<{col_widths['load_id']}} | {collection}\n"
+                output += f"{info['size_gb']:<{col_widths['size']}.2f} | {load_id:<{col_widths['load_id']}} | {first_collection}\n"
+                
+                # Print additional collections on separate lines if they exist
+                for i in range(1, len(component_collections[name])):
+                    collection = component_collections[name][i]
+                    output += f"{'':<{col_widths['name']}} | {'':<{col_widths['class']}} | "
+                    output += f"{'':<{col_widths['device']}} | {'':<{col_widths['dtype']}} | "
+                    output += f"{'':<{col_widths['size']}} | {'':<{col_widths['load_id']}} | {collection}\n"
+            
             output += dash_line
 
         # Other components section
@@ -738,9 +766,17 @@ class ComponentsManager:
             for name, component in others.items():
                 info = self.get_model_info(name)
                 simple_name = get_simple_name(name)
-                collection = info["collection"] or "N/A"
                 
-                output += f"{simple_name:<{col_widths['name']}} | {component.__class__.__name__:<{col_widths['class']}} | {collection}\n"
+                # Print first collection on the main line
+                first_collection = component_collections[name][0] if component_collections[name] else "N/A"
+                
+                output += f"{simple_name:<{col_widths['name']}} | {component.__class__.__name__:<{col_widths['class']}} | {first_collection}\n"
+                
+                # Print additional collections on separate lines if they exist
+                for i in range(1, len(component_collections[name])):
+                    collection = component_collections[name][i]
+                    output += f"{'':<{col_widths['name']}} | {'':<{col_widths['class']}} | {collection}\n"
+            
             output += dash_line
 
         # Add additional component info

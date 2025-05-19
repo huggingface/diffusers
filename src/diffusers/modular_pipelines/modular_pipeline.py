@@ -2043,19 +2043,14 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         for name, value in config_dict.items():
             if name in expected_component and isinstance(value, (tuple, list)) and len(value) == 3:
                 library, class_name, component_spec_dict = value
-                component_spec = cls._dict_to_component_spec(name, component_spec_dict)
-                component_specs.append(component_spec)
+                    # only pick up pretrained components from the repo
+                if component_spec_dict.get("repo", None) is not None:
+                    component_spec = cls._dict_to_component_spec(name, component_spec_dict)
+                    component_specs.append(component_spec)
 
             elif name in expected_config:
                 config_specs.append(ConfigSpec(name=name, default=value))
-        
-        for name in expected_component:
-            for spec in component_specs:
-                if spec.name == name:
-                    break
-            else:
-                # append a empty component spec for these not in modular_model_index
-                component_specs.append(ComponentSpec(name=name, default_creation_method="from_config"))
+
         return cls(component_specs + config_specs, component_manager=component_manager, collection=collection)
 
     
