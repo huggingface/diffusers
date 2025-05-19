@@ -4814,9 +4814,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             return state_dict
 
         if any(k.startswith("transformer.blocks.") for k in state_dict):
-            test = [k.split("blocks.") for k in state_dict]
-            print("wtf", test[:10])
-            num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict})
+            num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in original_state_dict if "blocks." in k})
             is_i2v_lora = any("add_k_proj" in k for k in state_dict) and any("add_v_proj" in k for k in state_dict)
 
             if is_i2v_lora:
