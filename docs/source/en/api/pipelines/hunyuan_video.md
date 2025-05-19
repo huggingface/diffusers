@@ -40,22 +40,25 @@ The quantized HunyuanVideo model below requires ~14GB of VRAM.
 
 ```py
 import torch
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, HunyuanVideoPipeline
+from diffusers import AutoModel, HunyuanVideoPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
 
 # quantize weights to int4 with bitsandbytes
-quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-transformer = AutoModel.from_pretrained(
-    "hunyuanvideo-community/HunyuanVideo",
-    subfolder="transformer",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
+pipeline_quant_config = PipelineQuantizationConfig(
+  quant_backend="bitsandbytes_4bit",
+  quant_kwargs={
+    "load_in_4bit": True,
+    "bnb_4bit_quant_type": "nf4",
+    "bnb_4bit_compute_dtype": torch.bfloat16
+    },
+  components_to_quantize=["transformer"]
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
-    transformer=transformer,
-    torch_dtype=torch.float16,
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
 )
 
 # model-offloading and tiling
@@ -74,22 +77,25 @@ Compilation is slow the first time but subsequent calls to the pipeline are fast
 
 ```py
 import torch
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, HunyuanVideoPipeline
+from diffusers import AutoModel, HunyuanVideoPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
 
 # quantize weights to int4 with bitsandbytes
-quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-transformer = AutoModel.from_pretrained(
-    "hunyuanvideo-community/HunyuanVideo",
-    subfolder="transformer",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
+pipeline_quant_config = PipelineQuantizationConfig(
+  quant_backend="bitsandbytes_4bit",
+  quant_kwargs={
+    "load_in_4bit": True,
+    "bnb_4bit_quant_type": "nf4",
+    "bnb_4bit_compute_dtype": torch.bfloat16
+    },
+  components_to_quantize=["transformer"]
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
-    transformer=transformer,
-    torch_dtype=torch.float16,
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
 )
 
 # model-offloading and tiling
@@ -116,22 +122,25 @@ export_to_video(video, "output.mp4", fps=15)
 
   ```py
   import torch
-  from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, HunyuanVideoPipeline
+  from diffusers import AutoModel, HunyuanVideoPipeline
+  from diffusers.quantizers import PipelineQuantizationConfig
   from diffusers.utils import export_to_video
 
   # quantize weights to int4 with bitsandbytes
-  quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-  transformer = AutoModel.from_pretrained(
-      "hunyuanvideo-community/HunyuanVideo",
-      subfolder="transformer",
-      quantization_config=quant_config,
-      torch_dtype=torch.bfloat16,
+  pipeline_quant_config = PipelineQuantizationConfig(
+    quant_backend="bitsandbytes_4bit",
+    quant_kwargs={
+      "load_in_4bit": True,
+      "bnb_4bit_quant_type": "nf4",
+      "bnb_4bit_compute_dtype": torch.bfloat16
+      },
+    components_to_quantize=["transformer"]
   )
 
   pipeline = HunyuanVideoPipeline.from_pretrained(
       "hunyuanvideo-community/HunyuanVideo",
-      transformer=transformer,
-      torch_dtype=torch.float16,
+      quantization_config=pipeline_quant_config,
+      torch_dtype=torch.bfloat16,
   )
 
   # load LoRA weights
