@@ -4813,8 +4813,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if transformer.config.image_dim is None:
             return state_dict
 
-        orig_keys = set(state_dict.keys())
-        print("BEFORE:", state_dict.keys())
+        target_device = transformer.device
 
         if any(k.startswith("transformer.blocks.") for k in state_dict):
             num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict if "blocks." in k})
@@ -4827,16 +4826,16 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             for i in range(num_blocks):
                 for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
-                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"]
+                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"], device=target_device
                     )
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
-                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"]
+                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"], device=target_device
                     )
                     if is_bias:
                         state_dict[f"blocks.{i}.attn2.{c}.lora_B.bias"] = torch.zeros_like(
-                            state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"]
+                            state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"], device=target_device
                         )
-        print("AFTER:", set(state_dict.keys()) - orig_keys)
+
 
         return state_dict
 
