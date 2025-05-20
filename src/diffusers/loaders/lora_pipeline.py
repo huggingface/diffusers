@@ -4845,7 +4845,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                     ref_key_lora_B_bias = f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"
                     if has_bias and ref_key_lora_B_bias in state_dict:
                         ref_lora_B_bias_tensor = state_dict[ref_key_lora_B_bias]
-                        state_dict[f"transformer.blocks.{i}.attn2.{diffusers_name_part}.lora_B.bias"] = torch.zeros_like(
+                        state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.bias"] = torch.zeros_like(
                             ref_lora_B_bias_tensor, device=target_device,
                         )
 
