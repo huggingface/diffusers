@@ -37,7 +37,9 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
-          python -m uv pip install pandas peft bitsandbytes torchprofile
+          python -m uv pip install pandas peft torchprofile
+          # Temporary.
+          pip install --force-reinstall https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl
       - name: Environment
         run: |
           python utils/print_env.py

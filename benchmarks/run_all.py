@@ -44,7 +44,11 @@ def run_scripts():
         if file != "benchmarking_utils.py":
             logger.info(f"****** Running file: {file} ******")
             command = f"python {file}"
-            run_command(command.split())
+            try:
+                run_command(command)
+            except SubprocessCallException as e:
+                logger.error(f"Error running {file}: {e}")
+                continue
 
 
 def merge_csvs():

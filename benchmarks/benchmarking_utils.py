@@ -105,6 +105,7 @@ class BenchmarkMixin:
     @torch.no_grad()
     def run_benchmark(self, scenario: BenchmarkScenario):
         # 0) Basic stats
+        logger.info(f"Running scenario: {scenario.name}.")
         model = model_init_fn(scenario.model_cls, **scenario.model_init_kwargs)
         num_params = round(calculate_params(model) / 1e6, 2)
         flops = round(calculate_flops(model, input_dict=scenario.get_model_input_dict()) / 1e6, 2)
