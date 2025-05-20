@@ -1,11 +1,14 @@
 import glob
-import subprocess
-import pandas as pd
 import os
+import subprocess
+
+import pandas as pd
+
 
 PATTERN = "benchmarking_*.py"
 FINAL_CSV_FILENAME = "collated_results.csv"
 GITHUB_SHA = os.getenv("GITHUB_SHA", None)
+
 
 class SubprocessCallException(Exception):
     pass
@@ -33,7 +36,7 @@ def run_scripts():
     python_files = sorted(glob.glob(PATTERN))
 
     for file in python_files:
-       if file != "benchmarking_utils.py":
+        if file != "benchmarking_utils.py":
             print(f"****** Running file: {file} ******")
             command = f"python {file}"
             run_command(command.split())
