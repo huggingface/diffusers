@@ -8,6 +8,7 @@ from diffusers.utils.testing_utils import torch_device
 
 
 CKPT_ID = "Wan-AI/Wan2.1-T2V-14B-Diffusers"
+RESULT_FILENAME = "wan.csv"
 
 
 def get_input_dict(**device_dtype_kwargs):
@@ -70,4 +71,4 @@ if __name__ == "__main__":
     ]
 
     runner = BenchmarkMixin()
-    runner.run_bencmarks_and_collate(scenarios, filename="wan.csv")
+    runner.run_bencmarks_and_collate(scenarios, filename=RESULT_FILENAME)

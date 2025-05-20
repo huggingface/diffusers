@@ -8,6 +8,7 @@ from diffusers.utils.testing_utils import torch_device
 
 
 CKPT_ID = "black-forest-labs/FLUX.1-dev"
+RESULT_FILENAME = "flux.csv"
 
 
 def get_input_dict(**device_dtype_kwargs):
@@ -94,4 +95,4 @@ if __name__ == "__main__":
     ]
 
     runner = BenchmarkMixin()
-    runner.run_bencmarks_and_collate(scenarios, filename="flux.csv")
+    runner.run_bencmarks_and_collate(scenarios, filename=RESULT_FILENAME)

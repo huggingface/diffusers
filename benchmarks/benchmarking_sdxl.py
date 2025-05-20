@@ -8,6 +8,7 @@ from diffusers.utils.testing_utils import torch_device
 
 
 CKPT_ID = "stabilityai/stable-diffusion-xl-base-1.0"
+RESULT_FILENAME = "sdxl.csv"
 
 
 def get_input_dict(**device_dtype_kwargs):
@@ -78,4 +79,4 @@ if __name__ == "__main__":
     ]
 
     runner = BenchmarkMixin()
-    runner.run_bencmarks_and_collate(scenarios, filename="sdxl.csv")
+    runner.run_bencmarks_and_collate(scenarios, filename=RESULT_FILENAME)

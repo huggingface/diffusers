@@ -45,11 +45,7 @@ def push_to_hf_dataset():
 
         for column in numeric_columns:
             # get previous values as floats, aligned to current index
-            prev_vals = (
-                previous_results[column]
-                .map(filter_float)
-                .reindex(current_results.index)
-            )
+            prev_vals = previous_results[column].map(filter_float).reindex(current_results.index)
 
             # get current values as floats
             curr_vals = current_results[column].astype(float)
@@ -58,21 +54,16 @@ def push_to_hf_dataset():
             curr_str = curr_vals.map(str)
 
             # build an appendage only when prev exists and differs
-            append_str = prev_vals.where(
-                prev_vals.notnull() & (prev_vals != curr_vals),
-                other=pd.NA
-            ).map(lambda x: f" ({x})" if pd.notnull(x) else "")
+            append_str = prev_vals.where(prev_vals.notnull() & (prev_vals != curr_vals), other=pd.NA).map(
+                lambda x: f" ({x})" if pd.notnull(x) else ""
+            )
 
             # combine
             current_results[column] = curr_str + append_str
 
         current_results.to_csv(FINAL_CSV_FILENAME, index=False)
 
-    commit_message = (
-        f"upload from sha: {GITHUB_SHA}"
-        if GITHUB_SHA is not None else
-        "upload benchmark results"
-    )
+    commit_message = f"upload from sha: {GITHUB_SHA}" if GITHUB_SHA is not None else "upload benchmark results"
     upload_file(
         repo_id=REPO_ID,
         path_in_repo=FINAL_CSV_FILENAME,

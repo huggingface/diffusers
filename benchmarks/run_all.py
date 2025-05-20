@@ -4,10 +4,15 @@ import subprocess
 
 import pandas as pd
 
+from diffusers.utils import logging
+
 
 PATTERN = "benchmarking_*.py"
 FINAL_CSV_FILENAME = "collated_results.csv"
 GITHUB_SHA = os.getenv("GITHUB_SHA", None)
+
+
+logger = logging.get_logger(__name__)
 
 
 class SubprocessCallException(Exception):
@@ -37,7 +42,7 @@ def run_scripts():
 
     for file in python_files:
         if file != "benchmarking_utils.py":
-            print(f"****** Running file: {file} ******")
+            logger.info(f"****** Running file: {file} ******")
             command = f"python {file}"
             run_command(command.split())
 

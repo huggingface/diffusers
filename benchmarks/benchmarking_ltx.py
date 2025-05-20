@@ -8,6 +8,7 @@ from diffusers.utils.testing_utils import torch_device
 
 
 CKPT_ID = "Lightricks/LTX-Video-0.9.7-dev"
+RESULT_FILENAME = "ltx.csv"
 
 
 def get_input_dict(**device_dtype_kwargs):
@@ -76,4 +77,4 @@ if __name__ == "__main__":
     ]
 
     runner = BenchmarkMixin()
-    runner.run_bencmarks_and_collate(scenarios, filename="ltx.csv")
+    runner.run_bencmarks_and_collate(scenarios, filename=RESULT_FILENAME)
