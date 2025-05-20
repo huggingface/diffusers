@@ -14,7 +14,9 @@
 
 <div style="float: right;">
   <div class="flex flex-wrap space-x-1">
-    <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+    <a href="https://huggingface.co/docs/diffusers/main/en/tutorials/using_peft_for_inference" target="_blank" rel="noopener">
+      <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+    </a>
   </div>
 </div>
 
@@ -46,13 +48,13 @@ from diffusers.utils import export_to_video
 
 # quantize weights to int4 with bitsandbytes
 pipeline_quant_config = PipelineQuantizationConfig(
-  quant_backend="bitsandbytes_4bit",
-  quant_kwargs={
-    "load_in_4bit": True,
-    "bnb_4bit_quant_type": "nf4",
-    "bnb_4bit_compute_dtype": torch.bfloat16
-    },
-  components_to_quantize=["transformer"]
+    quant_backend="bitsandbytes_4bit",
+    quant_kwargs={
+      "load_in_4bit": True,
+      "bnb_4bit_quant_type": "nf4",
+      "bnb_4bit_compute_dtype": torch.bfloat16
+      },
+    components_to_quantize=["transformer"]
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
@@ -73,7 +75,7 @@ export_to_video(video, "output.mp4", fps=15)
 </hfoption>
 <hfoption id="inference speed">
 
-Compilation is slow the first time but subsequent calls to the pipeline are faster.
+[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
 
 ```py
 import torch
@@ -83,13 +85,13 @@ from diffusers.utils import export_to_video
 
 # quantize weights to int4 with bitsandbytes
 pipeline_quant_config = PipelineQuantizationConfig(
-  quant_backend="bitsandbytes_4bit",
-  quant_kwargs={
-    "load_in_4bit": True,
-    "bnb_4bit_quant_type": "nf4",
-    "bnb_4bit_compute_dtype": torch.bfloat16
-    },
-  components_to_quantize=["transformer"]
+    quant_backend="bitsandbytes_4bit",
+    quant_kwargs={
+      "load_in_4bit": True,
+      "bnb_4bit_quant_type": "nf4",
+      "bnb_4bit_compute_dtype": torch.bfloat16
+      },
+    components_to_quantize=["transformer"]
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
@@ -120,6 +122,9 @@ export_to_video(video, "output.mp4", fps=15)
 
 - HunyuanVideo supports LoRAs with [`~loaders.HunyuanVideoLoraLoaderMixin.load_lora_weights`].
 
+  <details>
+  <summary>Show example code</summary>
+
   ```py
   import torch
   from diffusers import AutoModel, HunyuanVideoPipeline
@@ -128,13 +133,13 @@ export_to_video(video, "output.mp4", fps=15)
 
   # quantize weights to int4 with bitsandbytes
   pipeline_quant_config = PipelineQuantizationConfig(
-    quant_backend="bitsandbytes_4bit",
-    quant_kwargs={
-      "load_in_4bit": True,
-      "bnb_4bit_quant_type": "nf4",
-      "bnb_4bit_compute_dtype": torch.bfloat16
-      },
-    components_to_quantize=["transformer"]
+      quant_backend="bitsandbytes_4bit",
+      quant_kwargs={
+        "load_in_4bit": True,
+        "bnb_4bit_quant_type": "nf4",
+        "bnb_4bit_compute_dtype": torch.bfloat16
+        },
+      components_to_quantize=["transformer"]
   )
 
   pipeline = HunyuanVideoPipeline.from_pretrained(
@@ -158,6 +163,8 @@ export_to_video(video, "output.mp4", fps=15)
   video = pipeline(prompt=prompt, num_frames=61, num_inference_steps=30).frames[0]
   export_to_video(video, "output.mp4", fps=15)
   ```
+
+  </details>
 
 - Refer to the table below for recommended inference values.
 

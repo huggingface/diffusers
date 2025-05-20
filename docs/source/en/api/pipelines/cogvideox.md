@@ -15,7 +15,9 @@
 
 <div style="float: right;">
   <div class="flex flex-wrap space-x-1">
-    <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+    <a href="https://huggingface.co/docs/diffusers/main/en/tutorials/using_peft_for_inference" target="_blank" rel="noopener">
+      <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+    </a>
   </div>
 </div>
 
@@ -90,7 +92,7 @@ export_to_video(video, "output.mp4", fps=8)
 </hfoption>
 <hfoption id="inference speed">
 
-Compilation is slow the first time but subsequent calls to the pipeline are faster.
+[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
 
 The average inference time with torch.compile on a 80GB A100 is 76.27 seconds compared to 96.89 seconds for an uncompiled model.
 
@@ -132,6 +134,9 @@ export_to_video(video, "output.mp4", fps=8)
 
 - CogVideoX supports LoRAs with [`~loaders.CogVideoXLoraLoaderMixin.load_lora_weights`].
 
+  <details>
+  <summary>Show example code</summary>
+
   ```py
   import torch
   from diffusers import CogVideoXPipeline
@@ -166,6 +171,8 @@ export_to_video(video, "output.mp4", fps=8)
   ).frames[0]
   export_to_video(video, "output.mp4", fps=16)
   ```
+
+  </details>
 
 - The text-to-video (T2V) checkpoints work best with a resolution of 1360x768 because that was the resolution it was pretrained on.
 
