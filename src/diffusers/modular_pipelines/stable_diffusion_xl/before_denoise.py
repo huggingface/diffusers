@@ -127,6 +127,86 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
+def prepare_latents_img2img(vae, scheduler, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True):
+
+    if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+        raise ValueError(
+            f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+        )
+
+    image = image.to(device=device, dtype=dtype)
+
+    batch_size = batch_size * num_images_per_prompt
+
+    if image.shape[1] == 4:
+        init_latents = image
+
+    else:
+        latents_mean = latents_std = None
+        if hasattr(vae.config, "latents_mean") and vae.config.latents_mean is not None:
+            latents_mean = torch.tensor(vae.config.latents_mean).view(1, 4, 1, 1)
+        if hasattr(vae.config, "latents_std") and vae.config.latents_std is not None:
+            latents_std = torch.tensor(vae.config.latents_std).view(1, 4, 1, 1)
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        if vae.config.force_upcast:
+            image = image.float()
+            vae.to(dtype=torch.float32)
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        elif isinstance(generator, list):
+            if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
+                image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
+            elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
+                raise ValueError(
+                    f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
+                )
+
+            init_latents = [
+                retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i])
+                for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
+        else:
+            init_latents = retrieve_latents(vae.encode(image), generator=generator)
+
+        if vae.config.force_upcast:
+            vae.to(dtype)
+
+        init_latents = init_latents.to(dtype)
+        if latents_mean is not None and latents_std is not None:
+            latents_mean = latents_mean.to(device=device, dtype=dtype)
+            latents_std = latents_std.to(device=device, dtype=dtype)
+            init_latents = (init_latents - latents_mean) * vae.config.scaling_factor / latents_std
+        else:
+            init_latents = vae.config.scaling_factor * init_latents
+
+    if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
+        # expand init_latents for batch_size
+        additional_image_per_prompt = batch_size // init_latents.shape[0]
+        init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
+    elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+        raise ValueError(
+            f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+        )
+    else:
+        init_latents = torch.cat([init_latents], dim=0)
+
+    if add_noise:
+        shape = init_latents.shape
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        # get latents
+        init_latents = scheduler.add_noise(init_latents, noise, timestep)
+
+    latents = init_latents
+
+    return latents
+
+
 class StableDiffusionXLInputStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
@@ -751,89 +831,6 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     def intermediates_outputs(self) -> List[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process")]
 
-    # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.prepare_latents with self -> components
-    # YiYi TODO: refactor using _encode_vae_image
-    @staticmethod
-    def prepare_latents_img2img(
-        components, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
-    ):
-        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
-            raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
-            )
-
-        image = image.to(device=device, dtype=dtype)
-
-        batch_size = batch_size * num_images_per_prompt
-
-        if image.shape[1] == 4:
-            init_latents = image
-
-        else:
-            latents_mean = latents_std = None
-            if hasattr(components.vae.config, "latents_mean") and components.vae.config.latents_mean is not None:
-                latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, 4, 1, 1)
-            if hasattr(components.vae.config, "latents_std") and components.vae.config.latents_std is not None:
-                latents_std = torch.tensor(components.vae.config.latents_std).view(1, 4, 1, 1)
-            # make sure the VAE is in float32 mode, as it overflows in float16
-            if components.vae.config.force_upcast:
-                image = image.float()
-                components.vae.to(dtype=torch.float32)
-
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
-
-            elif isinstance(generator, list):
-                if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
-                    image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
-                elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
-                    raise ValueError(
-                        f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
-                    )
-
-                init_latents = [
-                    retrieve_latents(components.vae.encode(image[i : i + 1]), generator=generator[i])
-                    for i in range(batch_size)
-                ]
-                init_latents = torch.cat(init_latents, dim=0)
-            else:
-                init_latents = retrieve_latents(components.vae.encode(image), generator=generator)
-
-            if components.vae.config.force_upcast:
-                components.vae.to(dtype)
-
-            init_latents = init_latents.to(dtype)
-            if latents_mean is not None and latents_std is not None:
-                latents_mean = latents_mean.to(device=device, dtype=dtype)
-                latents_std = latents_std.to(device=device, dtype=dtype)
-                init_latents = (init_latents - latents_mean) * components.vae.config.scaling_factor / latents_std
-            else:
-                init_latents = components.vae.config.scaling_factor * init_latents
-
-        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            additional_image_per_prompt = batch_size // init_latents.shape[0]
-            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
-            )
-        else:
-            init_latents = torch.cat([init_latents], dim=0)
-
-        if add_noise:
-            shape = init_latents.shape
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            # get latents
-            init_latents = components.scheduler.add_noise(init_latents, noise, timestep)
-
-        latents = init_latents
-
-        return latents
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -842,8 +839,9 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         block_state.device = components._execution_device
         block_state.add_noise = True if block_state.denoising_start is None else False
         if block_state.latents is None:
-            block_state.latents = self.prepare_latents_img2img(
-                components,
+            block_state.latents = prepare_latents_img2img(
+                components.vae,
+                components.scheduler,
                 block_state.image_latents,
                 block_state.latent_timestep,
                 block_state.batch_size,
