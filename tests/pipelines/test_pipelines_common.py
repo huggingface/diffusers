@@ -1121,7 +1121,7 @@ class PipelineTesterMixin:
         if hasattr(self, "pipeline_class") and issubclass(self.pipeline_class, DeprecatedPipelineMixin):
             import pytest
 
-            pytest.skip(f"Skipping tests for deprecated pipeline: {self.pipeline_class.__name__}")
+            pytest.skip(f"Skipping tests for {self.pipeline_class.__name__}", reason="Deprecated Pipeline")
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors

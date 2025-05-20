@@ -68,6 +68,7 @@ class WuerstchenCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             The scheduler to be used for prior pipeline.
     """
 
+    _last_supported_version = "0.33.1"
     _load_connected_pipes = True
 
     def __init__(
