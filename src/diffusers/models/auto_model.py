@@ -18,7 +18,6 @@ from typing import Optional, Union
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
-from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
 from ..utils import logging
 
 
@@ -161,7 +160,6 @@ class AutoModel(ConfigMixin):
 
         library = None
         orig_class_name = None
-        from diffusers import pipelines
 
         # Always attempt to fetch model_index.json first
         try:
@@ -192,12 +190,14 @@ class AutoModel(ConfigMixin):
             else:
                 raise ValueError(f"Couldn't find model associated with the config file at {pretrained_model_or_path}.")
 
+        from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
+        
         model_cls, _ = get_class_obj_and_candidates(
             library_name=library,
             class_name=orig_class_name,
             importable_classes=ALL_IMPORTABLE_CLASSES,
-            pipelines=pipelines,
-            is_pipeline_module=hasattr(pipelines, library),
+            pipelines=None,
+            is_pipeline_module=False,
         )
 
         if model_cls is None:
