@@ -41,11 +41,11 @@ from .encoders import (
     StableDiffusionXLInpaintVaeEncoderStep,
     StableDiffusionXLIPAdapterStep
 )
-from .after_denoise import (
+from .decoders import (
     StableDiffusionXLDecodeStep,
-    StableDiffusionXLInpaintDecodeStep
+    StableDiffusionXLInpaintDecodeStep,
+    StableDiffusionXLAutoDecodeStep
 )
-from .after_denoise import StableDiffusionXLAutoDecodeStep
 
 
 # YiYi notes: comment out for now, work on this later
