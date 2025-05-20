@@ -4833,7 +4833,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                         continue
 
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
-                        ref_lora_A_weight.shape, device=target_device
+                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"], device=target_device
                     )
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
                         state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"], device=target_device
