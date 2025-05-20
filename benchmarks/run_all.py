@@ -45,7 +45,7 @@ def run_scripts():
             logger.info(f"****** Running file: {file} ******")
             command = f"python {file}"
             try:
-                run_command(command)
+                run_command(command.split())
             except SubprocessCallException as e:
                 logger.error(f"Error running {file}: {e}")
                 continue
