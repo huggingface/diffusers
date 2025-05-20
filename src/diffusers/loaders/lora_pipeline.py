@@ -4831,10 +4831,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
                     if ref_key_lora_A not in state_dict or ref_key_lora_B not in state_dict:
                         continue
-                    lora_dtype = ref_lora_A_weight.dtype
 
-                    state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros(
-                        ref_lora_A_weight.shape, device=target_device, dtype=lora_dtype
+                    state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
+                        ref_lora_A_weight.shape, device=target_device
                     )
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
                         state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"], device=target_device
@@ -4846,8 +4845,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                     ref_key_lora_B_bias = f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"
                     if has_bias and ref_key_lora_B_bias in state_dict:
                         ref_lora_B_bias_tensor = state_dict[ref_key_lora_B_bias]
-                        state_dict[f"transformer.blocks.{i}.attn2.{diffusers_name_part}.lora_B.bias"] = torch.zeros(
-                            ref_lora_B_bias_tensor.shape, device=target_device, dtype=lora_dtype
+                        state_dict[f"transformer.blocks.{i}.attn2.{diffusers_name_part}.lora_B.bias"] = torch.zeros_like(
+                            ref_lora_B_bias_tensor.shape, device=target_device,
                         )
 
         return state_dict
