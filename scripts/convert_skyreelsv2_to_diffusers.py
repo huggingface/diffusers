@@ -67,10 +67,9 @@ def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -
 
 
 def load_sharded_safetensors(dir: pathlib.Path):
-    file_paths = list(dir.glob("model*.safetensors"))
+    #file_paths = list(dir.glob("model*.safetensors"))
     state_dict = {}
-    for path in file_paths:
-        state_dict.update(load_file(path))
+    state_dict.update(load_file(dir))
     return state_dict
 
 
@@ -183,7 +182,7 @@ def convert_transformer(model_type: str):
     config = get_transformer_config(model_type)
     diffusers_config = config["diffusers_config"]
     model_id = config["model_id"]
-    model_dir = pathlib.Path(hf_hub_download(model_id, "model.safetensors"))
+    model_dir = hf_hub_download(model_id, "model.safetensors")
 
     original_state_dict = load_sharded_safetensors(model_dir)
 
