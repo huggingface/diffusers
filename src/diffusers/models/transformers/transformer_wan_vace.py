@@ -106,35 +106,38 @@ class WanVACETransformerBlock(nn.Module):
     ) -> torch.Tensor:
         if self.proj_in is not None:
             control_hidden_states = self.proj_in(control_hidden_states)
-            hidden_states = hidden_states + control_hidden_states
-        else:
-            hidden_states = control_hidden_states
+            control_hidden_states = control_hidden_states + hidden_states
 
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
             self.scale_shift_table + temb.float()
         ).chunk(6, dim=1)
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        norm_hidden_states = (self.norm1(control_hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(
+            control_hidden_states
+        )
         attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        control_hidden_states = (control_hidden_states.float() + attn_output * gate_msa).type_as(control_hidden_states)
 
         # 2. Cross-attention
-        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
+        norm_hidden_states = self.norm2(control_hidden_states.float()).type_as(control_hidden_states)
         attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
-        hidden_states = hidden_states + attn_output
+        control_hidden_states = control_hidden_states + attn_output
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
+        norm_hidden_states = (self.norm3(control_hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
+            control_hidden_states
         )
         ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+        control_hidden_states = (control_hidden_states.float() + ff_output.float() * c_gate_msa).type_as(
+            control_hidden_states
+        )
 
+        conditioning_states = None
         if self.proj_out is not None:
-            control_hidden_states = self.proj_out(hidden_states)
+            conditioning_states = self.proj_out(control_hidden_states)
 
-        return hidden_states, control_hidden_states
+        return conditioning_states, control_hidden_states
 
 
 class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
@@ -309,11 +312,9 @@ class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         # 2. Patch embedding
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
-        print("hidden_states", hidden_states.shape)
 
         control_hidden_states = self.vace_patch_embedding(control_hidden_states)
         control_hidden_states = control_hidden_states.flatten(2).transpose(1, 2)
-        print("control_hidden_states", control_hidden_states.shape)
         control_hidden_states_padding = control_hidden_states.new_zeros(
             batch_size, hidden_states.size(1) - control_hidden_states.size(1), control_hidden_states.size(2)
         )
@@ -333,12 +334,11 @@ class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             # Prepare VACE hints
             control_hidden_states_list = []
-            vace_hidden_states = hidden_states
             for i, block in enumerate(self.vace_blocks):
-                vace_hidden_states, control_hidden_states = self._gradient_checkpointing_func(
-                    block, vace_hidden_states, encoder_hidden_states, control_hidden_states, timestep_proj, rotary_emb
+                conditioning_states, control_hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, encoder_hidden_states, control_hidden_states, timestep_proj, rotary_emb
                 )
-                control_hidden_states_list.append((control_hidden_states, control_hidden_states_scale[i]))
+                control_hidden_states_list.append((conditioning_states, control_hidden_states_scale[i]))
             control_hidden_states_list = control_hidden_states_list[::-1]
 
             for i, block in enumerate(self.blocks):
@@ -351,12 +351,11 @@ class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         else:
             # Prepare VACE hints
             control_hidden_states_list = []
-            vace_hidden_states = hidden_states
             for i, block in enumerate(self.vace_blocks):
-                vace_hidden_states, control_hidden_states = block(
-                    vace_hidden_states, encoder_hidden_states, control_hidden_states, timestep_proj, rotary_emb
+                conditioning_states, control_hidden_states = block(
+                    hidden_states, encoder_hidden_states, control_hidden_states, timestep_proj, rotary_emb
                 )
-                control_hidden_states_list.append((control_hidden_states, control_hidden_states_scale[i]))
+                control_hidden_states_list.append((conditioning_states, control_hidden_states_scale[i]))
             control_hidden_states_list = control_hidden_states_list[::-1]
 
             for i, block in enumerate(self.blocks):
