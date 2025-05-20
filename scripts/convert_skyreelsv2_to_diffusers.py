@@ -460,7 +460,7 @@ if __name__ == "__main__":
             vae=None,
             scheduler=None,
         )
-
+    # pipe.push_to_hub
     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB",
                          push_to_hub=True,
                          repo_id="tolgacangoz/SkyReels-V2-DF-1.3B-540P-Diffusers-2",
