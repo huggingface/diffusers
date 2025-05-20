@@ -11,9 +11,10 @@ from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjec
 from diffusers import (
     AutoencoderKLWan,
     FlowMatchUniPCMultistepScheduler,
-    SkyReelsV2DiffusionForcingPipeline,
     SkyReelsV2Transformer3DModel,
 )
+
+from diffusers.pipelines import SkyReelsV2DiffusionForcingPipeline
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
