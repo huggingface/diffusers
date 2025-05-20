@@ -30,6 +30,8 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 _LAYER_SKIP_HOOK = "layer_skip_hook"
 
 
+# Aryan/YiYi TODO: we need to make guider class a config mixin so I think this is not needed
+# either remove or make it serializable
 @dataclass
 class LayerSkipConfig:
     r"""
