@@ -162,7 +162,7 @@ class BenchmarkMixin:
         if not isinstance(scenarios, list):
             scenarios = [scenarios]
         records = []
-        for s in records:
+        for s in scenarios:
             try:
                 records.append(self.run_benchmark(s))
             except Exception as e:
