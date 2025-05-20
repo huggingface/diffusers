@@ -548,7 +548,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Recommended when using asynchronous inference (--ar_step > 0)
             fps (`int`, *optional*, defaults to `24`):
 
-        Examples: Returns:
+        Examples:
+
+        Returns:
             [`~SkyReelsV2PipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`SkyReelsV2PipelineOutput`] is returned, otherwise a `tuple` is returned
                 where the first element is a list with the generated images and the second element is a list of `bool`s
