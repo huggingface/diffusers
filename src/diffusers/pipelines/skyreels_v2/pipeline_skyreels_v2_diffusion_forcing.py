@@ -812,7 +812,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         self._current_timestep = t
                         update_mask_i = step_update_mask[i]
                         valid_interval_start, valid_interval_end = valid_interval[i]
-                        timestep = t[None, :][:, valid_interval_start:valid_interval_end].clone()
+                        timestep = t[valid_interval_start:valid_interval_end].clone()
                         latent_model_input = (
                             latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                         )
@@ -826,7 +826,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 )
                                 * noise_factor
                             )
-                            timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
+                            timestep[valid_interval_start:prefix_video_latent_length] = addnoise_condition
 
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
