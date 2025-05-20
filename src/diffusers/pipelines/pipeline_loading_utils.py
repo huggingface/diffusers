@@ -187,8 +187,10 @@ def filter_model_files(filenames):
 
     return [f for f in filenames if any(f.endswith(extension) for extension in allowed_extensions)]
 
+
 def filter_with_regex(filenames, pattern_re):
     return {f for f in filenames if pattern_re.match(f.split("/")[-1]) is not None}
+
 
 def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[List[os.PathLike], str]:
     weight_names = [
