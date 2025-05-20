@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional, Union
 import pandas as pd
 import torch
 import torch.utils.benchmark as benchmark
+from torchprofile import profile_macs
 
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import logging
@@ -29,6 +30,19 @@ def flush():
     torch.cuda.empty_cache()
     torch.cuda.reset_max_memory_allocated()
     torch.cuda.reset_peak_memory_stats()
+
+
+# Taken from https://github.com/lucasb-eyer/cnn_vit_benchmarks/blob/15b665ff758e8062131353076153905cae00a71f/main.py
+def calculate_flops(model, input_dict):
+    model.eval()
+    with torch.no_grad():
+        macs = profile_macs(model, **input_dict)
+    flops = 2 * macs  # 1 MAC operation = 2 FLOPs (1 multiplication + 1 addition)
+    return flops
+
+
+def calculate_params(model):
+    return sum(p.numel() for p in model.parameters())
 
 
 # Users can define their own in case this doesn't suffice. For most cases,
@@ -69,6 +83,14 @@ class BenchmarkMixin:
 
     @torch.no_grad()
     def run_benchmark(self, scenario: BenchmarkScenario):
+        # 0) Basic stats
+        model = model_init_fn(scenario.model_cls, **scenario.model_init_kwargs)
+        num_params = calculate_params(model)
+        flops = calculate_flops(model, input_dict=scenario.model_init_kwargs)
+        model.cpu()
+        del model
+        self.pre_benchmark()
+
         # 1) plain stats
         results = {}
         plain = None
@@ -104,6 +126,8 @@ class BenchmarkMixin:
         result = {
             "scenario": scenario.name,
             "model_cls": scenario.model_cls.__name__,
+            "num_params": num_params,
+            "flops": flops,
             "time_plain_s": plain["time"],
             "mem_plain_GB": plain["memory"],
             "time_compile_s": compiled["time"],
