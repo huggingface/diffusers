@@ -14,7 +14,9 @@
 
 <div style="float: right;">
   <div class="flex flex-wrap space-x-1">
-    <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+    <a href="https://huggingface.co/docs/diffusers/main/en/tutorials/using_peft_for_inference" target="_blank" rel="noopener">
+      <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+    </a>
   </div>
 </div>
 
@@ -100,7 +102,7 @@ export_to_video(output, "output.mp4", fps=16)
 </hfoption>
 <hfoption id="inference speed">
 
-Compilation is slow the first time but subsequent calls to the pipeline are faster.
+[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
 
 ```py
 # pip install ftfy
@@ -159,6 +161,9 @@ export_to_video(output, "output.mp4", fps=16)
 
 - Wan2.1 supports LoRAs with [`~loaders.WanLoraLoaderMixin.load_lora_weights`].
 
+  <details>
+  <summary>Show example code</summary>
+
   ```py
   # pip install ftfy
   import torch
@@ -199,7 +204,12 @@ export_to_video(output, "output.mp4", fps=16)
   export_to_video(output, "output.mp4", fps=16)
   ```
 
+  </details>
+
 - [`WanTransformer3DModel`] and [`AutoencoderKLWan`] supports loading from single files with [`~loaders.FromSingleFileMixin.from_single_file`].
+
+  <details>
+  <summary>Show example code</summary>
 
   ```py
   # pip install ftfy
@@ -220,6 +230,8 @@ export_to_video(output, "output.mp4", fps=16)
       torch_dtype=torch.bfloat16
   )
   ```
+
+  </details>
 
 - Set the [`AutoencoderKLWan`] dtype to `torch.float32` for better decoding quality.
 
