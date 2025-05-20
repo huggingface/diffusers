@@ -1,4 +1,5 @@
 import gc
+import inspect
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Union
@@ -32,11 +33,27 @@ def flush():
     torch.cuda.reset_peak_memory_stats()
 
 
-# Taken from https://github.com/lucasb-eyer/cnn_vit_benchmarks/blob/15b665ff758e8062131353076153905cae00a71f/main.py
+# Adapted from https://github.com/lucasb-eyer/cnn_vit_benchmarks/blob/15b665ff758e8062131353076153905cae00a71f/main.py
 def calculate_flops(model, input_dict):
+    # This is a hacky way to convert the kwargs to args as `profile_macs` cries about kwargs.
+    sig = inspect.signature(model.forward)
+    param_names = [
+        p.name
+        for p in sig.parameters.values()
+        if p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+        and p.name != "self"
+    ]
+    bound = sig.bind_partial(**input_dict)
+    bound.apply_defaults()
+    args = tuple(bound.arguments[name] for name in param_names)
+
     model.eval()
     with torch.no_grad():
-        macs = profile_macs(model, **input_dict)
+        macs = profile_macs(model, args)
     flops = 2 * macs  # 1 MAC operation = 2 FLOPs (1 multiplication + 1 addition)
     return flops
 
@@ -85,8 +102,8 @@ class BenchmarkMixin:
     def run_benchmark(self, scenario: BenchmarkScenario):
         # 0) Basic stats
         model = model_init_fn(scenario.model_cls, **scenario.model_init_kwargs)
-        num_params = calculate_params(model)
-        flops = calculate_flops(model, input_dict=scenario.model_init_kwargs)
+        num_params = round(calculate_params(model) / 1e6, 2)
+        flops = round(calculate_flops(model, input_dict=scenario.get_model_input_dict()) / 1e6, 2)
         model.cpu()
         del model
         self.pre_benchmark()
@@ -126,8 +143,8 @@ class BenchmarkMixin:
         result = {
             "scenario": scenario.name,
             "model_cls": scenario.model_cls.__name__,
-            "num_params": num_params,
-            "flops": flops,
+            "num_params_M": num_params,
+            "flops_M": flops,
             "time_plain_s": plain["time"],
             "mem_plain_GB": plain["memory"],
             "time_compile_s": compiled["time"],
