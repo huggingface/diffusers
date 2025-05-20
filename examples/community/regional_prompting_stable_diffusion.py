@@ -1319,7 +1319,7 @@ class RegionalPromptingStableDiffusionPipeline(
             )[1]
 
         return image, has_nsfw_concept
-    
+
     # copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion
     def decode_latents(self, latents):
         """Decodes the latents to images."""
@@ -1380,7 +1380,7 @@ class RegionalPromptingStableDiffusionPipeline(
     @property
     def interrupt(self):
         return self._interrupt
-    
+
     @property
     def cross_attention_kwargs(self):
         return self._cross_attention_kwargs
@@ -1388,6 +1388,7 @@ class RegionalPromptingStableDiffusionPipeline(
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
+
 
 ### Make prompt list for each regions
 def promptsmaker(prompts, batch):
