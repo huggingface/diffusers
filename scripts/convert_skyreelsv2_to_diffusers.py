@@ -90,7 +90,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "num_layers": 30,
                 "out_channels": 16,
                 "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm",
+                "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
             },
         }
