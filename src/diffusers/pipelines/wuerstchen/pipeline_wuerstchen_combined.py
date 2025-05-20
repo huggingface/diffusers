@@ -18,7 +18,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import deprecate, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 from .modeling_wuerstchen_prior import WuerstchenPrior
@@ -40,7 +40,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
 """
 
 
-class WuerstchenCombinedPipeline(DiffusionPipeline):
+class WuerstchenCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Combined Pipeline for text-to-image generation using Wuerstchen
 
