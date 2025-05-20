@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -34,6 +34,11 @@ from ..normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class WanTransformerBlockOutput(NamedTuple):
+    hidden_states: torch.Tensor = None
+    encoder_hidden_states: torch.Tensor = None
 
 
 class WanAttnProcessor2_0:
@@ -222,12 +227,7 @@ class WanRotaryPosEmbed(nn.Module):
 
 
 @maybe_allow_in_graph
-@register_transformer_block(
-    TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=None,
-    )
-)
+@register_transformer_block(TransformerBlockMetadata())
 class WanTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -285,7 +285,7 @@ class WanTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> WanTransformerBlockOutput:
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
             self.scale_shift_table + temb.float()
         ).chunk(6, dim=1)
@@ -307,7 +307,7 @@ class WanTransformerBlock(nn.Module):
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
-        return hidden_states
+        return WanTransformerBlockOutput(hidden_states, encoder_hidden_states)
 
 
 class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
@@ -456,12 +456,14 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.blocks:
-                hidden_states = self._gradient_checkpointing_func(
+                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
                     block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
                 )
         else:
             for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+                hidden_states, encoder_hidden_states = block(
+                    hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
+                )
 
         # 5. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
