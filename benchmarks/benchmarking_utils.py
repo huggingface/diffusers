@@ -7,7 +7,6 @@ from typing import Any, Callable, Dict, Optional, Union
 import pandas as pd
 import torch
 import torch.utils.benchmark as benchmark
-from torchprofile import profile_macs
 
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import logging
@@ -35,6 +34,11 @@ def flush():
 
 # Adapted from https://github.com/lucasb-eyer/cnn_vit_benchmarks/blob/15b665ff758e8062131353076153905cae00a71f/main.py
 def calculate_flops(model, input_dict):
+    try:
+        from torchprofile import profile_macs
+    except ModuleNotFoundError:
+        raise
+
     # This is a hacky way to convert the kwargs to args as `profile_macs` cries about kwargs.
     sig = inspect.signature(model.forward)
     param_names = [
