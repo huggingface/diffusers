@@ -4813,30 +4813,89 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if transformer.config.image_dim is None:
             return state_dict
 
-        target_device = transformer.device
+        # Determine the target device from the transformer
+        try:
+            target_device = next(transformer.parameters()).device
+        except StopIteration:
+            # Fallback if transformer has no parameters (should be rare for a full model)
+            # Try to infer from existing tensors in state_dict, else default to CPU
+            target_device = torch.device("cpu")
+            for v in state_dict.values():
+                if torch.is_tensor(v):
+                    target_device = v.device
+                    break
+
+        # Debug prints, can be removed after verification
+        logger.debug(f"Target device for new LoRA tensors: {target_device}")
+        logger.debug(f"Keys BEFORE _maybe_expand_t2v_lora_for_i2v: {list(state_dict.keys())[:5]}...")
 
         if any(k.startswith("transformer.blocks.") for k in state_dict):
-            num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict if "blocks." in k})
-            is_i2v_lora = any("add_k_proj" in k for k in state_dict) and any("add_v_proj" in k for k in state_dict)
-            is_bias = any("bias" in k for k in state_dict)
+            block_indices = set()
+            # Iterate over a copy of keys if state_dict might be modified during iteration elsewhere (not here though)
+            for k in list(state_dict.keys()):
+                if k.startswith("transformer.blocks.") and ".attn2.to_k.lora_A.weight" in k:
+                    try:
+                        block_idx_str = k.split("blocks.")[1].split(".")[0]
+                        block_indices.add(int(block_idx_str))
+                    except (IndexError, ValueError):
+                        logger.warning(f"Could not parse block index from key: {k}")
+                        continue
 
-            if is_i2v_lora:
+            if not block_indices:
+                logger.debug(
+                    "No valid blocks found for T2V to I2V expansion referencing based on '.attn2.to_k.lora_A.weight'.")
                 return state_dict
 
-            for i in range(num_blocks):
-                for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
-                    state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
-                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"], device=target_device
+            num_total_blocks = max(block_indices) + 1
+
+            is_i2v_lora = any("add_k_proj" in k for k in state_dict) and any("add_v_proj" in k for k in state_dict)
+
+            # Check for bias keys that would have been converted by _convert_non_diffusers_wan_lora_to_diffusers
+            # e.g., 'transformer.blocks.0.attn2.to_k.lora_B.bias'
+            # This helps decide if zero biases should be added for the new projections.
+            has_bias_key_pattern_in_sd = any(".lora_B.bias" in k for k in state_dict)
+
+            if is_i2v_lora:  # If it's already an I2V LoRA, no expansion needed
+                return state_dict
+
+            logger.info(
+                "Adapting a T2V LoRA for I2V model by adding zero-initialized weights for image-specific cross-attention layers."
+            )
+            for i in range(num_total_blocks):
+                # Define reference key patterns carefully. These keys should exist if the block `i` was part of the T2V LoRA.
+                ref_key_lora_A = f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"
+                ref_key_lora_B = f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"
+
+                # Only proceed if the reference LoRA weights for this block exist in the T2V LoRA
+                if ref_key_lora_A not in state_dict or ref_key_lora_B not in state_dict:
+                    continue
+
+                ref_lora_A_weight = state_dict[ref_key_lora_A]
+                ref_lora_B_weight = state_dict[ref_key_lora_B]
+
+                # Use dtype from reference LoRA tensors, device from transformer
+                lora_dtype = ref_lora_A_weight.dtype
+
+                for _unused_orig_name, diffusers_name_part in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
+                    # Create new tensors on the transformer's device and with the LoRA's dtype
+                    state_dict[f"transformer.blocks.{i}.attn2.{diffusers_name_part}.lora_A.weight"] = torch.zeros(
+                        ref_lora_A_weight.shape, device=target_device, dtype=lora_dtype
                     )
-                    state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
-                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"], device=target_device
+                    state_dict[f"transformer.blocks.{i}.attn2.{diffusers_name_part}.lora_B.weight"] = torch.zeros(
+                        ref_lora_B_weight.shape, device=target_device, dtype=lora_dtype
                     )
-                    if is_bias:
-                        state_dict[f"blocks.{i}.attn2.{c}.lora_B.bias"] = torch.zeros_like(
-                            state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"], device=target_device
+
+                    # If the original LoRA had biases (indicated by has_bias_key_pattern_in_sd)
+                    # AND the specific reference bias key exists for this block.
+                    ref_key_lora_B_bias = f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"
+                    if has_bias_key_pattern_in_sd and ref_key_lora_B_bias in state_dict:
+                        ref_lora_B_bias_tensor = state_dict[ref_key_lora_B_bias]
+                        state_dict[f"transformer.blocks.{i}.attn2.{diffusers_name_part}.lora_B.bias"] = torch.zeros(
+                            ref_lora_B_bias_tensor.shape, device=target_device, dtype=lora_dtype
                         )
 
-
+        # new_keys = set(state_dict.keys()) - orig_keys
+        # logger.debug(f"Keys ADDED by _maybe_expand_t2v_lora_for_i2v: {new_keys}")
         return state_dict
 
     def load_lora_weights(
