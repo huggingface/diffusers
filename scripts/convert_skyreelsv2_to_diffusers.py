@@ -15,6 +15,7 @@ from diffusers import (
 )
 
 from diffusers.pipelines import SkyReelsV2DiffusionForcingPipeline
+from diffusers.utils.dummy_torch_and_transformers_objects import SkyreelsV2ImageToVideoPipeline
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
@@ -430,8 +431,8 @@ if __name__ == "__main__":
     dtype = DTYPE_MAPPING[args.dtype]
 
     transformer = convert_transformer(args.model_type).to(dtype=dtype)
-    vae = convert_vae()
-    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
+    #vae = convert_vae()
+    #text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     scheduler = FlowMatchUniPCMultistepScheduler(
         prediction_type="flow_prediction", num_train_timesteps=1000,
@@ -442,11 +443,11 @@ if __name__ == "__main__":
             "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
         )
         image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-        pipe = SkyReelsV2ImageToVideoPipeline(
+        pipe = SkyreelsV2ImageToVideoPipeline(
             transformer=transformer,
-            text_encoder=text_encoder,
+            text_encoder=None,
             tokenizer=tokenizer,
-            vae=vae,
+            vae=None,
             scheduler=scheduler,
             image_encoder=image_encoder,
             image_processor=image_processor,
@@ -454,9 +455,9 @@ if __name__ == "__main__":
     else:
         pipe = SkyReelsV2DiffusionForcingPipeline(
             transformer=transformer,
-            text_encoder=text_encoder,
+            text_encoder=None,
             tokenizer=tokenizer,
-            vae=vae,
+            vae=None,
             scheduler=scheduler,
         )
 
