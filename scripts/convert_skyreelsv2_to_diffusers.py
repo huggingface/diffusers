@@ -182,7 +182,7 @@ def convert_transformer(model_type: str):
     config = get_transformer_config(model_type)
     diffusers_config = config["diffusers_config"]
     model_id = config["model_id"]
-    model_dir = hf_hub_download(model_id, "model.safetensors")
+    model_dir = pathlib.Path(hf_hub_download(model_id, "model.safetensors"))
 
     original_state_dict = load_sharded_safetensors(model_dir)
 
