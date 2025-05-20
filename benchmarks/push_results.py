@@ -36,32 +36,43 @@ def filter_float(value):
 def push_to_hf_dataset():
     from run_all import FINAL_CSV_FILENAME, GITHUB_SHA
 
-    # If there's an existing benchmark file, we should report the changes.
     csv_path = has_previous_benchmark()
     if csv_path is not None:
         current_results = pd.read_csv(FINAL_CSV_FILENAME)
         previous_results = pd.read_csv(csv_path)
 
-        # identify the numeric columns we want to annotate
         numeric_columns = current_results.select_dtypes(include=["float64", "int64"]).columns
 
-        # for each numeric column, append the old value in () if present
         for column in numeric_columns:
-            # coerce any “x units” strings back to float
-            prev_vals = previous_results[column].map(filter_float)
-            # align indices in case rows were added/removed
-            prev_vals = prev_vals.reindex(current_results.index)
+            # get previous values as floats, aligned to current index
+            prev_vals = (
+                previous_results[column]
+                .map(filter_float)
+                .reindex(current_results.index)
+            )
 
-            # build the new string: "current_value (previous_value)"
-            curr_str = current_results[column].astype(str)
-            prev_str = prev_vals.map(lambda x: f" ({x})" if pd.notnull(x) else "")
+            # get current values as floats
+            curr_vals = current_results[column].astype(float)
 
-            current_results[column] = curr_str + prev_str
+            # stringify the current values
+            curr_str = curr_vals.map(str)
 
-        # overwrite the CSV
+            # build an appendage only when prev exists and differs
+            append_str = prev_vals.where(
+                prev_vals.notnull() & (prev_vals != curr_vals),
+                other=pd.NA
+            ).map(lambda x: f" ({x})" if pd.notnull(x) else "")
+
+            # combine
+            current_results[column] = curr_str + append_str
+
         current_results.to_csv(FINAL_CSV_FILENAME, index=False)
 
-    commit_message = f"upload from sha: {GITHUB_SHA}" if GITHUB_SHA is not None else "upload benchmark results"
+    commit_message = (
+        f"upload from sha: {GITHUB_SHA}"
+        if GITHUB_SHA is not None else
+        "upload benchmark results"
+    )
     upload_file(
         repo_id=REPO_ID,
         path_in_repo=FINAL_CSV_FILENAME,
