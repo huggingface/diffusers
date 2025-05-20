@@ -31,8 +31,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
     r"""
-    A 2D Transformer model as introduced in PixArt family of models (https://arxiv.org/abs/2310.00426,
-    https://arxiv.org/abs/2403.04692).
+    A 2D Transformer model as introduced in PixArt family of models (https://huggingface.co/papers/2310.00426,
+    https://huggingface.co/papers/2403.04692).
 
     Parameters:
         num_attention_heads (int, optional, defaults to 16): The number of heads to use for multi-head attention.
