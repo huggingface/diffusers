@@ -430,13 +430,13 @@ if __name__ == "__main__":
     transformer = None
     dtype = DTYPE_MAPPING[args.dtype]
 
-    transformer = convert_transformer(args.model_type).to(dtype=dtype)
-    #vae = convert_vae()
+    #transformer = convert_transformer(args.model_type).to(dtype=dtype)
+    vae = convert_vae()
     #text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
-    tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
-    scheduler = FlowMatchUniPCMultistepScheduler(
-        prediction_type="flow_prediction", num_train_timesteps=1000,
-    )
+    #tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    #scheduler = FlowMatchUniPCMultistepScheduler(
+    #    prediction_type="flow_prediction", num_train_timesteps=1000,
+    #)
 
     if "I2V" in args.model_type:
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
@@ -446,19 +446,19 @@ if __name__ == "__main__":
         pipe = SkyreelsV2ImageToVideoPipeline(
             transformer=transformer,
             text_encoder=None,
-            tokenizer=tokenizer,
+            tokenizer=None,
             vae=None,
-            scheduler=scheduler,
+            scheduler=None,
             image_encoder=image_encoder,
             image_processor=image_processor,
         )
     else:
         pipe = SkyReelsV2DiffusionForcingPipeline(
-            transformer=transformer,
+            transformer=None,
             text_encoder=None,
-            tokenizer=tokenizer,
-            vae=None,
-            scheduler=scheduler,
+            tokenizer=None,
+            vae=vae,
+            scheduler=None,
         )
 
     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB",
