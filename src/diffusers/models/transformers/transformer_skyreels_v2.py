@@ -243,7 +243,7 @@ class SkyReelsV2TransformerBlock(nn.Module):
         dim: int,
         ffn_dim: int,
         num_heads: int,
-        qk_norm: str = "rms_norm",
+        qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
@@ -356,7 +356,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             Window size for local attention (-1 indicates global attention).
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
-        qk_norm (`str`, *optional*, defaults to `"rms_norm"`):
+        qk_norm (`str`, *optional*, defaults to `"rms_norm_across_heads"`):
             Enable query/key normalization.
         eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
@@ -391,7 +391,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         ffn_dim: int = 8192,
         num_layers: int = 32,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm",
+        qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
         image_dim: Optional[int] = None,
         added_kv_proj_dim: Optional[int] = None,
