@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Tuple, Union
 
 import torch
 
@@ -52,13 +51,19 @@ class FBCSharedBlockState(BaseState):
     def __init__(self) -> None:
         super().__init__()
 
-        self.head_block_output: Union[torch.Tensor, Tuple[torch.Tensor, ...]] = None
-        self.head_block_residual: torch.Tensor = None
-        self.tail_block_residuals: Union[torch.Tensor, Tuple[torch.Tensor, ...]] = None
+        self.head_block_output_hidden_states: torch.Tensor = None
+        self.head_block_output_encoder_hidden_states: torch.Tensor = None
+        self.head_block_residual_hidden_states: torch.Tensor = None
+        self.tail_block_residual_hidden_states: torch.Tensor = None
+        self.tail_block_residual_encoder_hidden_states: torch.Tensor = None
         self.should_compute: bool = True
 
     def reset(self):
-        self.tail_block_residuals = None
+        self.head_block_output_hidden_states = None
+        self.head_block_output_encoder_hidden_states = None
+        self.head_block_residual_hidden_states = None
+        self.tail_block_residual_hidden_states = None
+        self.tail_block_residual_encoder_hidden_states = None
         self.should_compute = True
 
 
@@ -84,12 +89,7 @@ class FBCHeadBlockHook(ModelHook):
         original_hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
 
         output = self.fn_ref.original_forward(*args, **kwargs)
-        is_output_tuple = isinstance(output, tuple)
-
-        if is_output_tuple:
-            hidden_states_residual = output[self._metadata.return_hidden_states_index] - original_hidden_states
-        else:
-            hidden_states_residual = output - original_hidden_states
+        hidden_states_residual = output.hidden_states - original_hidden_states
 
         shared_state: FBCSharedBlockState = self.state_manager.get_state()
         hidden_states = encoder_hidden_states = None
@@ -98,38 +98,22 @@ class FBCHeadBlockHook(ModelHook):
 
         if not should_compute:
             # Apply caching
-            if is_output_tuple:
-                hidden_states = (
-                    shared_state.tail_block_residuals[0] + output[self._metadata.return_hidden_states_index]
-                )
-            else:
-                hidden_states = shared_state.tail_block_residuals[0] + output
-
-            if self._metadata.return_encoder_hidden_states_index is not None:
-                assert is_output_tuple
+            return_output = output.__class__()
+            hidden_states = shared_state.tail_block_residual_hidden_states + output.hidden_states
+            return_output = return_output._replace(hidden_states=hidden_states)
+            if hasattr(output, "encoder_hidden_states"):
                 encoder_hidden_states = (
-                    shared_state.tail_block_residuals[1] + output[self._metadata.return_encoder_hidden_states_index]
+                    shared_state.tail_block_residual_encoder_hidden_states + output.encoder_hidden_states
                 )
-
-            if is_output_tuple:
-                return_output = [None] * len(output)
-                return_output[self._metadata.return_hidden_states_index] = hidden_states
-                return_output[self._metadata.return_encoder_hidden_states_index] = encoder_hidden_states
-                return_output = tuple(return_output)
-            else:
-                return_output = hidden_states
-            output = return_output
+                return_output = return_output._replace(encoder_hidden_states=encoder_hidden_states)
         else:
-            if is_output_tuple:
-                head_block_output = [None] * len(output)
-                head_block_output[0] = output[self._metadata.return_hidden_states_index]
-                head_block_output[1] = output[self._metadata.return_encoder_hidden_states_index]
-            else:
-                head_block_output = output
-            shared_state.head_block_output = head_block_output
-            shared_state.head_block_residual = hidden_states_residual
+            return_output = output
+            shared_state.head_block_output_hidden_states = output.hidden_states
+            if hasattr(output, "encoder_hidden_states"):
+                shared_state.head_block_output_encoder_hidden_states = output.encoder_hidden_states
+            shared_state.head_block_residual_hidden_states = hidden_states_residual
 
-        return output
+        return return_output
 
     def reset_state(self, module):
         self.state_manager.reset()
@@ -138,9 +122,9 @@ class FBCHeadBlockHook(ModelHook):
     @torch.compiler.disable
     def _should_compute_remaining_blocks(self, hidden_states_residual: torch.Tensor) -> bool:
         shared_state = self.state_manager.get_state()
-        if shared_state.head_block_residual is None:
+        if shared_state.head_block_residual_hidden_states is None:
             return True
-        prev_hidden_states_residual = shared_state.head_block_residual
+        prev_hidden_states_residual = shared_state.head_block_residual_hidden_states
         absmean = (hidden_states_residual - prev_hidden_states_residual).abs().mean()
         prev_hidden_states_absmean = prev_hidden_states_residual.abs().mean()
         diff = (absmean / prev_hidden_states_absmean).item()
@@ -153,6 +137,7 @@ class FBCBlockHook(ModelHook):
         self.state_manager = state_manager
         self.is_tail = is_tail
         self._metadata = None
+        self._output_cls = None
 
     def initialize_hook(self, module):
         unwrapped_module = unwrap_module(module)
@@ -166,37 +151,37 @@ class FBCBlockHook(ModelHook):
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         original_hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
+
         original_encoder_hidden_states = None
-        if self._metadata.return_encoder_hidden_states_index is not None:
+        try:
             original_encoder_hidden_states = self._metadata._get_parameter_from_args_kwargs(
                 "encoder_hidden_states", args, kwargs
             )
+        except ValueError:
+            # This is expected for models that don't have use encoder_hidden_states in their forward definition
+            pass
 
         shared_state = self.state_manager.get_state()
 
         if shared_state.should_compute:
             output = self.fn_ref.original_forward(*args, **kwargs)
+            if self._output_cls is None:
+                self._output_cls = output.__class__
             if self.is_tail:
-                hidden_states_residual = encoder_hidden_states_residual = None
-                if isinstance(output, tuple):
-                    hidden_states_residual = (
-                        output[self._metadata.return_hidden_states_index] - shared_state.head_block_output[0]
-                    )
+                hidden_states_residual = output.hidden_states - shared_state.head_block_output_hidden_states
+                if hasattr(output, "encoder_hidden_states"):
                     encoder_hidden_states_residual = (
-                        output[self._metadata.return_encoder_hidden_states_index] - shared_state.head_block_output[1]
+                        output.encoder_hidden_states - shared_state.head_block_output_encoder_hidden_states
                     )
-                else:
-                    hidden_states_residual = output - shared_state.head_block_output
-                shared_state.tail_block_residuals = (hidden_states_residual, encoder_hidden_states_residual)
+                shared_state.tail_block_residual_hidden_states = hidden_states_residual
+                shared_state.tail_block_residual_encoder_hidden_states = encoder_hidden_states_residual
             return output
 
-        if original_encoder_hidden_states is None:
-            return_output = original_hidden_states
-        else:
-            return_output = [None, None]
-            return_output[self._metadata.return_hidden_states_index] = original_hidden_states
-            return_output[self._metadata.return_encoder_hidden_states_index] = original_encoder_hidden_states
-            return_output = tuple(return_output)
+        assert self._output_cls is not None
+        return_output = self._output_cls()
+        return_output = return_output._replace(hidden_states=original_hidden_states)
+        if hasattr(return_output, "encoder_hidden_states"):
+            return_output = return_output._replace(encoder_hidden_states=original_encoder_hidden_states)
         return return_output
 
 

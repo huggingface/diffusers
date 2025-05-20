@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -26,7 +26,6 @@ from ..attention import Attention, FeedForward
 from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
 from ..cache_utils import CacheMixin
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
-from ..metadata import TransformerBlockMetadata, register_transformer_block
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
@@ -35,13 +34,12 @@ from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class CogVideoXBlockOutput(NamedTuple):
+    hidden_states: torch.Tensor = None
+    encoder_hidden_states: torch.Tensor = None
+
+
 @maybe_allow_in_graph
-@register_transformer_block(
-    metadata=TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=1,
-    )
-)
 class CogVideoXBlock(nn.Module):
     r"""
     Transformer block used in [CogVideoX](https://github.com/THUDM/CogVideo) model.
@@ -129,7 +127,7 @@ class CogVideoXBlock(nn.Module):
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> torch.Tensor:
+    ) -> CogVideoXBlockOutput:
         text_seq_length = encoder_hidden_states.size(1)
         attention_kwargs = attention_kwargs or {}
 
@@ -161,7 +159,7 @@ class CogVideoXBlock(nn.Module):
         hidden_states = hidden_states + gate_ff * ff_output[:, text_seq_length:]
         encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_seq_length]
 
-        return hidden_states, encoder_hidden_states
+        return CogVideoXBlockOutput(hidden_states, encoder_hidden_states)
 
 
 class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, CacheMixin):
