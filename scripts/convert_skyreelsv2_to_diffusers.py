@@ -87,6 +87,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "freq_dim": 256,
                 "in_channels": 16,
                 "num_attention_heads": 12,
+                "inject_sample_info": True,
                 "num_layers": 30,
                 "out_channels": 16,
                 "patch_size": [1, 2, 2],
