@@ -68,17 +68,10 @@ class StableDiffusionXLDenoiseLoopBeforeDenoiser(PipelineBlock):
             ),
         ]
 
-    @property
-    def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("scaled_latents", type_hint=torch.Tensor, description="The scaled latents input for denoiser")]
-
-   
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
 
         block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
-
 
         return components, block_state
 
@@ -120,9 +113,6 @@ class StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser(PipelineBlock):
             ),
         ]
 
-    @property
-    def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("scaled_latents", type_hint=torch.Tensor, description="The scaled latents input for denoiser")]
 
     @staticmethod
     def check_inputs(components, block_state):
@@ -187,12 +177,6 @@ class StableDiffusionXLDenoiseLoopDenoiser(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam(
-                "scaled_latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The prepared latents input to use for the denoiser. Can be generated in latent step within the denoise loop."
-            ),
             InputParam(
                 "num_inference_steps", 
                 required=True, 
@@ -318,12 +302,6 @@ class StableDiffusionXLControlNetDenoiseLoopDenoiser(PipelineBlock):
                 required=True,
                 type_hint=List[float],
                 description="The controlnet keep values to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
-            ),
-            InputParam(
-                "scaled_latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The prepared latents input to use for the denoiser. Can be generated in latent step within the denoise loop."
             ),
             InputParam(
                 "timestep_cond", 
@@ -492,12 +470,6 @@ class StableDiffusionXLDenoiseLoopAfterDenoiser(PipelineBlock):
     def intermediates_inputs(self) -> List[str]:
         return [
             InputParam("generator"),
-            InputParam(
-                "latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
-            ),
         ]
 
     @property
