@@ -165,7 +165,12 @@ class BenchmarkMixin:
     def run_bencmarks_and_collate(self, scenarios: Union[BenchmarkScenario, list[BenchmarkScenario]], filename: str):
         if not isinstance(scenarios, list):
             scenarios = [scenarios]
-        records = [self.run_benchmark(s) for s in scenarios]
+        records = []
+        for s in records:
+            try:
+                records.append(self.run_benchmark(s))
+            except Exception as e:
+                logger.error(f"Running scenario ({s.name}) led to error:\n{e}")
         df = pd.DataFrame.from_records([r for r in records if r])
         df.to_csv(filename, index=False)
         logger.info(f"Results serialized to {filename=}.")
