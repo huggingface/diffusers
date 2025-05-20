@@ -1638,9 +1638,10 @@ class LoopSequentialPipelineBlocks(ModularPipelineMixin):
 
 
 # YiYi TODO: 
-# 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
-# 2. do we need ConfigSpec? seems pretty unnecessrary for loader, can just add and kwargs to the loader
-# 3. add validator for methods where we accpet kwargs to be passed to from_pretrained()
+# 1. move the modular_repo arg and the logic to fetch info from repo out of __init__ so that __init__ alwasy create an default modular_model_index config
+# 2. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
+# 3. do we need ConfigSpec? seems pretty unnecessrary for loader, can just add and kwargs to the loader
+# 4. add validator for methods where we accpet kwargs to be passed to from_pretrained()
 class ModularLoader(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines loaders.
