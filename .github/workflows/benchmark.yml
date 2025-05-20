@@ -46,7 +46,6 @@ jobs:
             HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
             BASE_PATH: benchmark_outputs
         run: |
-          export TOTAL_GPU_MEMORY=$(python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory / (1024**3))")
           cd benchmarks && python run_all.py && python push_results.py
           mkdir ${BASE_PATH} && mv *.csv ${BASE_PATH}
 

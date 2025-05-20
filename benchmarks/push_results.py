@@ -1,17 +1,7 @@
-import os
-
 import pandas as pd
-import torch
 from huggingface_hub import hf_hub_download, upload_file
 from huggingface_hub.utils import EntryNotFoundError
 
-
-if torch.cuda.is_available():
-    TOTAL_GPU_MEMORY = float(
-        os.getenv("TOTAL_GPU_MEMORY", torch.cuda.get_device_properties(0).total_memory / (1024**3))
-    )
-else:
-    raise
 
 REPO_ID = "diffusers/benchmarks"
 
