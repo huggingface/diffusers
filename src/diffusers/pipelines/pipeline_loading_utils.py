@@ -121,6 +121,9 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     # -00001-of-00002
     transformers_index_format = r"\d{5}-of-\d{5}"
     # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetensors`
+    variant_file_re = re.compile(
+        rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
+    )
     non_variant_file_re = re.compile(
         rf"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
     )
@@ -151,9 +154,11 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     # if variant is provided check if the variant of the safetensors exists
     for component, component_filenames in components.items():
         matches = []
+        if variant is not None:
+            component_filenames = filter_with_regex(component_filenames, variant_file_re)
+        else:
+            component_filenames = filter_with_regex(component_filenames, non_variant_file_re)
         for component_filename in component_filenames:
-            if variant is None:
-                component_filename = filter_with_regex(component_filename, non_variant_file_re)
             filename, extension = os.path.splitext(component_filename)
 
             match_exists = extension == ".safetensors"
