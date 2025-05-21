@@ -4814,7 +4814,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             return state_dict
 
         target_device = transformer.device
-
+        print("expanding t2v to i2v")
+        print("wtf 0",hasattr(transformer, 'vace_blocks'))
         if any(k.startswith("transformer.blocks.") for k in state_dict):
             num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict if "blocks." in k})
             is_i2v_lora = any("add_k_proj" in k for k in state_dict) and any("add_v_proj" in k for k in state_dict)
@@ -4850,7 +4851,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                             device=target_device,
                         )
 
-        print(hasattr(transformer, 'vace_blocks'))
 
         if hasattr(transformer, 'vace_blocks'):
             print(f"{i}, WTF 0")
