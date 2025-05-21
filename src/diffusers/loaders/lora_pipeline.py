@@ -4943,6 +4943,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         # convert T2V LoRA to I2V LoRA (when loaded to Wan I2V) by adding zeros for the additional (missing) _img layers
+        print("_maybe_expand_t2v_lora_for_i2v?????????????????")
         state_dict = self._maybe_expand_t2v_lora_for_i2v(
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             state_dict=state_dict,
