@@ -303,7 +303,6 @@ class ModularPipelineMixin(ConfigMixin):
         block_kwargs = {
             name: kwargs.pop(name) for name in kwargs if name in expected_kwargs or name in optional_kwargs
         }
-        print(f"block_kwargs: {block_kwargs}")
 
         return block_cls(**block_kwargs)
 
@@ -749,6 +748,8 @@ class AutoPipelineBlocks(ModularPipelineMixin):
 
     @property
     def required_inputs(self) -> List[str]:
+        if None not in self.block_trigger_inputs:
+            return []
         first_block = next(iter(self.blocks.values()))
         required_by_all = set(getattr(first_block, "required_inputs", set()))
 
@@ -763,6 +764,8 @@ class AutoPipelineBlocks(ModularPipelineMixin):
     # intermediate_inputs is by default required, unless you manually handle it inside the block
     @property
     def required_intermediates_inputs(self) -> List[str]:
+        if None not in self.block_trigger_inputs:
+            return []
         first_block = next(iter(self.blocks.values()))
         required_by_all = set(getattr(first_block, "required_intermediates_inputs", set()))
 
