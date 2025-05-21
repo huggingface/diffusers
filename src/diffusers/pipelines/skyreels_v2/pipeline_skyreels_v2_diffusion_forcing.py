@@ -742,10 +742,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(device, torch.float32)
+                .to(device, latents.dtype)
             )
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                device, torch.float32
+                device, latents.dtype
             )
             for i in range(n_iter):
                 if video is not None:
