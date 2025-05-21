@@ -4872,18 +4872,21 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                         vace_lora_B_key = f"vace_blocks.{i}.proj_out.lora_B.weight"
 
                         if vace_lora_A_key not in state_dict:
+                            print(f"{i}, WTF 1")
                             state_dict[vace_lora_A_key] = torch.zeros(
                                 (inferred_rank_for_vace, proj_out_linear_layer_in_model.in_features),
                                 device=target_device, dtype=lora_weights_dtype_for_vace
                             )
 
                         if vace_lora_B_key not in state_dict:
+                            print(f"{i}, WTF 2")
                             state_dict[vace_lora_B_key] = torch.zeros(
                                 (proj_out_linear_layer_in_model.out_features, inferred_rank_for_vace),
                                 device=target_device, dtype=lora_weights_dtype_for_vace
                             )
 
                         if current_lora_has_bias and proj_out_linear_layer_in_model.bias is not None:
+                            print(f"{i}, WTF 3")
                             vace_lora_B_bias_key = f"vace_blocks.{i}.proj_out.lora_B.bias"
                             if vace_lora_B_bias_key not in state_dict:
                                 state_dict[vace_lora_B_bias_key] = torch.zeros_like(
