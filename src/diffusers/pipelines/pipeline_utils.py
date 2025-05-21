@@ -168,9 +168,8 @@ class DeprecatedPipelineMixin:
         last_version = getattr(self.__class__, "_last_supported_version", __version__)
 
         # Raise a warning that this pipeline is deprecated
-        logging.warning(
-            f"The {class_name} pipeline is deprecated and will not receive updates after version {last_version}. "
-            f"Please consider switching to a maintained pipeline."
+        logger.warning(
+            f"The {class_name} has been deprecated and will not receive bug fixes or feature updates after Diffusers version {last_version}. "
         )
 
         # Call the parent class's __init__ method
