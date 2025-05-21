@@ -515,17 +515,17 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             timestep_proj.to(fps_emb.dtype)
             self.fps_projection.to(fps_emb.dtype)
             if flag_df:
-                timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, self.dim)).repeat(
+                timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, -1)).repeat(
                     timestep.shape[1], 1, 1
                 )
             else:
-                timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, self.dim))
+                timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, -1))
             timestep_proj.to(hidden_states.dtype)
 
         if flag_df:
             b, f = timestep.shape
-            temb = temb.view(b, f, 1, 1, self.dim)
-            timestep_proj = timestep_proj.view(b, f, 1, 1, 6, self.dim)
+            temb = temb.view(b, f, 1, 1, -1)
+            timestep_proj = timestep_proj.view(b, f, 1, 1, 6, -1)
             temb = temb.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1).flatten(1, 3)
             timestep_proj = timestep_proj.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1, 1).flatten(1, 3)
             timestep_proj = timestep_proj.transpose(1, 2).contiguous()
