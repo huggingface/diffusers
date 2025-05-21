@@ -299,8 +299,8 @@ def _best_guess_weight_name(
         targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
 
     if len(targeted_files) > 1:
-        raise ValueError(
-            f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
+        logger.warning(
+            f"Provided path contains more than one weights file in the {file_extension} format. `{targeted_files[0]}` is going to be loaded, for precise control, specify a `weight_name` in `load_lora_weights`."
         )
     weight_name = targeted_files[0]
     return weight_name
