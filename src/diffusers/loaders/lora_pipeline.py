@@ -4850,7 +4850,10 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                             device=target_device,
                         )
 
+        print(hasattr(transformer, 'vace_blocks'))
+
         if hasattr(transformer, 'vace_blocks'):
+            print(f"{i}, WTF 0")
             inferred_rank_for_vace = None
             lora_weights_dtype_for_vace = next(iter(transformer.parameters())).dtype  # Fallback dtype
 
