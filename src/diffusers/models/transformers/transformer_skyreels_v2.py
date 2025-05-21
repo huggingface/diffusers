@@ -512,12 +512,15 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             fps = torch.tensor(fps, dtype=torch.long, device=hidden_states.device)
 
             fps_emb = self.fps_embedding(fps).float()
+            timestep_proj.to(fps_emb.dtype)
+            self.fps_projection.to(fps_emb.dtype)
             if flag_df:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, self.dim)).repeat(
                     timestep.shape[1], 1, 1
                 )
             else:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, self.dim))
+            timestep_proj.to(hidden_states.dtype)
 
         if flag_df:
             b, f = timestep.shape
