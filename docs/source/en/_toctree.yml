@@ -17,8 +17,6 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - local: tutorials/fast_diffusion
-    title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
