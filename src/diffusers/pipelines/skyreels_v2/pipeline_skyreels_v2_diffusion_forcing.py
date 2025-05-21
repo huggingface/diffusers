@@ -628,11 +628,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # Short video generation
             # 4. Prepare sample schedulers and timestep matrix
             sample_schedulers = [self.scheduler]
+            sample_schedulers[0].set_timesteps(num_inference_steps, device=device, shift=shift)
             for _ in range(num_latent_frames - 1):
                 sample_scheduler = deepcopy(self.scheduler)
                 sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
-            self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
             timesteps = self.scheduler.timesteps
             sample_schedulers_counter = [0] * num_latent_frames
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
@@ -663,13 +663,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         continue
 
                     self._current_timestep = t
-
-                    update_mask_i = step_update_mask[i]
                     valid_interval_start, valid_interval_end = valid_interval[i]
-                    timestep = t.expand(latents.shape[0])[:, valid_interval_start:valid_interval_end].clone()
                     latent_model_input = (
                         latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                     )
+                    timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
+
                     if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
                         noise_factor = 0.001 * addnoise_condition
                         latent_model_input[:, valid_interval_start:prefix_video_latent_length] = (
@@ -701,6 +700,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         )[0]
                         noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
+                    update_mask_i = step_update_mask[i]
                     for idx in range(valid_interval_start, valid_interval_end):
                         if update_mask_i[idx].item():
                             latents[:, idx] = sample_schedulers[idx].step(
@@ -768,12 +768,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 # 4. Prepare sample schedulers and timestep matrix
                 sample_schedulers = [deepcopy(self.scheduler)]
+                sample_schedulers[0].set_timesteps(num_inference_steps, device=device, shift=shift)
                 for _ in range(base_num_frames_iter - 1):
                     sample_scheduler = deepcopy(self.scheduler)
                     sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                     sample_schedulers.append(sample_scheduler)
-                self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
-                timesteps = self.scheduler.timesteps
+                timesteps = sample_schedulers[0].timesteps
                 sample_schedulers_counter = [0] * base_num_frames_iter
                 step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                     base_num_frames_iter,
@@ -810,12 +810,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             continue
 
                         self._current_timestep = t
-                        update_mask_i = step_update_mask[i]
                         valid_interval_start, valid_interval_end = valid_interval[i]
-                        timestep = t[valid_interval_start:valid_interval_end].clone()
                         latent_model_input = (
                             latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                         )
+                        timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
+
                         if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
                             noise_factor = 0.001 * addnoise_condition
                             latent_model_input[:, valid_interval_start:prefix_video_latent_length] = (
@@ -848,6 +848,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 return_dict=False,
                             )[0]
                             noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
+
+                        update_mask_i = step_update_mask[i]
                         for idx in range(valid_interval_start, valid_interval_end):
                             if update_mask_i[idx].item():
                                 latents[:, idx] = sample_schedulers[idx].step(
