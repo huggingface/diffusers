@@ -51,7 +51,7 @@ def get_timestep_embedding(
     Returns
         torch.Tensor: an [N x dim] Tensor of positional embeddings.
     """
-    assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
+    #assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
 
     half_dim = embedding_dim // 2
     exponent = -math.log(max_period) * torch.arange(
