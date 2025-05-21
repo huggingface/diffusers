@@ -392,6 +392,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if mask is not None:
             mask = self.video_processor.preprocess_video(mask, image_size[0], image_size[1])
+            mask = torch.clamp((mask + 1) / 2, min=0, max=1)
         else:
             mask = torch.ones_like(video)
 
