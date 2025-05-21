@@ -4877,8 +4877,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
                 for i, vace_block_module_in_model in enumerate(transformer.vace_blocks):
                     # Specifically target proj_out as per the error message
-                    if hasattr(vace_block_module_in_model, 'proj_out') and \
-                            isinstance(vace_block_module_in_model.proj_out, nn.Linear):
+                    if hasattr(vace_block_module_in_model, 'proj_out'):
 
                         proj_out_linear_layer_in_model = vace_block_module_in_model.proj_out
 
