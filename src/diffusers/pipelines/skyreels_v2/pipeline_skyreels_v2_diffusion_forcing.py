@@ -733,7 +733,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-            latents = latents.unsqueeze(0)
+            #latents = latents.unsqueeze(0)
         else:
             # Long video generation
             overlap_history_frames = (overlap_history - 1) // 4 + 1
@@ -882,7 +882,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         if XLA_AVAILABLE:
                             xm.mark_step()
 
-                latents = latents.unsqueeze(0)
+                #latents = latents.unsqueeze(0)
                 if not output_type == "latent":
                     latents = latents.to(self.vae.dtype)
                     latents = latents / latents_std + latents_mean
