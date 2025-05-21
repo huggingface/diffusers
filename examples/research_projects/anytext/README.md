@@ -6,7 +6,7 @@ Project page: https://aigcdesigngroup.github.io/homepage_anytext
 
 > **Note:** Each text line that needs to be generated should be enclosed in double quotes.
 
-For any usage questions, please refer to the [paper](https://arxiv.org/abs/2311.03054).
+For any usage questions, please refer to the [paper](https://huggingface.co/papers/2311.03054).
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/b87ec9d2f265b448dd947c9d4a0da389/anytext.ipynb)
 
