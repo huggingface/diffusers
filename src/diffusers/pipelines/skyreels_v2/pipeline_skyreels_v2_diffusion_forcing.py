@@ -705,10 +705,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     update_mask_i = step_update_mask[i]
                     for idx in range(valid_interval_start, valid_interval_end):
                         if update_mask_i[idx].item():
-                            latents[:, idx] = sample_schedulers[idx].step(
-                                noise_pred[:, idx - valid_interval_start],
+                            latents[:, :, idx, :, :] = sample_schedulers[idx].step(
+                                noise_pred[:, :, idx - valid_interval_start, :, :],
                                 t[idx],
-                                latents[:, idx],
+                                latents[:, :, idx, :, :],
                                 return_dict=False,
                                 generator=generator,
                             )[0]
@@ -852,10 +852,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         update_mask_i = step_update_mask[i]
                         for idx in range(valid_interval_start, valid_interval_end):
                             if update_mask_i[idx].item():
-                                latents[:, idx] = sample_schedulers[idx].step(
-                                    noise_pred[:, idx - valid_interval_start],
+                                latents[:, :, idx, :, :] = sample_schedulers[idx].step(
+                                    noise_pred[:, :, idx - valid_interval_start, :, :],
                                     t[idx],
-                                    latents[:, idx],
+                                    latents[:, :, idx, :, :],
                                     return_dict=False,
                                     generator=generator,
                                 )[0]
