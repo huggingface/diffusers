@@ -633,7 +633,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # 4. Prepare sample schedulers and timestep matrix
             sample_schedulers = []
             for _ in range(num_latent_frames):
-                sample_scheduler = deepcopy(self.scheduler)
+                sample_scheduler = FlowMatchUniPCMultistepScheduler.from_config(self.scheduler.config)
                 sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
             sample_schedulers_counter = [0] * num_latent_frames
@@ -771,7 +771,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 # 4. Prepare sample schedulers and timestep matrix
                 sample_schedulers = []
                 for _ in range(base_num_frames_iter):
-                    sample_scheduler = deepcopy(self.scheduler)
+                    sample_scheduler = FlowMatchUniPCMultistepScheduler.from_config(self.scheduler.config)
                     sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                     sample_schedulers.append(sample_scheduler)
                 sample_schedulers_counter = [0] * base_num_frames_iter
