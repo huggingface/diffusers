@@ -667,7 +667,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     self._current_timestep = t
                     valid_interval_start, valid_interval_end = valid_interval[i]
                     latent_model_input = (
-                        latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
+                        latents[:, :, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                     )
                     timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
 
@@ -759,12 +759,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     finished_frame_num = i * (base_num_frames - overlap_history_frames) + overlap_history_frames
                     left_frame_num = num_latent_frames - finished_frame_num
                     base_num_frames_iter = min(left_frame_num + overlap_history_frames, base_num_frames)
-                    if ar_step > 0:
-                        num_steps = (
-                            num_inference_steps
-                            + ((base_num_frames_iter - overlap_history_frames) // causal_block_size - 1) * ar_step
-                        )
-                        self.transformer.config.num_steps = num_steps
                 else:
                     base_num_frames_iter = base_num_frames
 
@@ -812,7 +806,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         self._current_timestep = t
                         valid_interval_start, valid_interval_end = valid_interval[i]
                         latent_model_input = (
-                            latents[:, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
+                            latents[:, :, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                         )
                         timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
 
