@@ -673,10 +673,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                     if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
                         noise_factor = 0.001 * addnoise_condition
-                        latent_model_input[:, valid_interval_start:prefix_video_latent_length] = (
-                            latent_model_input[:, valid_interval_start:prefix_video_latent_length]
+                        latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :] = (
+                            latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :]
                             * (1.0 - noise_factor)
-                            + torch.randn_like(latent_model_input[:, valid_interval_start:prefix_video_latent_length])
+                            + torch.randn_like(latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :])
                             * noise_factor
                         )
                         timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
@@ -812,15 +812,15 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                         if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
                             noise_factor = 0.001 * addnoise_condition
-                            latent_model_input[:, valid_interval_start:prefix_video_latent_length] = (
-                                latent_model_input[:, valid_interval_start:prefix_video_latent_length]
+                            latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :] = (
+                                latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :]
                                 * (1.0 - noise_factor)
                                 + torch.randn_like(
-                                    latent_model_input[:, valid_interval_start:prefix_video_latent_length]
+                                    latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :]
                                 )
                                 * noise_factor
                             )
-                            timestep[valid_interval_start:prefix_video_latent_length] = addnoise_condition
+                            timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
 
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
