@@ -93,7 +93,7 @@ def is_compiled_module(module) -> bool:
 
 
 def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.Tensor":
-    """Fourier filter as introduced in FreeU (https://arxiv.org/abs/2309.11497).
+    """Fourier filter as introduced in FreeU (https://huggingface.co/papers/2309.11497).
 
     This version of the method comes from here:
     https://github.com/huggingface/diffusers/pull/5164#issuecomment-1732638706

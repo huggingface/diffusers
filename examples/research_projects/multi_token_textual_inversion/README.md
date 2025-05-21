@@ -14,7 +14,7 @@ Feel free to add these options to your training! In practice num_vec_per_token a
 
 ## Textual Inversion fine-tuning example
 
-[Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
+[Textual inversion](https://huggingface.co/papers/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
 The `textual_inversion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
 ## Running on Colab

@@ -61,7 +61,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
-    For more information, see the original paper: https://arxiv.org/abs/2011.13456
+    For more information, see the original paper: https://huggingface.co/papers/2011.13456
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
