@@ -610,7 +610,7 @@ class DownloadTests(unittest.TestCase):
                     variant="fp16",
                     use_safetensors=True,
                 )
-            assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
+        assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
 
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None
