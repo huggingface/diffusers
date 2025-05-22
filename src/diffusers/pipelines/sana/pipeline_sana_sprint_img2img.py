@@ -170,7 +170,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         )
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.enable_vae_slicing
+    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -178,7 +178,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         """
         self.vae.enable_slicing()
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.disable_vae_slicing
+    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -186,7 +186,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         """
         self.vae.disable_slicing()
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.enable_vae_tiling
+    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
