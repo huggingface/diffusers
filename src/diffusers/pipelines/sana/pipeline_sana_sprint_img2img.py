@@ -23,7 +23,7 @@ import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PixArtImageProcessor, PipelineImageInput
+from ...image_processor import PipelineImageInput, PixArtImageProcessor
 from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
@@ -42,6 +42,7 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..pixart_alpha.pipeline_pixart_alpha import ASPECT_RATIO_1024_BIN
 from .pipeline_output import SanaPipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -77,12 +78,12 @@ EXAMPLE_DOC_STRING = """
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
-        scheduler,
-        num_inference_steps: Optional[int] = None,
-        device: Optional[Union[str, torch.device]] = None,
-        timesteps: Optional[List[int]] = None,
-        sigmas: Optional[List[float]] = None,
-        **kwargs,
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    sigmas: Optional[List[float]] = None,
+    **kwargs,
 ):
     r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
@@ -149,12 +150,12 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
-            self,
-            tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
-            text_encoder: Gemma2PreTrainedModel,
-            vae: AutoencoderDC,
-            transformer: SanaTransformer2DModel,
-            scheduler: DPMSolverMultistepScheduler,
+        self,
+        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        text_encoder: Gemma2PreTrainedModel,
+        vae: AutoencoderDC,
+        transformer: SanaTransformer2DModel,
+        scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__()
 
@@ -200,13 +201,13 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
     # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline._get_gemma_prompt_embeds
     def _get_gemma_prompt_embeds(
-            self,
-            prompt: Union[str, List[str]],
-            device: torch.device,
-            dtype: torch.dtype,
-            clean_caption: bool = False,
-            max_sequence_length: int = 300,
-            complex_human_instruction: Optional[List[str]] = None,
+        self,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        dtype: torch.dtype,
+        clean_caption: bool = False,
+        max_sequence_length: int = 300,
+        complex_human_instruction: Optional[List[str]] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -258,16 +259,16 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         return prompt_embeds, prompt_attention_mask
 
     def encode_prompt(
-            self,
-            prompt: Union[str, List[str]],
-            num_images_per_prompt: int = 1,
-            device: Optional[torch.device] = None,
-            prompt_embeds: Optional[torch.Tensor] = None,
-            prompt_attention_mask: Optional[torch.Tensor] = None,
-            clean_caption: bool = False,
-            max_sequence_length: int = 300,
-            complex_human_instruction: Optional[List[str]] = None,
-            lora_scale: Optional[float] = None,
+        self,
+        prompt: Union[str, List[str]],
+        num_images_per_prompt: int = 1,
+        device: Optional[torch.device] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        clean_caption: bool = False,
+        max_sequence_length: int = 300,
+        complex_human_instruction: Optional[List[str]] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -366,25 +367,25 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
 
         t_start = int(max(num_inference_steps - init_timestep, 0))
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order:]
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
         if hasattr(self.scheduler, "set_begin_index"):
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
     def check_inputs(
-            self,
-            prompt,
-            strength,
-            height,
-            width,
-            num_inference_steps,
-            timesteps,
-            max_timesteps,
-            intermediate_timesteps,
-            callback_on_step_end_tensor_inputs=None,
-            prompt_embeds=None,
-            prompt_attention_mask=None,
+        self,
+        prompt,
+        strength,
+        height,
+        width,
+        num_inference_steps,
+        timesteps,
+        max_timesteps,
+        intermediate_timesteps,
+        callback_on_step_end_tensor_inputs=None,
+        prompt_embeds=None,
+        prompt_attention_mask=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -393,7 +394,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-                k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -571,12 +572,12 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
     # Copied from diffusers.pipelines.sana.pipeline_sana_controlnet.SanaPipeline.prepare_latents
     def prepare_image(
-            self,
-            image,
-            width,
-            height,
-            device,
-            dtype,
+        self,
+        image,
+        width,
+        height,
+        device,
+        dtype,
     ):
         if isinstance(image, torch.Tensor):
             pass
@@ -588,17 +589,9 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         return image
 
     # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.prepare_latents
-    def prepare_latents(self,
-                        image,
-                        timestep,
-                        batch_size,
-                        num_channels_latents,
-                        height,
-                        width,
-                        dtype,
-                        device,
-                        generator,
-                        latents=None):
+    def prepare_latents(
+        self, image, timestep, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None
+    ):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
 
@@ -608,7 +601,6 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             int(height) // self.vae_scale_factor,
             int(width) // self.vae_scale_factor,
         )
-
 
         if image.shape[1] != num_channels_latents:
             image = self.vae.encode(image).latent
@@ -657,41 +649,41 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
-            self,
-            prompt: Union[str, List[str]] = None,
-            num_inference_steps: int = 2,
-            timesteps: List[int] = None,
-            max_timesteps: float = 1.57080,
-            intermediate_timesteps: float = 1.3,
-            guidance_scale: float = 4.5,
-            image: PipelineImageInput = None,
-            strength: float = 0.6,
-            num_images_per_prompt: Optional[int] = 1,
-            height: int = 1024,
-            width: int = 1024,
-            eta: float = 0.0,
-            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-            latents: Optional[torch.Tensor] = None,
-            prompt_embeds: Optional[torch.Tensor] = None,
-            prompt_attention_mask: Optional[torch.Tensor] = None,
-            output_type: Optional[str] = "pil",
-            return_dict: bool = True,
-            clean_caption: bool = False,
-            use_resolution_binning: bool = True,
-            attention_kwargs: Optional[Dict[str, Any]] = None,
-            callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-            callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-            max_sequence_length: int = 300,
-            complex_human_instruction: List[str] = [
-                "Given a user prompt, generate an 'Enhanced prompt' that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:",
-                "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
-                "- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.",
-                "Here are examples of how to transform or refine prompts:",
-                "- User Prompt: A cat sleeping -> Enhanced: A small, fluffy white cat curled up in a round shape, sleeping peacefully on a warm sunny windowsill, surrounded by pots of blooming red flowers.",
-                "- User Prompt: A busy city street -> Enhanced: A bustling city street scene at dusk, featuring glowing street lamps, a diverse crowd of people in colorful clothing, and a double-decker bus passing by towering glass skyscrapers.",
-                "Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:",
-                "User Prompt: ",
-            ],
+        self,
+        prompt: Union[str, List[str]] = None,
+        num_inference_steps: int = 2,
+        timesteps: List[int] = None,
+        max_timesteps: float = 1.57080,
+        intermediate_timesteps: float = 1.3,
+        guidance_scale: float = 4.5,
+        image: PipelineImageInput = None,
+        strength: float = 0.6,
+        num_images_per_prompt: Optional[int] = 1,
+        height: int = 1024,
+        width: int = 1024,
+        eta: float = 0.0,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        clean_caption: bool = False,
+        use_resolution_binning: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 300,
+        complex_human_instruction: List[str] = [
+            "Given a user prompt, generate an 'Enhanced prompt' that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:",
+            "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
+            "- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.",
+            "Here are examples of how to transform or refine prompts:",
+            "- User Prompt: A cat sleeping -> Enhanced: A small, fluffy white cat curled up in a round shape, sleeping peacefully on a warm sunny windowsill, surrounded by pots of blooming red flowers.",
+            "- User Prompt: A busy city street -> Enhanced: A bustling city street scene at dusk, featuring glowing street lamps, a diverse crowd of people in colorful clothing, and a double-decker bus passing by towering glass skyscrapers.",
+            "Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:",
+            "User Prompt: ",
+        ],
     ) -> Union[SanaPipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -874,7 +866,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         )
 
         # I think this is redundant given the scaling in prepare_latents
-        #latents = latents * self.scheduler.config.sigma_data
+        # latents = latents * self.scheduler.config.sigma_data
 
         guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
         guidance = guidance.expand(latents.shape[0]).to(prompt_embeds.dtype)
@@ -902,7 +894,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
                 scm_timestep_expanded = scm_timestep.view(-1, 1, 1, 1)
                 latent_model_input = latents_model_input * torch.sqrt(
-                    scm_timestep_expanded ** 2 + (1 - scm_timestep_expanded) ** 2
+                    scm_timestep_expanded**2 + (1 - scm_timestep_expanded) ** 2
                 )
 
                 # predict noise model_output
@@ -917,9 +909,9 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 )[0]
 
                 noise_pred = (
-                                     (1 - 2 * scm_timestep_expanded) * latent_model_input
-                                     + (1 - 2 * scm_timestep_expanded + 2 * scm_timestep_expanded ** 2) * noise_pred
-                             ) / torch.sqrt(scm_timestep_expanded ** 2 + (1 - scm_timestep_expanded) ** 2)
+                    (1 - 2 * scm_timestep_expanded) * latent_model_input
+                    + (1 - 2 * scm_timestep_expanded + 2 * scm_timestep_expanded**2) * noise_pred
+                ) / torch.sqrt(scm_timestep_expanded**2 + (1 - scm_timestep_expanded) ** 2)
                 noise_pred = noise_pred.float() * self.scheduler.config.sigma_data
 
                 # compute previous image: x_t -> x_t-1
