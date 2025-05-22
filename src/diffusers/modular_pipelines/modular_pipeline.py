@@ -413,7 +413,7 @@ class ModularPipelineMixin(ConfigMixin):
         self._progress_bar_config = kwargs
 
 
-class PipelineBlock(ModularPipelineMixin, PushToHubMixin):
+class PipelineBlock(ModularPipelineMixin):
     
     model_name = None
     
