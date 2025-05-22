@@ -597,7 +597,6 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         return image
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.prepare_latents
     def prepare_latents(
         self, image, timestep, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None
     ):
