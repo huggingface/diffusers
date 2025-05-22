@@ -850,12 +850,12 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         if hasattr(self.scheduler, "set_begin_index"):
             self.scheduler.set_begin_index(0)
 
-        #timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-        # if num_inference_steps < 1:
-        #     raise ValueError(
-        #         f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
-        #         f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
-        #     )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        if num_inference_steps < 1:
+            raise ValueError(
+                f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
+                f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
+            )
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 5. Prepare latents.
