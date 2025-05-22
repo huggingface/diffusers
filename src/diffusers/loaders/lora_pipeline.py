@@ -4314,7 +4314,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata: TODO
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4327,6 +4327,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -4335,7 +4336,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4360,7 +4361,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         if is_original_hunyuan_video:
             state_dict = _convert_hunyuan_video_lora_to_diffusers(state_dict)
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -4651,7 +4653,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata: TODO
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4664,6 +4666,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -4672,7 +4675,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4698,7 +4701,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         if non_diffusers:
             state_dict = _convert_non_diffusers_lumina2_lora_to_diffusers(state_dict)
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -5714,7 +5718,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata: TODO
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -5727,6 +5731,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -5735,7 +5740,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5760,7 +5765,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         if is_non_diffusers_format:
             state_dict = _convert_non_diffusers_hidream_lora_to_diffusers(state_dict)
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
