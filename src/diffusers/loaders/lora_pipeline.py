@@ -2024,12 +2024,15 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                         f"The alpha key ({k}) seems to be incorrect. If you think this error is unexpected, please open as issue."
                     )
 
-        outputs = [state_dict]
-        if return_alphas:
-            outputs.append(network_alphas)
-        if return_lora_metadata:
-            outputs.append(metadata)
-        return tuple(outputs)
+        if return_alphas or return_lora_metadata:
+            outputs = [state_dict]
+            if return_alphas:
+                outputs.append(network_alphas)
+            if return_lora_metadata:
+                outputs.append(metadata)
+            return tuple(outputs)
+        else:
+            return state_dict
 
     def load_lora_weights(
         self,
@@ -2082,7 +2085,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         state_dict, network_alphas, metadata = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
         )
-        print(f"{metadata=}")
 
         has_lora_keys = any("lora" in key for key in state_dict.keys())
 
