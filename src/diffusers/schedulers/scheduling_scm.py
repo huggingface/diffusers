@@ -261,7 +261,5 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
 
         return SCMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_x0)
 
-
-
     def __len__(self):
         return self.config.num_train_timesteps
