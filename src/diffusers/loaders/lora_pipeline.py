@@ -2082,6 +2082,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         state_dict, network_alphas, metadata = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
         )
+        print(f"{metadata=}")
 
         has_lora_keys = any("lora" in key for key in state_dict.keys())
 
@@ -2203,6 +2204,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -5137,7 +5139,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         # convert T2V LoRA to I2V LoRA (when loaded to Wan I2V) by adding zeros for the additional (missing) _img layers
         state_dict = self._maybe_expand_t2v_lora_for_i2v(
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
@@ -5151,6 +5154,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
