@@ -143,7 +143,7 @@ class SplitInferenceModule(nn.Module):
 
 
 class AnimateDiffFreeNoiseMixin:
-    r"""Mixin class for [FreeNoise](https://arxiv.org/abs/2310.15169)."""
+    r"""Mixin class for [FreeNoise](https://huggingface.co/papers/2310.15169)."""
 
     def _enable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
         r"""Helper function to enable FreeNoise in transformer blocks."""
