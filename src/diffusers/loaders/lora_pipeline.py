@@ -1612,6 +1612,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_lora_metadata: TODO
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1625,18 +1626,16 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1657,7 +1656,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -1702,7 +1702,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -1712,6 +1713,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3058,7 +3060,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -3068,6 +3071,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3391,7 +3395,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -3401,6 +3406,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3635,7 +3641,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata: TODO
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3648,6 +3654,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -3659,7 +3666,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3684,7 +3691,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         if is_non_diffusers_format:
             state_dict = _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict)
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -3729,7 +3737,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -3739,6 +3748,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4064,7 +4074,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -4074,6 +4085,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4402,7 +4414,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -4412,6 +4425,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4741,7 +4755,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -4751,6 +4766,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -5375,6 +5391,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_lora_metadata: TODO
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -5388,18 +5405,16 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5420,7 +5435,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -5465,7 +5481,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -5475,6 +5492,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -5803,7 +5821,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -5813,6 +5832,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
