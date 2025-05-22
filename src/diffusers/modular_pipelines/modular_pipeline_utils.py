@@ -246,7 +246,7 @@ class InputParam:
     default: Any = None
     required: bool = False
     description: str = ""
-    kwargs_type: str = None # YiYi Notes: experimenting with this, not sure if we should keep it
+    kwargs_type: str = None # YiYi Notes: remove this feature (maybe)
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -258,7 +258,7 @@ class OutputParam:
     name: str
     type_hint: Any = None
     description: str = ""
-    kwargs_type: str = None
+    kwargs_type: str = None # YiYi notes: remove this feature (maybe)
 
     def __repr__(self):
         return f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
