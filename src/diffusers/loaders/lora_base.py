@@ -227,7 +227,6 @@ def _fetch_state_dict(
                         file_extension=".safetensors",
                         local_files_only=local_files_only,
                     )
-
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
                     weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,

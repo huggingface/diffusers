@@ -147,12 +147,7 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
                     module.set_scale(adapter_name, 1.0)
 
 
-def get_peft_kwargs(
-    rank_dict,
-    network_alpha_dict,
-    peft_state_dict,
-    is_unet=True,
-):
+def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True):
     rank_pattern = {}
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
