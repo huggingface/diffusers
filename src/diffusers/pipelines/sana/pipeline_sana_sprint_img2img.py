@@ -612,7 +612,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         if image.shape[1] != num_channels_latents:
             image = self.vae.encode(image).latent
-            image_latents = image * self.vae.config.scaling_factor
+            image_latents = image * self.vae.config.scaling_factor * self.scheduler.config.sigma_data
         else:
             image_latents = image
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
@@ -632,8 +632,10 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self.scheduler.add_noise(image_latents, timestep, noise)
+        # adapt from https://github.com/huggingface/diffusers/blob/c36f8487df35895421c15f351c7d360bd680[…]/examples/research_projects/sana/train_sana_sprint_diffusers.py
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype) * self.scheduler.config.sigma_data
+        # latents = self.scheduler.add_noise(image_latents, timestep, noise)
+        latents = torch.cos(timestep) * image_latents + torch.sin(timestep) * noise
         return latents
 
     @property
@@ -871,7 +873,8 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             latents,
         )
 
-        latents = latents * self.scheduler.config.sigma_data
+        # I think this is redundant given the scaling in prepare_latents
+        #latents = latents * self.scheduler.config.sigma_data
 
         guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
         guidance = guidance.expand(latents.shape[0]).to(prompt_embeds.dtype)
