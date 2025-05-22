@@ -261,51 +261,6 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
 
         return SCMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_x0)
 
-        # ... (previous code from the SCMScheduler class) ...
-
-    def add_noise(
-            self,
-            original_samples: torch.Tensor,
-            noise: torch.Tensor,
-            timesteps: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Adds noise to the original samples according to the SCM forward process.
-
-        Args:
-            original_samples (`torch.Tensor`):
-                The original clean samples (x_0).
-            noise (`torch.Tensor`):
-                Random noise (epsilon) drawn from a standard normal distribution N(0,I),
-                with the same shape as `original_samples`.
-            timesteps (`torch.Tensor`):
-                The timesteps (s) at which to noise the samples. These should be the
-                angular timesteps used by this scheduler (e.g., values from `self.timesteps`).
-                The shape should be broadcastable to `original_samples` (e.g., a 1D tensor
-                of timesteps for a batch of samples, or a single timestep value).
-
-        Returns:
-            `torch.Tensor`: The noisy samples (x_s).
-        """
-        if not hasattr(self.config, "sigma_data"):
-            raise ValueError("SCMScheduler config must have `sigma_data` attribute.")
-
-        if timesteps.ndim == 1:
-            # Reshape timesteps to be broadcastable: (batch_size,) -> (batch_size, 1, 1, 1)
-            # Assuming original_samples is (batch, channels, height, width)
-            dims_to_add = original_samples.ndim - timesteps.ndim
-            timesteps = timesteps.reshape(timesteps.shape + (1,) * dims_to_add)
-
-        # The forward process: x_s = cos(s) * x_0 + sin(s) * sigma_data * epsilon
-        # Ensure timesteps, original_samples, and noise are on the same device
-        timesteps = timesteps.to(original_samples.device)
-
-        cos_t = torch.cos(timesteps)
-        sin_t = torch.sin(timesteps)
-
-        noisy_samples = cos_t * original_samples + sin_t * noise * self.config.sigma_data
-
-        return noisy_samples
 
 
     def __len__(self):
