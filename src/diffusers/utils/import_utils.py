@@ -36,7 +36,10 @@ if sys.version_info < (3, 8):
     import importlib_metadata
 else:
     import importlib.metadata as importlib_metadata
-
+try:
+    _package_map = importlib_metadata.packages_distributions()  # load-once to avoid expensive calls
+except Exception:
+    _package_map = None
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -56,35 +59,32 @@ _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") f
 
 
 def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[bool, str]:
+    global _package_map
     pkg_exists = importlib.util.find_spec(pkg_name) is not None
     pkg_version = "N/A"
 
     if pkg_exists:
+        if _package_map is None:
+            _package_map = defaultdict(list)
+            try:
+                # Fallback for Python < 3.10
+                for dist in importlib_metadata.distributions():
+                    _top_level_declared = (dist.read_text("top_level.txt") or "").split()
+                    _infered_opt_names = {
+                        f.parts[0] if len(f.parts) > 1 else inspect.getmodulename(f) for f in (dist.files or [])
+                    } - {None}
+                    _top_level_inferred = filter(lambda name: "." not in name, _infered_opt_names)
+                    for pkg in _top_level_declared or _top_level_inferred:
+                        _package_map[pkg].append(dist.metadata["Name"])
+            except Exception as _:
+                pass
         try:
-            package_map = importlib_metadata.packages_distributions()
-        except Exception as e:
-            package_map = defaultdict(list)
-            if isinstance(e, AttributeError):
-                try:
-                    # Fallback for Python < 3.10
-                    for dist in importlib_metadata.distributions():
-                        _top_level_declared = (dist.read_text("top_level.txt") or "").split()
-                        _infered_opt_names = {
-                            f.parts[0] if len(f.parts) > 1 else inspect.getmodulename(f) for f in (dist.files or [])
-                        } - {None}
-                        _top_level_inferred = filter(lambda name: "." not in name, _infered_opt_names)
-                        for pkg in _top_level_declared or _top_level_inferred:
-                            package_map[pkg].append(dist.metadata["Name"])
-                except Exception as _:
-                    pass
-
-        try:
-            if get_dist_name and pkg_name in package_map and package_map[pkg_name]:
-                if len(package_map[pkg_name]) > 1:
+            if get_dist_name and pkg_name in _package_map and _package_map[pkg_name]:
+                if len(_package_map[pkg_name]) > 1:
                     logger.warning(
-                        f"Multiple distributions found for package {pkg_name}. Picked distribution: {package_map[pkg_name][0]}"
+                        f"Multiple distributions found for package {pkg_name}. Picked distribution: {_package_map[pkg_name][0]}"
                     )
-                pkg_name = package_map[pkg_name][0]
+                pkg_name = _package_map[pkg_name][0]
             pkg_version = importlib_metadata.version(pkg_name)
             logger.debug(f"Successfully imported {pkg_name} version {pkg_version}")
         except (ImportError, importlib_metadata.PackageNotFoundError):
@@ -215,6 +215,10 @@ _gguf_available, _gguf_version = _is_package_available("gguf")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
 _optimum_quanto_available, _optimum_quanto_version = _is_package_available("optimum", get_dist_name=True)
+_pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_available("pytorch_retinaface")
+_better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
+_nltk_available, _nltk_version = _is_package_available("nltk")
+_cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("cosmos_guardrail")
 
 
 def is_torch_available():
@@ -351,6 +355,26 @@ def is_optimum_quanto_available():
 
 def is_timm_available():
     return _timm_available
+
+
+def is_pytorch_retinaface_available():
+    return _pytorch_retinaface_available
+
+
+def is_better_profanity_available():
+    return _better_profanity_available
+
+
+def is_nltk_available():
+    return _nltk_available
+
+
+def is_cosmos_guardrail_available():
+    return _cosmos_guardrail_available
+
+
+def is_hpu_available():
+    return all(importlib.util.find_spec(lib) for lib in ("habana_frameworks", "habana_frameworks.torch"))
 
 
 # docstyle-ignore
@@ -501,6 +525,22 @@ QUANTO_IMPORT_ERROR = """
 install optimum-quanto`
 """
 
+# docstyle-ignore
+PYTORCH_RETINAFACE_IMPORT_ERROR = """
+{0} requires the pytorch_retinaface library but it was not found in your environment. You can install it with pip: `pip install pytorch_retinaface`
+"""
+
+# docstyle-ignore
+BETTER_PROFANITY_IMPORT_ERROR = """
+{0} requires the better_profanity library but it was not found in your environment. You can install it with pip: `pip install better_profanity`
+"""
+
+# docstyle-ignore
+NLTK_IMPORT_ERROR = """
+{0} requires the nltk library but it was not found in your environment. You can install it with pip: `pip install nltk`
+"""
+
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -529,6 +569,9 @@ BACKENDS_MAPPING = OrderedDict(
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
         ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
+        ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
+        ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
+        ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
     ]
 )
 

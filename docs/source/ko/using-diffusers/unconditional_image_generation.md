@@ -27,7 +27,7 @@ Unconditional 이미지 생성은 비교적 간단한 작업입니다. 모델이
 </Tip>
 
 
-이 가이드에서는 unconditional 이미지 생성에 ['DiffusionPipeline']과 [DDPM](https://arxiv.org/abs/2006.11239)을 사용합니다:
+이 가이드에서는 unconditional 이미지 생성에 ['DiffusionPipeline']과 [DDPM](https://huggingface.co/papers/2006.11239)을 사용합니다:
 
 ```python
  >>> from diffusers import DiffusionPipeline

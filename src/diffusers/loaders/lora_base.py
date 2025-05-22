@@ -299,8 +299,8 @@ def _best_guess_weight_name(
         targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
 
     if len(targeted_files) > 1:
-        raise ValueError(
-            f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
+        logger.warning(
+            f"Provided path contains more than one weights file in the {file_extension} format. `{targeted_files[0]}` is going to be loaded, for precise control, specify a `weight_name` in `load_lora_weights`."
         )
     weight_name = targeted_files[0]
     return weight_name
@@ -348,7 +348,7 @@ def _load_lora_into_text_encoder(
 
     # Load the layers corresponding to text encoder and make necessary adjustments.
     if prefix is not None:
-        state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+        state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
     if len(state_dict) > 0:
         logger.info(f"Loading {prefix}.")
@@ -374,7 +374,7 @@ def _load_lora_into_text_encoder(
 
         if network_alphas is not None:
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
-            network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+            network_alphas = {k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys}
 
         lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False)
 
