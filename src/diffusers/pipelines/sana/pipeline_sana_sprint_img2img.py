@@ -634,7 +634,6 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         # adapt from https://github.com/huggingface/diffusers/blob/c36f8487df35895421c15f351c7d360bd680[…]/examples/research_projects/sana/train_sana_sprint_diffusers.py
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype) * self.scheduler.config.sigma_data
-        # latents = self.scheduler.add_noise(image_latents, timestep, noise)
         latents = torch.cos(timestep) * image_latents + torch.sin(timestep) * noise
         return latents
 
