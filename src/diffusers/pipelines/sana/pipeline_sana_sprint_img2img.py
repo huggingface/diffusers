@@ -64,13 +64,20 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import SanaSprintImg2ImgPipeline
+        >>> from diffusers.utils.loading_utils import load_image
 
         >>> pipe = SanaSprintImg2ImgPipeline.from_pretrained(
         ...     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers", torch_dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
+        
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/penguin.png")
+)
 
-        >>> image = pipe(prompt="a tiny astronaut hatching from an egg on the moon")[0]
+        >>> image = pipe(prompt="a cute pink bear", 
+        ...     image=image, 
+        ...     strength=0.5, height=832, width=480).images[0]
         >>> image[0].save("output.png")
         ```
 """
