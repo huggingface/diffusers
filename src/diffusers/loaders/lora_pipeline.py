@@ -43,7 +43,9 @@ from .lora_conversion_utils import (
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
+    _convert_non_diffusers_hidream_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
+    _convert_non_diffusers_ltxv_lora_to_diffusers,
     _convert_non_diffusers_lumina2_lora_to_diffusers,
     _convert_non_diffusers_wan_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
@@ -3417,7 +3419,6 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -3510,6 +3511,10 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_non_diffusers_format = any(k.startswith("diffusion_model.") for k in state_dict)
+        if is_non_diffusers_format:
+            state_dict = _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict)
 
         return state_dict
 
@@ -4808,21 +4813,42 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if transformer.config.image_dim is None:
             return state_dict
 
+        target_device = transformer.device
+
         if any(k.startswith("transformer.blocks.") for k in state_dict):
-            num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict})
+            num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict if "blocks." in k})
             is_i2v_lora = any("add_k_proj" in k for k in state_dict) and any("add_v_proj" in k for k in state_dict)
+            has_bias = any(".lora_B.bias" in k for k in state_dict)
 
             if is_i2v_lora:
                 return state_dict
 
             for i in range(num_blocks):
                 for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
+                    # These keys should exist if the block `i` was part of the T2V LoRA.
+                    ref_key_lora_A = f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"
+                    ref_key_lora_B = f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"
+
+                    if ref_key_lora_A not in state_dict or ref_key_lora_B not in state_dict:
+                        continue
+
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
-                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"]
+                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"], device=target_device
                     )
                     state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
-                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"]
+                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"], device=target_device
                     )
+
+                    # If the original LoRA had biases (indicated by has_bias)
+                    # AND the specific reference bias key exists for this block.
+
+                    ref_key_lora_B_bias = f"transformer.blocks.{i}.attn2.to_k.lora_B.bias"
+                    if has_bias and ref_key_lora_B_bias in state_dict:
+                        ref_lora_B_bias_tensor = state_dict[ref_key_lora_B_bias]
+                        state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.bias"] = torch.zeros_like(
+                            ref_lora_B_bias_tensor,
+                            device=target_device,
+                        )
 
         return state_dict
 
@@ -5371,7 +5397,6 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -5464,6 +5489,10 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_non_diffusers_format = any("diffusion_model" in k for k in state_dict)
+        if is_non_diffusers_format:
+            state_dict = _convert_non_diffusers_hidream_lora_to_diffusers(state_dict)
 
         return state_dict
 

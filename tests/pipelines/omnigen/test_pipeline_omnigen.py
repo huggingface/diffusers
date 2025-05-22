@@ -7,8 +7,10 @@ from transformers import AutoTokenizer
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, OmniGenPipeline, OmniGenTransformer2DModel
 from diffusers.utils.testing_utils import (
+    Expectations,
+    backend_empty_cache,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -87,7 +89,7 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class OmniGenPipelineSlowTests(unittest.TestCase):
     pipeline_class = OmniGenPipeline
     repo_id = "shitao/OmniGen-v1-diffusers"
@@ -95,12 +97,12 @@ class OmniGenPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
@@ -125,21 +127,56 @@ class OmniGenPipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
 
-        expected_slice = np.array(
-            [
-                [0.1783447, 0.16772744, 0.14339337],
-                [0.17066911, 0.15521264, 0.13757327],
-                [0.17072496, 0.15531206, 0.13524258],
-                [0.16746324, 0.1564025, 0.13794944],
-                [0.16490817, 0.15258026, 0.13697758],
-                [0.16971767, 0.15826806, 0.13928896],
-                [0.16782972, 0.15547255, 0.13783783],
-                [0.16464645, 0.15281534, 0.13522372],
-                [0.16535294, 0.15301755, 0.13526791],
-                [0.16365296, 0.15092957, 0.13443318],
-            ],
-            dtype=np.float32,
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        [0.05859375, 0.05859375, 0.04492188],
+                        [0.04882812, 0.04101562, 0.03320312],
+                        [0.04882812, 0.04296875, 0.03125],
+                        [0.04296875, 0.0390625, 0.03320312],
+                        [0.04296875, 0.03710938, 0.03125],
+                        [0.04492188, 0.0390625, 0.03320312],
+                        [0.04296875, 0.03710938, 0.03125],
+                        [0.04101562, 0.03710938, 0.02734375],
+                        [0.04101562, 0.03515625, 0.02734375],
+                        [0.04101562, 0.03515625, 0.02929688],
+                    ],
+                    dtype=np.float32,
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        [0.1783447, 0.16772744, 0.14339337],
+                        [0.17066911, 0.15521264, 0.13757327],
+                        [0.17072496, 0.15531206, 0.13524258],
+                        [0.16746324, 0.1564025, 0.13794944],
+                        [0.16490817, 0.15258026, 0.13697758],
+                        [0.16971767, 0.15826806, 0.13928896],
+                        [0.16782972, 0.15547255, 0.13783783],
+                        [0.16464645, 0.15281534, 0.13522372],
+                        [0.16535294, 0.15301755, 0.13526791],
+                        [0.16365296, 0.15092957, 0.13443318],
+                    ],
+                    dtype=np.float32,
+                ),
+                ("cuda", 8): np.array(
+                    [
+                        [0.0546875, 0.05664062, 0.04296875],
+                        [0.046875, 0.04101562, 0.03320312],
+                        [0.05078125, 0.04296875, 0.03125],
+                        [0.04296875, 0.04101562, 0.03320312],
+                        [0.0390625, 0.03710938, 0.02929688],
+                        [0.04296875, 0.03710938, 0.03125],
+                        [0.0390625, 0.03710938, 0.02929688],
+                        [0.0390625, 0.03710938, 0.02734375],
+                        [0.0390625, 0.03320312, 0.02734375],
+                        [0.0390625, 0.03320312, 0.02734375],
+                    ],
+                    dtype=np.float32,
+                ),
+            }
         )
+        expected_slice = expected_slices.get_expectation()
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
