@@ -395,6 +395,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         is_inpainting: Optional[bool] = False, # controlnet inpainting
+        contains_element: Optional[bool] = False, # controlnet inpainting for element
         iterations: Optional[int] = 20, # controlnet inpainting
         mask_value: Optional[int] = 255, # controlnet inpainting
         image_width: Optional[int] = 1024,
@@ -535,6 +536,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
             composed_image_all = np.zeros((image_width, image_height, 3))
             masked_bg = np.zeros((image_width, image_height, 3))
+            masked_bg_with_element = np.zeros((image_width, image_height, 3))
             composed_bg_image = np.zeros((image_width, image_height, 3))
             composed_prod_images = []
             for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
@@ -547,9 +549,13 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 if is_product.lower() == "true":
                     masked_bg += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
 
+                if index > 0:
+                    masked_bg_with_element += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
+
             composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
             composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
             masked_bg = Image.fromarray(masked_bg.astype(np.uint8)).convert('RGB')
+            masked_bg_with_element = Image.fromarray(masked_bg_with_element.astype(np.uint8)).convert('RGB')
         
             bg_mask = Image.fromarray(bg_mask.astype(np.uint8)*255).convert('RGB')
             prod_masks = []
@@ -649,7 +655,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         if not return_dict:
             if is_qv:
                 if is_inpainting:
-                    return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
+                    if contains_element:
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_with_element, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
+                    else:
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
                 else:
                     return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
             else:
