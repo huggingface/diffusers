@@ -267,7 +267,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         return prompt_embeds, prompt_attention_mask
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.encode_prompt
+    # Copied from diffusers.pipelines.sana.pipeline_sana_sprint.SanaSprintPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
