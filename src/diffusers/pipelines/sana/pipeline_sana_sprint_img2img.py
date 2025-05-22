@@ -580,7 +580,6 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         return caption.strip()
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana_controlnet.SanaPipeline.prepare_latents
     def prepare_image(
         self,
         image,
