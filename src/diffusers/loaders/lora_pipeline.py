@@ -2798,6 +2798,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             state_dict,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
