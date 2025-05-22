@@ -75,8 +75,8 @@ EXAMPLE_DOC_STRING = """
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/penguin.png")
 )
 
-        >>> image = pipe(prompt="a cute pink bear", 
-        ...     image=image, 
+        >>> image = pipe(prompt="a cute pink bear",
+        ...     image=image,
         ...     strength=0.5, height=832, width=480).images[0]
         >>> image[0].save("output.png")
         ```
