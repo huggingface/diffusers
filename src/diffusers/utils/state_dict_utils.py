@@ -350,21 +350,16 @@ def state_dict_all_zero(state_dict, filter_str=None):
     return all(torch.all(param == 0).item() for param in state_dict.values())
 
 
-def _maybe_populate_state_dict_with_metadata(state_dict, model_file):
-    if not model_file.endswith(".safetensors"):
-        return state_dict
-
+def _load_sft_state_dict_metadata(model_file: str):
     import safetensors.torch
 
     from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 
-    metadata_key = LORA_ADAPTER_METADATA_KEY
+    metadata = None
     with safetensors.torch.safe_open(model_file, framework="pt", device="cpu") as f:
-        if hasattr(f, "metadata"):
-            metadata = f.metadata()
-            if metadata is not None:
-                metadata_keys = list(metadata.keys())
-                if not (len(metadata_keys) == 1 and metadata_keys[0] == "format"):
-                    peft_metadata = {k: v for k, v in metadata.items() if k != "format"}
-                    state_dict["lora_adapter_metadata"] = json.loads(peft_metadata[metadata_key])
-    return state_dict
+        metadata = f.metadata()
+        if metadata is not None:
+            metadata_keys = list(metadata.keys())
+            if not (len(metadata_keys) == 1 and metadata_keys[0] == "format"):
+                metadata = json.loads(metadata[LORA_ADAPTER_METADATA_KEY])
+    return metadata

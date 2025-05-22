@@ -46,7 +46,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from ..utils.state_dict_utils import _maybe_populate_state_dict_with_metadata
+from ..utils.state_dict_utils import _load_sft_state_dict_metadata
 
 
 if is_transformers_available():
@@ -209,6 +209,7 @@ def _fetch_state_dict(
     subfolder,
     user_agent,
     allow_pickle,
+    metadata=None,
 ):
     model_file = None
     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -240,13 +241,14 @@ def _fetch_state_dict(
                     user_agent=user_agent,
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                state_dict = _maybe_populate_state_dict_with_metadata(state_dict, model_file)
+                metadata = _load_sft_state_dict_metadata(model_file)
 
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:
                     raise e
                 # try loading non-safetensors weights
                 model_file = None
+                metadata = None
                 pass
 
         if model_file is None:
@@ -267,10 +269,11 @@ def _fetch_state_dict(
                 user_agent=user_agent,
             )
             state_dict = load_state_dict(model_file)
+            metadata = None
     else:
         state_dict = pretrained_model_name_or_path_or_dict
 
-    return state_dict
+    return state_dict, metadata
 
 
 def _best_guess_weight_name(
@@ -312,6 +315,11 @@ def _best_guess_weight_name(
     return weight_name
 
 
+def _pack_sd_with_prefix(state_dict, prefix):
+    sd_with_prefix = {f"{prefix}.{key}": value for key, value in state_dict.items()}
+    return sd_with_prefix
+
+
 def _load_lora_into_text_encoder(
     state_dict,
     network_alphas,
@@ -320,12 +328,16 @@ def _load_lora_into_text_encoder(
     lora_scale=1.0,
     text_encoder_name="text_encoder",
     adapter_name=None,
+    metadata=None,
     _pipeline=None,
     low_cpu_mem_usage=False,
     hotswap: bool = False,
 ):
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
+
+    if network_alphas and metadata:
+        raise ValueError("Both `network_alphas` and `metadata` cannot be specified.")
 
     peft_kwargs = {}
     if low_cpu_mem_usage:
@@ -353,13 +365,10 @@ def _load_lora_into_text_encoder(
         raise ValueError("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`.")
 
     # Load the layers corresponding to text encoder and make necessary adjustments.
-    metadata = None
-    if LORA_ADAPTER_METADATA_KEY in state_dict:
-        metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
     if prefix is not None:
         state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
-    if metadata is not None:
-        state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
+        if metadata is not None:
+            metadata = {k.removeprefix(f"{prefix}."): v for k, v in metadata.items() if k.startswith(f"{prefix}.")}
 
     if len(state_dict) > 0:
         logger.info(f"Loading {prefix}.")
@@ -387,7 +396,10 @@ def _load_lora_into_text_encoder(
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
             network_alphas = {k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys}
 
-        lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False, prefix=prefix)
+        if metadata is not None:
+            lora_config_kwargs = metadata
+        else:
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False, prefix=prefix)
 
         if "use_dora" in lora_config_kwargs:
             if lora_config_kwargs["use_dora"]:
@@ -885,8 +897,7 @@ class LoraBaseMixin:
     @staticmethod
     def pack_weights(layers, prefix):
         layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
-        layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
-        return layers_state_dict
+        return _pack_sd_with_prefix(layers_weights, prefix)
 
     @staticmethod
     def write_lora_layers(
@@ -917,7 +928,9 @@ class LoraBaseMixin:
                         for key, value in lora_adapter_metadata.items():
                             if isinstance(value, set):
                                 lora_adapter_metadata[key] = list(value)
-                        metadata["lora_adapter_metadata"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+                        metadata[LORA_ADAPTER_METADATA_KEY] = json.dumps(
+                            lora_adapter_metadata, indent=2, sort_keys=True
+                        )
 
                     return safetensors.torch.save_file(weights, filename, metadata=metadata)
 

@@ -30,7 +30,6 @@ from diffusers import (
     LCMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
@@ -2187,32 +2186,32 @@ class PeftLoraLoaderMixinTests:
             self.pipeline_class.save_lora_weights(save_directory=tmpdir, **lora_state_dicts, **lora_metadatas)
             pipe.unload_lora_weights()
 
-            out = pipe.lora_state_dict(tmpdir)
-            if isinstance(out, tuple):
-                state_dict, _ = out
-            else:
-                state_dict = out
+            out = pipe.lora_state_dict(tmpdir, return_lora_metadata=True)
+            if len(out) == 3:
+                _, _, parsed_metadata = out
+            elif len(out) == 2:
+                _, parsed_metadata = out
 
-            self.assertTrue(LORA_ADAPTER_METADATA_KEY in state_dict)
-
-            parsed_metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
             denoiser_key = (
                 f"{self.pipeline_class.transformer_name}"
                 if self.transformer_kwargs is not None
                 else f"{self.pipeline_class.unet_name}"
             )
+            self.assertTrue(any(k.startswith(f"{denoiser_key}.") for k in parsed_metadata))
             check_module_lora_metadata(
                 parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=denoiser_key
             )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 text_encoder_key = self.pipeline_class.text_encoder_name
+                self.assertTrue(any(k.startswith(f"{text_encoder_key}.") for k in parsed_metadata))
                 check_module_lora_metadata(
                     parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=text_encoder_key
                 )
 
             if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
                 text_encoder_2_key = "text_encoder_2"
+                self.assertTrue(any(k.startswith(f"{text_encoder_2_key}.") for k in parsed_metadata))
                 check_module_lora_metadata(
                     parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=text_encoder_2_key
                 )

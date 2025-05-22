@@ -37,6 +37,7 @@ from .lora_base import (  # noqa
     LoraBaseMixin,
     _fetch_state_dict,
     _load_lora_into_text_encoder,
+    _pack_sd_with_prefix,
 )
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
@@ -197,7 +198,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, network_alphas, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -208,6 +210,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             network_alphas=network_alphas,
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -221,6 +224,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            metadata=metadata,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -277,6 +281,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            return_lora_metadata: TODO
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -290,6 +295,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         weight_name = kwargs.pop("weight_name", None)
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -301,7 +307,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -338,7 +344,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
             state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
 
-        return state_dict, network_alphas
+        out = (state_dict, network_alphas, metadata) if return_lora_metadata else (state_dict, network_alphas)
+        return out
 
     @classmethod
     def load_lora_into_unet(
@@ -347,6 +354,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         network_alphas,
         unet,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -391,6 +399,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             prefix=cls.unet_name,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -405,6 +414,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -430,6 +440,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata: TODO
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -444,6 +455,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             prefix=prefix,
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -500,11 +512,13 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
 
-        if unet_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(unet_lora_adapter_metadata, cls.unet_name))
+        if unet_lora_adapter_metadata:
+            lora_adapter_metadata.update(_pack_sd_with_prefix(unet_lora_adapter_metadata, cls.unet_name))
 
         if text_encoder_lora_adapter_metadata:
-            lora_adapter_metadata.update(cls.pack_weights(text_encoder_lora_adapter_metadata, cls.text_encoder_name))
+            lora_adapter_metadata.update(
+                _pack_sd_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+            )
 
         # Save the model
         cls.write_lora_layers(

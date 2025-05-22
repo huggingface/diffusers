@@ -185,12 +185,10 @@ class PeftAdapterMixin:
                 Note that hotswapping adapters of the text encoder is not yet supported. There are some further
                 limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
-
+            metadata: TODO
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
-
-        from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -205,6 +203,7 @@ class PeftAdapterMixin:
         network_alphas = kwargs.pop("network_alphas", None)
         _pipeline = kwargs.pop("_pipeline", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        metadata = kwargs.pop("metadata", None)
         allow_pickle = False
 
         if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
@@ -212,12 +211,9 @@ class PeftAdapterMixin:
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -230,17 +226,17 @@ class PeftAdapterMixin:
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+            metadata=metadata,
         )
-        metadata = None
-        if LORA_ADAPTER_METADATA_KEY in state_dict:
-            metadata = state_dict[LORA_ADAPTER_METADATA_KEY]
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
+        if network_alphas and metadata:
+            raise ValueError("Both `network_alphas` and `metadata` cannot be specified.")
 
         if prefix is not None:
             state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
-        if metadata is not None:
-            state_dict[LORA_ADAPTER_METADATA_KEY] = metadata
+            if metadata is not None:
+                metadata = {k.removeprefix(f"{prefix}."): v for k, v in metadata.items() if k.startswith(f"{prefix}.")}
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
@@ -275,12 +271,15 @@ class PeftAdapterMixin:
                     k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
                 }
 
-            lora_config_kwargs = get_peft_kwargs(
-                rank,
-                network_alpha_dict=network_alphas,
-                peft_state_dict=state_dict,
-                prefix=prefix,
-            )
+            if metadata is not None:
+                lora_config_kwargs = metadata
+            else:
+                lora_config_kwargs = get_peft_kwargs(
+                    rank,
+                    network_alpha_dict=network_alphas,
+                    peft_state_dict=state_dict,
+                    prefix=prefix,
+                )
             _maybe_raise_error_for_ambiguity(lora_config_kwargs)
 
             if "use_dora" in lora_config_kwargs:
