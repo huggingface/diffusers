@@ -72,12 +72,11 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/penguin.png")
-)
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/penguin.png"
+        ... )
 
-        >>> image = pipe(prompt="a cute pink bear",
-        ...     image=image,
-        ...     strength=0.5, height=832, width=480).images[0]
+
+        >>> image = pipe(prompt="a cute pink bear", image=image, strength=0.5, height=832, width=480).images[0]
         >>> image[0].save("output.png")
         ```
 """
