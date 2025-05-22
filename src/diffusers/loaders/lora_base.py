@@ -398,7 +398,7 @@ def _load_lora_into_text_encoder(
         if metadata is not None:
             lora_config_kwargs = metadata
         else:
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False, prefix=prefix)
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False)
 
         if "use_dora" in lora_config_kwargs:
             if lora_config_kwargs["use_dora"]:

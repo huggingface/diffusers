@@ -275,10 +275,7 @@ class PeftAdapterMixin:
                 lora_config_kwargs = metadata
             else:
                 lora_config_kwargs = get_peft_kwargs(
-                    rank,
-                    network_alpha_dict=network_alphas,
-                    peft_state_dict=state_dict,
-                    prefix=prefix,
+                    rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict
                 )
             _maybe_raise_error_for_ambiguity(lora_config_kwargs)
 
