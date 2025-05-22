@@ -70,7 +70,7 @@ EXAMPLE_DOC_STRING = """
         ...     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers", torch_dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
-        
+
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/penguin.png")
 )
