@@ -328,6 +328,9 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
@@ -600,6 +603,15 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
+    )
+    parser.add_argument(
         "--offload",
         action="store_true",
         help="Whether to offload the VAE and the text encoder to CPU when they are not used.",
@@ -724,7 +736,11 @@ class DreamBoothDataset(Dataset):
             self.instance_images.extend(itertools.repeat(img, repeats))
 
         self.pixel_values = []
-        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+        interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+        if interpolation is None:
+            raise ValueError(f"Unsupported interpolation mode: {args.image_interpolation_mode}")
+
+        train_resize = transforms.Resize(size, interpolation=interpolation)
         train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
@@ -768,7 +784,7 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.Resize(size, interpolation=interpolation),
                 transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -1010,6 +1026,7 @@ def main(args):
     transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
+        lora_dropout=args.lora_dropout,
         init_lora_weights="gaussian",
         target_modules=target_modules,
     )

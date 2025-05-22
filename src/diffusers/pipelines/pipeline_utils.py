@@ -47,6 +47,7 @@ from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
+from ..quantizers import PipelineQuantizationConfig
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
@@ -572,12 +573,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
-            torch_dtype (`str` or `torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
-                dtype is automatically derived from the model's weights. To load submodels with different dtype pass a
-                `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`). Set the default dtype for
-                unspecified components with `default` (for example `{'transformer': torch.bfloat16, 'default':
-                torch.float16}`). If a component is not specified and no default is set, `torch.float32` is used.
+            torch_dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype. To load submodels with
+                different dtype pass a `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`).
+                Set the default dtype for unspecified components with `default` (for example `{'transformer':
+                torch.bfloat16, 'default': torch.float16}`). If a component is not specified and no default is set,
+                `torch.float32` is used.
             custom_pipeline (`str`, *optional*):
 
                 <Tip warning={true}>
@@ -725,6 +726,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
+        quantization_config = kwargs.pop("quantization_config", None)
 
         if torch_dtype is not None and not isinstance(torch_dtype, dict) and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
@@ -740,6 +742,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
             )
+
+        if quantization_config is not None and not isinstance(quantization_config, PipelineQuantizationConfig):
+            raise ValueError("`quantization_config` must be an instance of `PipelineQuantizationConfig`.")
 
         if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
@@ -1001,6 +1006,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     use_safetensors=use_safetensors,
                     dduf_entries=dduf_entries,
                     provider_options=provider_options,
+                    quantization_config=quantization_config,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -1659,6 +1665,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 signature_types[k] = (v.annotation,)
             elif get_origin(v.annotation) == Union:
                 signature_types[k] = get_args(v.annotation)
+            elif get_origin(v.annotation) in [List, Dict, list, dict]:
+                signature_types[k] = (v.annotation,)
             else:
                 logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")
         return signature_types
@@ -2021,7 +2029,7 @@ class StableDiffusionMixin:
         self.vae.disable_tiling()
 
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+        r"""Enables the FreeU mechanism as in https://huggingface.co/papers/2309.11497.
 
         The suffixes after the scaling factors represent the stages where they are being applied.
 
