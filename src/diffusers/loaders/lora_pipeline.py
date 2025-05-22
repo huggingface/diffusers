@@ -4861,16 +4861,19 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     ):
         target_device = transformer.device
         if hasattr(transformer, 'vace_blocks'):
+            print("HERE 1")
             inferred_rank_for_vace = None
             lora_weights_dtype_for_vace = next(iter(transformer.parameters())).dtype  # Fallback dtype
 
             for k_lora_any, v_lora_tensor_any in state_dict.items():
                 if k_lora_any.endswith(".lora_A.weight"):
+                    print("HERE 2")
                     inferred_rank_for_vace = v_lora_tensor_any.shape[0]
                     lora_weights_dtype_for_vace = v_lora_tensor_any.dtype
                     break  # Found one, good enough for rank and dtype
 
             if inferred_rank_for_vace is not None:
+                print("HERE 3")
                 # Determine if the LoRA format (as potentially modified by I2V expansion) includes bias
                 # This re-checks 'has_bias' based on the *current* state_dict.
                 current_lora_has_bias = any(".lora_B.bias" in k for k in state_dict.keys())
@@ -4878,7 +4881,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 for i, vace_block_module_in_model in enumerate(transformer.vace_blocks):
                     # Specifically target proj_out as per the error message
                     if hasattr(vace_block_module_in_model, 'proj_out'):
-
+                        print("HERE 4")
                         proj_out_linear_layer_in_model = vace_block_module_in_model.proj_out
 
                         vace_lora_A_key = f"vace_blocks.{i}.proj_out.lora_A.weight"
@@ -4898,6 +4901,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
                         # Use 'current_lora_has_bias' to decide on padding bias for VACE blocks
                         if current_lora_has_bias and proj_out_linear_layer_in_model.bias is not None:
+                            print("HERE 5")
                             vace_lora_B_bias_key = f"vace_blocks.{i}.proj_out.lora_B.bias"
                             if vace_lora_B_bias_key not in state_dict:
                                 state_dict[vace_lora_B_bias_key] = torch.zeros_like(
