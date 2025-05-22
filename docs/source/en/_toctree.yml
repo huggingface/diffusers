@@ -17,8 +17,6 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - local: tutorials/fast_diffusion
-    title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
@@ -457,6 +455,8 @@
       title: Flux
     - local: api/pipelines/control_flux_inpaint
       title: FluxControlInpaint
+    - local: api/pipelines/framepack
+      title: Framepack
     - local: api/pipelines/hidream
       title: HiDream-I1
     - local: api/pipelines/hunyuandit
@@ -573,6 +573,8 @@
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
+    - local: api/pipelines/visualcloze
+      title: VisualCloze
     - local: api/pipelines/wan
       title: Wan
     - local: api/pipelines/wuerstchen
