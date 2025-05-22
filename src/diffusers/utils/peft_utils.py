@@ -152,19 +152,7 @@ def get_peft_kwargs(
     network_alpha_dict,
     peft_state_dict,
     is_unet=True,
-    prefix=None,
 ):
-    from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
-
-    if LORA_ADAPTER_METADATA_KEY in peft_state_dict:
-        metadata = peft_state_dict[LORA_ADAPTER_METADATA_KEY]
-    else:
-        metadata = None
-    if metadata:
-        if prefix is not None:
-            metadata = {k.removeprefix(f"{prefix}."): v for k, v in metadata.items() if k.startswith(f"{prefix}.")}
-        return metadata
-
     rank_pattern = {}
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
