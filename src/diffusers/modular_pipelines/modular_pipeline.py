@@ -623,7 +623,7 @@ class PipelineBlock(ModularPipelineMixin):
         cls_name = self.__class__.__name__
         
         full_mod = type(self).__module__ 
-        module = full_mod.rsplit(".", 1)[-1]
+        module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
         parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]  
         auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
         _component_names = [c.name for c in self.expected_components]
