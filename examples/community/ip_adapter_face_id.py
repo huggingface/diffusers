@@ -282,10 +282,7 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
         model_file = _get_model_file(
             pretrained_model_name_or_path_or_dict,
             weights_name=weight_name,
