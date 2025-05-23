@@ -1148,7 +1148,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         for index in range(mask_tensor.shape[0]):
             mask_tensor[index,:,:] = tmp_tensor
         #tmp_tensor = torch.stack([tmp_tensor, tmp_tensor, tmp_tensor], dim=0)
-        mask = mask_tensor.to(device=mask.device, dtype=mask.dtype)
+        mask = mask_tensor.to(device=latents.device, dtype=latents.dtype)
 
         controlnet_keep = []
         for i in range(len(timesteps)):
