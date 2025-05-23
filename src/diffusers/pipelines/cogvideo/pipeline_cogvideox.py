@@ -185,6 +185,11 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._num_timesteps=0
+        self._attention_kwargs=None
+        self._current_timestep=None
+        self._interrupt=False
 
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
@@ -631,8 +636,6 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         )
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
-        self._current_timestep = None
-        self._interrupt = False
 
         # 2. Default call parameters
         if prompt is not None and isinstance(prompt, str):

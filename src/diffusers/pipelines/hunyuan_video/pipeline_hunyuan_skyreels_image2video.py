@@ -206,6 +206,11 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
         tokenizer_2: CLIPTokenizer,
     ):
         super().__init__()
+        self._guidance_scale=1.0
+        self._num_timesteps=0
+        self._attention_kwargs=None
+        self._current_timestep=None
+        self._interrupt=False
 
         self.register_modules(
             vae=vae,
@@ -656,8 +661,6 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
-        self._current_timestep = None
-        self._interrupt = False
 
         device = self._execution_device
 
