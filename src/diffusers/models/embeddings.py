@@ -37,8 +37,8 @@ def get_timestep_embedding(
 
     Args
         timesteps (torch.Tensor):
-            a 1-D Tensor of N indices, one per batch element. These may be fractional.
-            Can also be a 2-D Tensor of shape (batch_size, num_frames).
+            a 1-D Tensor of N indices, one per batch element. These may be fractional. Can also be a 2-D Tensor of
+            shape (batch_size, num_frames).
         embedding_dim (int):
             the dimension of the output.
         flip_sin_to_cos (bool):

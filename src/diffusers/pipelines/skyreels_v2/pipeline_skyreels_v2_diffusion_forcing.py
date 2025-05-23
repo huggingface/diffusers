@@ -15,7 +15,6 @@
 import html
 import math
 import re
-from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
@@ -675,7 +674,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :] = (
                             latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :]
                             * (1.0 - noise_factor)
-                            + torch.randn_like(latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :])
+                            + torch.randn_like(
+                                latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :]
+                            )
                             * noise_factor
                         )
                         timestep[:, valid_interval_start:prefix_video_latents_length] = addnoise_condition
@@ -732,7 +733,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-            #latents = latents.unsqueeze(0)
         else:
             # Long video generation
             overlap_history_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
@@ -754,7 +754,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                     if prefix_video_latents.shape[2] % causal_block_size != 0:
                         truncate_len_latents = prefix_video_latents.shape[2] % causal_block_size
-                        logger.warning("The length of prefix video latents is truncated for the causal block size alignment.")
+                        logger.warning(
+                            "The length of prefix video latents is truncated for the causal block size alignment."
+                        )
                         prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
                     prefix_video_latents_length = prefix_video_latents.shape[2]
 
@@ -817,7 +819,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :] = (
                                 latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :]
                                 * (1.0 - noise_factor)
-                                + torch.randn_like(latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :])
+                                + torch.randn_like(
+                                    latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :]
+                                )
                                 * noise_factor
                             )
                             timestep[:, valid_interval_start:prefix_video_latents_length] = addnoise_condition

@@ -4,16 +4,15 @@ from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
-from huggingface_hub import hf_hub_download, snapshot_download
+from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import AutoProcessor, CLIPVisionModelWithProjection, UMT5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
     FlowMatchUniPCMultistepScheduler,
     SkyReelsV2Transformer3DModel,
 )
-
 from diffusers.pipelines import SkyReelsV2DiffusionForcingPipeline
 from diffusers.utils.dummy_torch_and_transformers_objects import SkyreelsV2ImageToVideoPipeline
 
@@ -68,7 +67,7 @@ def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -
 
 
 def load_sharded_safetensors(dir: pathlib.Path):
-    #file_paths = list(dir.glob("model*.safetensors"))
+    # file_paths = list(dir.glob("model*.safetensors"))
     state_dict = {}
     state_dict.update(load_file(dir))
     return state_dict
@@ -461,7 +460,10 @@ if __name__ == "__main__":
             scheduler=None,
         )
     # pipe.push_to_hub
-    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB",
-                         push_to_hub=True,
-                         repo_id="tolgacangoz/SkyReels-V2-DF-1.3B-540P-Diffusers-2",
-                         )
+    pipe.save_pretrained(
+        args.output_path,
+        safe_serialization=True,
+        max_shard_size="5GB",
+        push_to_hub=True,
+        repo_id="tolgacangoz/SkyReels-V2-DF-1.3B-540P-Diffusers-2",
+    )
