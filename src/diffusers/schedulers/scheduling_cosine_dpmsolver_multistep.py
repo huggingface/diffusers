@@ -30,7 +30,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     Implements a variant of `DPMSolverMultistepScheduler` with cosine schedule, proposed by Nichol and Dhariwal (2021).
     This scheduler was used in Stable Audio Open [1].
 
-    [1] Evans, Parker, et al. "Stable Audio Open" https://arxiv.org/abs/2407.14358
+    [1] Evans, Parker, et al. "Stable Audio Open" https://huggingface.co/papers/2407.14358
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
@@ -44,8 +44,8 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             The standard deviation of the data distribution. This is set to 1.0 in Stable Audio Open [1].
         sigma_schedule (`str`, *optional*, defaults to `exponential`):
             Sigma schedule to compute the `sigmas`. By default, we the schedule introduced in the EDM paper
-            (https://arxiv.org/abs/2206.00364). Other acceptable value is "exponential". The exponential schedule was
-            incorporated in this model: https://huggingface.co/stabilityai/cosxl.
+            (https://huggingface.co/papers/2206.00364). Other acceptable value is "exponential". The exponential
+            schedule was incorporated in this model: https://huggingface.co/stabilityai/cosxl.
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
         solver_order (`int`, defaults to 2):

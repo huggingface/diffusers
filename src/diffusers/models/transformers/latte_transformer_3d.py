@@ -30,7 +30,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
 
     """
-    A 3D Transformer model for video-like data, paper: https://arxiv.org/abs/2401.03048, official code:
+    A 3D Transformer model for video-like data, paper: https://huggingface.co/papers/2401.03048, official code:
     https://github.com/Vchitect/Latte
 
     Parameters:
