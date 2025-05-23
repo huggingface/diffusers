@@ -664,65 +664,72 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if self.interrupt:
                         continue
 
-                    self._current_timestep = t
-                    valid_interval_start, valid_interval_end = valid_interval[i]
-                    latent_model_input = (
-                        latents[:, :, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
-                    )
-                    timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
-
-                    if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
-                        noise_factor = 0.001 * addnoise_condition
-                        latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :] = (
-                            latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :]
-                            * (1.0 - noise_factor)
-                            + torch.randn_like(latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :])
-                            * noise_factor
+                    try:
+                        self._current_timestep = t
+                        valid_interval_start, valid_interval_end = valid_interval[i]
+                        latent_model_input = (
+                            latents[:, :, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                         )
-                        timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
+                        timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
 
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep,
-                        encoder_hidden_states=prompt_embeds,
-                        flag_df=True,
-                        fps=fps_embeds,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
-                    if self.do_classifier_free_guidance:
-                        noise_uncond = self.transformer(
+                        if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
+                            noise_factor = 0.001 * addnoise_condition
+                            latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :] = (
+                                latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :]
+                                * (1.0 - noise_factor)
+                                + torch.randn_like(latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :])
+                                * noise_factor
+                            )
+                            timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
+
+                        noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
-                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states=prompt_embeds,
                             flag_df=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
-                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
-
-                    update_mask_i = step_update_mask[i]
-                    for idx in range(valid_interval_start, valid_interval_end):
-                        if update_mask_i[idx].item():
-                            latents[:, :, idx, :, :] = sample_schedulers[idx].step(
-                                noise_pred[:, :, idx - valid_interval_start, :, :],
-                                t[idx],
-                                latents[:, :, idx, :, :],
+                        if self.do_classifier_free_guidance:
+                            noise_uncond = self.transformer(
+                                hidden_states=latent_model_input,
+                                timestep=timestep,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                flag_df=True,
+                                fps=fps_embeds,
+                                attention_kwargs=attention_kwargs,
                                 return_dict=False,
-                                generator=generator,
                             )[0]
-                            sample_schedulers_counter[idx] += 1
+                            noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                    if callback_on_step_end is not None:
-                        callback_kwargs = {}
-                        for k in callback_on_step_end_tensor_inputs:
-                            callback_kwargs[k] = locals()[k]
-                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                        update_mask_i = step_update_mask[i]
+                        for idx in range(valid_interval_start, valid_interval_end):
+                            if update_mask_i[idx].item():
+                                latents[:, :, idx, :, :] = sample_schedulers[idx].step(
+                                    noise_pred[:, :, idx - valid_interval_start, :, :],
+                                    t[idx],
+                                    latents[:, :, idx, :, :],
+                                    return_dict=False,
+                                    generator=generator,
+                                )[0]
+                                sample_schedulers_counter[idx] += 1
 
-                        latents = callback_outputs.pop("latents", latents)
-                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                        if callback_on_step_end is not None:
+                            callback_kwargs = {}
+                            for k in callback_on_step_end_tensor_inputs:
+                                callback_kwargs[k] = locals()[k]
+                            callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                            latents = callback_outputs.pop("latents", latents)
+                            prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                            negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    except Exception as e:
+                        print(f"Error at iteration {i}, timestep value (can be a tensor for multiple frames): {self._current_timestep}")
+                        print(f"Exception: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        raise
 
                     # call the callback, if provided
                     if i == len(step_matrix) - 1 or (
@@ -803,78 +810,83 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         if self.interrupt:
                             continue
 
-                        self._current_timestep = t
-                        valid_interval_start, valid_interval_end = valid_interval[i]
-                        latent_model_input = (
-                            latents[:, :, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
-                        )
-                        timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
-
-                        if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
-                            noise_factor = 0.001 * addnoise_condition
-                            latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :] = (
-                                latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :]
-                                * (1.0 - noise_factor)
-                                + torch.randn_like(
-                                    latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :]
-                                )
-                                * noise_factor
+                        try:
+                            self._current_timestep = t
+                            valid_interval_start, valid_interval_end = valid_interval[i]
+                            latent_model_input = (
+                                latents[:, :, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
                             )
-                            timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
+                            timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
 
-                        noise_pred = self.transformer(
-                            hidden_states=latent_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=prompt_embeds,
-                            flag_df=True,
-                            fps=fps_embeds,
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0]
-                        if self.do_classifier_free_guidance:
-                            noise_uncond = self.transformer(
+                            if addnoise_condition > 0 and valid_interval_start < prefix_video_latent_length:
+                                noise_factor = 0.001 * addnoise_condition
+                                latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :] = (
+                                    latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :]
+                                    * (1.0 - noise_factor)
+                                    + torch.randn_like(latent_model_input[:, :, valid_interval_start:prefix_video_latent_length, :, :])
+                                    * noise_factor
+                                )
+                                timestep[:, valid_interval_start:prefix_video_latent_length] = addnoise_condition
+
+                            noise_pred = self.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
-                                encoder_hidden_states=negative_prompt_embeds,
+                                encoder_hidden_states=prompt_embeds,
                                 flag_df=True,
                                 fps=fps_embeds,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]
-                            noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
-
-                        update_mask_i = step_update_mask[i]
-                        for idx in range(valid_interval_start, valid_interval_end):
-                            if update_mask_i[idx].item():
-                                latents[:, :, idx, :, :] = sample_schedulers[idx].step(
-                                    noise_pred[:, :, idx - valid_interval_start, :, :],
-                                    t[idx],
-                                    latents[:, :, idx, :, :],
+                            if self.do_classifier_free_guidance:
+                                noise_uncond = self.transformer(
+                                    hidden_states=latent_model_input,
+                                    timestep=timestep,
+                                    encoder_hidden_states=negative_prompt_embeds,
+                                    flag_df=True,
+                                    fps=fps_embeds,
+                                    attention_kwargs=attention_kwargs,
                                     return_dict=False,
-                                    generator=generator,
                                 )[0]
-                                sample_schedulers_counter[idx] += 1
+                                noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                        if callback_on_step_end is not None:
-                            callback_kwargs = {}
-                            for k in callback_on_step_end_tensor_inputs:
-                                callback_kwargs[k] = locals()[k]
-                            callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                            update_mask_i = step_update_mask[i]
+                            for idx in range(valid_interval_start, valid_interval_end):
+                                if update_mask_i[idx].item():
+                                    latents[:, :, idx, :, :] = sample_schedulers[idx].step(
+                                        noise_pred[:, :, idx - valid_interval_start, :, :],
+                                        t[idx],
+                                        latents[:, :, idx, :, :],
+                                        return_dict=False,
+                                        generator=generator,
+                                    )[0]
+                                    sample_schedulers_counter[idx] += 1
 
-                            latents = callback_outputs.pop("latents", latents)
-                            prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                            negative_prompt_embeds = callback_outputs.pop(
-                                "negative_prompt_embeds", negative_prompt_embeds
-                            )
+                            if callback_on_step_end is not None:
+                                callback_kwargs = {}
+                                for k in callback_on_step_end_tensor_inputs:
+                                    callback_kwargs[k] = locals()[k]
+                                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                        # call the callback, if provided
-                        if i == len(step_matrix) - 1 or (
-                            (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                        ):
-                            progress_bar.update()
+                                latents = callback_outputs.pop("latents", latents)
+                                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                                negative_prompt_embeds = callback_outputs.pop(
+                                    "negative_prompt_embeds", negative_prompt_embeds
+                                )
 
-                        if XLA_AVAILABLE:
-                            xm.mark_step()
+                            # call the callback, if provided
+                            if i == len(step_matrix) - 1 or (
+                                (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                            ):
+                                progress_bar.update()
+
+                            if XLA_AVAILABLE:
+                                xm.mark_step()
+                        except Exception as e:
+                            print(f"Error at iteration {i}, timestep value (can be a tensor for multiple frames): {self._current_timestep}")
+                            print(f"Exception: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            raise
 
                 #latents = latents.unsqueeze(0)
                 if not output_type == "latent":
