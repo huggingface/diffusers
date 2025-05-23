@@ -92,8 +92,6 @@
     title: API Reference
   title: Hybrid Inference
 - sections:
-  - local: using-diffusers/cogvideox
-    title: CogVideoX
   - local: using-diffusers/consisid
     title: ConsisID
   - local: using-diffusers/sdxl
