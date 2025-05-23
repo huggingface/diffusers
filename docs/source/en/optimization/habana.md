@@ -16,9 +16,15 @@ The Intel Gaudi AI accelerator family includes [Intel Gaudi 1](https://habana.ai
 
 Diffusers pipelines can take full advantage of HPU acceleration, even if a pipeline hasn't been added to Optimum Habana yet, with the [GPU Migration Toolkit](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Model_Porting/GPU_Migration_Toolkit/GPU_Migration_Toolkit.html).
 
-Use the `.to()` method to move the pipeline to a HPU as shown below.
+Call `.to("hpu")` on your pipeline to move it to a HPU device as shown below for Flux:
 ```py
-my_pipeline.to("hpu")
+import torch
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+pipeline.to("hpu")
+
+image = pipeline("An image of a squirrel in Picasso style").images[0]
 ```
 
 > [!TIP]
