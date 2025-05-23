@@ -659,7 +659,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_warmup_steps = len(step_matrix) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(step_matrix)
 
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
+            with self.progress_bar(total=len(step_matrix)) as progress_bar:
                 for i, t in enumerate(step_matrix):
                     if self.interrupt:
                         continue
@@ -798,7 +798,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 num_warmup_steps = len(step_matrix) - num_inference_steps * self.scheduler.order
                 self._num_timesteps = len(step_matrix)
 
-                with self.progress_bar(total=num_inference_steps) as progress_bar:
+                with self.progress_bar(total=len(step_matrix)) as progress_bar:
                     for i, t in enumerate(step_matrix):
                         if self.interrupt:
                             continue
