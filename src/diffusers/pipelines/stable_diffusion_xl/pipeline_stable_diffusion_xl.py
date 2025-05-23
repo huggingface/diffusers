@@ -429,23 +429,23 @@ class StableDiffusionXLPipeline(
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                current_encoder_output = text_encoder(text_input_ids.to(device), output_hidden_states=True)
                 
                 # Pooled output taken from the last text encoder
                 if text_encoder == text_encoders[-1]: # Check if current encoder is the last one
-                    # Ensure prompt_embeds_output[0] is the pooled output, typically ndim == 2
-                    if pooled_prompt_embeds is None and hasattr(prompt_embeds_output, "pooler_output") and prompt_embeds_output.pooler_output is not None:
-                        pooled_prompt_embeds = prompt_embeds_output.pooler_output
-                    elif pooled_prompt_embeds is None and prompt_embeds_output[0].ndim == 2: # Fallback for models not returning explicit pooler_output
-                        pooled_prompt_embeds = prompt_embeds_output[0]
+                    # Ensure current_encoder_output[0] is the pooled output, typically ndim == 2
+                    if pooled_prompt_embeds is None and hasattr(current_encoder_output, "pooler_output") and current_encoder_output.pooler_output is not None:
+                        pooled_prompt_embeds = current_encoder_output.pooler_output
+                    elif pooled_prompt_embeds is None and current_encoder_output[0].ndim == 2: # Fallback for models not returning explicit pooler_output
+                        pooled_prompt_embeds = current_encoder_output[0]
 
 
                 current_hidden_states: torch.Tensor
                 if clip_skip is None:
-                    current_hidden_states = prompt_embeds_output.hidden_states[-2]
+                    current_hidden_states = current_encoder_output.hidden_states[-2]
                 else:
                     # "2" because SDXL always indexes from the penultimate layer.
-                    current_hidden_states = prompt_embeds_output.hidden_states[-(clip_skip + 2)]
+                    current_hidden_states = current_encoder_output.hidden_states[-(clip_skip + 2)]
 
                 prompt_embeds_list.append(current_hidden_states)
 
@@ -496,19 +496,19 @@ class StableDiffusionXLPipeline(
                     return_tensors="pt",
                 )
 
-                negative_prompt_embeds = text_encoder(
+                current_neg_encoder_output = text_encoder(
                     uncond_input.input_ids.to(device),
                     output_hidden_states=True,
                 )
 
                 # Pooled output taken from the last text encoder
                 if text_encoder == text_encoders[-1]: # Check if current encoder is the last one
-                    if negative_pooled_prompt_embeds is None and hasattr(negative_prompt_embeds_output, "pooler_output") and negative_prompt_embeds_output.pooler_output is not None:
-                        negative_pooled_prompt_embeds = negative_prompt_embeds_output.pooler_output
-                    elif negative_pooled_prompt_embeds is None and negative_prompt_embeds_output[0].ndim == 2: # Fallback
-                        negative_pooled_prompt_embeds = negative_prompt_embeds_output[0]
+                    if negative_pooled_prompt_embeds is None and hasattr(current_neg_encoder_output, "pooler_output") and current_neg_encoder_output.pooler_output is not None:
+                        negative_pooled_prompt_embeds = current_neg_encoder_output.pooler_output
+                    elif negative_pooled_prompt_embeds is None and current_neg_encoder_output[0].ndim == 2: # Fallback
+                        negative_pooled_prompt_embeds = current_neg_encoder_output[0]
                 
-                current_negative_hidden_states = negative_prompt_embeds_output.hidden_states[-2]
+                current_negative_hidden_states = current_neg_encoder_output.hidden_states[-2]
                 negative_prompt_embeds_list.append(current_negative_hidden_states)
 
             negative_prompt_embeds = torch.cat(negative_prompt_embeds_list, dim=-1)
@@ -539,8 +539,11 @@ class StableDiffusionXLPipeline(
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if pooled_prompt_embeds is None and prompt_embeds_output is not None and not (hasattr(prompt_embeds_output, "pooler_output") and prompt_embeds_output.pooler_output is not None) and not (prompt_embeds_output[0].ndim == 2) :
-             raise ValueError("Pooled prompt embeddings were not generated. Check the output of the text encoder(s).")
+        # Check if pooled_prompt_embeds were generated, especially if prompts were provided.
+        if prompt_embeds is not None and pooled_prompt_embeds is None : # prompt_embeds is the final concatenated embeddings
+             raise ValueError(
+                 "Pooled prompt embeddings were not generated. Make sure the model has a pooling layer or outputs pooler_output."
+             )
 
         if pooled_prompt_embeds is not None:
             pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
@@ -548,8 +551,12 @@ class StableDiffusionXLPipeline(
             )
         
         if do_classifier_free_guidance:
-            if negative_pooled_prompt_embeds is None and negative_prompt_embeds_output is not None and not (hasattr(negative_prompt_embeds_output, "pooler_output") and negative_prompt_embeds_output.pooler_output is not None) and not (negative_prompt_embeds_output[0].ndim == 2):
-                 raise ValueError("Negative pooled prompt embeddings were not generated. Check the output of the text encoder(s).")
+            # Similar check for negative_pooled_prompt_embeds
+            if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None and not zero_out_negative_prompt : # negative_prompt_embeds is the final concatenated embeddings
+                 raise ValueError(
+                     "Negative pooled prompt embeddings were not generated but were expected. Make sure the model has a pooling layer or outputs pooler_output."
+                 )
+
             if negative_pooled_prompt_embeds is not None:
                 negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
                     bs_embed * num_images_per_prompt, -1
