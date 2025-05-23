@@ -935,6 +935,184 @@ class StableDiffusionXLPipelineFastTests(
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
 
+class StableDiffusionXLOptionalComponentsTests(unittest.TestCase):
+    def get_dummy_components(
+        self,
+        time_cond_proj_dim=None,
+        tokenizer_1_present=True,
+        text_encoder_1_present=True,
+        tokenizer_2_present=True,
+        text_encoder_2_present=True,
+    ):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(2, 4),
+            layers_per_block=2,
+            time_cond_proj_dim=time_cond_proj_dim,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            attention_head_dim=(2, 4),
+            use_linear_projection=True,
+            addition_embed_type="text_time",
+            addition_time_embed_dim=8, # Needs to match text_encoder_projection_dim + time_embed_dim for _get_add_time_ids
+            transformer_layers_per_block=(1, 2),
+            projection_class_embeddings_input_dim=80,  # Expected final proj dim for UNET: (6 * 8) for time_ids + 32 for text_embeds proj
+            cross_attention_dim=64, # Should be same as prompt_embeds final dim
+            norm_num_groups=1,
+        )
+        scheduler = EulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            steps_offset=1,
+            beta_schedule="scaled_linear",
+            timestep_spacing="leading",
+        )
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+            sample_size=128,
+        )
+        
+        # Common Text Encoder Config
+        # projection_dim here is for CLIPTextModelWithProjection, hidden_size is for CLIPTextModel
+        text_encoder_config_dict = {
+            "bos_token_id": 0,
+            "eos_token_id": 2,
+            "hidden_size": 32, # Used by CLIPTextModel, also as fallback for projection_dim if needed
+            "intermediate_size": 37,
+            "layer_norm_eps": 1e-05,
+            "num_attention_heads": 4,
+            "num_hidden_layers": 2, # Reduced for speed
+            "pad_token_id": 1,
+            "vocab_size": 1000,
+            "hidden_act": "gelu",
+            "projection_dim": 32, # Used by CLIPTextModelWithProjection
+        }
+
+        text_encoder = None
+        tokenizer = None
+        if text_encoder_1_present:
+            text_encoder_config = CLIPTextConfig(**text_encoder_config_dict)
+            text_encoder = CLIPTextModel(text_encoder_config)
+        if tokenizer_1_present:
+            tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+
+        text_encoder_2 = None
+        tokenizer_2 = None
+        if text_encoder_2_present:
+            text_encoder_2_config = CLIPTextConfig(**text_encoder_config_dict)
+            text_encoder_2 = CLIPTextModelWithProjection(text_encoder_2_config)
+        if tokenizer_2_present:
+            tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer_2": tokenizer_2,
+            "image_encoder": None,
+            "feature_extractor": None,
+            "force_zeros_for_empty_prompt": False, # Avoids issues with None prompts if not careful
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 1, # Faster
+            "guidance_scale": 5.0,
+            "output_type": "np",
+        }
+        return inputs
+
+    def test_only_tokenizer_text_encoder_1_present(self):
+        device = "cpu" 
+        components = self.get_dummy_components(
+            tokenizer_1_present=True, text_encoder_1_present=True, tokenizer_2_present=False, text_encoder_2_present=False
+        )
+        # UNet's projection_class_embeddings_input_dim needs to be consistent with the output of _get_add_time_ids
+        # If only text_encoder 1 is present, pooled_prompt_embeds.shape[-1] will be text_encoder.config.hidden_size (32)
+        # So, 6 * 8 (time_ids) + 32 (text_proj) = 48 + 32 = 80. This matches the dummy UNet's projection_class_embeddings_input_dim.
+        
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        self.assertIsInstance(output, StableDiffusionXLPipelineOutput)
+        self.assertIsNotNone(image)
+        self.assertIsInstance(image, np.ndarray)
+        self.assertEqual(image.shape, (1, 64, 64, 3)) # Based on dummy VAE sample_size 128 -> 64 after vae_scale_factor
+
+    def test_only_tokenizer_text_encoder_2_present(self):
+        device = "cpu"
+        components = self.get_dummy_components(
+            tokenizer_1_present=False, text_encoder_1_present=False, tokenizer_2_present=True, text_encoder_2_present=True
+        )
+        # If only text_encoder 2 is present, text_encoder_projection_dim will be text_encoder_2.config.projection_dim (32)
+        # So, 6 * 8 (time_ids) + 32 (text_proj) = 48 + 32 = 80. This matches the dummy UNet's projection_class_embeddings_input_dim.
+
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+        
+        self.assertIsInstance(output, StableDiffusionXLPipelineOutput)
+        self.assertIsNotNone(image)
+        self.assertIsInstance(image, np.ndarray)
+        self.assertEqual(image.shape, (1, 64, 64, 3))
+
+    def test_all_tokenizers_text_encoders_present(self):
+        device = "cpu" 
+        components = self.get_dummy_components(
+            tokenizer_1_present=True, text_encoder_1_present=True, tokenizer_2_present=True, text_encoder_2_present=True
+        )
+        # If both text_encoders are present, prompt_embeds will be concatenated (dim 64 + 32 = 96 if cross_attention_dim was sum)
+        # However, cross_attention_dim for Unet is 64. encode_prompt concatenates along the feature dim (-1).
+        # For UNet: `cross_attention_dim` is 64. The `prompt_embeds` from `encode_prompt` will have shape (batch_size, seq_len, 768+1280 for base SDXL)
+        # The dummy UNet's `cross_attention_dim` is 64.
+        # The dummy text_encoder hidden_size is 32. If both are present, concatenated prompt_embeds_list dim will be 32+32=64. This matches.
+        # Pooled embeds come from text_encoder_2 (projection_dim 32).
+        # So, 6 * 8 (time_ids) + 32 (text_proj from text_encoder_2) = 48 + 32 = 80. This matches.
+
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+        
+        self.assertIsInstance(output, StableDiffusionXLPipelineOutput)
+        self.assertIsNotNone(image)
+        self.assertIsInstance(image, np.ndarray)
+        self.assertEqual(image.shape, (1, 64, 64, 3))
+
+
 @slow
 class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
