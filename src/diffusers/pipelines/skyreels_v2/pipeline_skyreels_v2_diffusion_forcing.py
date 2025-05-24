@@ -793,7 +793,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     torch.float32,
                     device,
                     generator,
-                    latents,
+                    None if i > 0 else latents,
                 )
                 if prefix_video_latents is not None:
                     latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
