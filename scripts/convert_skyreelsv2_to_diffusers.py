@@ -116,19 +116,19 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "text_dim": 4096,
             },
         }
-    elif model_type == "SkyReelsV2-I2V-14B-480p":
+    elif model_type == "SkyReelsV2-DF-14B-540P":
         config = {
-            "model_id": "StevenZhang/Wan2.1-I2V-14B-480P-Diff",
+            "model_id": "Skywork/SkyReelsV2-DF-14B-540P",
             "diffusers_config": {
-                "image_dim": 1280,
-                "added_kv_proj_dim": 5120,
+                "added_kv_proj_dim": None,
                 "attention_head_dim": 128,
                 "cross_attn_norm": True,
                 "eps": 1e-06,
                 "ffn_dim": 13824,
                 "freq_dim": 256,
-                "in_channels": 36,
+                "in_channels": 16,
                 "num_attention_heads": 40,
+                "inject_sample_info": False,
                 "num_layers": 40,
                 "out_channels": 16,
                 "patch_size": [1, 2, 2],
@@ -188,11 +188,12 @@ def convert_transformer(model_type: str):
 
     if model_type == "SkyReels-V2-DF-1.3B-540P":
         original_state_dict = load_file(hf_hub_download(model_id, "model.safetensors"))
-    elif model_type == "SkyReels-V2-DF-14B-720P":
+    elif model_type in ["SkyReels-V2-DF-14B-720P", "SkyReelsV2-DF-14B-540P"]:
         os.makedirs(model_type, exist_ok=True)
         model_dir = pathlib.Path(model_type)
-        for i in range(1, 7):
-            shard_path = f"diffusion_pytorch_model-{i:05d}-of-00006.safetensors"
+        top_shard = 6 if model_type == "SkyReels-V2-DF-14B-720P" else 12
+        for i in range(1, top_shard + 1):
+            shard_path = f"diffusion_pytorch_model-{i:05d}-of-000{top_shard}.safetensors"
             hf_hub_download(model_id, shard_path, local_dir=model_dir)
         original_state_dict = load_sharded_safetensors(model_dir)
 
@@ -469,7 +470,7 @@ if __name__ == "__main__":
             vae=vae,
             scheduler=scheduler,
         )
-    # pipe.push_to_hub
+
     pipe.save_pretrained(
         args.output_path,
         safe_serialization=True,
