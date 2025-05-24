@@ -1,4 +1,5 @@
 import argparse
+import os
 import pathlib
 from typing import Any, Dict
 
@@ -6,7 +7,7 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import AutoProcessor, CLIPVisionModelWithProjection, UMT5EncoderModel, AutoTokenizer
 
 from diffusers import (
     AutoencoderKLWan,
@@ -67,9 +68,10 @@ def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -
 
 
 def load_sharded_safetensors(dir: pathlib.Path):
-    # file_paths = list(dir.glob("model*.safetensors"))
+    file_paths = list(dir.glob("diffusion_pytorch_model*.safetensors"))
     state_dict = {}
-    state_dict.update(load_file(dir))
+    for path in file_paths:
+        state_dict.update(load_file(path))
     return state_dict
 
 
@@ -94,9 +96,9 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "text_dim": 4096,
             },
         }
-    elif model_type == "SkyReelsV2-T2V-14B":
+    elif model_type == "SkyReels-V2-DF-14B-720P":
         config = {
-            "model_id": "StevenZhang/Wan2.1-T2V-14B-Diff",
+            "model_id": "Skywork/SkyReels-V2-DF-14B-720P",
             "diffusers_config": {
                 "added_kv_proj_dim": None,
                 "attention_head_dim": 128,
@@ -106,6 +108,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "freq_dim": 256,
                 "in_channels": 16,
                 "num_attention_heads": 40,
+                "inject_sample_info": False,
                 "num_layers": 40,
                 "out_channels": 16,
                 "patch_size": [1, 2, 2],
@@ -182,9 +185,16 @@ def convert_transformer(model_type: str):
     config = get_transformer_config(model_type)
     diffusers_config = config["diffusers_config"]
     model_id = config["model_id"]
-    model_dir = hf_hub_download(model_id, "model.safetensors")
 
-    original_state_dict = load_sharded_safetensors(model_dir)
+    if model_type == "SkyReels-V2-DF-1.3B-540P":
+        original_state_dict = load_file(hf_hub_download(model_id, "model.safetensors"))
+    elif model_type == "SkyReels-V2-DF-14B-720P":
+        os.makedirs(model_type, exist_ok=True)
+        model_dir = pathlib.Path(model_type)
+        for i in range(1, 7):
+            shard_path = f"diffusion_pytorch_model-{i:05d}-of-00006.safetensors"
+            hf_hub_download(model_id, shard_path, local_dir=model_dir)
+        original_state_dict = load_sharded_safetensors(model_dir)
 
     with init_empty_weights():
         transformer = SkyReelsV2Transformer3DModel.from_config(diffusers_config)
@@ -429,13 +439,13 @@ if __name__ == "__main__":
     transformer = None
     dtype = DTYPE_MAPPING[args.dtype]
 
-    #transformer = convert_transformer(args.model_type).to(dtype=dtype)
-    #vae = convert_vae()
+    transformer = convert_transformer(args.model_type).to(dtype=dtype)
+    vae = convert_vae()
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
-    #tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
-    #scheduler = FlowMatchUniPCMultistepScheduler(
-    #    prediction_type="flow_prediction", num_train_timesteps=1000,
-    #)
+    tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    scheduler = FlowMatchUniPCMultistepScheduler(
+        prediction_type="flow_prediction", num_train_timesteps=1000,
+    )
 
     if "I2V" in args.model_type:
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
@@ -444,20 +454,20 @@ if __name__ == "__main__":
         image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         pipe = SkyreelsV2ImageToVideoPipeline(
             transformer=transformer,
-            text_encoder=None,
-            tokenizer=None,
-            vae=None,
-            scheduler=None,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
             image_encoder=image_encoder,
             image_processor=image_processor,
         )
     else:
         pipe = SkyReelsV2DiffusionForcingPipeline(
-            transformer=None,
+            transformer=transformer,
             text_encoder=text_encoder,
-            tokenizer=None,
-            vae=None,
-            scheduler=None,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
         )
     # pipe.push_to_hub
     pipe.save_pretrained(
@@ -465,5 +475,5 @@ if __name__ == "__main__":
         safe_serialization=True,
         max_shard_size="5GB",
         push_to_hub=True,
-        repo_id="tolgacangoz/SkyReels-V2-DF-1.3B-540P-Diffusers-2",
+        repo_id=f"tolgacangoz/{args.model_type}-Diffusers",
     )
