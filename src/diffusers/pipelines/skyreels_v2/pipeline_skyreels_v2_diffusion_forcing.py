@@ -789,7 +789,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     num_channels_latents,
                     height,
                     width,
-                    num_frames,
+                    (base_num_frames_iter - 1) * self.vae_scale_factor_temporal + 1,
                     torch.float32,
                     device,
                     generator,
