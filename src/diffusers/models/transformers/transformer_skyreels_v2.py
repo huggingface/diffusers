@@ -566,8 +566,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         return Transformer2DModelOutput(sample=output)
 
     def set_ar_attention(self, causal_block_size):
-        self.config.num_frame_per_block = causal_block_size
-        self.config.flag_causal_attention = True
+        self.register_to_config(num_frame_per_block=causal_block_size, flag_causal_attention=True)
         for block in self.blocks:
             block.set_ar_attention()
 
