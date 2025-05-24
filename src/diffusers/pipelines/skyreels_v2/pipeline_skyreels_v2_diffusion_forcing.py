@@ -755,7 +755,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if prefix_video_latents.shape[2] % causal_block_size != 0:
                         truncate_len_latents = prefix_video_latents.shape[2] % causal_block_size
                         logger.warning(
-                            "The length of prefix video latents is truncated for the causal block size alignment."
+                            f"The length of prefix video latents is truncated by {truncate_len_latents} frames for the causal block size alignment."
                         )
                         prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
                     prefix_video_latents_length = prefix_video_latents.shape[2]
