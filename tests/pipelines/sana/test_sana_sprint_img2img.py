@@ -19,25 +19,29 @@ import numpy as np
 import torch
 from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
-from diffusers import AutoencoderDC, SanaSprintPipeline, SanaTransformer2DModel, SCMScheduler
+from diffusers import AutoencoderDC, SanaSprintImg2ImgPipeline, SanaTransformer2DModel, SCMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     torch_device,
 )
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+rom ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+)
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class SanaSprintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = SanaSprintPipeline
+class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = SanaSprintImg2ImgPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "negative_prompt", "negative_prompt_embeds"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS - {"negative_prompt"}
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS - {"negative_prompt"}
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS - {"negative_prompt"}
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS - {"negative_prompt"}
+    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
         [
             "num_inference_steps",
@@ -126,12 +130,15 @@ class SanaSprintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "",
+            "image": image,
+            "strength": 0.5,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
