@@ -25,7 +25,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-rom ..pipeline_params import (
+from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
