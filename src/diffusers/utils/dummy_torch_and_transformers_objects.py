@@ -1682,7 +1682,7 @@ class ShapEPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class SkyreelsV2DiffusionForcingImageToVideoPipeline(metaclass=DummyObject):
+class SkyReelsV2DiffusionForcingImageToVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1697,7 +1697,7 @@ class SkyreelsV2DiffusionForcingImageToVideoPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class SkyreelsV2DiffusionForcingPipeline(metaclass=DummyObject):
+class SkyReelsV2DiffusionForcingPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1712,7 +1712,7 @@ class SkyreelsV2DiffusionForcingPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class SkyreelsV2ImageToVideoPipeline(metaclass=DummyObject):
+class SkyReelsV2ImageToVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1727,7 +1727,7 @@ class SkyreelsV2ImageToVideoPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class SkyreelsV2Pipeline(metaclass=DummyObject):
+class SkyReelsV2Pipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

@@ -15,7 +15,7 @@ from diffusers import (
     SkyReelsV2Transformer3DModel,
 )
 from diffusers.pipelines import SkyReelsV2DiffusionForcingPipeline
-from diffusers.utils.dummy_torch_and_transformers_objects import SkyreelsV2ImageToVideoPipeline
+from diffusers.utils.dummy_torch_and_transformers_objects import SkyReelsV2ImageToVideoPipeline
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
@@ -463,7 +463,7 @@ if __name__ == "__main__":
             "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
         )
         image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-        pipe = SkyreelsV2ImageToVideoPipeline(
+        pipe = SkyReelsV2ImageToVideoPipeline(
             transformer=transformer,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
