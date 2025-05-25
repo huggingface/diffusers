@@ -19,7 +19,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
 import torch
-from PIL import Image
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -96,9 +95,9 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
+class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     """
-    Pipeline for Video-to-Video (v2v) generation using SkyReels-V2 with diffusion forcing.
+    Pipeline for Text-to-Video (t2v) generation using SkyReels-V2 with diffusion forcing.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a specific device, etc.).
@@ -447,8 +446,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        video: List[Image.Image] = None,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, List[str]],
         negative_prompt: Union[str, List[str]] = None,
         height: int = 480,
         width: int = 832,
@@ -561,18 +559,12 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        height = height or self.transformer.config.sample_height * self.vae_scale_factor_spatial
-        width = width or self.transformer.config.sample_width * self.vae_scale_factor_spatial
-        num_videos_per_prompt = 1
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             negative_prompt,
             height,
             width,
-            video,
-            latents,
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
@@ -634,11 +626,6 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
         fps_embeds = [fps] * prompt_embeds.shape[0]
         fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
 
-        if latents is None:
-            video = self.video_processor.preprocess_video(video, height=height, width=width).to(
-                device, dtype=torch.float32
-            )
-
         if overlap_history is None or base_num_frames is None or num_frames <= base_num_frames:
             # Short video generation
             # 4. Prepare sample schedulers and timestep matrix
@@ -655,7 +642,6 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
             # 5. Prepare latent variables
             num_channels_latents = self.transformer.config.in_channels
             latents = self.prepare_latents(
-                video,
                 batch_size * num_videos_per_prompt,
                 num_channels_latents,
                 height,
@@ -665,7 +651,6 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
                 device,
                 generator,
                 latents,
-                latent_timestep,
             )
 
             # 6. Denoising loop

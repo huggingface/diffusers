@@ -506,7 +506,12 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.blocks:
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask if self.config.flag_causal_attention else None
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    causal_mask if self.config.flag_causal_attention else None,
                 )
         if self.config.inject_sample_info:
             fps = torch.tensor(fps, dtype=torch.long, device=hidden_states.device)
@@ -531,7 +536,13 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             timestep_proj = timestep_proj.transpose(1, 2).contiguous()
 
         for block in self.blocks:
-            hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, causal_mask if self.config.flag_causal_attention else None)
+            hidden_states = block(
+                hidden_states,
+                encoder_hidden_states,
+                timestep_proj,
+                rotary_emb,
+                causal_mask if self.config.flag_causal_attention else None,
+            )
 
         # 5. Output norm, projection & unpatchify
         if temb.dim() == 2:

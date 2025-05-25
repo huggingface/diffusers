@@ -7,7 +7,7 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, CLIPVisionModelWithProjection, UMT5EncoderModel, AutoTokenizer
+from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
@@ -454,7 +454,8 @@ if __name__ == "__main__":
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     scheduler = FlowMatchUniPCMultistepScheduler(
-        prediction_type="flow_prediction", num_train_timesteps=1000,
+        prediction_type="flow_prediction",
+        num_train_timesteps=1000,
     )
 
     if "I2V" in args.model_type:
