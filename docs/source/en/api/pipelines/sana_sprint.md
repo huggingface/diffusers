@@ -89,6 +89,7 @@ image.save("sana.png")
 Users can tweak the `max_timesteps` value for experimenting with the visual quality of the generated outputs. The default `max_timesteps` value was obtained with an inference-time search process. For more details about it, check out the paper.
 
 ## Image to Image 
+
 The [`SanaSprintImg2ImgPipeline`] is a pipeline for image-to-image generation. It takes an input image and a prompt, and generates a new image based on the input image and the prompt.
 
 ```py
@@ -105,9 +106,13 @@ pipe = SanaSprintImg2ImgPipeline.from_pretrained(
     torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
-image = pipe(prompt="a cute pink bear", 
-             image=image, 
-             strength=0.5, height=832, width=480).images[0]
+image = pipe(
+    prompt="a cute pink bear", 
+    image=image, 
+    strength=0.5, 
+    height=832, 
+    width=480
+).images[0]
 image[0].save("output.png")
 ```
 
