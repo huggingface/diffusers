@@ -136,7 +136,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "text_dim": 4096,
             },
         }
-    elif model_type == "SkyReelsV2-I2V-14B-720p":
+    elif model_type == "SkyReels-V2-I2V-14B-720p":
         config = {
             "model_id": "StevenZhang/Wan2.1-I2V-14B-720P-Diff",
             "diffusers_config": {
@@ -188,13 +188,13 @@ def convert_transformer(model_type: str):
 
     if model_type == "SkyReels-V2-DF-1.3B-540P":
         original_state_dict = load_file(hf_hub_download(model_id, "model.safetensors"))
-    elif model_type in ["SkyReels-V2-DF-14B-720P", "SkyReelsV2-DF-14B-540P"]:
+    elif model_type in ["SkyReels-V2-DF-14B-720P", "SkyReels-V2-DF-14B-540P"]:
         os.makedirs(model_type, exist_ok=True)
         model_dir = pathlib.Path(model_type)
         if model_type == "SkyReels-V2-DF-14B-720P":
             top_shard = 6
             model_name = "diffusion_pytorch_model"
-        elif model_type == "SkyReelsV2-DF-14B-540P":
+        elif model_type == "SkyReels-V2-DF-14B-540P":
             top_shard = 12
             model_name = "model"
 
