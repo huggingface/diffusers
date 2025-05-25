@@ -116,9 +116,9 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "text_dim": 4096,
             },
         }
-    elif model_type == "SkyReelsV2-DF-14B-540P":
+    elif model_type == "SkyReels-V2-DF-14B-540P":
         config = {
-            "model_id": "Skywork/SkyReelsV2-DF-14B-540P",
+            "model_id": "Skywork/SkyReels-V2-DF-14B-540P",
             "diffusers_config": {
                 "added_kv_proj_dim": None,
                 "attention_head_dim": 128,
