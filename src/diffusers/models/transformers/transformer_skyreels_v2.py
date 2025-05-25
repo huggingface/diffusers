@@ -18,7 +18,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.attention.flex_attention import BlockMask, create_block_mask
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
@@ -323,7 +322,7 @@ class SkyReelsV2TransformerBlock(nn.Module):
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
-        return hidden_states  # TODO: check .to(torch.bfloat16)
+        return hidden_states
 
     def set_ar_attention(self):
         self.attn1.processor.set_ar_attention()
@@ -580,40 +579,3 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         self.register_to_config(num_frame_per_block=causal_block_size, flag_causal_attention=True)
         for block in self.blocks:
             block.set_ar_attention()
-
-    @staticmethod
-    def _prepare_blockwise_causal_attn_mask(
-        device: Union[torch.device, str], num_frames: int = 21, frame_seqlen: int = 1560, num_frame_per_block=1
-    ) -> BlockMask:
-        """
-        we will divide the token sequence into the following format [1 latent frame] [1 latent frame] ... [1 latent
-        frame] We use flexattention to construct the attention mask
-        """
-        total_length = num_frames * frame_seqlen
-
-        # we do right padding to get to a multiple of 128
-        padded_length = math.ceil(total_length / 128) * 128 - total_length
-
-        ends = torch.zeros(total_length + padded_length, device=device, dtype=torch.long)
-
-        # Block-wise causal mask will attend to all elements that are before the end of the current chunk
-        frame_indices = torch.arange(start=0, end=total_length, step=frame_seqlen * num_frame_per_block, device=device)
-
-        for tmp in frame_indices:
-            ends[tmp : tmp + frame_seqlen * num_frame_per_block] = tmp + frame_seqlen * num_frame_per_block
-
-        def attention_mask(b, h, q_idx, kv_idx):
-            return (kv_idx < ends[q_idx]) | (q_idx == kv_idx)
-            # return ((kv_idx < total_length) & (q_idx < total_length))  | (q_idx == kv_idx) # bidirectional mask
-
-        block_mask = create_block_mask(
-            attention_mask,
-            B=None,
-            H=None,
-            Q_LEN=total_length + padded_length,
-            KV_LEN=total_length + padded_length,
-            _compile=False,
-            device=device,
-        )
-
-        return block_mask
