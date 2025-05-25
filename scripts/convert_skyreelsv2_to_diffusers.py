@@ -191,9 +191,15 @@ def convert_transformer(model_type: str):
     elif model_type in ["SkyReels-V2-DF-14B-720P", "SkyReelsV2-DF-14B-540P"]:
         os.makedirs(model_type, exist_ok=True)
         model_dir = pathlib.Path(model_type)
-        top_shard = 6 if model_type == "SkyReels-V2-DF-14B-720P" else 12
+        if model_type == "SkyReels-V2-DF-14B-720P":
+            top_shard = 6
+            model_name = "diffusion_pytorch_model"
+        elif model_type == "SkyReelsV2-DF-14B-540P":
+            top_shard = 12
+            model_name = "model"
+
         for i in range(1, top_shard + 1):
-            shard_path = f"diffusion_pytorch_model-{i:05d}-of-000{top_shard}.safetensors"
+            shard_path = f"{model_name}-{i:05d}-of-000{top_shard}.safetensors"
             hf_hub_download(model_id, shard_path, local_dir=model_dir)
         original_state_dict = load_sharded_safetensors(model_dir)
 
