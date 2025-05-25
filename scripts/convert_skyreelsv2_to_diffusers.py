@@ -12,10 +12,10 @@ from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjec
 from diffusers import (
     AutoencoderKLWan,
     FlowMatchUniPCMultistepScheduler,
+    SkyReelsV2DiffusionForcingPipeline,
+    SkyReelsV2ImageToVideoPipeline,
     SkyReelsV2Transformer3DModel,
 )
-from diffusers.pipelines import SkyReelsV2DiffusionForcingPipeline
-from diffusers.utils.dummy_torch_and_transformers_objects import SkyReelsV2ImageToVideoPipeline
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
@@ -137,48 +137,6 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
-            },
-        }
-    elif model_type == "SkyReels-V2-I2V-14B-720p":
-        config = {
-            "model_id": "StevenZhang/Wan2.1-I2V-14B-720P-Diff",
-            "diffusers_config": {
-                "image_dim": 1280,
-                "added_kv_proj_dim": 5120,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 13824,
-                "freq_dim": 256,
-                "in_channels": 36,
-                "num_attention_heads": 40,
-                "num_layers": 40,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-            },
-        }
-    elif model_type == "Wan-FLF2V-14B-720P":
-        config = {
-            "model_id": "ypyp/Wan2.1-FLF2V-14B-720P",  # This is just a placeholder
-            "diffusers_config": {
-                "image_dim": 1280,
-                "added_kv_proj_dim": 5120,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 13824,
-                "freq_dim": 256,
-                "in_channels": 36,
-                "num_attention_heads": 40,
-                "num_layers": 40,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-                "rope_max_seq_len": 1024,
-                "pos_embed_seq_len": 257 * 2,
             },
         }
     return config
