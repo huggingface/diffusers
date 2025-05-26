@@ -42,7 +42,12 @@ jobs:
           CHANGED_FILES: ${{ steps.file_changes.outputs.all }}
         run: |
           echo "$CHANGED_FILES"
-          for FILE in $CHANGED_FILES; do            
+          for FILE in $CHANGED_FILES; do 
+            # skip anything that isn't still on disk
+            if [[ ! -f "$FILE" ]]; then
+              echo "Skipping removed file $FILE"
+              continue
+            fi           
             if [[ "$FILE" == docker/*Dockerfile ]]; then
               DOCKER_PATH="${FILE%/Dockerfile}"
               DOCKER_TAG=$(basename "$DOCKER_PATH")
