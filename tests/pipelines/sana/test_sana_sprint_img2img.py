@@ -120,7 +120,7 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             num_attention_heads=2,
             num_hidden_layers=1,
             num_key_value_heads=2,
-            vocab_size=8,
+            vocab_size=1000,
             attn_implementation="eager",
         )
         text_encoder = Gemma2Model(text_encoder_config)
