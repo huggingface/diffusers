@@ -390,18 +390,23 @@ class Kandinsky3ConditionalGroupNorm(nn.Module):
     def __init__(self, groups, normalized_shape, context_dim):
         super().__init__()
         self.norm = nn.GroupNorm(groups, normalized_shape, affine=False)
-        self.context_mlp = nn.Sequential(nn.SiLU(), nn.Linear(context_dim, 2 * normalized_shape))
+        self.context_mlp = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(context_dim, 2 * normalized_shape)
+        )
         self.context_mlp[1].weight.data.zero_()
         self.context_mlp[1].bias.data.zero_()
 
     def forward(self, x, context):
-        context = self.context_mlp(context)
-
-        for _ in range(len(x.shape[2:])):
-            context = context.unsqueeze(-1)
-
-        scale, shift = context.chunk(2, dim=1)
-        x = self.norm(x) * (scale + 1.0) + shift
+        context_out = self.context_mlp(context)
+        # Expand context_out for broadcasting in a single reshape
+        # context_out: (B, 2*C) --> (B, 2*C, 1, 1, ..., 1) for broadcasting
+        # Target shape: [batch, 2*C] + [1] * (ndim - 2)
+        target_shape = list(context_out.shape) + [1] * (x.dim() - 2)
+        context_out = context_out.view(*target_shape)
+        scale, shift = context_out.chunk(2, dim=1)
+        x = self.norm(x)
+        x = x * (scale + 1.0) + shift
         return x
 
 
