@@ -12,6 +12,7 @@ from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
     GGUFQuantizationConfig,
+    HiDreamImageTransformer2DModel,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
 )
@@ -549,3 +550,30 @@ class FluxControlLoRAGGUFTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3)
+
+
+class HiDreamGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+    ckpt_path = "https://huggingface.co/city96/HiDream-I1-Dev-gguf/blob/main/hidream-i1-dev-Q2_K.gguf"
+    torch_dtype = torch.bfloat16
+    model_cls = HiDreamImageTransformer2DModel
+    expected_memory_use_in_gb = 8
+
+    def get_dummy_inputs(self):
+        return {
+            "hidden_states": torch.randn((1, 16, 128, 128), generator=torch.Generator("cpu").manual_seed(0)).to(
+                torch_device, self.torch_dtype
+            ),
+            "encoder_hidden_states_t5": torch.randn(
+                (1, 128, 4096),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "encoder_hidden_states_llama3": torch.randn(
+                (32, 1, 128, 4096),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "pooled_embeds": torch.randn(
+                (1, 2048),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "timesteps": torch.tensor([1]).to(torch_device, self.torch_dtype),
+        }

@@ -1,6 +1,6 @@
 # DreamBooth training example for Lumina2
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
+[DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
 
 The `train_dreambooth_lora_lumina2.py` script shows how to implement the training procedure with [LoRA](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) and adapt it for [Lumina2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/lumina2). 
 
@@ -113,7 +113,7 @@ To better track our training experiments, we're using the following flags in the
 
 Additionally, we welcome you to explore the following CLI arguments:
 
-* `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
+* `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
 * `--system_prompt`: A custom system prompt to provide additional personality to the model.
 * `--max_sequence_length`: Maximum sequence length to use for text embeddings.
 
