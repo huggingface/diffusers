@@ -120,7 +120,7 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             num_attention_heads=2,
             num_hidden_layers=1,
             num_key_value_heads=2,
-            vocab_size=1000,
+            vocab_size=8,
             attn_implementation="eager",
         )
         text_encoder = Gemma2Model(text_encoder_config)
@@ -169,6 +169,9 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         generated_image = image[0]
 
         self.assertEqual(generated_image.shape, (3, 32, 32))
+        expected_image = torch.randn(3, 32, 32)
+        max_diff = np.abs(generated_image - expected_image).max()
+        self.assertLessEqual(max_diff, 1e10)
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
