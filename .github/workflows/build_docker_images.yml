@@ -38,8 +38,10 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Changed Docker Images
+        env: 
+          CHANGED_FILES: ${{ steps.file_changes.outputs.all }}
         run: |
-          CHANGED_FILES="${{ steps.file_changes.outputs.all }}"
+          echo "$CHANGED_FILES"
           for FILE in $CHANGED_FILES; do            
             if [[ "$FILE" == docker/*Dockerfile ]]; then
               DOCKER_PATH="${FILE%/Dockerfile}"
