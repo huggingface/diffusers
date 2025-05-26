@@ -38,7 +38,7 @@ except (ImportError, ModuleNotFoundError):
 def randn_tensor(
     shape: Union[Tuple, List],
     generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
-    device: Optional["torch.device"] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
     dtype: Optional["torch.dtype"] = None,
     layout: Optional["torch.layout"] = None,
 ):
@@ -47,6 +47,8 @@ def randn_tensor(
     is always created on the CPU.
     """
     # device on which tensor is created defaults to device
+    if isinstance(device, str):
+        device = torch.device(device)
     rand_device = device
     batch_size = shape[0]
 
@@ -91,7 +93,7 @@ def is_compiled_module(module) -> bool:
 
 
 def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.Tensor":
-    """Fourier filter as introduced in FreeU (https://arxiv.org/abs/2309.11497).
+    """Fourier filter as introduced in FreeU (https://huggingface.co/papers/2309.11497).
 
     This version of the method comes from here:
     https://github.com/huggingface/diffusers/pull/5164#issuecomment-1732638706
