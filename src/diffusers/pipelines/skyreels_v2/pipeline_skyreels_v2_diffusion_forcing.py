@@ -49,17 +49,37 @@ EXAMPLE_DOC_STRING = """\
     Examples:
         ```py
         >>> import torch
-        >>> import PIL.Image
-        >>> from diffusers import SkyReelsV2DiffusionForcingPipeline
-        >>> from diffusers.utils import export_to_video, load_image
+        >>> from diffusers import SkyReelsV2DiffusionForcingPipeline, AutoencoderKLWan
+        >>> from diffusers.utils import export_to_video
 
         >>> # Load the pipeline
+        >>> vae = AutoencoderKLWan.from_pretrained(
+        ...     "<Official_HF_placeholder>/SkyReels-V2-DF-1.3B-540P-Diffusers",
+        ...     torch_dtype=torch.float32,
+        ...     subfolder="vae"
+        ... )
         >>> pipe = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
-        ...     "HF_placeholder/SkyReels-V2-DF-1.3B-540P", torch_dtype=torch.float16
+        ...     "<Official_HF_placeholder>/SkyReels-V2-DF-1.3B-540P-Diffusers",
+        ...     torch_dtype=torch.bfloat16,
         ... )
         >>> pipe = pipe.to("cuda")
+        >>> pipe.transformer.set_ar_attention(causal_block_size=5)
 
-        >>> # TODO
+        >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
+
+        >>> output = pipe(
+        ...     prompt=prompt,
+        ...     num_inference_steps=30,
+        ...     height=544,
+        ...     width=960,
+        ...     guidance_scale=6.0,
+        ...     num_frames=97,
+        ...     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
+        ...     generator=torch.Generator(device="cuda").manual_seed(0),
+        ...     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos
+        ...    addnoise_condition=20,  # Improves consistency in long video generation
+        ... ).frames[0]
+        >>> export_to_video(output, "video.mp4", fps=24, quality=8)
         ```
 """
 
