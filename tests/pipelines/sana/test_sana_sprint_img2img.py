@@ -142,7 +142,7 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
+            "prompt": "",
             "image": image,
             "strength": 0.5,
             "generator": generator,
