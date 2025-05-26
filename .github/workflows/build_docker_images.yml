@@ -38,15 +38,16 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Changed Docker Images
+        env: 
+          CHANGED_FILES: ${{ steps.file_changes.outputs.all }}
         run: |
-          CHANGED_FILES="${{ steps.file_changes.outputs.all }}"
-          for FILE in $CHANGED_FILES; do
-            # skip anything that isn’t still on disk
+          echo "$CHANGED_FILES"
+          for FILE in $CHANGED_FILES; do 
+            # skip anything that isn't still on disk
             if [[ ! -f "$FILE" ]]; then
               echo "Skipping removed file $FILE"
               continue
-            fi
-            
+            fi           
             if [[ "$FILE" == docker/*Dockerfile ]]; then
               DOCKER_PATH="${FILE%/Dockerfile}"
               DOCKER_TAG=$(basename "$DOCKER_PATH")
