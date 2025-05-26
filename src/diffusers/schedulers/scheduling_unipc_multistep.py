@@ -745,8 +745,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if len(D1s) > 0:
             D1s = torch.stack(D1s, dim=1)  # (B, K)
-            # for order 2, we use a simplified version
-            if order == 2:
+            # cannot solve a 1x1 matrix
+            if len(rks) == 1:
                 rhos_p = torch.tensor([0.5], dtype=x.dtype, device=device)
             else:
                 rhos_p = torch.linalg.solve(R[:-1, :-1], b[:-1]).to(device).to(x.dtype)
@@ -883,8 +883,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             D1s = None
 
-        # for order 1, we use a simplified version
-        if order == 1:
+        # cannot solve a 1x1 matrix
+        if len(rks) == 1:
             rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
         else:
             rhos_c = torch.linalg.solve(R, b).to(device).to(x.dtype)
