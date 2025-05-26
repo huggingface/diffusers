@@ -40,13 +40,7 @@ jobs:
       - name: Build Changed Docker Images
         run: |
           CHANGED_FILES="${{ steps.file_changes.outputs.all }}"
-          for FILE in $CHANGED_FILES; do
-            # skip anything that isn’t still on disk
-            if [[ ! -f "$FILE" ]]; then
-              echo "Skipping removed file $FILE"
-              continue
-            fi
-            
+          for FILE in $CHANGED_FILES; do            
             if [[ "$FILE" == docker/*Dockerfile ]]; then
               DOCKER_PATH="${FILE%/Dockerfile}"
               DOCKER_TAG=$(basename "$DOCKER_PATH")
