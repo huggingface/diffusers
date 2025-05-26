@@ -190,7 +190,7 @@ class AutoModel(ConfigMixin):
                 raise ValueError(f"Couldn't find model associated with the config file at {pretrained_model_or_path}.")
 
         from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
-        
+
         model_cls, _ = get_class_obj_and_candidates(
             library_name=library,
             class_name=orig_class_name,
