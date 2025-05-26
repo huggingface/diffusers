@@ -133,11 +133,11 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        image = torch.randn(1, 3, 32, 32, generator=generator)
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+        image = torch.randn(1, 3, 32, 32, generator=generator)
         inputs = {
             "prompt": "",
             "image": image,
