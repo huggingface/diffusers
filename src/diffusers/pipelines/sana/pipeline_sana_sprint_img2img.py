@@ -18,6 +18,7 @@ import re
 import urllib.parse as ul
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+import torch.nn.functional as F
 
 import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
@@ -579,14 +580,22 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
     def prepare_image(
         self,
-        image,
-        width,
-        height,
-        device,
-        dtype,
+        image: PipelineImageInput,
+        width: int,
+        height: int,
+        device: torch.device,
+        dtype: torch.dtype,
     ):
         if isinstance(image, torch.Tensor):
-            pass
+            if image.ndim == 3:
+                image = image.unsqueeze(0)
+            # Resize if current dimensions do not match target dimensions.
+            if image.shape[2] != height or image.shape[3] != width:
+                image = F.interpolate(image, size=(height, width), mode="bilinear",
+                                              align_corners=False)
+
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
         else:
             image = self.image_processor.preprocess(image, height=height, width=width)
 
