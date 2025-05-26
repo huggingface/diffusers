@@ -484,8 +484,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if self.config.flag_causal_attention:
             frame_num, height, width = grid_sizes
             block_num = frame_num // self.config.num_frame_per_block
-            range_tensor = torch.arange(block_num, device=hidden_states.device).view(-1, 1)
-            range_tensor = range_tensor.repeat(1, self.config.num_frame_per_block).flatten()
+            range_tensor = torch.arange(block_num, device=hidden_states.device).repeat_interleave(self.config.num_frame_per_block)
             causal_mask = range_tensor.unsqueeze(0) <= range_tensor.unsqueeze(1)  # f, f
             causal_mask = causal_mask.view(frame_num, 1, 1, frame_num, 1, 1)
             causal_mask = causal_mask.repeat(1, height, width, 1, height, width)
