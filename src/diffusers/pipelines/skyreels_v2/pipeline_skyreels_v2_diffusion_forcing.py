@@ -276,6 +276,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        overlap_history=None,
+        num_frames=None,
+        base_num_frames=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -307,6 +310,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+
+        if num_frames > base_num_frames:
+            if overlap_history is None:
+                raise ValueError('You are supposed to specify the "overlap_history" to support the long video generation. 17 and 37 are recommanded to set.')
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.prepare_latents
     def prepare_latents(
@@ -362,7 +369,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             min_ar_step = infer_step_num / gen_block
             if ar_step < min_ar_step:
                 raise ValueError(f"ar_step should be at least {math.ceil(min_ar_step)} in your setting")
-        # print(num_frames, step_template, base_num_frames, ar_step, num_pre_ready, causal_block_size, num_frames_block, base_num_frames_block)
+
         step_template = torch.cat(
             [
                 torch.tensor([999], dtype=torch.int64, device=step_template.device),
@@ -466,12 +473,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        overlap_history: Optional[int] = 17,
+        overlap_history: Optional[int] = None,
         shift: float = 8.0,
-        addnoise_condition: float = 20.0,
+        addnoise_condition: float = 0,
         base_num_frames: int = 97,
-        ar_step: int = 5,
-        causal_block_size: Optional[int] = 5,
+        ar_step: int = 0,
+        causal_block_size: Optional[int] = 1,
         fps: int = 24,
     ):
         r"""
@@ -537,13 +544,13 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             shift (`float`, *optional*, defaults to `8.0`):
             overlap_history (`int`, *optional*, defaults to `17`):
                 Number of frames to overlap for smooth transitions in long videos
-            addnoise_condition (`float`, *optional*, defaults to `20.0`):
+            addnoise_condition (`float`, *optional*, defaults to `0`):
                 Improves consistency in long video generation
             base_num_frames (`int`, *optional*, defaults to `97`):
                 97 or 121 | Base frame count (**97 for 540P**, **121 for 720P**)
-            ar_step (`int`, *optional*, defaults to `5`):
+            ar_step (`int`, *optional*, defaults to `0`):
                 Controls asynchronous inference (0 for synchronous mode)
-            causal_block_size (`int`, *optional*, defaults to `5`):
+            causal_block_size (`int`, *optional*, defaults to `1`):
                 Recommended when using asynchronous inference (--ar_step > 0)
             fps (`int`, *optional*, defaults to `24`):
 
@@ -568,7 +575,15 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
+            overlap_history,
+            num_frames,
+            base_num_frames,
         )
+
+        if addnoise_condition > 60:
+            logger.warning(
+                f'You have set "addnoise_condition" as {addnoise_condition}. The value is too large which can cause inconsistency in long video generation. The value is recommanded to set 20.'
+            )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
             logger.warning(
@@ -634,7 +649,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 sample_scheduler = FlowMatchUniPCMultistepScheduler.from_config(self.scheduler.config)
                 sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
-            sample_schedulers_counter = [0] * num_latent_frames
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                 num_latent_frames, timesteps, base_num_frames, ar_step, prefix_video_latents_length, causal_block_size
             )
@@ -712,7 +726,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 return_dict=False,
                                 generator=generator,
                             )[0]
-                            sample_schedulers_counter[idx] += 1
 
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
@@ -772,7 +785,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     sample_scheduler = FlowMatchUniPCMultistepScheduler.from_config(self.scheduler.config)
                     sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                     sample_schedulers.append(sample_scheduler)
-                sample_schedulers_counter = [0] * base_num_frames_iter
                 step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                     base_num_frames_iter,
                     timesteps,
@@ -857,7 +869,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                     return_dict=False,
                                     generator=generator,
                                 )[0]
-                                sample_schedulers_counter[idx] += 1
 
                         if callback_on_step_end is not None:
                             callback_kwargs = {}
