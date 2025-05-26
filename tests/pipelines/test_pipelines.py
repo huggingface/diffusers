@@ -538,38 +538,26 @@ class DownloadTests(unittest.TestCase):
             variant = "no_ema"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                if use_safetensors:
-                    with self.assertRaises(OSError) as error_context:
-                        tmpdirname = StableDiffusionPipeline.download(
-                            "hf-internal-testing/stable-diffusion-all-variants",
-                            cache_dir=tmpdirname,
-                            variant=variant,
-                            use_safetensors=use_safetensors,
-                        )
-                    assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
-                else:
-                    tmpdirname = StableDiffusionPipeline.download(
-                        "hf-internal-testing/stable-diffusion-all-variants",
-                        cache_dir=tmpdirname,
-                        variant=variant,
-                        use_safetensors=use_safetensors,
-                    )
-                    all_root_files = [t[-1] for t in os.walk(tmpdirname)]
-                    files = [item for sublist in all_root_files for item in sublist]
+                tmpdirname = StableDiffusionPipeline.download(
+                    "hf-internal-testing/stable-diffusion-all-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
+                )
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+                files = [item for sublist in all_root_files for item in sublist]
 
-                    unet_files = os.listdir(os.path.join(tmpdirname, "unet"))
+                unet_files = os.listdir(os.path.join(tmpdirname, "unet"))
 
-                    # Some of the downloaded files should be a non-variant file, check:
-                    # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
-                    assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
-                    # only unet has "no_ema" variant
-                    assert f"diffusion_pytorch_model.{variant}{this_format}" in unet_files
-                    assert len([f for f in files if f.endswith(f"{variant}{this_format}")]) == 1
-                    # vae, safety_checker and text_encoder should have no variant
-                    assert (
-                        sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
-                    )
-                    assert not any(f.endswith(other_format) for f in files)
+                # Some of the downloaded files should be a non-variant file, check:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                # only unet has "no_ema" variant
+                assert f"diffusion_pytorch_model.{variant}{this_format}" in unet_files
+                assert len([f for f in files if f.endswith(f"{variant}{this_format}")]) == 1
+                # vae, safety_checker and text_encoder should have no variant
+                assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
+                assert not any(f.endswith(other_format) for f in files)
 
     def test_download_variants_with_sharded_checkpoints(self):
         # Here we test for downloading of "variant" files belonging to the `unet` and
@@ -2006,7 +1994,9 @@ class PipelineSlowTests(unittest.TestCase):
         reason="Torch Dynamo isn't yet supported for Python 3.12.",
     )
     def test_from_save_pretrained_dynamo(self):
-        run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
+        torch.compiler.rest()
+        with torch._inductor.utils.fresh_inductor_cache():
+            run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
 
     def test_from_pretrained_hub(self):
         model_path = "google/ddpm-cifar10-32"
@@ -2218,7 +2208,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
         # there will be recompilation errors, as torch caches the model when run in the same process.
         super().tearDown()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -2343,21 +2333,21 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
     def test_hotswapping_compiled_pipline_linear(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_both_linear_and_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     def test_enable_lora_hotswap_called_after_adapter_added_raises(self):
