@@ -593,7 +593,7 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             if image.shape[2] != height or image.shape[3] != width:
                 image = F.interpolate(image, size=(height, width), mode="bilinear", align_corners=False)
 
-            # image = self.image_processor.preprocess(image, height=height, width=width)
+            image = self.image_processor.preprocess(image, height=height, width=width)
 
         else:
             image = self.image_processor.preprocess(image, height=height, width=width)
