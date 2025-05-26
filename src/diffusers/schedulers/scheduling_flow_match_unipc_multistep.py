@@ -25,7 +25,7 @@ from diffusers.utils import deprecate
 
 class FlowMatchUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    `FlowMatchUniPCMultistepScheduler` is a ...
+    `FlowMatchUniPCMultistepScheduler` is a flow matching version of the UniPCMultistepScheduler.
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
