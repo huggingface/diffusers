@@ -496,7 +496,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         addnoise_condition: float = 0,
         base_num_frames: int = 97,
         ar_step: int = 0,
-        causal_block_size: Optional[int] = 1,
+        causal_block_size: Optional[int] = None,
         fps: int = 24,
     ):
         r"""
@@ -568,7 +568,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 97 or 121 | Base frame count (**97 for 540P**, **121 for 720P**)
             ar_step (`int`, *optional*, defaults to `0`):
                 Controls asynchronous inference (0 for synchronous mode)
-            causal_block_size (`int`, *optional*, defaults to `1`):
+            causal_block_size (`int`, *optional*, defaults to `None`):
                 Recommended when using asynchronous inference (--ar_step > 0)
             fps (`int`, *optional*, defaults to `24`):
 
