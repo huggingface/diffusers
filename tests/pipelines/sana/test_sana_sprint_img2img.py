@@ -142,7 +142,7 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "prompt": "",
+            "prompt": "A painting of a squirrel eating a burger",
             "image": image,
             "strength": 0.5,
             "generator": generator,
@@ -169,9 +169,6 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         generated_image = image[0]
 
         self.assertEqual(generated_image.shape, (3, 32, 32))
-        expected_image = torch.randn(3, 32, 32)
-        max_diff = np.abs(generated_image - expected_image).max()
-        self.assertLessEqual(max_diff, 1e10)
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
