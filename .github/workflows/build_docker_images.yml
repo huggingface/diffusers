@@ -38,8 +38,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Changed Docker Images
+        env:
+          CHANGED_FILES:  "${{ steps.file_changes.outputs.all }}"
         run: |
-          CHANGED_FILES="${{ steps.file_changes.outputs.all }}"
           for FILE in $CHANGED_FILES; do
             # skip anything that isn’t still on disk
             if [[ ! -f "$FILE" ]]; then
