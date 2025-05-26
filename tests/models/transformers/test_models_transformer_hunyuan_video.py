@@ -19,16 +19,20 @@ import torch
 from diffusers import HunyuanVideoTransformer3DModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    is_torch_compile,
+    require_torch_2,
+    require_torch_gpu,
+    slow,
     torch_device,
 )
 
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class HunyuanVideoTransformer3DTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
+class HunyuanVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -92,8 +96,23 @@ class HunyuanVideoTransformer3DTests(ModelTesterMixin, TorchCompileTesterMixin, 
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    @require_torch_gpu
+    @require_torch_2
+    @is_torch_compile
+    @slow
+    def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
+
+class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -160,8 +179,23 @@ class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, TorchCompi
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    @require_torch_gpu
+    @require_torch_2
+    @is_torch_compile
+    @slow
+    def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
+
+class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -226,10 +260,23 @@ class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, TorchCompileT
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    @require_torch_gpu
+    @require_torch_2
+    @is_torch_compile
+    @slow
+    def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(
-    ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase
-):
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
+
+class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -295,3 +342,18 @@ class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    @require_torch_gpu
+    @require_torch_2
+    @is_torch_compile
+    @slow
+    def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)

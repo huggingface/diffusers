@@ -1111,14 +1111,14 @@ class PipelineTesterMixin:
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        torch.compiler.reset()
+        torch._dynamo.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
-        torch.compiler.reset()
+        torch._dynamo.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
