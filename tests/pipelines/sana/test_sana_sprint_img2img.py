@@ -40,7 +40,11 @@ enable_full_determinism()
 
 class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = SanaSprintImg2ImgPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"cross_attention_kwargs", "negative_prompt", "negative_prompt_embeds"}
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
+        "cross_attention_kwargs",
+        "negative_prompt",
+        "negative_prompt_embeds",
+    }
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS - {"negative_prompt"}
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS - {"negative_prompt"}
     image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
