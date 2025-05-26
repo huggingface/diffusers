@@ -538,26 +538,38 @@ class DownloadTests(unittest.TestCase):
             variant = "no_ema"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                tmpdirname = StableDiffusionPipeline.download(
-                    "hf-internal-testing/stable-diffusion-all-variants",
-                    cache_dir=tmpdirname,
-                    variant=variant,
-                    use_safetensors=use_safetensors,
-                )
-                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
-                files = [item for sublist in all_root_files for item in sublist]
+                if use_safetensors:
+                    with self.assertRaises(OSError) as error_context:
+                        tmpdirname = StableDiffusionPipeline.download(
+                            "hf-internal-testing/stable-diffusion-all-variants",
+                            cache_dir=tmpdirname,
+                            variant=variant,
+                            use_safetensors=use_safetensors,
+                        )
+                    assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
+                else:
+                    tmpdirname = StableDiffusionPipeline.download(
+                        "hf-internal-testing/stable-diffusion-all-variants",
+                        cache_dir=tmpdirname,
+                        variant=variant,
+                        use_safetensors=use_safetensors,
+                    )
+                    all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+                    files = [item for sublist in all_root_files for item in sublist]
 
-                unet_files = os.listdir(os.path.join(tmpdirname, "unet"))
+                    unet_files = os.listdir(os.path.join(tmpdirname, "unet"))
 
-                # Some of the downloaded files should be a non-variant file, check:
-                # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
-                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
-                # only unet has "no_ema" variant
-                assert f"diffusion_pytorch_model.{variant}{this_format}" in unet_files
-                assert len([f for f in files if f.endswith(f"{variant}{this_format}")]) == 1
-                # vae, safety_checker and text_encoder should have no variant
-                assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
-                assert not any(f.endswith(other_format) for f in files)
+                    # Some of the downloaded files should be a non-variant file, check:
+                    # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
+                    assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                    # only unet has "no_ema" variant
+                    assert f"diffusion_pytorch_model.{variant}{this_format}" in unet_files
+                    assert len([f for f in files if f.endswith(f"{variant}{this_format}")]) == 1
+                    # vae, safety_checker and text_encoder should have no variant
+                    assert (
+                        sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
+                    )
+                    assert not any(f.endswith(other_format) for f in files)
 
     def test_download_variants_with_sharded_checkpoints(self):
         # Here we test for downloading of "variant" files belonging to the `unet` and
@@ -588,20 +600,17 @@ class DownloadTests(unittest.TestCase):
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         deprecated_warning_msg = "Warning: The repository contains sharded checkpoints for variant"
 
-        for is_local in [True, False]:
-            with CaptureLogger(logger) as cap_logger:
-                with tempfile.TemporaryDirectory() as tmpdirname:
-                    local_repo_id = repo_id
-                    if is_local:
-                        local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
+        with CaptureLogger(logger) as cap_logger:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
 
-                    _ = DiffusionPipeline.from_pretrained(
-                        local_repo_id,
-                        safety_checker=None,
-                        variant="fp16",
-                        use_safetensors=True,
-                    )
-            assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
+                _ = DiffusionPipeline.from_pretrained(
+                    local_repo_id,
+                    safety_checker=None,
+                    variant="fp16",
+                    use_safetensors=True,
+                )
+        assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
 
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None
@@ -616,7 +625,7 @@ class DownloadTests(unittest.TestCase):
                     variant=variant,
                     use_safetensors=use_safetensors,
                 )
-            assert "Error no file name" in str(error_context.exception)
+            assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
 
         # text encoder has fp16 variants so we can load it
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -675,7 +684,7 @@ class DownloadTests(unittest.TestCase):
                     use_safetensors=use_safetensors,
                 )
 
-            assert "Error no file name" in str(error_context.exception)
+            assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
 
     def test_download_bin_variant_does_not_exist_for_model(self):
         variant = "no_ema"
