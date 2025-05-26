@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """\
         >>> vae = AutoencoderKLWan.from_pretrained(
         ...     "<Official_HF_placeholder>/SkyReels-V2-DF-1.3B-540P-Diffusers",
         ...     torch_dtype=torch.float32,
-        ...     subfolder="vae"
+        ...     subfolder="vae",
         ... )
         >>> pipe = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
         ...     "<Official_HF_placeholder>/SkyReels-V2-DF-1.3B-540P-Diffusers",
@@ -77,7 +77,7 @@ EXAMPLE_DOC_STRING = """\
         ...     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
         ...     generator=torch.Generator(device="cuda").manual_seed(0),
         ...     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos
-        ...    addnoise_condition=20,  # Improves consistency in long video generation
+        ...     addnoise_condition=20,  # Improves consistency in long video generation
         ... ).frames[0]
         >>> export_to_video(output, "video.mp4", fps=24, quality=8)
         ```
@@ -286,7 +286,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -331,9 +330,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
-        if num_frames > base_num_frames:
-            if overlap_history is None:
-                raise ValueError('You are supposed to specify the "overlap_history" to support the long video generation. 17 and 37 are recommanded to set.')
+        if num_frames > base_num_frames and overlap_history is None:
+            raise ValueError(
+                'You are supposed to specify the "overlap_history" to support the long video generation. 17 and 37 are recommanded to set.'
+            )
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.prepare_latents
     def prepare_latents(

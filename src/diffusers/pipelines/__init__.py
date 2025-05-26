@@ -368,10 +368,10 @@ else:
     ]
     _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline"]
     _import_structure["skyreels_v2"] = [
-            "SkyReelsV2DiffusionForcingPipeline",
-            "SkyReelsV2DiffusionForcingImageToVideoPipeline",
-            "SkyReelsV2ImageToVideoPipeline",
-            "SkyReelsV2Pipeline",
+        "SkyReelsV2DiffusionForcingPipeline",
+        "SkyReelsV2DiffusionForcingImageToVideoPipeline",
+        "SkyReelsV2ImageToVideoPipeline",
+        "SkyReelsV2Pipeline",
     ]
 try:
     if not is_onnx_available():
