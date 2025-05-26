@@ -1748,14 +1748,14 @@ class TorchCompileTesterMixin:
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1764,13 +1764,17 @@ class TorchCompileTesterMixin:
     @is_torch_compile
     @slow
     def test_torch_compile_recompilation_and_graph_break(self):
-        torch._dynamo.reset()
+        torch.compiler.reset()
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict).to(torch_device)
         model = torch.compile(model, fullgraph=True)
 
-        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(error_on_recompile=True),
+            torch.no_grad(),
+        ):
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
@@ -1798,7 +1802,7 @@ class LoraHotSwappingForModelTesterMixin:
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
         # there will be recompilation errors, as torch caches the model when run in the same process.
         super().tearDown()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1915,7 +1919,7 @@ class LoraHotSwappingForModelTesterMixin:
     def test_hotswapping_compiled_model_linear(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
@@ -1925,7 +1929,7 @@ class LoraHotSwappingForModelTesterMixin:
 
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
@@ -1935,7 +1939,7 @@ class LoraHotSwappingForModelTesterMixin:
 
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa

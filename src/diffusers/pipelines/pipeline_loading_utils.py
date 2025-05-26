@@ -146,21 +146,27 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
         components[component].append(component_filename)
 
     # If there are no component folders check the main directory for safetensors files
+    filtered_filenames = set()
     if not components:
         if variant is not None:
             filtered_filenames = filter_with_regex(filenames, variant_file_re)
-        else:
+
+        # If no variant filenames exist check if non-variant files are available
+        if not filtered_filenames:
             filtered_filenames = filter_with_regex(filenames, non_variant_file_re)
         return any(".safetensors" in filename for filename in filtered_filenames)
 
     # iterate over all files of a component
     # check if safetensor files exist for that component
-    # if variant is provided check if the variant of the safetensors exists
     for component, component_filenames in components.items():
         matches = []
+        filtered_component_filenames = set()
+        # if variant is provided check if the variant of the safetensors exists
         if variant is not None:
             filtered_component_filenames = filter_with_regex(component_filenames, variant_file_re)
-        else:
+
+        # if variant safetensor files do not exist check for non-variants
+        if not filtered_component_filenames:
             filtered_component_filenames = filter_with_regex(component_filenames, non_variant_file_re)
         for component_filename in filtered_component_filenames:
             filename, extension = os.path.splitext(component_filename)
