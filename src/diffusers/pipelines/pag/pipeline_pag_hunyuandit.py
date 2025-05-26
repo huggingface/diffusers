@@ -216,10 +216,10 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         pag_applied_layers: Union[str, List[str]] = "blocks.1",  # "blocks.16.attn1", "blocks.16", "16", 16
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._guidance_rescale=0.0
-        self._num_timesteps=0
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._guidance_rescale = 0.0
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,

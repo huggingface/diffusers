@@ -191,11 +191,11 @@ class KolorsPAGPipeline(
         pag_applied_layers: Union[str, List[str]] = "mid",
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._cross_attention_kwargs=None
-        self._denoising_end=None
-        self._num_timesteps=0
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._cross_attention_kwargs = None
+        self._denoising_end = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,

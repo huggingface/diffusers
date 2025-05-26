@@ -126,11 +126,11 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._num_timesteps=0
-        self._current_timestep=None
-        self._interrupt=False
-        self._attention_kwargs=None
+        self._guidance_scale = 1.0
+        self._num_timesteps = 0
+        self._current_timestep = None
+        self._interrupt = False
+        self._attention_kwargs = None
 
         self.register_modules(
             vae=vae,

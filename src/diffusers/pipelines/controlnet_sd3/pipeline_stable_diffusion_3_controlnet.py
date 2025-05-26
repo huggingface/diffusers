@@ -206,10 +206,10 @@ class StableDiffusion3ControlNetPipeline(
         feature_extractor: Optional[SiglipImageProcessor] = None,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._joint_attention_kwargs=None
-        self._num_timesteps=0
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._joint_attention_kwargs = None
+        self._num_timesteps = 0
+        self._interrupt = False
         if isinstance(controlnet, (list, tuple)):
             controlnet = SD3MultiControlNetModel(controlnet)
         if isinstance(controlnet, SD3MultiControlNetModel):

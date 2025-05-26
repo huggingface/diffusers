@@ -262,10 +262,10 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._cross_attention_kwargs=None
-        self._num_timesteps=0
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._cross_attention_kwargs = None
+        self._num_timesteps = 0
+        self._interrupt = False
         if isinstance(unet, UNet2DConditionModel):
             unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
 

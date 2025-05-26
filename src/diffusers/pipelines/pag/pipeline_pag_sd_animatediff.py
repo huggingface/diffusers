@@ -143,9 +143,9 @@ class AnimateDiffPAGPipeline(
         pag_applied_layers: Union[str, List[str]] = "mid_block.*attn1",  # ["mid"], ["down_blocks.1"]
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._cross_attention_kwargs=None
-        self._num_timesteps=0
+        self._guidance_scale = 1.0
+        self._cross_attention_kwargs = None
+        self._num_timesteps = 0
         if isinstance(unet, UNet2DConditionModel):
             unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
 

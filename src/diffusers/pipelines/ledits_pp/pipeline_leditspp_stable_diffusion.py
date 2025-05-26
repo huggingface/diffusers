@@ -315,8 +315,8 @@ class LEditsPPPipelineStableDiffusion(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        self._guidance_rescale=0.0
-        self._cross_attention_kwargs=None
+        self._guidance_rescale = 0.0
+        self._cross_attention_kwargs = None
 
         if not isinstance(scheduler, DDIMScheduler) and not isinstance(scheduler, DPMSolverMultistepScheduler):
             scheduler = DPMSolverMultistepScheduler.from_config(

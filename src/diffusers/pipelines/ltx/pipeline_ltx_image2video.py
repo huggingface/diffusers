@@ -196,11 +196,11 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         transformer: LTXVideoTransformer3DModel,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._num_timesteps=0
-        self._current_timestep=None
-        self._attention_kwargs=None
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._num_timesteps = 0
+        self._current_timestep = None
+        self._attention_kwargs = None
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,

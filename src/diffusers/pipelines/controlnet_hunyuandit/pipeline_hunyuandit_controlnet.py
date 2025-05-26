@@ -237,10 +237,10 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._guidance_rescale=0.0
-        self._num_timesteps=0
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._guidance_rescale = 0.0
+        self._num_timesteps = 0
+        self._interrupt = False
         if isinstance(controlnet, (list, tuple)):
             controlnet = HunyuanDiT2DMultiControlNetModel(controlnet)
 

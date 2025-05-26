@@ -239,10 +239,10 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         image_encoder: Optional[CLIPVisionModelWithProjection] = None,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._cross_attention_kwargs=None
-        self._num_timesteps=0
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._cross_attention_kwargs = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         if not isinstance(controlnet, ControlNetUnionModel):
             raise ValueError("Expected `controlnet` to be of type `ControlNetUnionModel`.")

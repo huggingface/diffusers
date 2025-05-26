@@ -170,11 +170,11 @@ class CogView4ControlPipeline(DiffusionPipeline):
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._num_timesteps=0
-        self._attention_kwargs=None
-        self._current_timestep=None
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._num_timesteps = 0
+        self._attention_kwargs = None
+        self._current_timestep = None
+        self._interrupt = False
 
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler

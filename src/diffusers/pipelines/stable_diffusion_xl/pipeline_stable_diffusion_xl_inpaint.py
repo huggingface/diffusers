@@ -307,13 +307,13 @@ class StableDiffusionXLInpaintPipeline(
         add_watermarker: Optional[bool] = None,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._guidance_rescale=0.0
-        self._cross_attention_kwargs=None
-        self._denoising_end=None
-        self._denoising_start=None
-        self._num_timesteps=0
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._guidance_rescale = 0.0
+        self._cross_attention_kwargs = None
+        self._denoising_end = None
+        self._denoising_start = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,

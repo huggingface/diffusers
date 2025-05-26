@@ -223,10 +223,10 @@ class StableDiffusionControlNetPipeline(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        self._guidance_scale=1.0
-        self._cross_attention_kwargs=None
-        self._num_timesteps=0
-        self._interrupt=False
+        self._guidance_scale = 1.0
+        self._cross_attention_kwargs = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
