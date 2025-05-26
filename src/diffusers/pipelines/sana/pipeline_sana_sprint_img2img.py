@@ -860,7 +860,8 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
                 f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
             )
-        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        #latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        latent_timestep = timesteps[:1]
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
