@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-import random
 import unittest
 
 import numpy as np
@@ -23,7 +22,6 @@ from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 from diffusers import AutoencoderDC, SanaSprintImg2ImgPipeline, SanaTransformer2DModel, SCMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    floats_tensor,
     torch_device,
 )
 
@@ -41,12 +39,11 @@ enable_full_determinism()
 class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = SanaSprintImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
-        "cross_attention_kwargs",
         "negative_prompt",
         "negative_prompt_embeds",
     }
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS - {"negative_prompt"}
-    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS - {"negative_prompt"}
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
         [
@@ -136,7 +133,7 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = torch.randn(1, 3, 32, 32, generator=generator)
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
