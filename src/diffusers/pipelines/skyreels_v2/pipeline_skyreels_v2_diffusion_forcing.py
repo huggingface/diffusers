@@ -72,10 +72,8 @@ EXAMPLE_DOC_STRING = """\
         ...     num_inference_steps=30,
         ...     height=544,
         ...     width=960,
-        ...     guidance_scale=6.0,
         ...     num_frames=97,
         ...     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
-        ...     generator=torch.Generator(device="cuda").manual_seed(0),
         ...     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos
         ...     addnoise_condition=20,  # Improves consistency in long video generation
         ... ).frames[0]
@@ -521,7 +519,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, defaults to `5.0`):
+            guidance_scale (`float`, defaults to `6.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
