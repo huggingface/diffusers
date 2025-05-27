@@ -62,6 +62,8 @@ EXAMPLE_DOC_STRING = """\
         ...     "<Official_HF_placeholder>/SkyReels-V2-DF-1.3B-540P-Diffusers",
         ...     torch_dtype=torch.bfloat16,
         ... )
+        >>> shift = 8.0  # 8.0 for T2V, 3.0 for I2V
+        >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
         >>> pipe = pipe.to("cuda")
         >>> pipe.transformer.set_ar_attention(causal_block_size=5)
 
@@ -72,6 +74,7 @@ EXAMPLE_DOC_STRING = """\
         ...     num_inference_steps=30,
         ...     height=544,
         ...     width=960,
+        ...     guidance_scale=6.0,  # 6.0 for T2V, 5.0 for I2V
         ...     num_frames=97,
         ...     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
         ...     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos
@@ -97,20 +100,6 @@ def whitespace_clean(text):
 def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
@@ -524,7 +513,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                usually at the expense of lower image quality. (**6.0 for T2V**, **5.0 for I2V**)
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -560,17 +549,21 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
             shift (`float`, *optional*, defaults to `8.0`):
+                Flow matching scheduler parameter (**5.0 for I2V**, **8.0 for T2V**)
             overlap_history (`int`, *optional*, defaults to `17`):
                 Number of frames to overlap for smooth transitions in long videos
             addnoise_condition (`float`, *optional*, defaults to `0`):
-                Improves consistency in long video generation
+                This is used to help smooth the long video generation by adding some noise to the clean condition. Too
+                large noise can cause the inconsistency as well. 20 is a recommended value, and you may try larger
+                ones, but it is recommended to not exceed 50.
             base_num_frames (`int`, *optional*, defaults to `97`):
                 97 or 121 | Base frame count (**97 for 540P**, **121 for 720P**)
             ar_step (`int`, *optional*, defaults to `0`):
                 Controls asynchronous inference (0 for synchronous mode)
             causal_block_size (`int`, *optional*, defaults to `None`):
-                Recommended when using asynchronous inference (--ar_step > 0)
+                Recommended when using asynchronous inference (when ar_step > 0)
             fps (`int`, *optional*, defaults to `24`):
+                Frame rate of the generated video
 
         Examples:
 
