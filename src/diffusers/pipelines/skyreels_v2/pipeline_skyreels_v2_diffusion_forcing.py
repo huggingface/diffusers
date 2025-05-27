@@ -320,6 +320,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if num_frames > base_num_frames and overlap_history is None:
             raise ValueError(
+                "`overlap_history` is required when `num_frames` exceeds `base_num_frames` to ensure smooth transitions in long video generation. "
+                "Please specify a value for `overlap_history`. Recommended values are 17 or 37."
+            )
+            raise ValueError(
                 'You are supposed to specify the "overlap_history" to support the long video generation. 17 and 37 are recommanded to set.'
             )
 
@@ -551,8 +555,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The maximum sequence length of the prompt.
             shift (`float`, *optional*, defaults to `8.0`):
                 Flow matching scheduler parameter (**5.0 for I2V**, **8.0 for T2V**)
-            overlap_history (`int`, *optional*, defaults to `17`):
-                Number of frames to overlap for smooth transitions in long videos
+            overlap_history (`int`, *optional*, defaults to `None`):
+                Number of frames to overlap for smooth transitions in long videos. If `None`, the pipeline assumes
+                short video generation mode, and no overlap is applied. 17 and 37 are recommended to set.
             addnoise_condition (`float`, *optional*, defaults to `0`):
                 This is used to help smooth the long video generation by adding some noise to the clean condition. Too
                 large noise can cause the inconsistency as well. 20 is a recommended value, and you may try larger
@@ -594,7 +599,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if addnoise_condition > 60:
             logger.warning(
-                f'You have set "addnoise_condition" as {addnoise_condition}. The value is too large which can cause inconsistency in long video generation. The value is recommanded to set 20.'
+                f"The value of 'addnoise_condition' is too large ({addnoise_condition}) and may cause inconsistencies in long video generation. A value of 20 is recommended."
             )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -780,7 +785,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if prefix_video_latents.shape[2] % causal_block_size != 0:
                         truncate_len_latents = prefix_video_latents.shape[2] % causal_block_size
                         logger.warning(
-                            f"The length of prefix video latents is truncated by {truncate_len_latents} frames for the causal block size alignment."
+                            f"The length of prefix video latents is truncated by {truncate_len_latents} frames for the causal block size alignment. "
+                            f"This truncation ensures compatibility with the causal block size, which is required for proper processing. "
+                            f"However, it may slightly affect the continuity of the generated video at the truncation boundary."
                         )
                         prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
                     prefix_video_latents_length = prefix_video_latents.shape[2]
