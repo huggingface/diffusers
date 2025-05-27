@@ -50,7 +50,11 @@ EXAMPLE_DOC_STRING = """\
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import SkyReelsV2DiffusionForcingPipeline, AutoencoderKLWan
+        >>> from diffusers import (
+        ...     SkyReelsV2DiffusionForcingPipeline,
+        ...     FlowMatchUniPCMultistepScheduler,
+        ...     AutoencoderKLWan,
+        ... )
         >>> from diffusers.utils import export_to_video
 
         >>> # Load the pipeline
