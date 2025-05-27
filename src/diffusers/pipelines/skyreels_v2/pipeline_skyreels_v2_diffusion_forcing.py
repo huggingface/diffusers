@@ -565,7 +565,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             base_num_frames (`int`, *optional*, defaults to `97`):
                 97 or 121 | Base frame count (**97 for 540P**, **121 for 720P**)
             ar_step (`int`, *optional*, defaults to `0`):
-                Controls asynchronous inference (0 for synchronous mode)
+                Controls asynchronous inference (0 for synchronous mode) You can set `ar_step=5` to enable asynchronous
+                inference. When asynchronous inference, `causal_block_size=5` is recommended while it is not supposed
+                to be set for synchronous generation. Asynchronous inference will take more steps to diffuse the whole
+                sequence which means it will be SLOWER than synchronous mode. In our experiments, asynchronous
+                inference may improve the instruction following and visual consistent performance.
             causal_block_size (`int`, *optional*, defaults to `None`):
                 Recommended when using asynchronous inference (when ar_step > 0)
             fps (`int`, *optional*, defaults to `24`):
@@ -685,8 +689,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             # 6. Denoising loop
-            num_warmup_steps = len(step_matrix) - num_inference_steps * self.scheduler.order
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(step_matrix)
+            progress_bar_step = len(timesteps) / len(step_matrix)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(step_matrix):
@@ -758,7 +763,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if i == len(step_matrix) - 1 or (
                         (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
                     ):
-                        progress_bar.update()
+                        progress_bar.update(progress_bar_step)
 
                     if XLA_AVAILABLE:
                         xm.mark_step()
@@ -830,8 +835,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
 
                 # 6. Denoising loop
-                num_warmup_steps = len(step_matrix) - num_inference_steps * self.scheduler.order
+                num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
                 self._num_timesteps = len(step_matrix)
+                progress_bar_step = len(timesteps) / len(step_matrix)
 
                 with self.progress_bar(total=num_inference_steps) as progress_bar:
                     for i, t in enumerate(step_matrix):
@@ -905,7 +911,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         if i == len(step_matrix) - 1 or (
                             (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
                         ):
-                            progress_bar.update()
+                            progress_bar.update(progress_bar_step)
 
                         if XLA_AVAILABLE:
                             xm.mark_step()
