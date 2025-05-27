@@ -691,7 +691,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # 6. Denoising loop
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(step_matrix)
-            progress_bar_step = len(timesteps) / len(step_matrix)
+            progress_bar_step = round(len(timesteps) / len(step_matrix), 1)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(step_matrix):
@@ -837,7 +837,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 # 6. Denoising loop
                 num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
                 self._num_timesteps = len(step_matrix)
-                progress_bar_step = len(timesteps) / len(step_matrix)
+                progress_bar_step = round(len(timesteps) / len(step_matrix), 1)
 
                 with self.progress_bar(total=num_inference_steps) as progress_bar:
                     for i, t in enumerate(step_matrix):
