@@ -113,6 +113,7 @@ class ModuleGroup:
         finally:
             pinned_dict = None
 
+    @torch.compiler.disable()
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
         torch_accelerator_module = (
@@ -165,6 +166,7 @@ class ModuleGroup:
                     if self.record_stream:
                         buffer.data.record_stream(current_stream)
 
+    @torch.compiler.disable()
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
 
