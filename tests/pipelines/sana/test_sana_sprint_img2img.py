@@ -264,9 +264,7 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
                 "Attention slicing should not affect the inference results",
             )
 
-    @unittest.skip(
-        "vae tiling resulted in a small margin over the expected max diff, so skipping this test for now"
-    )
+    @unittest.skip("vae tiling resulted in a small margin over the expected max diff, so skipping this test for now")
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         generator_device = "cpu"
         components = self.get_dummy_components()
