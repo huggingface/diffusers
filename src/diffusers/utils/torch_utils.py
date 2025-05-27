@@ -17,7 +17,7 @@ PyTorch utilities: Utilities related to PyTorch
 
 from typing import List, Optional, Tuple, Union
 
-from . import logging, is_torch_npu_available
+from . import logging
 from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version
 
 
