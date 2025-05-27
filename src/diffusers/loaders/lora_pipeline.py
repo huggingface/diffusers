@@ -4810,7 +4810,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         transformer: torch.nn.Module,
         state_dict,
     ):
-        print("BEFORE", list(state_dict.keys()))
         if transformer.config.image_dim is None:
             return state_dict
 
@@ -4912,10 +4911,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         print("AFTER 2:", list(state_dict.keys()))
         return state_dict
 
-
-
-        return state_dict
-
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -4972,7 +4967,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        print("AFTER:", list(state_dict.keys()))
+        print("WTF")
         self.load_lora_into_transformer(
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
