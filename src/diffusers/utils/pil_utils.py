@@ -38,16 +38,15 @@ def numpy_to_pil(images):
     """
     Convert a numpy image or a batch of images to a PIL image.
     """
+    # If single HWC image, expand dims to NHWC
     if images.ndim == 3:
         images = images[None, ...]
-    images = (images * 255).round().astype("uint8")
+    images = (images * 255).round().astype("uint8", copy=False)
     if images.shape[-1] == 1:
-        # special case for grayscale (single channel) images
-        pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        # Only squeeze if needed for grayscale, avoid always squeezing
+        return [Image.fromarray(image[..., 0], mode="L") for image in images]
     else:
-        pil_images = [Image.fromarray(image) for image in images]
-
-    return pil_images
+        return [Image.fromarray(image) for image in images]
 
 
 def make_image_grid(images: List[PIL.Image.Image], rows: int, cols: int, resize: int = None) -> PIL.Image.Image:

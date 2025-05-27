@@ -98,17 +98,16 @@ class BlipImageProcessor(BaseImageProcessor):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        size = size if size is not None else {"height": 224, "width": 224}
-        size = get_size_dict(size, default_to_square=True)
-
+        if size is None:
+            size = {"height": 224, "width": 224}
+        self.size = get_size_dict(size, default_to_square=True)
         self.do_resize = do_resize
-        self.size = size
         self.resample = resample
         self.do_rescale = do_rescale
         self.rescale_factor = rescale_factor
         self.do_normalize = do_normalize
-        self.image_mean = image_mean if image_mean is not None else OPENAI_CLIP_MEAN
-        self.image_std = image_std if image_std is not None else OPENAI_CLIP_STD
+        self.image_mean = OPENAI_CLIP_MEAN if image_mean is None else image_mean
+        self.image_std = OPENAI_CLIP_STD if image_std is None else image_std
         self.do_convert_rgb = do_convert_rgb
         self.do_center_crop = do_center_crop
 
@@ -299,20 +298,22 @@ class BlipImageProcessor(BaseImageProcessor):
 
     # Follows diffusers.VaeImageProcessor.postprocess
     def postprocess(self, sample: torch.Tensor, output_type: str = "pil"):
-        if output_type not in ["pt", "np", "pil"]:
+        if output_type not in {"pt", "np", "pil"}:
             raise ValueError(
                 f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']"
             )
 
         # Equivalent to diffusers.VaeImageProcessor.denormalize
-        sample = (sample / 2 + 0.5).clamp(0, 1)
+        sample = (sample / 2 + 0.5).clamp_(0, 1)
         if output_type == "pt":
             return sample
 
-        # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
-        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
+        # Only move to CPU and numpy if necessary 
+        if sample.device.type != "cpu":
+            sample = sample.cpu()
+        sample = sample.permute(0, 2, 3, 1).contiguous().numpy()
         if output_type == "np":
             return sample
-        # Output_type must be 'pil'
-        sample = numpy_to_pil(sample)
-        return sample
+
+        # output_type == "pil"
+        return numpy_to_pil(sample)
