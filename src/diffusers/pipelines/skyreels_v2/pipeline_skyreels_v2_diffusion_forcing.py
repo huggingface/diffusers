@@ -798,7 +798,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
             for i in range(n_iter):
                 if video is not None:
-                    prefix_video_latents = retrieve_latents(self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax")
+                    prefix_video_latents = retrieve_latents(
+                        self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax"
+                    )
                     prefix_video_latents = (prefix_video_latents - latents_mean) * latents_std
 
                     if prefix_video_latents.shape[2] % causal_block_size != 0:
