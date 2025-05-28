@@ -33,6 +33,7 @@ else:
     _import_structure["pipeline_flux_fill"] = ["FluxFillPipeline"]
     _import_structure["pipeline_flux_img2img"] = ["FluxImg2ImgPipeline"]
     _import_structure["pipeline_flux_inpaint"] = ["FluxInpaintPipeline"]
+    _import_structure["pipeline_flux_kontext"] = ["FluxKontextPipeline"]
     _import_structure["pipeline_flux_prior_redux"] = ["FluxPriorReduxPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -52,6 +53,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_flux_fill import FluxFillPipeline
         from .pipeline_flux_img2img import FluxImg2ImgPipeline
         from .pipeline_flux_inpaint import FluxInpaintPipeline
+        from .pipeline_flux_kontext import FluxKontextPipeline
         from .pipeline_flux_prior_redux import FluxPriorReduxPipeline
 else:
     import sys
