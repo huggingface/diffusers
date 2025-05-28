@@ -753,26 +753,18 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             device=device,
         )
 
-
         # Encode image embedding
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
-        if image_embeds is None:
-            if last_image is None:
-                image_embeds = self.encode_image(image, device)
-            else:
-                image_embeds = self.encode_image([image, last_image], device)
-        image_embeds = image_embeds.repeat(batch_size, 1, 1)
-        image_embeds = image_embeds.to(transformer_dtype)
-
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
         timesteps = self.scheduler.timesteps
 
-        prefix_video_latents_length = 0
+        last_video = None
+
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         base_num_frames = (
             (base_num_frames - 1) // self.vae_scale_factor_temporal + 1
@@ -787,16 +779,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
 
         if overlap_history is None or base_num_frames is None or num_frames <= base_num_frames:
             # Short video generation
-            # 4. Prepare sample schedulers and timestep matrix
-            sample_schedulers = []
-            for _ in range(num_latent_frames):
-                sample_scheduler = deepcopy(self.scheduler)
-                sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
-                sample_schedulers.append(sample_scheduler)
-            step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                num_latent_frames, timesteps, base_num_frames, ar_step, prefix_video_latents_length, causal_block_size
-            )
-
             # 5. Prepare latent variables
             num_channels_latents = self.vae.config.z_dim
             image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
@@ -817,6 +799,27 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 latents,
                 last_image,
             )
+            prefix_video_latents_length = condition.shape[2]
+
+            latents[:, :, :prefix_video_latents_length, :, :] = condition[:, :, :prefix_video_latents_length, :, :].to(transformer_dtype)
+            if last_image is not None:
+                latents = torch.cat([latents, condition[:, :, prefix_video_latents_length:, :, :].to(transformer_dtype)], dim=2)
+                base_num_frames += prefix_video_latents_length
+                num_latent_frames += prefix_video_latents_length
+
+            # 4. Prepare sample schedulers and timestep matrix
+            sample_schedulers = []
+            for _ in range(num_latent_frames):
+                sample_scheduler = deepcopy(self.scheduler)
+                sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
+                sample_schedulers.append(sample_scheduler)
+            step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
+                num_latent_frames, timesteps, base_num_frames, ar_step, prefix_video_latents_length, causal_block_size
+            )
+
+            if last_image is not None:
+                step_matrix[:, -prefix_video_latents_length:] = 0
+                step_update_mask[:, -prefix_video_latents_length:] = False
 
             # 6. Denoising loop
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -850,7 +853,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                         hidden_states=latent_model_input,
                         timestep=timestep,
                         encoder_hidden_states=prompt_embeds,
-                        encoder_hidden_states_image=image_embeds,
                         flag_df=True,
                         fps=fps_embeds,
                         attention_kwargs=attention_kwargs,
@@ -861,7 +863,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=negative_prompt_embeds,
-                            encoder_hidden_states_image=image_embeds,
                             flag_df=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
@@ -934,6 +935,27 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 else:
                     base_num_frames_iter = base_num_frames
 
+                latents, condition = self.prepare_latents(
+                    image,
+                    batch_size * num_videos_per_prompt,
+                    num_channels_latents,
+                    height,
+                    width,
+                    (base_num_frames_iter - 1) * self.vae_scale_factor_temporal + 1,
+                    torch.float32,
+                    device,
+                    generator,
+                    None if i > 0 else latents,
+                    last_image,
+                )
+
+                prefix_video_latents_length = condition.shape[2]
+
+                latents[:, :, :prefix_video_latents_length, :, :] = condition[:, :, :prefix_video_latents_length, :, :].to(transformer_dtype)
+                if last_video is not None and i == n_iter - 1:
+                    latents = torch.cat([latents, condition[:, :, prefix_video_latents_length:, :, :].to(transformer_dtype)], dim=2)
+                    base_num_frames_iter += prefix_video_latents_length
+
                 # 4. Prepare sample schedulers and timestep matrix
                 sample_schedulers = []
                 for _ in range(base_num_frames_iter):
@@ -949,6 +971,10 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                     causal_block_size,
                 )
 
+                if last_video is not None and i == n_iter - 1:
+                    step_matrix[:, -last_video_latent_length:] = 0
+                    step_update_mask[:, -last_video_latent_length:] = False
+
                 # 5. Prepare latent variables
                 num_channels_latents = self.vae.config.z_dim
                 image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
@@ -956,21 +982,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                     last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
                         device, dtype=torch.float32
                     )
-                latents, condition = self.prepare_latents(
-                    image,
-                    batch_size * num_videos_per_prompt,
-                    num_channels_latents,
-                    height,
-                    width,
-                    (base_num_frames_iter - 1) * self.vae_scale_factor_temporal + 1,
-                    torch.float32,
-                    device,
-                    generator,
-                    None if i > 0 else latents,
-                    last_image,
-                )
-                if prefix_video_latents is not None:
-                    latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
 
                 # 6. Denoising loop
                 num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1004,7 +1015,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=prompt_embeds,
-                            encoder_hidden_states_image=image_embeds,
                             flag_df=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
@@ -1015,7 +1025,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
                                 encoder_hidden_states=negative_prompt_embeds,
-                                encoder_hidden_states_image=image_embeds,
                                 flag_df=True,
                                 fps=fps_embeds,
                                 attention_kwargs=attention_kwargs,
@@ -1055,6 +1064,9 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                         if XLA_AVAILABLE:
                             xm.mark_step()
 
+                if last_video is not None and i == n_iter - 1:
+                    latents = latents[:, :, :-last_video_latent_length]
+
                 if not output_type == "latent":
                     latents = latents.to(self.vae.dtype)
                     latents = latents / latents_std + latents_mean
@@ -1070,6 +1082,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
 
         if not output_type == "latent":
             if overlap_history is None:
+                if last_video is not None:
+                    latents = latents[:, :, :-last_video_latent_length]
                 latents = latents.to(self.vae.dtype)
                 latents_mean = (
                     torch.tensor(self.vae.config.latents_mean)
