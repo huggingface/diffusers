@@ -107,6 +107,20 @@ def prompt_clean(text):
     return text
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     """
     Pipeline for Text-to-Video (t2v) generation using SkyReels-V2 with diffusion forcing.
@@ -787,8 +801,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
             for i in range(n_iter):
                 if video is not None:
-                    prefix_latents_dist = self.vae.encode(video[:, :, -overlap_history:]).latent_dist
-                    prefix_video_latents = (prefix_latents_dist.mode() - latents_mean) * latents_std
+                    prefix_video_latents = retrieve_latents(self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax")
+                    prefix_video_latents = (prefix_video_latents - latents_mean) * latents_std
 
                     if prefix_video_latents.shape[2] % causal_block_size != 0:
                         truncate_len_latents = prefix_video_latents.shape[2] % causal_block_size
