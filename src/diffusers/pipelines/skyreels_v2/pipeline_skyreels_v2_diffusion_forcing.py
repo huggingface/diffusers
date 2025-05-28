@@ -341,9 +341,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 "`overlap_history` is required when `num_frames` exceeds `base_num_frames` to ensure smooth transitions in long video generation. "
                 "Please specify a value for `overlap_history`. Recommended values are 17 or 37."
             )
-            raise ValueError(
-                'You are supposed to specify the "overlap_history" to support the long video generation. 17 and 37 are recommanded to set.'
-            )
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.prepare_latents
     def prepare_latents(
