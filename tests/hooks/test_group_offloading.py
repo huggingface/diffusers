@@ -217,7 +217,7 @@ class GroupOffloadTests(unittest.TestCase):
         self.assertIn(f"The module '{self.model.__class__.__name__}' is group offloaded", cm.output[0])
 
     def test_error_raised_if_streams_used_and_no_accelerator_device(self):
-        torch_accelerator_module = getattr(torch, torch_device)
+        torch_accelerator_module = getattr(torch, torch_device, torch.cuda)
         original_is_available = torch_accelerator_module.is_available
         torch_accelerator_module.is_available = lambda: False
         with self.assertRaises(ValueError):
