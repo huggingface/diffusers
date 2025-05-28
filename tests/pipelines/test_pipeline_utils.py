@@ -19,7 +19,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
-from diffusers.utils.testing_utils import require_torch_accelerator, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import require_torch_accelerator, torch_device
 
 
 class IsSafetensorsCompatibleTests(unittest.TestCase):

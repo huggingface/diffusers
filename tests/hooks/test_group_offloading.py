@@ -22,7 +22,13 @@ from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import get_logger
 from diffusers.utils.import_utils import compare_versions
-from diffusers.utils.testing_utils import backend_empty_cache, backend_max_memory_allocated, backend_reset_peak_memory_stats, require_torch_accelerator, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_peak_memory_stats,
+    require_torch_accelerator,
+    torch_device,
+)
 
 
 class DummyBlock(torch.nn.Module):
