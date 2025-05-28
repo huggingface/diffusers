@@ -16,10 +16,15 @@ import html
 import math
 import re
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import PIL
 import ftfy
 import torch
+from diffusers.image_processor import PipelineImageInput
+from diffusers.utils.torch_utils import randn_tensor
+from diffusers.video_processor import VideoProcessor
+from transformers import CLIPImageProcessor, CLIPVisionModel
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -27,8 +32,6 @@ from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import FlowMatchUniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
-from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import SkyReelsV2PipelineOutput
 
@@ -51,7 +54,7 @@ EXAMPLE_DOC_STRING = """\
         ```py
         >>> import torch
         >>> from diffusers import (
-        ...     SkyReelsV2DiffusionForcingPipeline,
+        ...     SkyReelsV2DiffusionForcingImageToVideoPipeline,
         ...     FlowMatchUniPCMultistepScheduler,
         ...     AutoencoderKLWan,
         ... )
@@ -63,7 +66,7 @@ EXAMPLE_DOC_STRING = """\
         ...     torch_dtype=torch.float32,
         ...     subfolder="vae",
         ... )
-        >>> pipe = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
+        >>> pipe = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
         ...     "<Official_HF_placeholder>/SkyReels-V2-DF-1.3B-540P-Diffusers",
         ...     torch_dtype=torch.bfloat16,
         ... )
@@ -121,9 +124,9 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
+class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     """
-    Pipeline for Text-to-Video (t2v) generation using SkyReels-V2 with diffusion forcing.
+    Pipeline for Image-to-Video (i2v) generation using SkyReels-V2 with diffusion forcing.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a specific device, etc.).
@@ -135,6 +138,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder ([`UMT5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
+        image_encoder ([`CLIPVisionModel`]):
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModel), specifically
+            the
+            [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large)
+            variant.
         transformer ([`SkyReelsV2Transformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
         scheduler ([`FlowMatchUniPCMultistepScheduler`]):
@@ -143,13 +151,15 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
+        image_encoder: CLIPVisionModel,
+        image_processor: CLIPImageProcessor,
         transformer: SkyReelsV2Transformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchUniPCMultistepScheduler,
@@ -160,20 +170,23 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
+            image_encoder=image_encoder,
             transformer=transformer,
             scheduler=scheduler,
+            image_processor=image_processor,
         )
 
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.image_processor = image_processor
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
         num_videos_per_prompt: int = 1,
-        max_sequence_length: int = 226,
+        max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -209,6 +222,17 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
         return prompt_embeds
+
+    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanImageToVideoPipeline.encode_image
+    def encode_image(
+        self,
+        image: PipelineImageInput,
+        device: Optional[torch.device] = None,
+    ):
+        device = device or self._execution_device
+        image = self.image_processor(images=image, return_tensors="pt").to(device)
+        image_embeds = self.image_encoder(**image, output_hidden_states=True)
+        return image_embeds.hidden_states[-2]
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
@@ -296,15 +320,28 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         prompt,
         negative_prompt,
+        image,
         height,
         width,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         overlap_history=None,
         num_frames=None,
         base_num_frames=None,
     ):
+        if image is not None and image_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `image`: {image} and `image_embeds`: {image_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        if image is None and image_embeds is None:
+            raise ValueError(
+                "Provide either `image` or `image_embeds`. Cannot leave both `image` and `image_embeds` undefined."
+            )
+        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
+            raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
@@ -341,13 +378,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 "`overlap_history` is required when `num_frames` exceeds `base_num_frames` to ensure smooth transitions in long video generation. "
                 "Please specify a value for `overlap_history`. Recommended values are 17 or 37."
             )
-            raise ValueError(
-                'You are supposed to specify the "overlap_history" to support the long video generation. 17 and 37 are recommanded to set.'
-            )
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.prepare_latents
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanImageToVideoPipeline.prepare_latents
     def prepare_latents(
         self,
+        image: PipelineImageInput,
         batch_size: int,
         num_channels_latents: int = 16,
         height: int = 480,
@@ -357,27 +392,74 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-
+        last_image: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_latent_frames,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
+        latent_height = height // self.vae_scale_factor_spatial
+        latent_width = width // self.vae_scale_factor_spatial
+
+        shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        return latents
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
 
+        image = image.unsqueeze(2)
+        if last_image is None:
+            video_condition = torch.cat(
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+            )
+        else:
+            last_image = last_image.unsqueeze(2)
+            video_condition = torch.cat(
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image],
+                dim=2,
+            )
+        video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
+
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            latents.device, latents.dtype
+        )
+
+        if isinstance(generator, list):
+            latent_condition = [
+                retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
+            ]
+            latent_condition = torch.cat(latent_condition)
+        else:
+            latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
+            latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
+
+        latent_condition = latent_condition.to(dtype)
+        latent_condition = (latent_condition - latents_mean) * latents_std
+
+        mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
+
+        if last_image is None:
+            mask_lat_size[:, :, list(range(1, num_frames))] = 0
+        else:
+            mask_lat_size[:, :, list(range(1, num_frames - 1))] = 0
+        first_frame_mask = mask_lat_size[:, :, 0:1]
+        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
+        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
+        mask_lat_size = mask_lat_size.view(batch_size, -1, self.vae_scale_factor_temporal, latent_height, latent_width)
+        mask_lat_size = mask_lat_size.transpose(1, 2)
+        mask_lat_size = mask_lat_size.to(latent_condition.device)
+
+        return latents, torch.concat([mask_lat_size, latent_condition], dim=1)
+
+    # Copied from diffusers.pipelines.skyreels_v2.pipeline_skyreels_v2_diffusion_forcing.SkyReelsV2DiffusionForcingPipeline.generate_timestep_matrix
     def generate_timestep_matrix(
         self,
         num_frames: int,
@@ -483,18 +565,21 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        image: PipelineImageInput,
+        prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
-        height: int = 480,
-        width: int = 832,
+        height: int = 544,
+        width: int = 960,
         num_frames: int = 97,
         num_inference_steps: int = 50,
-        guidance_scale: float = 6.0,
+        guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
+        image_embeds: Optional[torch.Tensor] = None,
+        last_image: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -504,7 +589,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         overlap_history: Optional[int] = None,
-        shift: float = 8.0,
+        shift: float = 3.0,
         addnoise_condition: float = 0,
         base_num_frames: int = 97,
         ar_step: int = 0,
@@ -515,6 +600,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         The call function to the pipeline for generation.
 
         Args:
+            image (`PipelineImageInput`):
+                The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -522,16 +609,16 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            height (`int`, defaults to `480`):
+            height (`int`, defaults to `544`):
                 The height of the generated video.
-            width (`int`, defaults to `832`):
+            width (`int`, defaults to `960`):
                 The width of the generated video.
             num_frames (`int`, defaults to `97`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, defaults to `6.0`):
+            guidance_scale (`float`, defaults to `5.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -552,6 +639,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `negative_prompt` input argument.
+            image_embeds (`torch.Tensor`, *optional*):
+                Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not provided,
+                image embeddings are generated from the `image` input argument.
+            last_image (`torch.Tensor`, *optional*):
+                Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not provided,
+                image embeddings are generated from the `image` input argument.
             output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -571,8 +664,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
-            shift (`float`, *optional*, defaults to `8.0`):
-                Flow matching scheduler parameter (**5.0 for I2V**, **8.0 for T2V**)
+            shift (`float`, *optional*, defaults to `3.0`):
+                Flow matching scheduler parameter (**3.0 for I2V**, **8.0 for T2V**)
             overlap_history (`int`, *optional*, defaults to `None`):
                 Number of frames to overlap for smooth transitions in long videos. If `None`, the pipeline assumes
                 short video generation mode, and no overlap is applied. 17 and 37 are recommended to set.
@@ -609,10 +702,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.check_inputs(
             prompt,
             negative_prompt,
+            image,
             height,
             width,
             prompt_embeds,
             negative_prompt_embeds,
+            image_embeds,
             callback_on_step_end_tensor_inputs,
             overlap_history,
             num_frames,
@@ -658,10 +753,20 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device=device,
         )
 
+
+        # Encode image embedding
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+
+        if image_embeds is None:
+            if last_image is None:
+                image_embeds = self.encode_image(image, device)
+            else:
+                image_embeds = self.encode_image([image, last_image], device)
+        image_embeds = image_embeds.repeat(batch_size, 1, 1)
+        image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
@@ -693,8 +798,14 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             # 5. Prepare latent variables
-            num_channels_latents = self.transformer.config.in_channels
-            latents = self.prepare_latents(
+            num_channels_latents = self.vae.config.z_dim
+            image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+            if last_image is not None:
+                last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
+                    device, dtype=torch.float32
+                )
+            latents, condition = self.prepare_latents(
+                image,
                 batch_size * num_videos_per_prompt,
                 num_channels_latents,
                 height,
@@ -704,6 +815,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 device,
                 generator,
                 latents,
+                last_image,
             )
 
             # 6. Denoising loop
@@ -738,6 +850,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         hidden_states=latent_model_input,
                         timestep=timestep,
                         encoder_hidden_states=prompt_embeds,
+                        encoder_hidden_states_image=image_embeds,
                         flag_df=True,
                         fps=fps_embeds,
                         attention_kwargs=attention_kwargs,
@@ -748,6 +861,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states_image=image_embeds,
                             flag_df=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
@@ -836,8 +950,14 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 )
 
                 # 5. Prepare latent variables
-                num_channels_latents = self.transformer.config.in_channels
-                latents = self.prepare_latents(
+                num_channels_latents = self.vae.config.z_dim
+                image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+                if last_image is not None:
+                    last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
+                        device, dtype=torch.float32
+                    )
+                latents, condition = self.prepare_latents(
+                    image,
                     batch_size * num_videos_per_prompt,
                     num_channels_latents,
                     height,
@@ -847,6 +967,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     device,
                     generator,
                     None if i > 0 else latents,
+                    last_image,
                 )
                 if prefix_video_latents is not None:
                     latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
@@ -883,6 +1004,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=prompt_embeds,
+                            encoder_hidden_states_image=image_embeds,
                             flag_df=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
@@ -893,6 +1015,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
                                 encoder_hidden_states=negative_prompt_embeds,
+                                encoder_hidden_states_image=image_embeds,
                                 flag_df=True,
                                 fps=fps_embeds,
                                 attention_kwargs=attention_kwargs,
