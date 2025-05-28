@@ -59,6 +59,7 @@ EXAMPLE_DOC_STRING = """\
         ...     AutoencoderKLWan,
         ... )
         >>> from diffusers.utils import export_to_video
+        >>> from PIL import Image
 
         >>> # Load the pipeline
         >>> vae = AutoencoderKLWan.from_pretrained(
@@ -77,8 +78,10 @@ EXAMPLE_DOC_STRING = """\
         >>> pipe.transformer.set_ar_attention(causal_block_size=5)
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
+        >>> image = Image.open("path/to/image.png")
 
         >>> output = pipe(
+        ...     image=image,
         ...     prompt=prompt,
         ...     num_inference_steps=30,
         ...     height=544,
