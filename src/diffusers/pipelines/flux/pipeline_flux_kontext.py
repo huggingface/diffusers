@@ -56,10 +56,26 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        # TODO
+        >>> import torch
+        >>> from diffusers import FluxKontextPipeline
+        >>> from diffusers.utils import load_image
+
+        >>> pipe = FluxKontextPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.1-kontext", transformer=transformer, torch_dtype=torch.bfloat16
+        ... )
+        >>> pipe.to("cuda")
+
+        >>> image = load_image("inputs/yarn-art-pikachu.png").convert("RGB")
+        >>> prompt = "Make Pikachu hold a sign that says 'Hugging Face is awesome', yarn art style, detailed, vibrant colors"
+        >>> image = pipe(
+        ...     image=image,
+        ...     prompt=prompt,
+        ...     guidance_scale=2.5,
+        ...     generator=torch.Generator().manual_seed(42),
+        ... ).images[0]
+        >>> image.save("output.png")
         ```
 """
-
 
 PREFERRED_KONTEXT_RESOLUTIONS = [
     (672, 1568),
