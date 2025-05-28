@@ -60,11 +60,12 @@ EXAMPLE_DOC_STRING = """\
         >>> # Load the pipeline
         >>> vae = AutoencoderKLWan.from_pretrained(
         ...     "<Official_HF_placeholder>/SkyReels-V2-DF-1.3B-540P-Diffusers",
-        ...     torch_dtype=torch.float32,
         ...     subfolder="vae",
+        ...     torch_dtype=torch.float32,
         ... )
         >>> pipe = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
         ...     "<Official_HF_placeholder>/SkyReels-V2-DF-1.3B-540P-Diffusers",
+        ...     vae=vae,
         ...     torch_dtype=torch.bfloat16,
         ... )
         >>> shift = 8.0  # 8.0 for T2V, 3.0 for I2V
