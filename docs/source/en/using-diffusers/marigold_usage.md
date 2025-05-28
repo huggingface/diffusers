@@ -288,7 +288,7 @@ Speeding them up can be achieved by using a more efficient attention processor:
   depth = pipe(image, num_inference_steps=1)
 ```
 
-Finally, as suggested in [Optimizations](../optimization/torch2.0#torch.compile), enabling `torch.compile` can further enhance performance depending on 
+Finally, as suggested in [Optimizations](../optimization/fp16#torchcompile), enabling `torch.compile` can further enhance performance depending on 
 the target hardware.
 However, compilation incurs a significant overhead during the first pipeline invocation, making it beneficial only when 
 the same pipeline instance is called repeatedly, such as within a loop.
