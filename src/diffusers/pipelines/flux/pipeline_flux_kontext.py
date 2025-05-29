@@ -740,6 +740,7 @@ class FluxKontextPipeline(
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         max_area: int = 1024**2,
+        _auto_resize: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -937,13 +938,16 @@ class FluxKontextPipeline(
 
         # 3. Preprocess image
         if not torch.is_tensor(image) or image.size(1) == self.latent_channels:
-            image_width, image_height = self.image_processor.get_default_height_width(image)
+            if isinstance(image, list):
+                image_width, image_height = self.image_processor.get_default_height_width(image[0])
+            else:
+                image_width, image_height = self.image_processor.get_default_height_width(image)
             aspect_ratio = image_width / image_height
-
-            # Kontext is trained on specific resolutions, using one of them is recommended
-            _, image_width, image_height = min(
-                (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS
-            )
+            if _auto_resize:
+                # Kontext is trained on specific resolutions, using one of them is recommended
+                _, image_width, image_height = min(
+                    (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS
+                )
             image_width = image_width // multiple_of * multiple_of
             image_height = image_height // multiple_of * multiple_of
             image = self.image_processor.resize(image, image_height, image_width)
