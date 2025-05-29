@@ -379,6 +379,15 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         return mask
 
+    def apply_erosion_to_mask(self, mask,iterations = 10):
+
+        kernel = np.ones((2, 2), np.uint8)
+        mask = mask.astype(np.uint8)
+        mask = cv2.erode(mask, kernel, iterations=iterations)
+        mask = np.array(mask, dtype=bool)
+
+        return mask
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -397,6 +406,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         is_inpainting: Optional[bool] = False, # controlnet inpainting
         contains_element: Optional[bool] = False, # controlnet inpainting for element
         iterations: Optional[int] = 20, # controlnet inpainting
+        iterations_erosion: Optional[int] = 20, # controlnet inpainting
         mask_value: Optional[int] = 255, # controlnet inpainting
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
@@ -551,7 +561,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 composed_image_all += img_array * image_mask_all[index]
                 if is_product.lower() == "true":
                     masked_bg += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
-                    masked_bg_original += mask_value*np.ones((image_width, image_height, 3)) * image_mask_all[index]
+                    masked_bg_original += mask_value*np.ones((image_width, image_height, 3)) * self.apply_erosion_to_mask(image_mask_all[index], iterations=iterations_erosion)
 
                 if index > 0:
                     masked_bg_with_element += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
