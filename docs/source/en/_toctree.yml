@@ -17,8 +17,6 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - local: tutorials/fast_diffusion
-    title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
@@ -182,8 +180,6 @@
     title: Accelerate inference
   - local: optimization/memory
     title: Reduce memory usage
-  - local: optimization/torch2.0
-    title: PyTorch 2.0
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome
@@ -210,7 +206,7 @@
     - local: optimization/mps
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
-      title: Habana Gaudi
+      title: Intel Gaudi
     - local: optimization/neuron
       title: AWS Neuron
     title: Optimized hardware
@@ -295,6 +291,8 @@
         title: CogView4Transformer2DModel
       - local: api/models/consisid_transformer3d
         title: ConsisIDTransformer3DModel
+      - local: api/models/cosmos_transformer3d
+        title: CosmosTransformer3DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
@@ -363,6 +361,8 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoderkl_cosmos
+        title: AutoencoderKLCosmos
       - local: api/models/autoencoder_kl_hunyuan_video
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
@@ -433,6 +433,8 @@
       title: ControlNet-XS with Stable Diffusion XL
     - local: api/pipelines/controlnet_union
       title: ControlNetUnion
+    - local: api/pipelines/cosmos
+      title: Cosmos
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -451,6 +453,8 @@
       title: Flux
     - local: api/pipelines/control_flux_inpaint
       title: FluxControlInpaint
+    - local: api/pipelines/framepack
+      title: Framepack
     - local: api/pipelines/hidream
       title: HiDream-I1
     - local: api/pipelines/hunyuandit
@@ -567,6 +571,8 @@
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
+    - local: api/pipelines/visualcloze
+      title: VisualCloze
     - local: api/pipelines/wan
       title: Wan
     - local: api/pipelines/wuerstchen
