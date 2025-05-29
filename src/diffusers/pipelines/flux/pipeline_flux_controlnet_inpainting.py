@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import PIL
 import torch
+import copy
 from transformers import (
     CLIPTextModel,
     CLIPTokenizer,
@@ -1161,6 +1162,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             return final_mask_array
 
         # mask graident
+        mask_original = copy.deepcopy(mask)
         mask = mask.to(dtype=torch.float16)
         tmp_mask = mask[0,:,:].cpu().numpy()
         mask_gradient = mask_gradienting(tmp_mask, iterations=iterations)
@@ -1255,7 +1257,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 if image_ref_prod is not None:
                     init_latents_proper_ref = image_latents_ref
                 init_mask = mask
-                
+                init_mask_original = mask_original
 
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
@@ -1268,7 +1270,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         )
 
                 if image_ref_prod is not None:
-                    latents = (1 - init_mask) * init_latents_proper + (1.0 - ratio_ref_prod) * init_mask * latents + ratio_ref_prod * init_mask * init_latents_proper_ref
+                    latents = (1 - init_mask) * init_latents_proper + (1.0 - ratio_ref_prod) * init_mask * latents + ratio_ref_prod * init_mask_original * init_latents_proper_ref
                 else:    
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
