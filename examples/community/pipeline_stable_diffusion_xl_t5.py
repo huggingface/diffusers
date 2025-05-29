@@ -58,12 +58,12 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
     _expected_modules = [
         "vae", "unet", "scheduler", "tokenizer",
         "image_encoder", "feature_extractor",
-        "t5_encoder", "t5_projection",
+        "t5_encoder", "t5_projection", "t5_pooled_projection",
     ]
 
     _optional_components = [
         "image_encoder", "feature_extractor",
-        "t5_encoder", "t5_projection",
+        "t5_encoder", "t5_projection", "t5_pooled_projection",
     ]
 
     def __init__(
@@ -74,6 +74,7 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
         tokenizer: CLIPTokenizer,
         t5_encoder=None,
         t5_projection=None,
+        t5_pooled_projection=None,
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
@@ -93,6 +94,12 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
         else:
             self.t5_projection  = t5_projection
         self.t5_projection.to(dtype=unet.dtype)
+        # ----- build T5 4096 => 1280 dim projection -----
+        if t5_pooled_projection is None:
+            self.t5_pooled_projection  = LinearWithDtype(4096, 1280)   # trainable
+        else:
+            self.t5_pooled_projection  = t5_pooled_projection
+        self.t5_pooled_projection.to(dtype=unet.dtype)
 
         print("dtype of Linear is ",self.t5_projection.dtype)
 
@@ -103,6 +110,7 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
             tokenizer=tokenizer,
             t5_encoder=self.t5_encoder,
             t5_projection=self.t5_projection,
+            t5_pooled_projection=self.t5_pooled_projection,
             image_encoder=image_encoder,
             feature_extractor=feature_extractor,
         )
@@ -157,9 +165,9 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
 
         # ---------- positive stream -------------------------------------
         ids, mask = _tok(prompt)
-        h_pos = self.t5_encoder(ids, attention_mask=mask).last_hidden_state     # [b, T, 4096]
-        tok_pos = self.t5_projection(h_pos)                                     # [b, T, 2048]
-        pool_pos = tok_pos.mean(dim=1)[:, :1280]                                # [b, 1280]
+        h_pos = self.t5_encoder(ids, attention_mask=mask).last_hidden_state   # [b, T, 4096]
+        tok_pos = self.t5_projection(h_pos)                                   # [b, T, 2048]
+        pool_pos = self.t5_pooled_projection(h_pos.mean(dim=1))               # [b, 1280]
 
         # expand for multiple images per prompt
         tok_pos   = tok_pos.repeat_interleave(num_images_per_prompt, 0)
@@ -171,7 +179,7 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
             ids_n, mask_n = _tok(neg_text)
             h_neg = self.t5_encoder(ids_n, attention_mask=mask_n).last_hidden_state
             tok_neg = self.t5_projection(h_neg)
-            pool_neg = tok_neg.mean(dim=1)[:, :1280]
+            pool_neg = self.t5_pooled_projection(h_neg.mean(dim=1))
 
             tok_neg  = tok_neg.repeat_interleave(num_images_per_prompt, 0)
             pool_neg = pool_neg.repeat_interleave(num_images_per_prompt, 0)
