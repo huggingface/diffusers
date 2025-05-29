@@ -39,6 +39,7 @@ Flux comes in the following variants:
 | Canny Control (LoRA) | [`black-forest-labs/FLUX.1-Canny-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev-lora) |
 | Depth Control (LoRA) | [`black-forest-labs/FLUX.1-Depth-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Depth-dev-lora) |
 | Redux (Adapter) | [`black-forest-labs/FLUX.1-Redux-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Redux-dev) |
+| Kontext | [`black-forest-labs/FLUX.1-Kontext`](https://huggingface.co/black-forest-labs/FLUX.1-Kontext) |
 
 All checkpoints have different usage which we detail below.
 
@@ -271,6 +272,31 @@ images = pipe(
     **pipe_prior_output,
 ).images
 images[0].save("flux-redux.png")
+```
+
+### Kontext
+
+Flux Kontext is a model that allows in-context control of the image generation process, allowing for editing, refinement, relighting, style transfer, character customization, and more.
+
+```python
+import torch
+from diffusers import FluxKontextPipeline
+from diffusers.utils import load_image
+
+pipe = FluxKontextPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-kontext", transformer=transformer, torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+image = load_image("inputs/yarn-art-pikachu.png").convert("RGB")
+prompt = "Make Pikachu hold a sign that says 'Black Forest Labs is awesome', yarn art style, detailed, vibrant colors"
+image = pipe(
+    image=image,
+    prompt=prompt,
+    guidance_scale=2.5,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("flux-kontext.png")
 ```
 
 ## Combining Flux Turbo LoRAs with Flux Control, Fill, and Redux
