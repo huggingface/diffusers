@@ -392,12 +392,14 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             finished_frame_num = long_video_iter * (base_num_frames - overlap_history_frames) + overlap_history_frames
             left_frame_num = num_latent_frames - finished_frame_num
             num_frames = min(left_frame_num + overlap_history_frames, base_num_frames)
-        elif base_num_frames is not None: # long video generation at the first iteration
+        elif base_num_frames is not None:  # long video generation at the first iteration
             num_latent_frames = base_num_frames
             prefix_video_latents_length = 0
+            prefix_video_latents = None
         else:  # short video generation
             num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
             prefix_video_latents_length = 0
+            prefix_video_latents = None
 
         shape = (
             batch_size,
