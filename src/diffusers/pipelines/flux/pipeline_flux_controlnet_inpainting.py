@@ -1289,7 +1289,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         )
 
                 if image_ref_prod is not None:
-                    latents = (1 - init_mask) * init_latents_proper + (1.0 - ratio_ref_prod) * init_mask * latents + ratio_ref_prod * init_mask_ref_prod * init_latents_proper_ref
+                    latents_1 = (1 - init_mask) * init_latents_proper
+                    latents_2 = (init_mask - init_mask_ref_prod) * latents 
+                    latents_3 = (1.0 - ratio_ref_prod) * init_mask_ref_prod * latents + ratio_ref_prod * init_mask_ref_prod * init_latents_proper_ref
+                    
+                    latents = latents_1 + latents_2 + latents_3 
                 else:    
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
