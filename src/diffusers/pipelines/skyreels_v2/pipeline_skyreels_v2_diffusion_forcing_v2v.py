@@ -466,7 +466,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
             if hasattr(self.scheduler, "add_noise"):
                 latents = self.scheduler.add_noise(init_latents, noise, timestep)
             else:
-                latents = self.scheduelr.scale_noise(init_latents, timestep, noise)
+                latents = self.scheduler.scale_noise(init_latents, timestep, noise)
         else:
             latents = latents.to(device)
 
