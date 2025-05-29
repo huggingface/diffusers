@@ -349,6 +349,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents: int = 16,
         height: int = 480,
         width: int = 832,
+        num_frames: int = 97,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -713,7 +714,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # Short video generation
             # 5. Prepare latent variables
             num_channels_latents = self.transformer.config.in_channels
-            latents, num_latent_frames, prefix_video_latents_length = self.prepare_latents(
+            latents, num_latent_frames, _, prefix_video_latents_length = self.prepare_latents(
                 batch_size * num_videos_per_prompt,
                 num_channels_latents,
                 height,
@@ -828,11 +829,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     num_channels_latents,
                     height,
                     width,
+                    num_frames,
                     torch.float32,
                     device,
                     generator,
                     latents if long_video_iter == 0 else None,
-                    transformer_dtype=transformer_dtype,
                     video=video,
                     overlap_history=overlap_history,
                     base_num_frames=base_num_frames,
