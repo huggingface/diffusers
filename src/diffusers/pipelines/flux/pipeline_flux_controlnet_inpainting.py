@@ -744,10 +744,10 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
-        image_ref_prod: PipelineImageInput = None,
-        ratio_ref_prod: Optional[float] = 0.1,
+        image_ref_prod: PipelineImageInput = None, # original pord image
+        ratio_ref_prod: Optional[float] = 0.1, # modified for injecting pord image
         mask_image: PipelineImageInput = None,
-        mask_image_original: PipelineImageInput = None,
+        mask_image_original: PipelineImageInput = None, # modified for injecting original pord images
         masked_image_latents: PipelineImageInput = None,
         control_image: PipelineImageInput = None,
         height: Optional[int] = None,
@@ -772,7 +772,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        iterations: Optional[int] = 4,
+        iterations: Optional[int] = 4, # modified for applying gradient to mask_image
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1088,7 +1088,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         else:
             masked_image = masked_image_latents
         
-        if mask_image_original is not None:
+        if image_ref_prod is not None:
             mask_condition_original = self.mask_processor.preprocess(
                 mask_image_original, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
             )
@@ -1110,7 +1110,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             generator,
         )
 
-        if mask_image_original is not None:
+        if image_ref_prod is not None:
             mask_original, _ = self.prepare_mask_latents(
                 mask_condition_original,
                 masked_image_original,
@@ -1194,7 +1194,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         mask_tensor = torch.zeros_like(mask)
         for index in range(mask_tensor.shape[0]):
             mask_tensor[index,:,:] = tmp_tensor
-        #tmp_tensor = torch.stack([tmp_tensor, tmp_tensor, tmp_tensor], dim=0)
         mask = mask_tensor.to(device=latents.device, dtype=latents.dtype)
 
         controlnet_keep = []
@@ -1280,7 +1279,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 if image_ref_prod is not None:
                     init_latents_proper_ref = image_latents_ref
                 init_mask = mask
-                init_mask_ref_prod = mask_original
+                if image_ref_prod is not None:
+                    init_mask_ref_prod = mask_original
 
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
