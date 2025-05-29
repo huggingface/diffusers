@@ -359,7 +359,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         video: Optional[List[PipelineImageInput]] = None,
         mask: Optional[List[PipelineImageInput]] = None,
-        reference_images: Optional[List[PipelineImageInput]] = None,
+        reference_images: Optional[Union[PIL.Image.Image, List[PIL.Image.Image], List[List[PIL.Image.Image]]]] = None,
         batch_size: int = 1,
         height: int = 480,
         width: int = 832,
@@ -513,8 +513,9 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 reference_image = reference_image[None, :, None, :, :]  # [1, C, 1, H, W]
                 reference_latent = retrieve_latents(self.vae.encode(reference_image), generator, sample_mode="argmax")
                 reference_latent = ((reference_latent.float() - latents_mean) * latents_std).to(vae_dtype)
-                reference_latent = torch.cat([reference_latent, torch.zeros_like(reference_latent)], dim=1)
-                latent = torch.cat([reference_latent.squeeze(0), latent], dim=1)  # Concat across frame dimension
+                reference_latent = reference_latent.squeeze(0)  # [C, 1, H, W]
+                reference_latent = torch.cat([reference_latent, torch.zeros_like(reference_latent)], dim=0)
+                latent = torch.cat([reference_latent.squeeze(0), latent], dim=1)
             latent_list.append(latent)
         return torch.stack(latent_list)
 
@@ -811,6 +812,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             torch.float32,
             device,
         )
+        num_reference_images = len(reference_images[0])
 
         conditioning_latents = self.prepare_video_latents(video, mask, reference_images, generator, device)
         mask = self.prepare_masks(mask, reference_images, generator)
@@ -823,7 +825,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_channels_latents,
             height,
             width,
-            num_frames,
+            num_frames + num_reference_images * self.vae_scale_factor_temporal,
             torch.float32,
             device,
             generator,
@@ -893,6 +895,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._current_timestep = None
 
         if not output_type == "latent":
+            print(latents.shape, num_reference_images)
+            latents = latents[:, :, num_reference_images:]
             latents = latents.to(vae_dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
