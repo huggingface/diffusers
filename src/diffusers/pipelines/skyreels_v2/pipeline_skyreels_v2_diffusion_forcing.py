@@ -727,6 +727,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latents,
             )
 
+            base_num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1 if base_num_frames is not None else num_latent_frames
+
             # 4. Prepare sample schedulers and timestep matrix
             sample_schedulers = []
             for _ in range(num_latent_frames):
@@ -734,7 +736,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                num_latent_frames, timesteps, num_latent_frames, ar_step, prefix_video_latents_length, causal_block_size
+                num_latent_frames, timesteps, base_num_frames, ar_step, prefix_video_latents_length, causal_block_size
             )
 
             # 6. Denoising loop
