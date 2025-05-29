@@ -364,6 +364,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
 
+        prefix_video_latents = None
+        prefix_video_latents_length = 0
+
         if video is not None:  # long video generation at the iterations other than the first one
             prefix_video_latents = retrieve_latents(
                 self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax"
@@ -394,12 +397,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_frames = min(left_frame_num + overlap_history_frames, base_num_frames)
         elif base_num_frames is not None:  # long video generation at the first iteration
             num_latent_frames = base_num_frames
-            prefix_video_latents_length = 0
-            prefix_video_latents = None
         else:  # short video generation
             num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-            prefix_video_latents_length = 0
-            prefix_video_latents = None
 
         shape = (
             batch_size,
