@@ -747,7 +747,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         image_ref_prod: PipelineImageInput = None,
         ratio_ref_prod: Optional[float] = 0.1,
         mask_image: PipelineImageInput = None,
-        mask_image_original: PipelineImageInput = None,
         masked_image_latents: PipelineImageInput = None,
         control_image: PipelineImageInput = None,
         height: Optional[int] = None,
@@ -774,7 +773,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         max_sequence_length: int = 512,
         iterations: Optional[int] = 3,
         iterations_prod_erosion: Optional[int] = 3,
-        kernel_prod_erosion: Optional[int] = 3,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1089,15 +1087,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             masked_image = init_image * (mask_condition < 0.5)
         else:
             masked_image = masked_image_latents
-        
-        if mask_image_original is not None:
-            mask_condition_original = self.mask_processor.preprocess(
-                mask_image_original, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
-            )
-            if masked_image_latents is None:
-                masked_image_original = init_image * (mask_condition_original < 0.5)
-            else:
-                masked_image_original = masked_image_latents
 
         mask, masked_image_latents = self.prepare_mask_latents(
             mask_condition,
@@ -1112,20 +1101,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             generator,
         )
 
-        if mask_image_original is not None:
-            mask_original, _ = self.prepare_mask_latents(
-                mask_condition_original,
-                masked_image_original,
-                batch_size,
-                num_channels_latents,
-                num_images_per_prompt,
-                global_height,
-                global_width,
-                prompt_embeds.dtype,
-                device,
-                generator,
-            )
-            
         def apply_dilate_to_mask_image(mask,iterations):
             kernel = np.ones((3, 3), np.uint8)
             mask = np.array(mask, dtype=bool)
@@ -1136,8 +1111,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
             return mask
 
-        def apply_erosion_to_mask_image(mask, iterations, kernel=kernel_prod_erosion):
-            kernel = np.ones((kernel_prod_erosion, kernel_prod_erosion), np.uint8)
+        def apply_erosion_to_mask_image(mask,iterations):
+            kernel = np.ones((5, 5), np.uint8)
             mask = np.array(mask, dtype=bool)
             mask = mask.astype(np.uint8)
             mask = cv2.erode(mask, kernel, iterations=iterations)
@@ -1209,13 +1184,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         mask = mask_tensor.to(device=latents.device, dtype=latents.dtype)
 
         # mask for prod reference img:
-        mask_original = mask_original.to(dtype=torch.float16)
-        tmp_mask = mask_original[0,:,:].cpu().numpy()
         tmp_mask_ref_prod = apply_erosion_to_mask_image(tmp_mask.reshape(64,64,-1), iterations=iterations_prod_erosion)
         tmp_mask_ref_prod = torch.Tensor(tmp_mask_ref_prod)
         tmp_mask_ref_prod = tmp_mask_ref_prod.view(-1,64)
 
-        mask_ref_prod = torch.zeros_like(mask_original)
+        mask_ref_prod = torch.zeros_like(mask)
         for index in range(mask_ref_prod.shape[0]):
             mask_ref_prod[index,:,:] = tmp_mask_ref_prod
         mask_ref_prod = mask_ref_prod.to(device=latents.device, dtype=latents.dtype)
