@@ -405,8 +405,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         is_inpainting: Optional[bool] = False, # controlnet inpainting
         contains_element: Optional[bool] = False, # controlnet inpainting for element
-        iterations: Optional[int] = 20, # controlnet inpainting
-        iterations_erosion: Optional[int] = 7, # modified for injecting original prod image
+        iterations: Optional[int] = 10, # controlnet inpainting
+        iterations_erosion: Optional[int] = 8, # modified for injecting original prod image
         mask_value: Optional[int] = 255, # controlnet inpainting
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,

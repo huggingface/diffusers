@@ -745,7 +745,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
         image_ref_prod: PipelineImageInput = None, # original pord image
-        ratio_ref_prod: Optional[float] = 0.1, # modified for injecting pord image
+        ratio_ref_prod: Optional[float] = 0.125, # modified for injecting pord image
         mask_image: PipelineImageInput = None,
         mask_image_original: PipelineImageInput = None, # modified for injecting original pord images
         masked_image_latents: PipelineImageInput = None,
