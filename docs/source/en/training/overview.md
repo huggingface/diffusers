@@ -59,5 +59,5 @@ pip install -r requirements_sdxl.txt
 
 To speedup training and reduce memory-usage, we recommend:
 
-- using PyTorch 2.0 or higher to automatically use [scaled dot product attention](../optimization/torch2.0#scaled-dot-product-attention) during training (you don't need to make any changes to the training code)
+- using PyTorch 2.0 or higher to automatically use [scaled dot product attention](../optimization/fp16#scaled-dot-product-attention) during training (you don't need to make any changes to the training code)
 - installing [xFormers](../optimization/xformers) to enable memory-efficient attention

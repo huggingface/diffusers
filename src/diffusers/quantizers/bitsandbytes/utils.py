@@ -49,7 +49,7 @@ def _replace_with_bnb_linear(
     """
     Private method that wraps the recursion for module replacement.
 
-    Returns the converted model and a boolean that indicates if the conversion has been successfull or not.
+    Returns the converted model and a boolean that indicates if the conversion has been successful or not.
     """
     for name, module in model.named_children():
         if current_key_name is None:
@@ -121,8 +121,9 @@ def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name
 
     References:
         * `bnb.nn.Linear8bit`: [LLM.int8(): 8-bit Matrix Multiplication for Transformers at
-          Scale](https://arxiv.org/abs/2208.07339)
-        * `bnb.nn.Linear4bit`: [QLoRA: Efficient Finetuning of Quantized LLMs](https://arxiv.org/abs/2305.14314)
+          Scale](https://huggingface.co/papers/2208.07339)
+        * `bnb.nn.Linear4bit`: [QLoRA: Efficient Finetuning of Quantized
+          LLMs](https://huggingface.co/papers/2305.14314)
 
     Parameters:
         model (`torch.nn.Module`):
@@ -171,9 +172,11 @@ def dequantize_bnb_weight(weight: "torch.nn.Parameter", state=None, dtype: "torc
 
     if cls_name == "Params4bit":
         output_tensor = bnb.functional.dequantize_4bit(weight.data, weight.quant_state)
-        logger.warning_once(
-            f"The model is going to be dequantized in {output_tensor.dtype} - if you want to upcast it to another dtype, make sure to pass the desired dtype when quantizing the model through `bnb_4bit_quant_type` argument of `BitsAndBytesConfig`"
-        )
+        msg = f"The model is going to be dequantized in {output_tensor.dtype} - if you want to upcast it to another dtype, make sure to pass the desired dtype when quantizing the model through `bnb_4bit_quant_type` argument of `BitsAndBytesConfig`"
+        if dtype:
+            msg = f"The model is going to be first dequantized in {output_tensor.dtype} and type-casted to {dtype}"
+            output_tensor = output_tensor.to(dtype)
+        logger.warning_once(msg)
         return output_tensor
 
     if state.SCB is None:
@@ -221,7 +224,7 @@ def _dequantize_and_replace(
     performance drop compared to the original model before quantization - use it only for specific usecases such as
     QLoRA adapters merging.
 
-    Returns the converted model and a boolean that indicates if the conversion has been successfull or not.
+    Returns the converted model and a boolean that indicates if the conversion has been successful or not.
     """
     quant_method = quantization_config.quantization_method()
 

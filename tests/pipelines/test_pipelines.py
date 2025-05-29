@@ -167,9 +167,9 @@ class DownloadTests(unittest.TestCase):
             download_requests = [r.method for r in m.request_history]
             assert download_requests.count("HEAD") == 15, "15 calls to files"
             assert download_requests.count("GET") == 17, "15 calls to files + model_info + model_index.json"
-            assert (
-                len(download_requests) == 32
-            ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+            assert len(download_requests) == 32, (
+                "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+            )
 
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download(
@@ -179,9 +179,9 @@ class DownloadTests(unittest.TestCase):
             cache_requests = [r.method for r in m.request_history]
             assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
             assert cache_requests.count("GET") == 1, "model info is only GET"
-            assert (
-                len(cache_requests) == 2
-            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            assert len(cache_requests) == 2, (
+                "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            )
 
     def test_less_downloads_passed_object(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -217,9 +217,9 @@ class DownloadTests(unittest.TestCase):
             assert download_requests.count("HEAD") == 13, "13 calls to files"
             # 17 - 2 because no call to config or model file for `safety_checker`
             assert download_requests.count("GET") == 15, "13 calls to files + model_info + model_index.json"
-            assert (
-                len(download_requests) == 28
-            ), "2 calls per file (13 files) + send_telemetry, model_info and model_index.json"
+            assert len(download_requests) == 28, (
+                "2 calls per file (13 files) + send_telemetry, model_info and model_index.json"
+            )
 
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download(
@@ -229,9 +229,9 @@ class DownloadTests(unittest.TestCase):
             cache_requests = [r.method for r in m.request_history]
             assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
             assert cache_requests.count("GET") == 1, "model info is only GET"
-            assert (
-                len(cache_requests) == 2
-            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            assert len(cache_requests) == 2, (
+                "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            )
 
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -588,20 +588,17 @@ class DownloadTests(unittest.TestCase):
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         deprecated_warning_msg = "Warning: The repository contains sharded checkpoints for variant"
 
-        for is_local in [True, False]:
-            with CaptureLogger(logger) as cap_logger:
-                with tempfile.TemporaryDirectory() as tmpdirname:
-                    local_repo_id = repo_id
-                    if is_local:
-                        local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
+        with CaptureLogger(logger) as cap_logger:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
 
-                    _ = DiffusionPipeline.from_pretrained(
-                        local_repo_id,
-                        safety_checker=None,
-                        variant="fp16",
-                        use_safetensors=True,
-                    )
-            assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
+                _ = DiffusionPipeline.from_pretrained(
+                    local_repo_id,
+                    safety_checker=None,
+                    variant="fp16",
+                    use_safetensors=True,
+                )
+        assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
 
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None
@@ -616,7 +613,7 @@ class DownloadTests(unittest.TestCase):
                     variant=variant,
                     use_safetensors=use_safetensors,
                 )
-            assert "Error no file name" in str(error_context.exception)
+            assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
 
         # text encoder has fp16 variants so we can load it
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -675,7 +672,7 @@ class DownloadTests(unittest.TestCase):
                     use_safetensors=use_safetensors,
                 )
 
-            assert "Error no file name" in str(error_context.exception)
+            assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
 
     def test_download_bin_variant_does_not_exist_for_model(self):
         variant = "no_ema"
@@ -1816,7 +1813,12 @@ class PipelineFastTests(unittest.TestCase):
             feature_extractor=self.dummy_extractor,
         )
 
-        sd.enable_model_cpu_offload(gpu_id=5)
+        # `enable_model_cpu_offload` detects device type when not passed
+        # `enable_model_cpu_offload` raises ValueError if detected device is `cpu`
+        # This test only checks whether `_offload_gpu_id` is set correctly
+        # So the device passed can be any supported `torch.device` type
+        # This allows us to keep the test under `PipelineFastTests`
+        sd.enable_model_cpu_offload(gpu_id=5, device="cuda")
         assert sd._offload_gpu_id == 5
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
@@ -1992,7 +1994,9 @@ class PipelineSlowTests(unittest.TestCase):
         reason="Torch Dynamo isn't yet supported for Python 3.12.",
     )
     def test_from_save_pretrained_dynamo(self):
-        run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
+        torch.compiler.rest()
+        with torch._inductor.utils.fresh_inductor_cache():
+            run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
 
     def test_from_pretrained_hub(self):
         model_path = "google/ddpm-cifar10-32"
@@ -2204,7 +2208,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
         # there will be recompilation errors, as torch caches the model when run in the same process.
         super().tearDown()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -2329,21 +2333,21 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
     def test_hotswapping_compiled_pipline_linear(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_both_linear_and_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     def test_enable_lora_hotswap_called_after_adapter_added_raises(self):

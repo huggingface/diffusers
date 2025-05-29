@@ -173,7 +173,7 @@ class TrainSD:
         if not dataloader_exception:
             xm.wait_device_ops()
             total_time = time.time() - last_time
-            print(f"Average step time: {total_time/(self.args.max_train_steps-measure_start_step)}")
+            print(f"Average step time: {total_time / (self.args.max_train_steps - measure_start_step)}")
         else:
             print("dataloader exception happen, skip result")
             return
@@ -214,7 +214,7 @@ class TrainSD:
             if self.args.snr_gamma is None:
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
             else:
-                # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                # Compute loss-weights as per Section 3.4 of https://huggingface.co/papers/2303.09556.
                 # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                 # This is discussed in Section 4.2 of the same paper.
                 snr = compute_snr(self.noise_scheduler, timesteps)
@@ -342,7 +342,7 @@ def parse_args():
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://huggingface.co/papers/2303.09556.",
     )
     parser.add_argument(
         "--non_ema_revision",
@@ -622,7 +622,7 @@ def main(args):
     num_devices_per_host = num_devices // num_hosts
     if xm.is_master_ordinal():
         print("***** Running training *****")
-        print(f"Instantaneous batch size per device = {args.train_batch_size // num_devices_per_host }")
+        print(f"Instantaneous batch size per device = {args.train_batch_size // num_devices_per_host}")
         print(
             f"Total train batch size (w. parallel, distributed & accumulation) = {args.train_batch_size * num_hosts}"
         )
