@@ -374,6 +374,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        last_image: Optional[torch.Tensor] = None,
         base_num_frames: Optional[int] = None,
         video: Optional[torch.Tensor] = None,
         overlap_history: Optional[int] = None,
@@ -803,6 +804,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             latents[:, :, :prefix_video_latents_length, :, :] = condition[:, :, :prefix_video_latents_length, :, :].to(
                 transformer_dtype
             )
+            base_num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1 if base_num_frames is not None else num_latent_frames
             if last_image is not None:
                 latents = torch.cat(
                     [latents, condition[:, :, prefix_video_latents_length:, :, :].to(transformer_dtype)], dim=2
@@ -905,6 +907,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
 
         else:
             # Long video generation
+            num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+            base_num_frames = (base_num_frames - 1) // self.vae_scale_factor_temporal + 1 if base_num_frames is not None else num_latent_frames
             overlap_history_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
             n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
             video = None
@@ -916,17 +920,16 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
                 device, self.vae.dtype
             )
+            image = self.video_processor.preprocess(image, height=height, width=width).to(
+                device, dtype=torch.float32
+            )
+            if last_image is not None:
+                last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
+                    device, dtype=torch.float32
+                )
             for long_video_iter in range(n_iter):
                 # 5. Prepare latent variables
                 num_channels_latents = self.vae.config.z_dim
-                if i == 0:
-                    image = self.video_processor.preprocess(image, height=height, width=width).to(
-                        device, dtype=torch.float32
-                    )
-                    if last_image is not None:
-                        last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
-                            device, dtype=torch.float32
-                        )
 
                 latents, num_latent_frames, condition, prefix_video_latents_length = self.prepare_latents(
                     batch_size * num_videos_per_prompt,
