@@ -543,7 +543,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
                 if is_product.lower() == "true":
                     composed_prod_images.append(Image.fromarray(img_array.astype(np.uint8)))
-                    composed_prod_images_all += img_array * image_mask_bg[index]
+                    composed_prod_images_all += img_array * image_mask_prod[index]
                 else:
                     composed_bg_image += img_array * image_mask_bg[index]
                 
