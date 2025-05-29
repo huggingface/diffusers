@@ -349,12 +349,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents: int = 16,
         height: int = 480,
         width: int = 832,
-        num_frames: Optional[int] = None,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-        transformer_dtype: Optional[torch.dtype] = None,
         base_num_frames: Optional[int] = None,
         video: Optional[torch.Tensor] = None,
         overlap_history: Optional[int] = None,
@@ -415,10 +413,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        if prefix_video_latents_length > 0:
-            latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
-
-        return latents, num_latent_frames, prefix_video_latents_length
+        return latents, num_latent_frames, prefix_video_latents, prefix_video_latents_length
 
     def generate_timestep_matrix(
         self,
@@ -828,7 +823,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             for long_video_iter in range(n_iter):
                 # 5. Prepare latent variables
                 num_channels_latents = self.transformer.config.in_channels
-                latents, num_latent_frames, prefix_video_latents_length = self.prepare_latents(
+                latents, num_latent_frames, prefix_video_latents, prefix_video_latents_length = self.prepare_latents(
                     batch_size * num_videos_per_prompt,
                     num_channels_latents,
                     height,
@@ -845,6 +840,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     overlap_history_frames=overlap_history_frames,
                     long_video_iter=long_video_iter,
                 )
+
+                if prefix_video_latents_length > 0:
+                    latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
 
                 # 4. Prepare sample schedulers and timestep matrix
                 sample_schedulers = []
