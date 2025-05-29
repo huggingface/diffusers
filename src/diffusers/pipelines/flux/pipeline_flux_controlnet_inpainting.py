@@ -1184,7 +1184,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         mask = mask_tensor.to(device=latents.device, dtype=latents.dtype)
 
         # mask for prod reference img:
-        tmp_mask_ref_prod = apply_dilate_to_mask_image(tmp_mask.reshape(64,64,-1), iterations=iterations_prod_erosion)
+        tmp_mask_ref_prod = apply_erosion_to_mask_image(tmp_mask.reshape(64,64,-1), iterations=iterations_prod_erosion)
         tmp_mask_ref_prod = torch.Tensor(tmp_mask_ref_prod)
         tmp_mask_ref_prod = tmp_mask_ref_prod.view(-1,64)
 
