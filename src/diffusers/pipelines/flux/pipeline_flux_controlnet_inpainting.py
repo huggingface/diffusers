@@ -743,6 +743,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
+        image_ref_prod: PipelineImageInput = None,
+        ratio_ref_prod: Optional[float] = 0.1,
         mask_image: PipelineImageInput = None,
         masked_image_latents: PipelineImageInput = None,
         control_image: PipelineImageInput = None,
@@ -925,6 +927,12 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         )
         init_image = init_image.to(dtype=torch.float32)
 
+        if image_ref_prod is not None:
+            init_image_ref = self.image_processor.preprocess(
+                image_ref_prod, height=global_height, width=global_width, crops_coords=crops_coords, resize_mode=resize_mode
+            )
+            init_image_ref = init_image_ref.to(dtype=torch.float32)
+
         # 5. Prepare control image
         num_channels_latents = self.transformer.config.in_channels // 4
         if isinstance(self.controlnet, FluxControlNetModel):
@@ -1054,6 +1062,20 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             generator,
             latents,
         )
+
+        if image_ref_prod is not None:
+            _, _, image_latents_ref, _ = self.prepare_latents(
+                init_image_ref,
+                latent_timestep,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                global_height,
+                global_width,
+                prompt_embeds.dtype,
+                device,
+                generator,
+                latents,
+            )
 
         # 8. Prepare mask latents
         mask_condition = self.mask_processor.preprocess(
@@ -1230,15 +1252,25 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                 # For inpainting, we need to apply the mask and add the masked image latents
                 init_latents_proper = image_latents
+                if image_ref_prod is not None:
+                    init_latents_proper_ref = image_latents_ref
                 init_mask = mask
+                
 
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
                     init_latents_proper = self.scheduler.scale_noise(
                         init_latents_proper, torch.tensor([noise_timestep]), noise
                     )
+                    if image_ref_prod is not None:
+                        init_latents_proper_ref = self.scheduler.scale_noise(
+                            init_latents_proper_ref, torch.tensor([noise_timestep]), noise
+                        )
 
-                latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                if image_ref_prod is not None:
+                    latents = (1 - init_mask) * init_latents_proper + (1.0 - ratio_ref_prod) * init_mask * latents + ratio_ref_prod * init_mask * init_latents_proper_ref
+                else:    
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
