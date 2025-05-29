@@ -87,21 +87,24 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_model_is_compatible_variant(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_model_is_compatible_variant_mixed(self):
         filenames = [
             "unet/diffusion_pytorch_model.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_model_is_not_compatible_variant(self):
         filenames = [
@@ -121,7 +124,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "text_encoder/pytorch_model.fp16.bin",
             "text_encoder/model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_transformer_model_is_not_compatible_variant(self):
         filenames = [
@@ -145,7 +149,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}))
+        self.assertFalse(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}))
+        self.assertTrue(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}, variant="fp16"))
 
     def test_transformer_model_is_not_compatible_variant_extra_folder(self):
         filenames = [
@@ -173,7 +178,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "text_encoder/model.fp16-00001-of-00002.safetensors",
             "text_encoder/model.fp16-00001-of-00002.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_is_compatible_sharded(self):
         filenames = [
@@ -189,13 +195,15 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16-00001-of-00002.safetensors",
             "unet/diffusion_pytorch_model.fp16-00001-of-00002.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_is_compatible_only_variants(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_is_compatible_no_components(self):
         filenames = [
@@ -208,6 +216,20 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "diffusion_pytorch_model.fp16.bin",
         ]
         self.assertFalse(is_safetensors_compatible(filenames))
+
+    def test_is_compatible_mixed_variants(self):
+        filenames = [
+            "unet/diffusion_pytorch_model.fp16.safetensors",
+            "vae/diffusion_pytorch_model.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+
+    def test_is_compatible_variant_and_non_safetensors(self):
+        filenames = [
+            "unet/diffusion_pytorch_model.fp16.safetensors",
+            "vae/diffusion_pytorch_model.bin",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames, variant="fp16"))
 
 
 class VariantCompatibleSiblingsTest(unittest.TestCase):

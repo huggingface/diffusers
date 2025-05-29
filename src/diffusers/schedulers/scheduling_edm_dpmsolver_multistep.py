@@ -31,7 +31,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     `EDMDPMSolverMultistepScheduler` is a fast dedicated high-order solver for diffusion ODEs.
 
     [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
-    https://arxiv.org/abs/2206.00364
+    https://huggingface.co/papers/2206.00364
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
@@ -47,8 +47,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             The standard deviation of the data distribution. This is set to 0.5 in the EDM paper [1].
         sigma_schedule (`str`, *optional*, defaults to `karras`):
             Sigma schedule to compute the `sigmas`. By default, we the schedule introduced in the EDM paper
-            (https://arxiv.org/abs/2206.00364). Other acceptable value is "exponential". The exponential schedule was
-            incorporated in this model: https://huggingface.co/stabilityai/cosxl.
+            (https://huggingface.co/papers/2206.00364). Other acceptable value is "exponential". The exponential
+            schedule was incorporated in this model: https://huggingface.co/stabilityai/cosxl.
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
         solver_order (`int`, defaults to 2):
@@ -305,7 +305,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         pixels from saturation at each step. We find that dynamic thresholding results in significantly better
         photorealism as well as better image-text alignment, especially when using very large guidance weights."
 
-        https://arxiv.org/abs/2205.11487
+        https://huggingface.co/papers/2205.11487
         """
         dtype = sample.dtype
         batch_size, channels, *remaining_dims = sample.shape
@@ -472,7 +472,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         r0 = h_0 / h
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
         if self.config.algorithm_type == "dpmsolver++":
-            # See https://arxiv.org/abs/2211.01095 for detailed derivations
+            # See https://huggingface.co/papers/2211.01095 for detailed derivations
             if self.config.solver_type == "midpoint":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
@@ -548,7 +548,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
         D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
         if self.config.algorithm_type == "dpmsolver++":
-            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            # See https://huggingface.co/papers/2206.00927 for detailed derivations
             x_t = (
                 (sigma_t / sigma_s0) * sample
                 - (alpha_t * (torch.exp(-h) - 1.0)) * D0

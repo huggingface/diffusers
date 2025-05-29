@@ -96,7 +96,7 @@ class SparseControlNetConditioningEmbedding(nn.Module):
 class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     A SparseControlNet model as described in [SparseCtrl: Adding Sparse Controls to Text-to-Video Diffusion
-    Models](https://arxiv.org/abs/2311.16933).
+    Models](https://huggingface.co/papers/2311.16933).
 
     Args:
         in_channels (`int`, defaults to 4):
