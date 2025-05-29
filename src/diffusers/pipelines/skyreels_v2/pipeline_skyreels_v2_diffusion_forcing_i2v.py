@@ -364,7 +364,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
 
     def prepare_latents(
         self,
-        image: PipelineImageInput,
+        image: Optional[PipelineImageInput],
         batch_size: int,
         num_channels_latents: int = 16,
         height: int = 480,
@@ -375,6 +375,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         last_image: Optional[torch.Tensor] = None,
+        condition: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
@@ -392,37 +393,38 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         else:
             latents = latents.to(device=device, dtype=dtype)
 
-        image = image.unsqueeze(2)
-        if last_image is not None:
-            last_image = last_image.unsqueeze(2)
-            video_condition = torch.cat([image, last_image], dim=2)
-        else:
-            video_condition = image
+        if image is not None:
+            image = image.unsqueeze(2)
+            if last_image is not None:
+                last_image = last_image.unsqueeze(2)
+                video_condition = torch.cat([image, last_image], dim=2)
+            else:
+                video_condition = image
 
-        video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
+            video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
 
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean)
-            .view(1, self.vae.config.z_dim, 1, 1, 1)
-            .to(latents.device, latents.dtype)
-        )
-        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-            latents.device, latents.dtype
-        )
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                latents.device, latents.dtype
+            )
 
-        if isinstance(generator, list):
-            latent_condition = [
-                retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
-            ]
-            latent_condition = torch.cat(latent_condition)
-        else:
-            latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
-            latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
+            if isinstance(generator, list):
+                latent_condition = [
+                    retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
+                ]
+                latent_condition = torch.cat(latent_condition)
+            else:
+                latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
+                latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
 
-        latent_condition = latent_condition.to(dtype)
-        latent_condition = (latent_condition - latents_mean) * latents_std
+            latent_condition = latent_condition.to(dtype)
+            condition = (latent_condition - latents_mean) * latents_std
 
-        return latents, latent_condition
+        return latents, condition
 
     # Copied from diffusers.pipelines.skyreels_v2.pipeline_skyreels_v2_diffusion_forcing.SkyReelsV2DiffusionForcingPipeline.generate_timestep_matrix
     def generate_timestep_matrix(
@@ -718,7 +720,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             device=device,
         )
 
-        # Encode image embedding
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
@@ -762,7 +763,9 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 latents,
                 last_image,
             )
-            prefix_video_latents_length = condition.shape[2] // 2
+            prefix_video_latents_length = condition.shape[2]
+            if last_image is not None:
+                prefix_video_latents_length = prefix_video_latents_length // 2
 
             latents[:, :, :prefix_video_latents_length, :, :] = condition[:, :, :prefix_video_latents_length, :, :].to(
                 transformer_dtype
@@ -896,7 +899,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                             f"However, it may slightly affect the continuity of the generated video at the truncation boundary."
                         )
                         prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
-                    prefix_video_latents_length = prefix_video_latents.shape[2]
+                    condition = prefix_video_latents
 
                     finished_frame_num = i * (base_num_frames - overlap_history_frames) + overlap_history_frames
                     left_frame_num = num_latent_frames - finished_frame_num
@@ -906,16 +909,17 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
 
                 # 5. Prepare latent variables
                 num_channels_latents = self.vae.config.z_dim
-                image = self.video_processor.preprocess(image, height=height, width=width).to(
-                    device, dtype=torch.float32
-                )
-                if last_image is not None:
-                    last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
+                if i == 0:
+                    image = self.video_processor.preprocess(image, height=height, width=width).to(
                         device, dtype=torch.float32
                     )
+                    if last_image is not None:
+                        last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
+                            device, dtype=torch.float32
+                        )
 
                 latents, condition = self.prepare_latents(
-                    image,
+                    image if i == 0 else None,
                     batch_size * num_videos_per_prompt,
                     num_channels_latents,
                     height,
@@ -924,18 +928,22 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                     torch.float32,
                     device,
                     generator,
-                    None if i > 0 else latents,
-                    last_image,
+                    latents if i == 0 else None,
+                    last_image if i == 0 else None,
+                    condition if i != 0 else None,
                 )
 
-                prefix_video_latents_length = condition.shape[2] // 2
+                prefix_video_latents_length = condition.shape[2]
+                if i == 0 and last_image is not None:
+                    end_video_latents = condition[:, :, prefix_video_latents_length:, :, :]
+                    prefix_video_latents_length = prefix_video_latents_length // 2
 
                 latents[:, :, :prefix_video_latents_length, :, :] = condition[
                     :, :, :prefix_video_latents_length, :, :
                 ].to(transformer_dtype)
-                if last_image is not None and i == n_iter - 1:
+                if last_image is not None and i + 1 == n_iter:
                     latents = torch.cat(
-                        [latents, condition[:, :, prefix_video_latents_length:, :, :].to(transformer_dtype)], dim=2
+                        [latents, end_video_latents.to(transformer_dtype)], dim=2
                     )
                     base_num_frames_iter += prefix_video_latents_length
 
@@ -954,7 +962,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                     causal_block_size,
                 )
 
-                if last_image is not None and i == n_iter - 1:
+                if last_image is not None and i + 1 == n_iter:
                     step_matrix[:, -prefix_video_latents_length:] = 0
                     step_update_mask[:, -prefix_video_latents_length:] = False
 
@@ -1039,7 +1047,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                         if XLA_AVAILABLE:
                             xm.mark_step()
 
-                if last_image is not None and i == n_iter - 1:
+                if last_image is not None and i + 1 == n_iter:
                     latents = latents[:, :, :-prefix_video_latents_length]
 
                 if not output_type == "latent":
