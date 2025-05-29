@@ -1190,7 +1190,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
         mask_ref_prod = torch.zeros_like(mask)
         for index in range(mask_ref_prod.shape[0]):
-            mask_ref_prod[index,:,:] = tmp_tensor
+            mask_ref_prod[index,:,:] = tmp_mask_ref_prod
         mask_ref_prod = mask_ref_prod.to(device=latents.device, dtype=latents.dtype)
 
         controlnet_keep = []
