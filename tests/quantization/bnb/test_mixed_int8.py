@@ -523,13 +523,15 @@ class SlowBnb8bitTests(Base8bitTests):
             torch_dtype=torch.float16,
             device_map=torch_device,
         )
+
         # CUDA device placement works.
+        device = torch_device if torch_device != "rocm" else "cuda"
         pipeline_8bit = DiffusionPipeline.from_pretrained(
             self.model_name,
             transformer=transformer_8bit,
             text_encoder_3=text_encoder_3_8bit,
             torch_dtype=torch.float16,
-        ).to("cuda")
+        ).to(device)
 
         # Check if inference works.
         _ = pipeline_8bit("table", max_sequence_length=20, num_inference_steps=2)
