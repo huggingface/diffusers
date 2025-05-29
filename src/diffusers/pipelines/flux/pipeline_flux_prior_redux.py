@@ -536,6 +536,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
             composed_image_all = np.zeros((image_width, image_height, 3))
             masked_bg = np.zeros((image_width, image_height, 3))
+            masked_bg_original = np.zeros((image_width, image_height, 3))
             masked_bg_with_element = np.zeros((image_width, image_height, 3))
             composed_bg_image = np.zeros((image_width, image_height, 3))
             composed_prod_images = []
@@ -550,6 +551,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 composed_image_all += img_array * image_mask_all[index]
                 if is_product.lower() == "true":
                     masked_bg += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
+                    masked_bg_original += mask_value*np.ones((image_width, image_height, 3)) * image_mask_all[index]
 
                 if index > 0:
                     masked_bg_with_element += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
@@ -558,6 +560,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             composed_prod_images_all = Image.fromarray(composed_prod_images_all.astype(np.uint8)).convert('RGB')
             composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
             masked_bg = Image.fromarray(masked_bg.astype(np.uint8)).convert('RGB')
+            masked_bg_original = Image.fromarray(masked_bg_original.astype(np.uint8)).convert('RGB')
             masked_bg_with_element = Image.fromarray(masked_bg_with_element.astype(np.uint8)).convert('RGB')
         
             bg_mask = Image.fromarray(bg_mask.astype(np.uint8)*255).convert('RGB')
@@ -659,9 +662,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             if is_qv:
                 if is_inpainting:
                     if contains_element:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_with_element, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, bg_mask)
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_original, masked_bg_with_element, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, bg_mask)
                     else:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, bg_mask)
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_original, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, bg_mask)
                 else:
                     return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
             else:
