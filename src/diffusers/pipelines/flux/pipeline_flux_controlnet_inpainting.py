@@ -772,9 +772,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        iterations: Optional[int] = 3,
-        iterations_prod_erosion: Optional[int] = 3,
-        kernel_prod_erosion: Optional[int] = 3,
+        iterations: Optional[int] = 4,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1136,15 +1134,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
             return mask
 
-        def apply_erosion_to_mask_image(mask, iterations, kernel=kernel_prod_erosion):
-            kernel = np.ones((kernel_prod_erosion, kernel_prod_erosion), np.uint8)
-            mask = np.array(mask, dtype=bool)
-            mask = mask.astype(np.uint8)
-            mask = cv2.erode(mask, kernel, iterations=iterations)
-            mask = mask.astype(np.uint8)
-
-            return mask
-
         # input np array size: 4096 x 3
         # output np array size: 64 x 64 x 3
         def mask_gradienting(mask, iterations=3):
@@ -1207,18 +1196,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             mask_tensor[index,:,:] = tmp_tensor
         #tmp_tensor = torch.stack([tmp_tensor, tmp_tensor, tmp_tensor], dim=0)
         mask = mask_tensor.to(device=latents.device, dtype=latents.dtype)
-
-        # mask for prod reference img:
-        mask_original = mask_original.to(dtype=torch.float16)
-        tmp_mask = mask_original[0,:,:].cpu().numpy()
-        tmp_mask_ref_prod = apply_erosion_to_mask_image(tmp_mask.reshape(64,64,-1), iterations=iterations_prod_erosion)
-        tmp_mask_ref_prod = torch.Tensor(tmp_mask_ref_prod)
-        tmp_mask_ref_prod = tmp_mask_ref_prod.view(-1,64)
-
-        mask_ref_prod = torch.zeros_like(mask_original)
-        for index in range(mask_ref_prod.shape[0]):
-            mask_ref_prod[index,:,:] = tmp_mask_ref_prod
-        mask_ref_prod = mask_ref_prod.to(device=latents.device, dtype=latents.dtype)
 
         controlnet_keep = []
         for i in range(len(timesteps)):
@@ -1303,7 +1280,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 if image_ref_prod is not None:
                     init_latents_proper_ref = image_latents_ref
                 init_mask = mask
-                init_mask_ref_prod = mask_ref_prod
+                init_mask_ref_prod = mask_original
 
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
