@@ -895,7 +895,6 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._current_timestep = None
 
         if not output_type == "latent":
-            print(latents.shape, num_reference_images)
             latents = latents[:, :, num_reference_images:]
             latents = latents.to(vae_dtype)
             latents_mean = (
