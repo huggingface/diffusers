@@ -1,19 +1,24 @@
 """
-Multispectral Image Dataloader for DreamBooth Training
+Multispectral Image Dataloader for VAE Training
 
 This module implements a specialized dataloader for multispectral TIFF images.
-It handles 5-channel data by selecting the first 5 bands from input TIFF files.
+It handles 5-channel data by selecting specific spectral bands from input TIFF files.
 
 Key Features:
-1. Simple 5-band selection from input TIFFs
-2. Per-channel normalization to [0,1] range
+1. Specific band selection (9, 18, 32, 42, 55) from input TIFFs:
+   - Band 9 (474.73nm): Blue - captures chlorophyll absorption
+   - Band 18 (538.71nm): Green - reflects well in healthy vegetation
+   - Band 32 (650.665nm): Red - sensitive to chlorophyll content
+   - Band 42 (730.635nm): Red-edge - sensitive to stress and early disease
+   - Band 55 (850.59nm): NIR - strong reflectance in healthy leaves
+2. Per-channel normalization to [-1, 1] range for SD3 VAE compatibility
 3. Padding to square shape and resizing to 512x512
 4. Memory-efficient caching and worker management
 5. GPU-optimized data loading with pin_memory (when available)
 
 Usage Notes:
-1. The dataloader takes any TIFF file with 5 or more bands
-2. Always uses the first 5 bands in order
+1. The dataloader takes any TIFF file with at least 55 bands
+2. Uses specific bands (9, 18, 32, 42, 55) for optimal vegetation analysis
 3. Caching is enabled by default for small datasets
 4. For local testing:
    - Set num_workers=0
@@ -23,6 +28,8 @@ Usage Notes:
    - Enable prefetch_factor (default=2)
    - Enable persistent_workers (default=True)
    - Set appropriate num_workers based on system
+6. Tests use relaxed tolerances (rtol=1e-2, atol=1e-2) for floating-point imprecision
+7. The test_specific_band_selection test uses the exact file as the dataloader for index 0
 
 Example:
     ```python
@@ -63,8 +70,14 @@ logger = logging.getLogger(__name__)
 class MultispectralDataset(Dataset):
     """
     Dataset class for loading and preprocessing multispectral TIFF images.
-    Handles 5-channel data by selecting first 5 bands from input TIFFs.
+    Handles 5-channel data by selecting specific bands (9, 18, 32, 42, 55) from input TIFFs.
     """
+    
+    # Define the specific bands to use (1-based indexing for rasterio.read)
+    # IMPORTANT: rasterio.read() expects 1-based band indices, not 0-based.
+    # These correspond to bands 9, 18, 32, 42, 55 (wavelengths: 474.73, 538.71, 650.665, 730.635, 850.59 nm)
+    # If you ever change the band selection, ensure you use 1-based indices here.
+    REQUIRED_BANDS = [9, 18, 32, 42, 55]  # 1-based indices for rasterio.read
     
     def __init__(
         self,
@@ -96,7 +109,7 @@ class MultispectralDataset(Dataset):
         if not self.image_paths:
             raise FileNotFoundError(
                 f"No TIFF files found in {data_root}. Please ensure the directory contains "
-                f".tiff or .tif files with at least 5 spectral bands."
+                f".tiff or .tif files with at least 55 spectral bands."
             )
         
         # Cache for storing preprocessed images
@@ -106,15 +119,15 @@ class MultispectralDataset(Dataset):
         self._validate_all_images()
     
     def _validate_all_images(self):
-        """Validate that all images have at least 5 bands."""
+        """Validate that all images have at least 55 bands."""
         for path in self.image_paths:
             try:
                 with rasterio.open(path) as src:
-                    if src.count < 5:
+                    if src.count < 55:
                         raise ValueError(
-                            f"Image {path} has only {src.count} bands, but at least 5 bands are required. "
-                            f"This dataloader is configured for 5-channel multispectral data. "
-                            f"Please ensure all input images have 5 or more bands."
+                            f"Image {path} has only {src.count} bands, but at least 55 bands are required. "
+                            f"This dataloader is configured to use specific bands (9, 18, 32, 42, 55). "
+                            f"Please ensure all input images have 55 or more bands."
                         )
             except rasterio.errors.RasterioIOError as e:
                 raise ValueError(
@@ -129,14 +142,14 @@ class MultispectralDataset(Dataset):
     
     def normalize_channel(self, channel_data: np.ndarray) -> np.ndarray:
         """
-        Per-channel min-max normalization to [0, 1] range.
+        Per-channel normalization to [-1, 1] range for VAE compatibility.
         Includes safety checks for division by zero and NaN values.
         
         Args:
             channel_data: Input channel data
             
         Returns:
-            Normalized channel data
+            Normalized channel data in [-1, 1] range
         """
         # Handle NaN values
         min_val = np.nanmin(channel_data)
@@ -150,12 +163,16 @@ class MultispectralDataset(Dataset):
             )
             return np.zeros_like(channel_data, dtype=np.float32)
             
-        return (channel_data - min_val) / (max_val - min_val)
+        # First normalize to [0, 1] 
+        normalized = (channel_data - min_val) / (max_val - min_val)
+        
+        # Then scale to [-1, 1] because SD3 VAE backbone expects input in [-1, 1]
+        return 2 * normalized - 1
     
     def preprocess_image(self, image_path: str) -> torch.Tensor:
         """
         Load and preprocess a multispectral image.
-        Takes first 5 bands and processes them for SD3 compatibility.
+        Takes specific bands (9, 18, 32, 42, 55) and processes them for SD3 compatibility.
         
         Args:
             image_path: Path to the image file
@@ -165,8 +182,13 @@ class MultispectralDataset(Dataset):
         """
         try:
             with rasterio.open(image_path) as src:
-                # Read first 5 bands
-                image = src.read()[:5]  # Shape: (5, height, width)
+                # Read all required bands
+                image = src.read(self.REQUIRED_BANDS)  # Shape: (5, height, width)
+                
+                # Debug: Print min/max values of the bands before normalization
+                for i, band_idx in enumerate(self.REQUIRED_BANDS):
+                    band_data = image[i]
+                    print(f"Band {band_idx} (before normalization) - Min: {np.min(band_data)}, Max: {np.max(band_data)}")
                 
                 # Convert to float32 for processing
                 image = image.astype(np.float32)
@@ -176,37 +198,27 @@ class MultispectralDataset(Dataset):
                 for i in range(5):
                     normalized_image[i] = self.normalize_channel(image[i])
                 
-                # Convert to torch tensor
+                # Debug: Print min/max values of the bands after normalization
+                for i, band_idx in enumerate(self.REQUIRED_BANDS):
+                    band_data = normalized_image[i]
+                    print(f"Band {band_idx} (after normalization) - Min: {np.min(band_data)}, Max: {np.max(band_data)}")
+                
+                # Convert to tensor
                 image_tensor = torch.from_numpy(normalized_image)
-                
-                # Calculate padding
-                h, w = image_tensor.shape[1:]
-                max_dim = max(h, w)
-                pad_h = (max_dim - h) // 2
-                pad_w = (max_dim - w) // 2
-                
-                # Pad to square
-                image_tensor = F.pad(
-                    image_tensor,
-                    (pad_w, pad_w, pad_h, pad_h),
-                    mode='constant',
-                    value=0
-                )
                 
                 # Resize to target resolution
                 image_tensor = F.interpolate(
-                    image_tensor.unsqueeze(0),
+                    image_tensor.unsqueeze(0),  # Add batch dimension
                     size=(self.resolution, self.resolution),
                     mode='bilinear',
                     align_corners=False
-                ).squeeze(0)
+                ).squeeze(0)  # Remove batch dimension
                 
+                print("Final preprocessed image stats:", image_tensor.shape, image_tensor.min(), image_tensor.max())
                 return image_tensor
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to preprocess image {image_path}: {str(e)}. "
-                f"Please ensure the file is a valid multispectral TIFF with at least 5 bands."
-            )
+            logger.error(f"Error preprocessing image {image_path}: {str(e)}")
+            raise
     
     def __len__(self) -> int:
         return len(self.image_paths)
@@ -357,13 +369,13 @@ def test_explicit_caching_validation(data_dir, test_images):
         "Cached tensor differs from original tensor"
     
     # Verify normalization is preserved
-    assert torch.all(cached_tensor >= 0) and torch.all(cached_tensor <= 1), \
-        "Cached tensor values outside [0,1] range"
+    assert torch.all(cached_tensor >= -1) and torch.all(cached_tensor <= 1), \
+        "Cached tensor values outside [-1,1] range"
     
     # Verify channel independence
     for c in range(cached_tensor.shape[0]):
         channel = cached_tensor[c]
-        assert torch.min(channel) == 0 or torch.max(channel) == 1, \
+        assert torch.min(channel) == -1 or torch.max(channel) == 1, \
             f"Channel {c} not properly normalized"
 
 def test_file_order_consistency(data_dir, test_images):

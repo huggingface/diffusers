@@ -1,5 +1,5 @@
 """
-5-Channel Multispectral AutoencoderKL Implementation
+ATTENTION: OUTDATED/ARCHIVED - FULL 5-Channel Multispectral AutoencoderKL Implementation
 
 This module implements a Variational Autoencoder (VAE) specifically designed for 5-channel multispectral image data.
 The implementation extends the standard AutoencoderKL from diffusers to handle 5-channel multispectral data

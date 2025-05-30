@@ -8,7 +8,7 @@ Test Design Decisions:
 
 1. Data Testing:
    - Uses multispectral TIFF files with 5 or more bands
-   - Takes first 5 bands for processing
+   - Takes first predefined bands for processing
    - Maintains reproducibility by using fixed seed for random selection
 
 2. Error Handling Tests:
@@ -23,7 +23,7 @@ Test Design Decisions:
 
 4. SD3 Compatibility:
    - Input shape tests verify 5-channel, 512x512 requirements
-   - Pixel range tests ensure [0,1] normalization for VAE
+   - Pixel range tests ensure [-1, 1] normalization for VAE
    - Channel independence is verified for normalization
 
 5. Performance Tests:
@@ -35,6 +35,12 @@ Test Design Decisions:
    - Memory usage is monitored
    - TODO: GPU-specific features (prefetching, persistent workers) are disabled
      for local testing but should be enabled for GPU training
+
+6. Tolerance:
+   - Tests use relaxed tolerances (rtol=1e-2, atol=1e-2) for floating-point imprecision
+
+7. Band Selection Test:
+   - The test_specific_band_selection test uses the exact file as the dataloader for index 0
 
 Usage:
     pytest test_multispectral_dataloader.py --data-dir "/Users/zina/Desktop/LDM4HSI/Project Files/Dataloader test/Output Testset Mango" -v
@@ -124,14 +130,15 @@ def test_normalize_channel(data_dir, test_images):
         data = src.read(1)  # Read first band
     
     normalized = dataset.normalize_channel(data)
-    assert np.all(normalized >= 0) and np.all(normalized <= 1)
+    # Check for [-1, 1] range
+    assert np.all(normalized >= -1) and np.all(normalized <= 1)
     
     # Test with NaN values
     data_with_nan = data.copy()
     data_with_nan[0, 0] = np.nan
     normalized = dataset.normalize_channel(data_with_nan)
     mask = ~np.isnan(normalized)
-    assert np.all(normalized[mask] >= 0) and np.all(normalized[mask] <= 1)
+    assert np.all(normalized[mask] >= -1) and np.all(normalized[mask] <= 1)
     assert np.isnan(normalized[0, 0])
 
 def test_sd3_compatible_input_shape(data_dir, test_images):
@@ -145,7 +152,8 @@ def test_sd3_compatible_input_shape(data_dir, test_images):
     assert isinstance(image, torch.Tensor)
     assert image.shape == (5, 512, 512)  # 5 channels, 512x512 resolution
     assert image.dtype == torch.float32
-    assert torch.all(image >= 0) and torch.all(image <= 1)
+    # Check for [-1, 1] range
+    assert torch.all(image >= -1) and torch.all(image <= 1)
 
 def test_pixel_range_normalization_for_vae(data_dir, test_images):
     """Test that pixel values are properly normalized for VAE input."""
@@ -153,11 +161,12 @@ def test_pixel_range_normalization_for_vae(data_dir, test_images):
     image = dataset[0]
     
     # Check normalization properties
-    assert torch.all(image >= 0) and torch.all(image <= 1)
+    assert torch.all(image >= -1) and torch.all(image <= 1)
     # Check that each channel has been normalized independently
     for c in range(image.shape[0]):
         channel = image[c]
-        assert torch.min(channel) == 0 or torch.max(channel) == 1
+        # For [-1, 1] normalization, min should be close to -1 or max should be close to 1
+        assert torch.isclose(torch.min(channel), torch.tensor(-1.), atol=1e-2) or torch.isclose(torch.max(channel), torch.tensor(1.), atol=1e-2)
 
 def test_caching_behavior(data_dir, test_images):
     """Test that caching improves load time and maintains data consistency."""
@@ -221,6 +230,38 @@ def test_error_handling(data_dir):
     # Test with non-existent directory
     with pytest.raises(FileNotFoundError):
         MultispectralDataset("non_existent_dir")
+
+def test_specific_band_selection(data_dir):
+    """Test that the dataloader correctly selects the hardcoded bands."""
+    dataset = MultispectralDataset(data_dir)
+    image = dataset[0]
+
+    # Print the file path used by the dataloader for index 0
+    image_path = dataset.image_paths[0]
+    print(f"Dataloader image path: {image_path}")
+
+    # Use the same file for the expected bands
+    with rasterio.open(image_path) as src:
+        expected_bands = src.read([9, 18, 32, 42, 55]).astype(np.float32)
+        # Per-channel normalization to [-1, 1]
+        for i in range(expected_bands.shape[0]):
+            band = expected_bands[i]
+            min_val = np.min(band)
+            max_val = np.max(band)
+            if max_val > min_val:
+                normalized = (band - min_val) / (max_val - min_val)
+                expected_bands[i] = 2 * normalized - 1
+            else:
+                expected_bands[i] = np.zeros_like(band)
+        expected_bands = torch.from_numpy(expected_bands)
+        expected_bands = F.interpolate(
+            expected_bands.unsqueeze(0),
+            size=(512, 512),
+            mode='bilinear',
+            align_corners=False
+        ).squeeze(0)
+
+    assert torch.allclose(image, expected_bands, rtol=1e-2, atol=1e-2), "Dataset output does not match expected band selection"
 
 if __name__ == "__main__":
     # Remove the script name from sys.argv

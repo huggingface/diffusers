@@ -2,6 +2,8 @@
 
 This directory contains the implementation of DreamBooth training for Stable Diffusion 3 with multispectral image support. The implementation is specifically designed to work with 5-channel multispectral data.
 
+updated 9.10.2025
+
 ## Overview
 
 The training script (`train_dreambooth_sd3_multispectral.py`) and associated dataloader (`multispectral_dataloader.py`) enable fine-tuning of Stable Diffusion 3 on multispectral imagery. Key features include:
@@ -44,7 +46,12 @@ Your multispectral data should be organized as follows:
     └── *.tif  # 5-channel multispectral TIFF files
 ```
 
-Each TIFF file should contain at least 5 bands of spectral data.
+Each TIFF file should contain at least 5 bands of spectral data in the following order:
+1. Red
+2. Green
+3. Blue
+4. Near Infrared
+5. Short Wave Infrared
 
 ## Training
 
@@ -92,11 +99,3 @@ PYTHONPATH=$PYTHONPATH:. accelerate launch train_dreambooth_sd3_multispectral.py
    - Check TIFF file format and band count
    - Verify file permissions and paths
    - Ensure sufficient disk space and memory
-
-## Contributing
-
-Please refer to the main repository's CONTRIBUTING.md for guidelines on contributing to this project.
-
-## License
-
-This project is licensed under the terms of the Apache License 2.0. See the LICENSE file for details.

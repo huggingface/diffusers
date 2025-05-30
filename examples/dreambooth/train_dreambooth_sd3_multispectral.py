@@ -71,7 +71,7 @@ from diffusers.utils import (
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 
-# Import our custom multispectral dataloader
+# Import custom multispectral dataloader
 from multispectral_dataloader import create_multispectral_dataloader
 
 if is_wandb_available():
@@ -568,7 +568,7 @@ def log_latent_shape(latent_tensor, batch_size):
 def adapt_visualization_for_multispectral(image_tensor):
     """
     Adapt multispectral images for visualization by using first 3 channels as RGB.
-    This is a workaround since visualization tools expect RGB images.
+    This is a workaround for logging purposes, since visualization tools expect RGB images.
     
     Args:
         image_tensor: 5-channel multispectral image tensor
@@ -587,8 +587,16 @@ def main(args):
             " Please use `huggingface-cli login` to authenticate with the Hub."
         )
 
-    # Initialize accelerator and other setup code...
-    # (Copy the setup code from the original script)
+    # Initialize accelerator (to fix Runtime error as result of loading logger before initializing accelerator)
+    accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        mixed_precision=args.mixed_precision,
+        log_with=args.report_to,
+        project_config=ProjectConfiguration(
+            project_dir=args.output_dir,
+            logging_dir=args.logging_dir,
+        ),
+    )
 
     # Create multispectral dataloader
     train_dataloader = create_multispectral_dataloader(
@@ -601,7 +609,7 @@ def main(args):
         persistent_workers=args.dataloader_num_workers > 0  # Only enable for multi-worker setup
     )
 
-    # Validate dataloader output before training
+    # Validate dataloader output after accelerator initialization (fix Runtime error as result of loading logger before initializing accelerator)
     validate_dataloader_output(train_dataloader, args.num_channels)
 
     # Add logging for dataloader configuration
@@ -619,9 +627,7 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="scheduler"
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    text_encoder_one, text_encoder_two, text_encoder_three = load_text_encoders(
-        text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three
-    )
+    text_encoder_one, text_encoder_two, text_encoder_three = load_text_encoders(args)
 
     # Initialize multispectral VAE
     vae = AutoencoderKLMultispectral5Ch.from_pretrained(
@@ -630,7 +636,12 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
+
+    # Verify that input of shape (B, 5, 512, 512) outputs a latent tensor with shape (B, 4, latent_H, latent_W) (SD3 expects latent channels = 4)
     logger.info(f"Using {args.num_channels}-channel multispectral VAE for training")
+
+    latent = vae.encode(input_tensor).latent_dist.sample()
+    logger.info(f"Latent shape: {latent.shape}")
 
     transformer = SD3Transformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
@@ -674,7 +685,7 @@ def main(args):
 
                 # Adapt visualization for multispectral data
                 if accelerator.is_main_process and step % args.validation_steps == 0:
-                    # Convert first 3 channels to RGB for visualization
+                    # Convert first 3 channels to RGB for visualization (for logging purposes)
                     rgb_tensor = adapt_visualization_for_multispectral(pixel_values)
                     
                     # Log to tensorboard/wandb
@@ -768,19 +779,43 @@ Please adhere to the licensing terms as described `[here]({license_url})`.
     model_card = populate_model_card(model_card, tags=tags)
     model_card.save(os.path.join(repo_folder, "README.md"))
 
+def import_model_class_from_model_name_or_path(
+    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+):
+    text_encoder_config = PretrainedConfig.from_pretrained(
+        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
+    )
+    model_class = text_encoder_config.architectures[0]
+    if model_class == "CLIPTextModelWithProjection":
+        from transformers import CLIPTextModelWithProjection
+        return CLIPTextModelWithProjection
+    elif model_class == "T5EncoderModel":
+        from transformers import T5EncoderModel
+        return T5EncoderModel
+    else:
+        raise ValueError(f"{model_class} is not supported.")
 
-def load_text_encoders(class_one, class_two, class_three):
-    text_encoder_one = class_one.from_pretrained(
+def load_text_encoders(args):
+    text_encoder_cls_one = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, "text_encoder"
+    )
+    text_encoder_cls_two = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, "text_encoder_2"
+    )
+    text_encoder_cls_three = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, "text_encoder_3"
+    )
+
+    text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
-    text_encoder_two = class_two.from_pretrained(
+    text_encoder_two = text_encoder_cls_two.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
     )
-    text_encoder_three = class_three.from_pretrained(
+    text_encoder_three = text_encoder_cls_three.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_3", revision=args.revision, variant=args.variant
     )
     return text_encoder_one, text_encoder_two, text_encoder_three
-
 
 def log_validation(
     pipeline,
@@ -824,26 +859,6 @@ def log_validation(
 
     return images
 
-
-def import_model_class_from_model_name_or_path(
-    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
-):
-    text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
-    )
-    model_class = text_encoder_config.architectures[0]
-    if model_class == "CLIPTextModelWithProjection":
-        from transformers import CLIPTextModelWithProjection
-
-        return CLIPTextModelWithProjection
-    elif model_class == "T5EncoderModel":
-        from transformers import T5EncoderModel
-
-        return T5EncoderModel
-    else:
-        raise ValueError(f"{model_class} is not supported.")
-
-
 def tokenize_prompt(tokenizer, prompt):
     text_inputs = tokenizer(
         prompt,
@@ -854,7 +869,6 @@ def tokenize_prompt(tokenizer, prompt):
     )
     text_input_ids = text_inputs.input_ids
     return text_input_ids
-
 
 def _encode_prompt_with_t5(
     text_encoder,
@@ -888,7 +902,6 @@ def _encode_prompt_with_t5(
     prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
     return prompt_embeds
-
 
 def _encode_prompt_with_clip(
     text_encoder,
@@ -927,7 +940,6 @@ def _encode_prompt_with_clip(
     prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
     return prompt_embeds, pooled_prompt_embeds
-
 
 def encode_prompt(
     text_encoders,
@@ -975,7 +987,6 @@ def encode_prompt(
     prompt_embeds = torch.cat([clip_prompt_embeds, t5_prompt_embed], dim=-2)
 
     return prompt_embeds, pooled_prompt_embeds
-
 
 def compute_text_embeddings(prompt, text_encoders, tokenizers):
     with torch.no_grad():
