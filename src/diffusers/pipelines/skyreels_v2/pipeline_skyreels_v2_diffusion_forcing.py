@@ -364,6 +364,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
 
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        latent_height = height // self.vae_scale_factor_spatial
+        latent_width = width // self.vae_scale_factor_spatial
+
         prefix_video_latents = None
         prefix_video_latents_length = 0
 
@@ -394,7 +398,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
             finished_frame_num = long_video_iter * (base_num_frames - overlap_history_frames) + overlap_history_frames
             left_frame_num = num_latent_frames - finished_frame_num
-            num_frames = min(left_frame_num + overlap_history_frames, base_num_frames)
+            num_latent_frames = min(left_frame_num + overlap_history_frames, base_num_frames)
         elif base_num_frames is not None:  # long video generation at the first iteration
             num_latent_frames = base_num_frames
         else:  # short video generation
@@ -404,8 +408,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             batch_size,
             num_channels_latents,
             num_latent_frames,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
+            latent_height,
+            latent_width,
         )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
