@@ -21,7 +21,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
 import torch
-from PIL import Image
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -58,7 +57,6 @@ EXAMPLE_DOC_STRING = """\
         ...     AutoencoderKLWan,
         ... )
         >>> from diffusers.utils import export_to_video
-        >>> from PIL import Image
 
         >>> # Load the pipeline
         >>> vae = AutoencoderKLWan.from_pretrained(
@@ -71,21 +69,19 @@ EXAMPLE_DOC_STRING = """\
         ...     vae=vae,
         ...     torch_dtype=torch.bfloat16,
         ... )
-        >>> shift = 8.0
+        >>> shift = 8.0  # 8.0 for T2V, 3.0 for I2V
         >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
         >>> pipe = pipe.to("cuda")
         >>> pipe.transformer.set_ar_attention(causal_block_size=5)
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
-        >>> video = Image.open("path/to/video.mp4")
 
         >>> output = pipe(
-        ...     video=video,
         ...     prompt=prompt,
         ...     num_inference_steps=30,
         ...     height=544,
         ...     width=960,
-        ...     guidance_scale=6.0,
+        ...     guidance_scale=6.0,  # 6.0 for T2V, 5.0 for I2V
         ...     num_frames=97,
         ...     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
         ...     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos
@@ -420,57 +416,94 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
         num_channels_latents: int = 16,
         height: int = 480,
         width: int = 832,
+        num_frames: int = 97,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         timestep: Optional[torch.Tensor] = None,
-    ):
+        base_num_frames: Optional[int] = None,
+        overlap_history: Optional[int] = None,
+        causal_block_size: Optional[int] = None,
+        overlap_history_frames: Optional[int] = None,
+        long_video_iter: Optional[int] = None,
+    ) -> torch.Tensor:
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
+        num_latent_frames = (
+            (video.size(2) - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.size(1)
+        )
+        latent_height = height // self.vae_scale_factor_spatial
+        latent_width = width // self.vae_scale_factor_spatial
+
+        prefix_video_latents = None
+        prefix_video_latents_length = 0
+
+        if video is not None:  # long video generation at the iterations other than the first one
+            prefix_video_latents = retrieve_latents(
+                self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax"
+            )
+
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(device, self.vae.dtype)
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                device, self.vae.dtype
+            )
+            prefix_video_latents = (prefix_video_latents - latents_mean) * latents_std
+
+            if prefix_video_latents.shape[2] % causal_block_size != 0:
+                truncate_len_latents = prefix_video_latents.shape[2] % causal_block_size
+                logger.warning(
+                    f"The length of prefix video latents is truncated by {truncate_len_latents} frames for the causal block size alignment. "
+                    f"This truncation ensures compatibility with the causal block size, which is required for proper processing. "
+                    f"However, it may slightly affect the continuity of the generated video at the truncation boundary."
+                )
+                prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
+            prefix_video_latents_length = prefix_video_latents.shape[2]
+
+            finished_frame_num = long_video_iter * (base_num_frames - overlap_history_frames) + overlap_history_frames
+            left_frame_num = num_latent_frames - finished_frame_num
+            num_latent_frames = min(left_frame_num + overlap_history_frames, base_num_frames)
+        elif base_num_frames is not None:  # long video generation at the first iteration
+            num_latent_frames = base_num_frames
+
+        shape = (
+            batch_size,
+            num_channels_latents,
+            num_latent_frames,
+            latent_height,
+            latent_width,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        num_latent_frames = (
-            (video.size(2) - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.size(1)
+        init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), sample_mode="argmax") for vid in video]
+
+        init_latents = torch.cat(init_latents, dim=0).to(dtype)
+
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).to(device, dtype)
         )
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_latent_frames,
-            height // self.vae_scale_factor_spatial,
-            width // self.vae_scale_factor_spatial,
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            device, dtype
         )
 
-        if latents is None:
-            if isinstance(generator, list):
-                init_latents = [
-                    retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
-                ]
-            else:
-                init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator) for vid in video]
+        init_latents = (init_latents - latents_mean) * latents_std
 
-            init_latents = torch.cat(init_latents, dim=0).to(dtype)
-
-            latents_mean = (
-                torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).to(device, dtype)
-            )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                device, dtype
-            )
-
-            init_latents = (init_latents - latents_mean) * latents_std
-
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            if hasattr(self.scheduler, "add_noise"):
-                latents = self.scheduler.add_noise(init_latents, noise, timestep)
-            else:
-                latents = self.scheduler.scale_noise(init_latents, timestep, noise)
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        if hasattr(self.scheduler, "add_noise"):
+            latents = self.scheduler.add_noise(init_latents, latents, timestep)
         else:
-            latents = latents.to(device)
+            latents = self.scheduler.scale_noise(init_latents, timestep, latents)
 
-        return latents
+        return latents, num_latent_frames, prefix_video_latents, prefix_video_latents_length
 
     def generate_timestep_matrix(
         self,
@@ -577,11 +610,10 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        video: Union[Image.Image, List[Image.Image]] = None,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, List[str]],
         negative_prompt: Union[str, List[str]] = None,
-        height: int = 480,
-        width: int = 832,
+        height: int = 544,
+        width: int = 960,
         num_frames: int = 97,
         num_inference_steps: int = 50,
         guidance_scale: float = 6.0,
@@ -610,8 +642,6 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
         The call function to the pipeline for generation.
 
         Args:
-            video (`Image.Image` or `List[Image.Image]`, *optional*):
-                The video to guide the generation. If not defined, one has to pass `latents`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -619,9 +649,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            height (`int`, defaults to `480`):
+            height (`int`, defaults to `544`):
                 The height of the generated video.
-            width (`int`, defaults to `832`):
+            width (`int`, defaults to `960`):
                 The width of the generated video.
             num_frames (`int`, defaults to `97`):
                 The number of frames in the generated video.
@@ -669,7 +699,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
             shift (`float`, *optional*, defaults to `8.0`):
-                Flow matching scheduler parameter (**5.0 for I2V**, **8.0 for T2V**)
+                Flow matching scheduler parameter (**3.0 for I2V**, **8.0 for T2V**)
             overlap_history (`int`, *optional*, defaults to `None`):
                 Number of frames to overlap for smooth transitions in long videos. If `None`, the pipeline assumes
                 short video generation mode, and no overlap is applied. 17 and 37 are recommended to set.
@@ -708,8 +738,6 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
             negative_prompt,
             height,
             width,
-            video,
-            latents,
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
@@ -766,40 +794,25 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
         self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
         timesteps = self.scheduler.timesteps
 
-        prefix_video_latents_length = 0
+        if causal_block_size is None:
+            causal_block_size = self.transformer.config.num_frame_per_block
+        fps_embeds = [fps] * prompt_embeds.shape[0]
+        fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
+
+        # Long video generation
+        overlap_history_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         base_num_frames = (
             (base_num_frames - 1) // self.vae_scale_factor_temporal + 1
             if base_num_frames is not None
             else num_latent_frames
         )
-
-        if causal_block_size is None:
-            causal_block_size = self.transformer.config.num_frame_per_block
-        fps_embeds = [fps] * prompt_embeds.shape[0]
-        fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
-
-        if overlap_history is None or base_num_frames is None or num_frames <= base_num_frames:
-            # Short video generation
-            # 4. Prepare sample schedulers and timestep matrix
-            sample_schedulers = []
-            for _ in range(num_latent_frames):
-                sample_scheduler = deepcopy(self.scheduler)
-                sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
-                sample_schedulers.append(sample_scheduler)
-            step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                num_latent_frames, timesteps, base_num_frames, ar_step, prefix_video_latents_length, causal_block_size
-            )
-
-            if latents is None:
-                video = self.video_processor.preprocess_video(video, height=height, width=width).to(
-                    device, dtype=torch.float32
-                )
-
+        n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
+        video = None
+        for long_video_iter in range(n_iter):
             # 5. Prepare latent variables
             num_channels_latents = self.transformer.config.in_channels
-            latents = self.prepare_latents(
-                video,
+            latents, num_latent_frames, prefix_video_latents, prefix_video_latents_length = self.prepare_latents(
                 batch_size * num_videos_per_prompt,
                 num_channels_latents,
                 height,
@@ -808,7 +821,31 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
                 torch.float32,
                 device,
                 generator,
-                latents,
+                latents if long_video_iter == 0 else None,
+                video=video,
+                overlap_history=overlap_history,
+                base_num_frames=base_num_frames,
+                causal_block_size=causal_block_size,
+                overlap_history_frames=overlap_history_frames,
+                long_video_iter=long_video_iter,
+            )
+
+            if prefix_video_latents_length > 0:
+                latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
+
+            # 4. Prepare sample schedulers and timestep matrix
+            sample_schedulers = []
+            for _ in range(num_latent_frames):
+                sample_scheduler = deepcopy(self.scheduler)
+                sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
+                sample_schedulers.append(sample_scheduler)
+            step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
+                num_latent_frames,
+                timesteps,
+                num_latent_frames,
+                ar_step,
+                prefix_video_latents_length,
+                causal_block_size,
             )
 
             # 6. Denoising loop
@@ -890,165 +927,24 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-        else:
-            # Long video generation
-            overlap_history_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
-            n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
-            video = None
-            prefix_video_latents = None
-            latents_mean = (
-                torch.tensor(self.vae.config.latents_mean)
-                .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(device, self.vae.dtype)
-            )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                device, self.vae.dtype
-            )
-            for i in range(n_iter):
-                if video is not None:
-                    prefix_video_latents = retrieve_latents(
-                        self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax"
-                    )
-                    prefix_video_latents = (prefix_video_latents - latents_mean) * latents_std
-
-                    if prefix_video_latents.shape[2] % causal_block_size != 0:
-                        truncate_len_latents = prefix_video_latents.shape[2] % causal_block_size
-                        logger.warning(
-                            f"The length of prefix video latents is truncated by {truncate_len_latents} frames for the causal block size alignment. "
-                            f"This truncation ensures compatibility with the causal block size, which is required for proper processing. "
-                            f"However, it may slightly affect the continuity of the generated video at the truncation boundary."
-                        )
-                        prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
-                    prefix_video_latents_length = prefix_video_latents.shape[2]
-
-                    finished_frame_num = i * (base_num_frames - overlap_history_frames) + overlap_history_frames
-                    left_frame_num = num_latent_frames - finished_frame_num
-                    base_num_frames_iter = min(left_frame_num + overlap_history_frames, base_num_frames)
-                else:
-                    base_num_frames_iter = base_num_frames
-
-                # 4. Prepare sample schedulers and timestep matrix
-                sample_schedulers = []
-                for _ in range(base_num_frames_iter):
-                    sample_scheduler = deepcopy(self.scheduler)
-                    sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
-                    sample_schedulers.append(sample_scheduler)
-                step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                    base_num_frames_iter,
-                    timesteps,
-                    base_num_frames_iter,
-                    ar_step,
-                    prefix_video_latents_length,
-                    causal_block_size,
+            if not output_type == "latent":
+                latents = latents.to(self.vae.dtype)
+                latents_mean = (
+                    torch.tensor(self.vae.config.latents_mean)
+                    .view(1, self.vae.config.z_dim, 1, 1, 1)
+                    .to(latents.device, latents.dtype)
                 )
-
-                # 5. Prepare latent variables
-                num_channels_latents = self.transformer.config.in_channels
-                latents = self.prepare_latents(
-                    batch_size * num_videos_per_prompt,
-                    num_channels_latents,
-                    height,
-                    width,
-                    (base_num_frames_iter - 1) * self.vae_scale_factor_temporal + 1,
-                    torch.float32,
-                    device,
-                    generator,
-                    None if i > 0 else latents,
-                )
-                if prefix_video_latents is not None:
-                    latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
-
-                # 6. Denoising loop
-                num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-                self._num_timesteps = len(step_matrix)
-
-                with self.progress_bar(total=len(step_matrix)) as progress_bar:
-                    for i, t in enumerate(step_matrix):
-                        if self.interrupt:
-                            continue
-
-                        self._current_timestep = t
-                        valid_interval_start, valid_interval_end = valid_interval[i]
-                        latent_model_input = (
-                            latents[:, :, valid_interval_start:valid_interval_end, :, :].to(transformer_dtype).clone()
-                        )
-                        timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
-
-                        if addnoise_condition > 0 and valid_interval_start < prefix_video_latents_length:
-                            noise_factor = 0.001 * addnoise_condition
-                            latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :] = (
-                                latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :]
-                                * (1.0 - noise_factor)
-                                + torch.randn_like(
-                                    latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :]
-                                )
-                                * noise_factor
-                            )
-                            timestep[:, valid_interval_start:prefix_video_latents_length] = addnoise_condition
-
-                        noise_pred = self.transformer(
-                            hidden_states=latent_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=prompt_embeds,
-                            flag_df=True,
-                            fps=fps_embeds,
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0]
-                        if self.do_classifier_free_guidance:
-                            noise_uncond = self.transformer(
-                                hidden_states=latent_model_input,
-                                timestep=timestep,
-                                encoder_hidden_states=negative_prompt_embeds,
-                                flag_df=True,
-                                fps=fps_embeds,
-                                attention_kwargs=attention_kwargs,
-                                return_dict=False,
-                            )[0]
-                            noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
-
-                        update_mask_i = step_update_mask[i]
-                        for idx in range(valid_interval_start, valid_interval_end):
-                            if update_mask_i[idx].item():
-                                latents[:, :, idx, :, :] = sample_schedulers[idx].step(
-                                    noise_pred[:, :, idx - valid_interval_start, :, :],
-                                    t[idx],
-                                    latents[:, :, idx, :, :],
-                                    return_dict=False,
-                                    generator=generator,
-                                )[0]
-
-                        if callback_on_step_end is not None:
-                            callback_kwargs = {}
-                            for k in callback_on_step_end_tensor_inputs:
-                                callback_kwargs[k] = locals()[k]
-                            callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                            latents = callback_outputs.pop("latents", latents)
-                            prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                            negative_prompt_embeds = callback_outputs.pop(
-                                "negative_prompt_embeds", negative_prompt_embeds
-                            )
-
-                        # call the callback, if provided
-                        if i == len(step_matrix) - 1 or (
-                            (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                        ):
-                            progress_bar.update()
-
-                        if XLA_AVAILABLE:
-                            xm.mark_step()
-
-                if not output_type == "latent":
-                    latents = latents.to(self.vae.dtype)
-                    latents = latents / latents_std + latents_mean
-                    videos = self.vae.decode(latents, return_dict=False)[0]
-                    if video is None:
-                        video = videos
-                    else:
-                        video = torch.cat([video, videos[:, :, overlap_history:]], dim=2)
+                latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(
+                    1, self.vae.config.z_dim, 1, 1, 1
+                ).to(latents.device, latents.dtype)
+                latents = latents / latents_std + latents_mean
+                videos = self.vae.decode(latents, return_dict=False)[0]
+                if video is None:
+                    video = videos
                 else:
-                    video = latents
+                    video = torch.cat([video, videos[:, :, overlap_history:]], dim=2)
+            else:
+                video = latents
 
         self._current_timestep = None
 
