@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,43 +15,49 @@
 import contextlib
 import functools
 import inspect
+import math
 from enum import Enum
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 
 from ..utils import (
-    OptionalDependencyNotAvailable,
     get_logger,
+    is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
     is_sageattention_available,
     is_sageattention_version,
+    is_torch_npu_available,
     is_torch_version,
+    is_torch_xla_available,
+    is_torch_xla_version,
     is_xformers_available,
     is_xformers_version,
 )
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 
 
-if is_flash_attn_available():
-    if is_flash_attn_version("<", "2.6.3"):
-        raise OptionalDependencyNotAvailable(
-            "The `flash-attn` library version is too old. Please update it to at least 2.6.3."
-        )
+logger = get_logger(__name__)  # pylint: disable=invalid-name
 
+
+if is_flash_attn_available() and is_flash_attn_version(">=", "2.6.3"):
     from flash_attn import flash_attn_func, flash_attn_varlen_func
 else:
+    logger.warning("`flash-attn` is not available or the version is too old. Please install `flash-attn>=2.6.3`.")
     flash_attn_func = None
     flash_attn_varlen_func = None
 
 
-if is_sageattention_available():
-    if is_sageattention_version("<", "2.1.1"):
-        raise OptionalDependencyNotAvailable(
-            "The `sageattention` library version is too old. Please update it to at least 2.1.1."
-        )
+if is_flash_attn_3_available():
+    from flash_attn_interface import flash_attn_func as flash_attn_3_func
+    from flash_attn_interface import flash_attn_varlen_func as flash_attn_3_varlen_func
+else:
+    flash_attn_3_func = None
+    flash_attn_3_varlen_func = None
 
+
+if is_sageattention_available() and is_sageattention_version(">=", "2.1.1"):
     from sageattention import (
         sageattn,
         sageattn_qk_int8_pv_fp8_cuda,
@@ -61,6 +67,9 @@ if is_sageattention_available():
         sageattn_varlen,
     )
 else:
+    logger.warning(
+        "`sageattention` is not available or the version is too old. Please install `sageattention>=2.1.1`."
+    )
     sageattn = None
     sageattn_qk_int8_pv_fp16_cuda = None
     sageattn_qk_int8_pv_fp16_triton = None
@@ -76,18 +85,24 @@ if is_torch_version(">=", "2.5.0"):
     import torch.nn.attention.flex_attention as flex_attention
 
 
-if is_xformers_available():
-    if is_xformers_version("<", "0.0.29"):
-        raise OptionalDependencyNotAvailable(
-            "The `xformers` library version is too old. Please update it to at least 0.0.29."
-        )
+if is_torch_npu_available():
+    from torch_npu import npu_fusion_attention
+else:
+    npu_fusion_attention = None
 
+
+if is_torch_xla_available() and is_torch_xla_version(">", "2.2"):
+    from torch_xla.experimental.custom_kernel import flash_attention as xla_flash_attention
+else:
+    xla_flash_attention = None
+
+
+if is_xformers_available() and is_xformers_version(">=", "0.0.29"):
     import xformers.ops as xops
 else:
+    logger.warning("`xformers` is not available or the version is too old. Please install `xformers>=0.0.29`.")
     xops = None
 
-
-logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 _SAGE_ATTENTION_PV_ACCUM_DTYPE = Literal["fp32", "fp32+fp32"]
 _SAGE_ATTENTION_QK_QUANT_GRAN = Literal["per_thread", "per_warp"]
@@ -100,6 +115,8 @@ class AttentionBackendName(str, Enum):
     # `flash-attn`
     FLASH = "flash"
     FLASH_VARLEN = "flash_varlen"
+    _FLASH_3 = "_flash_3"
+    _FLASH_VARLEN_3 = "_flash_varlen_3"
 
     # PyTorch native
     FLEX = "flex"
@@ -108,6 +125,8 @@ class AttentionBackendName(str, Enum):
     _NATIVE_EFFICIENT = "_native_efficient"
     _NATIVE_FLASH = "_native_flash"
     _NATIVE_MATH = "_native_math"
+    _NATIVE_NPU = "_native_npu"
+    _NATIVE_XLA = "_native_xla"
 
     # `sageattention`
     SAGE = "sage"
@@ -274,7 +293,7 @@ def _check_shape(
 # ===== Helper functions =====
 
 
-@functools.lru_cache(maxsize=1)
+@functools.lru_cache(maxsize=8)
 def _prepare_for_flash_attn_or_sage_varlen(
     batch_size: int,
     seq_len_q: int,
@@ -371,12 +390,7 @@ def _flash_attention(
     alibi_slopes: Optional[torch.Tensor] = None,
     deterministic: bool = False,
     return_attn_probs: bool = False,
-    attn_mask: Optional[torch.Tensor] = None,
-    enable_gqa: bool = False,
 ) -> torch.Tensor:
-    if enable_gqa:
-        raise NotImplementedError("GQA is not yet supported.")
-
     query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
     out = flash_attn_func(
         q=query,
@@ -392,7 +406,6 @@ def _flash_attention(
         return_attn_probs=return_attn_probs,
     )
     out = out.permute(0, 2, 1, 3)
-
     return out
 
 
@@ -417,16 +430,12 @@ def _flash_varlen_attention(
     deterministic: bool = False,
     return_attn_probs: bool = False,
     attn_mask: Optional[torch.Tensor] = None,
-    enable_gqa: bool = False,
 ) -> torch.Tensor:
     batch_size, _, seq_len_q, _ = query.shape
     _, _, seq_len_kv, _ = key.shape
 
     if attn_mask is not None:
         attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
-
-    if enable_gqa:
-        raise NotImplementedError("GQA is not yet supported.")
 
     if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
         (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
@@ -471,6 +480,121 @@ def _flash_varlen_attention(
     out = out.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3)
 
     return out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._FLASH_3,
+    constraints=[_check_attn_mask_is_none, _check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _flash_attention_3(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    scale: Optional[float] = None,
+    is_causal: bool = False,
+    window_size: Tuple[int, int] = (-1, -1),
+    softcap: float = 0.0,
+    deterministic: bool = False,
+    return_attn_probs: bool = False,
+) -> torch.Tensor:
+    query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+    out, lse, *_ = flash_attn_3_func(
+        q=query,
+        k=key,
+        v=value,
+        softmax_scale=scale,
+        causal=is_causal,
+        qv=None,
+        q_descale=None,
+        k_descale=None,
+        v_descale=None,
+        window_size=window_size,
+        attention_chunk=0,
+        softcap=softcap,
+        num_splits=1,
+        pack_gqa=None,
+        deterministic=deterministic,
+        sm_margin=0,
+    )
+    out = out.permute(0, 2, 1, 3)
+    return (out, lse) if return_attn_probs else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._FLASH_VARLEN_3,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _flash_varlen_attention_3(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cu_seqlens_k: Optional[torch.Tensor] = None,
+    max_seqlen_q: Optional[int] = None,
+    max_seqlen_k: Optional[int] = None,
+    scale: Optional[float] = None,
+    is_causal: bool = False,
+    window_size: Tuple[int, int] = (-1, -1),
+    softcap: float = 0.0,
+    deterministic: bool = False,
+    return_attn_probs: bool = False,
+    attn_mask: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    batch_size, _, seq_len_q, _ = query.shape
+    _, _, seq_len_kv, _ = key.shape
+
+    if attn_mask is not None:
+        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+
+    if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
+        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+            _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+            )
+        )
+    else:
+        seqlens_k = torch.full((batch_size,), max_seqlen_k, dtype=torch.int32, device=query.device)
+        cu_seqlens_q = cu_seqlens_q.to(dtype=torch.int32, device=query.device)
+        cu_seqlens_k = cu_seqlens_k.to(dtype=torch.int32, device=query.device)
+
+    query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+
+    key_valid, value_valid = [], []
+    for b in range(batch_size):
+        valid_len = seqlens_k[b]
+        key_valid.append(key[b, :valid_len])
+        value_valid.append(value[b, :valid_len])
+
+    query_packed = query.flatten(0, 1)
+    key_packed = torch.cat(key_valid, dim=0)
+    value_packed = torch.cat(value_valid, dim=0)
+
+    out, lse, *_ = flash_attn_3_varlen_func(
+        q=query_packed,
+        k=key_packed,
+        v=value_packed,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        seqused_q=None,
+        seqused_k=None,
+        softmax_scale=scale,
+        causal=is_causal,
+        qv=None,
+        q_descale=None,
+        k_descale=None,
+        v_descale=None,
+        window_size=window_size,
+        softcap=softcap,
+        num_splits=1,
+        pack_gqa=None,
+        deterministic=deterministic,
+        sm_margin=0,
+    )
+    out = out.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3)
+
+    return (out, lse) if return_attn_probs else out
 
 
 @_AttentionBackendRegistry.register(
@@ -669,6 +793,53 @@ def _native_math_attention(
 
 
 @_AttentionBackendRegistry.register(
+    AttentionBackendName._NATIVE_NPU,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _native_npu_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    dropout_p: float = 0.0,
+    scale: Optional[float] = None,
+) -> torch.Tensor:
+    return npu_fusion_attention(
+        query,
+        key,
+        value,
+        query.size(1),  # num_heads
+        input_layout="BNSD",
+        pse=None,
+        scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
+        pre_tockens=65536,
+        next_tokens=65536,
+        keep_prob=1.0 - dropout_p,
+        sync=False,
+        inner_precise=0,
+    )[0]
+
+
+# Reference: https://github.com/pytorch/xla/blob/06c5533de6588f6b90aa1655d9850bcf733b90b4/torch_xla/experimental/custom_kernel.py#L853
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._NATIVE_XLA,
+    constraints=[_check_device, _check_shape],
+)
+def _native_xla_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    is_causal: bool = False,
+) -> torch.Tensor:
+    query = query / math.sqrt(query.shape[-1])
+    return xla_flash_attention(
+        q=query,
+        k=key,
+        v=value,
+        causal=is_causal,
+    )
+
+
+@_AttentionBackendRegistry.register(
     AttentionBackendName.SAGE,
     constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
@@ -707,16 +878,12 @@ def _sage_varlen_attention(
     scale: Optional[float] = None,
     smooth_k: bool = True,
     attn_mask: Optional[torch.Tensor] = None,
-    enable_gqa: bool = False,
 ) -> torch.Tensor:
     batch_size, _, seq_len_q, _ = query.shape
     _, _, seq_len_kv, _ = key.shape
 
     if attn_mask is not None:
         attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
-
-    if enable_gqa:
-        raise NotImplementedError("GQA is not yet supported.")
 
     if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
         (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
