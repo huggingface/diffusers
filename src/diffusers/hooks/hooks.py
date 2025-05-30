@@ -192,7 +192,7 @@ class HookRegistry:
             else:
                 self._fn_refs[index + 1].forward = old_forward
 
-            self._module_ref = hook.deinitialize_hook(self._module_ref)
+            self._module_ref = hook.deinitalize_hook(self._module_ref)
             del self.hooks[name]
             self._hook_order.pop(index)
             self._fn_refs.pop(index)
