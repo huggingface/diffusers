@@ -45,7 +45,7 @@ class ModelHook:
 
     def deinitalize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
-        Hook that is executed when a model is deinitalized.
+        Hook that is executed when a model is deinitialized.
 
         Args:
             module (`torch.nn.Module`):

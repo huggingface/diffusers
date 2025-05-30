@@ -166,7 +166,7 @@ def process_face_embeddings(
         raise RuntimeError("facexlib align face fail")
     align_face = face_helper_1.cropped_faces[0]  # (512, 512, 3)  # RGB
 
-    # incase insightface didn't detect face
+    # in case insightface didn't detect face
     if id_ante_embedding is None:
         logger.warning("Failed to detect face using insightface. Extracting embedding with align face")
         id_ante_embedding = face_helper_2.get_feat(align_face)
