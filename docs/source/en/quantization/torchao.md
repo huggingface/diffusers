@@ -56,7 +56,7 @@ image = pipe(
 image.save("output.png")
 ```
 
-TorchAO is fully compatible with [torch.compile](./optimization/torch2.0#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
+TorchAO is fully compatible with [torch.compile](../optimization/fp16#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
 
 ```python
 # In the above code, add the following after initializing the transformer

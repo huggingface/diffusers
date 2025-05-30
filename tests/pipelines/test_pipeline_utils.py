@@ -19,7 +19,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
-from diffusers.utils.testing_utils import require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import require_torch_accelerator, torch_device
 
 
 class IsSafetensorsCompatibleTests(unittest.TestCase):
@@ -850,9 +850,9 @@ class ProgressBarTests(unittest.TestCase):
             self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
 
 
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
-    expected_pipe_device = torch.device("cuda:0")
+    expected_pipe_device = torch.device(f"{torch_device}:0")
     expected_pipe_dtype = torch.float64
 
     def get_dummy_components_image_generation(self):
@@ -921,8 +921,8 @@ class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
         pipe.to(device=torch_device, dtype=torch.float32)
 
         pipe.unet.to(device="cpu")
-        pipe.vae.to(device="cuda")
-        pipe.text_encoder.to(device="cuda:0")
+        pipe.vae.to(device=torch_device)
+        pipe.text_encoder.to(device=f"{torch_device}:0")
 
         pipe_device = pipe.device
 
