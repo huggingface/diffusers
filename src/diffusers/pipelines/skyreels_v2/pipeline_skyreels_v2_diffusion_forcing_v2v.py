@@ -18,10 +18,10 @@ import math
 import re
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
-from PIL import Image
 
 import ftfy
 import torch
+from PIL import Image
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -438,7 +438,10 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
 
-        prefix_video_latents = [retrieve_latents(self.vae.encode(vid[:, :, -overlap_history:].unsqueeze(0)), sample_mode="argmax") for vid in video]
+        prefix_video_latents = [
+            retrieve_latents(self.vae.encode(vid[:, :, -overlap_history:].unsqueeze(0)), sample_mode="argmax")
+            for vid in video
+        ]
         prefix_video_latents = torch.cat(prefix_video_latents, dim=0).to(dtype)
 
         latents_mean = (
