@@ -731,7 +731,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latents,
             )
 
-            base_num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1 if base_num_frames is not None else num_latent_frames
+            base_num_frames = (
+                (num_frames - 1) // self.vae_scale_factor_temporal + 1
+                if base_num_frames is not None
+                else num_latent_frames
+            )
 
             # 4. Prepare sample schedulers and timestep matrix
             sample_schedulers = []
@@ -825,7 +829,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # Long video generation
             overlap_history_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
             num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-            base_num_frames = (base_num_frames - 1) // self.vae_scale_factor_temporal + 1 if base_num_frames is not None else num_latent_frames
+            base_num_frames = (
+                (base_num_frames - 1) // self.vae_scale_factor_temporal + 1
+                if base_num_frames is not None
+                else num_latent_frames
+            )
             n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
             video = None
             for long_video_iter in range(n_iter):

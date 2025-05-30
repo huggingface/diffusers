@@ -389,9 +389,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         prefix_video_latents_length = 0
 
         if video is not None:  # long video generation at the iterations other than the first one
-            condition = retrieve_latents(
-                self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax"
-            )
+            condition = retrieve_latents(self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax")
 
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
@@ -804,7 +802,11 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             latents[:, :, :prefix_video_latents_length, :, :] = condition[:, :, :prefix_video_latents_length, :, :].to(
                 transformer_dtype
             )
-            base_num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1 if base_num_frames is not None else num_latent_frames
+            base_num_frames = (
+                (num_frames - 1) // self.vae_scale_factor_temporal + 1
+                if base_num_frames is not None
+                else num_latent_frames
+            )
             if last_image is not None:
                 latents = torch.cat(
                     [latents, condition[:, :, prefix_video_latents_length:, :, :].to(transformer_dtype)], dim=2
@@ -908,13 +910,15 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         else:
             # Long video generation
             num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-            base_num_frames = (base_num_frames - 1) // self.vae_scale_factor_temporal + 1 if base_num_frames is not None else num_latent_frames
+            base_num_frames = (
+                (base_num_frames - 1) // self.vae_scale_factor_temporal + 1
+                if base_num_frames is not None
+                else num_latent_frames
+            )
             overlap_history_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
             n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
             video = None
-            image = self.video_processor.preprocess(image, height=height, width=width).to(
-                device, dtype=torch.float32
-            )
+            image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
             if last_image is not None:
                 last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
                     device, dtype=torch.float32
@@ -951,9 +955,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                     :, :, :prefix_video_latents_length, :, :
                 ].to(transformer_dtype)
                 if last_image is not None and long_video_iter + 1 == n_iter:
-                    latents = torch.cat(
-                        [latents, end_video_latents.to(transformer_dtype)], dim=2
-                    )
+                    latents = torch.cat([latents, end_video_latents.to(transformer_dtype)], dim=2)
                     num_latent_frames += prefix_video_latents_length
 
                 # 4. Prepare sample schedulers and timestep matrix
