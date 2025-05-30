@@ -24,9 +24,10 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLCogVideoX, ConsisIDPipeline, ConsisIDTransformer3DModel, DDIMScheduler
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -316,19 +317,19 @@ class ConsisIDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class ConsisIDPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_consisid(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -338,8 +339,8 @@ class ConsisIDPipelineIntegrationTests(unittest.TestCase):
 
         prompt = self.prompt
         image = load_image("https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/2.png?raw=true")
-        id_vit_hidden = [torch.ones([1, 2, 2])] * 1
-        id_cond = torch.ones(1, 2)
+        id_vit_hidden = [torch.ones([1, 577, 1024])] * 5
+        id_cond = torch.ones(1, 1280)
 
         videos = pipe(
             image=image,
@@ -357,5 +358,5 @@ class ConsisIDPipelineIntegrationTests(unittest.TestCase):
         video = videos[0]
         expected_video = torch.randn(1, 16, 480, 720, 3).numpy()
 
-        max_diff = numpy_cosine_similarity_distance(video, expected_video)
+        max_diff = numpy_cosine_similarity_distance(video.cpu(), expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video}"

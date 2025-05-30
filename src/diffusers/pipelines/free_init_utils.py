@@ -33,7 +33,7 @@ class FreeInitMixin:
         spatial_stop_frequency: float = 0.25,
         temporal_stop_frequency: float = 0.25,
     ):
-        """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
+        """Enables the FreeInit mechanism as in https://huggingface.co/papers/2312.07537.
 
         This implementation has been adapted from the [official repository](https://github.com/TianxingWu/FreeInit).
 
