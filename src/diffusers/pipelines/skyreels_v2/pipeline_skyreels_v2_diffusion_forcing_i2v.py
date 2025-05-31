@@ -796,8 +796,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 last_image,
             )
 
-            if last_image is not None:
-                prefix_video_latents_length = prefix_video_latents_length // 2
+            #if last_image is not None:
+            #    prefix_video_latents_length = prefix_video_latents_length // 2
 
             latents[:, :, :prefix_video_latents_length, :, :] = condition[:, :, :prefix_video_latents_length, :, :].to(
                 transformer_dtype
