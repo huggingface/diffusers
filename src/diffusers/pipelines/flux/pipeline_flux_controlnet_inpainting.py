@@ -1325,6 +1325,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         )
 
                 if "prod_masks" in joint_attention_kwargs:
+                    print(f'latents shape = {latents.shape}, batch_size={batch_size}')
                     latents = latents.view(-1)
                     if i < averaging_steps:
                         masked_regions = []
@@ -1354,6 +1355,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                                 latents[tmp_init_mask.bool()] = torch.cat((avg_region, tmp_tensor), dim = 0)
 
                     latents = latents.view(batch_size, 4096, -1)
+                    print(f'latents shape = {latents.shape}, batch_size={batch_size}')
                 if image_ref_prod is not None:
                     latents_1 = (1 - init_mask) * init_latents_proper
                     latents_2 = (init_mask - init_mask_ref_prod) * latents 
