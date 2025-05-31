@@ -1325,6 +1325,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         )
 
                 if "prod_masks" in joint_attention_kwargs:
+                    batch_size = latents.shape[0]
                     print(f'latents shape = {latents.shape}, batch_size={batch_size}')
                     latents = latents.view(-1)
                     if i < averaging_steps:
