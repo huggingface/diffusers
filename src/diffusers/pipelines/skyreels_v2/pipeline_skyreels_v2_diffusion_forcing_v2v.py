@@ -433,13 +433,16 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
             return latents.to(device=device, dtype=dtype)
 
         num_latent_frames = (
-            (video.size(2) - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.size(1)
+            (video.shape[2] - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.shape[2]
         )
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
 
         prefix_video_latents = [
-            retrieve_latents(self.vae.encode(vid[:, :, -overlap_history:].unsqueeze(0)), sample_mode="argmax")
+            retrieve_latents(
+                self.vae.encode(vid.unsqueeze(0)[:, :, -overlap_history:] if vid.dim() == 4 else vid[:, :, -overlap_history:]),
+                sample_mode="argmax",
+            )
             for vid in video
         ]
         prefix_video_latents = torch.cat(prefix_video_latents, dim=0).to(dtype)
