@@ -1326,9 +1326,14 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                 if "prod_masks" in joint_attention_kwargs:
                     if i < averaging_steps:
-                        masked_regions = torch.stack([
-                            v[m.bool()].reshape(-1) for v, m in zip([latents]*len(init_masks_prod), init_masks_prod)
-                        ])
+                        masked_regions = []
+                        for tmp_init_mask in init_masks_prod:
+                            masked_regions.append(latents[tmp_init_mask.bool()].reshape(-1))
+        
+                        min_length = min(t.size(0) for t in masked_regions)
+                        truncated = [t[:min_length] for t in masked_regions]
+                        masked_regions = torch.stack(truncated)
+
                         avg_region = masked_regions.mean(dim=0) 
                         for i in range(len(init_masks_prod)):
                             latents[init_masks_prod[i].bool()] = avg_region
