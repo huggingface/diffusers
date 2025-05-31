@@ -799,7 +799,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             #if last_image is not None:
             #    prefix_video_latents_length = prefix_video_latents_length // 2
 
-            latents[:, :, :prefix_video_latents_length, :, :] = condition[:, :, :prefix_video_latents_length, :, :].to(
+            latents[:, :, :prefix_video_latents_length, :, :] = condition[0, :, :, :, :].to(
                 transformer_dtype
             )
             base_num_frames = (
@@ -809,7 +809,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             )
             if last_image is not None:
                 latents = torch.cat(
-                    [latents, condition[:, :, prefix_video_latents_length:, :, :].to(transformer_dtype)], dim=2
+                    [latents, condition[1, :, :, :, :].to(transformer_dtype)], dim=2
                 )
                 base_num_frames += prefix_video_latents_length
                 num_latent_frames += prefix_video_latents_length
