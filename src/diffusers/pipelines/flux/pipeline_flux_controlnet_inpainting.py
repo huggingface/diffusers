@@ -1340,7 +1340,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         for tmp_init_mask in init_masks_prod:
                             print(f'avg_region shape = {avg_region.shape}')
                             tmp_init_mask = tmp_init_mask.view(-1)
-                            length = torch.sum(tmp_init_mask)
+                            length = torch.sum(tmp_init_mask == 1)
                             print(f'tmp_init_mask={torch.unique(tmp_init_mask)}, dim = {tmp_init_mask.shape}')
                             print(f'length={length}, avg_region.shape[0]={avg_region.shape[0]}')
                             if length == avg_region.shape[0]:
