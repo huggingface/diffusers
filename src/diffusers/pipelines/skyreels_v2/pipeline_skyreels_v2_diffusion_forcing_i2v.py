@@ -800,6 +800,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             #    prefix_video_latents_length = prefix_video_latents_length // 2
 
             channel_dim = condition.shape[1]
+            print(latents.shape, condition.shape, prefix_video_latents_length)
 
             latents[:, :, :prefix_video_latents_length, :, :] = condition[:, :channel_dim // 2, :, :, :].to(
                 transformer_dtype
