@@ -1340,13 +1340,14 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         for tmp_init_mask in init_masks_prod:
                             print(f'avg_region shape = {avg_region.shape}')
                             tmp_init_mask = tmp_init_mask.view(-1)
-                            print(f'torch.sum(tmp_init_mask)={torch.sum(tmp_init_mask)}, avg_region.shape[0]={avg_region.shape[0]}')
-                            if torch.sum(tmp_init_mask) == avg_region.shape[0]:
+                            length = torch.sum(tmp_init_mask)
+                            print(f'length={length}, avg_region.shape[0]={avg_region.shape[0]}')
+                            if length == avg_region.shape[0]:
                                 latents[tmp_init_mask.bool()] = avg_region
-                            elif torch.sum(tmp_init_mask) < avg_region.shape[0]:
-                                latents[tmp_init_mask.bool()] = avg_region[0:torch.sum(tmp_init_mask)]
+                            elif length < avg_region.shape[0]:
+                                latents[tmp_init_mask.bool()] = avg_region[0:length]
                             else:
-                                add_dim = torch.sum(tmp_init_mask) - avg_region.shape[0]
+                                add_dim = length - avg_region.shape[0]
                                 tmp_tensor = torch.ones(add_dim) * torch.mean(avg_region)
                                 latents[tmp_init_mask.bool()] = torch.cat((avg_region, tmp_tensor), dim = 0)
 
