@@ -1092,7 +1092,7 @@ class PeftLoraLoaderMixinTests:
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
-        multiple adapters and set differnt weights for different blocks (i.e. block lora)
+        multiple adapters and set different weights for different blocks (i.e. block lora)
         """
         for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1636,7 +1636,7 @@ class PeftLoraLoaderMixinTests:
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
             self.assertTrue(pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
 
-            # Fusing should still keep the LoRA layers so outpout should remain the same
+            # Fusing should still keep the LoRA layers so output should remain the same
             outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
