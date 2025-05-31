@@ -1325,9 +1325,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         )
 
                 if "prod_masks" in joint_attention_kwargs:
+                    latents = latents.view(-1)
                     if i < averaging_steps:
                         masked_regions = []
                         for tmp_init_mask in init_masks_prod:
+                            tmp_init_mask = tmp_init_mask.view(-1)
                             masked_regions.append(latents[tmp_init_mask.bool()].reshape(-1))
         
                         min_length = min(t.size(0) for t in masked_regions)
@@ -1335,9 +1337,18 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         masked_regions = torch.stack(truncated)
 
                         avg_region = masked_regions.mean(dim=0) 
-                        for i in range(len(init_masks_prod)):
-                            latents[init_masks_prod[i].bool()] = avg_region
+                        for tmp_init_mask in init_masks_prod:
+                            tmp_init_mask = tmp_init_mask.view(-1)
+                            if torch.sum(tmp_init_mask) == avg_region.shape[0]:
+                                latents[tmp_init_mask.bool()] = avg_region
+                            elif torch.sum(tmp_init_mask) < avg_region.shape[0]:
+                                latents[tmp_init_mask.bool()] = avg_region[0:torch.sum(tmp_init_mask)]
+                            else:
+                                add_dim = torch.sum(tmp_init_mask) - avg_region.shape[0]
+                                tmp_tensor = torch.ones(add_dim) * torch.mean(avg_region)
+                                latents[tmp_init_mask.bool()] = torch.cat((avg_region, tmp_tensor), dim = 0)
 
+                    latents = latents.view(batch_size, 4096, -1)
                 if image_ref_prod is not None:
                     latents_1 = (1 - init_mask) * init_latents_proper
                     latents_2 = (init_mask - init_mask_ref_prod) * latents 
