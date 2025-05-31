@@ -512,6 +512,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
             bg_mask = np.full((image_width, image_height, 3), True, dtype=bool)
             image_mask_prod = {}
+            image_mask_prod_original = {}
             image_mask_bg = {}
             image_mask_all = {}
             for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
@@ -529,6 +530,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 if is_product.lower() == "true":
                     if index not in image_mask_prod:
                         image_mask_prod[index] = mask
+                        image_mask_prod_original[index] = mask
                 else:
                     if index not in image_mask_bg:
                         image_mask_bg[index] = mask
@@ -577,6 +579,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             prod_masks = []
             for tmp_mask in image_mask_prod:
                 prod_masks.append(Image.fromarray(image_mask_prod[tmp_mask].astype(np.uint8)*255).convert('RGB'))
+
+            prod_masks_original = []
+            for tmp_mask in image_mask_prod_original:
+                prod_masks_original.append(Image.fromarray(image_mask_prod_original[tmp_mask].astype(np.uint8)*255).convert('RGB'))
             
             image_latents_bg = self.encode_image(composed_bg_image, device, 1)
             image_latents_prods = []
@@ -672,9 +678,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             if is_qv:
                 if is_inpainting:
                     if contains_element:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_original, masked_bg_with_element, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, bg_mask)
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_original, masked_bg_with_element, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, prod_masks_original, bg_mask)
                     else:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_original, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, bg_mask)
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_original, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, prod_masks_original, bg_mask)
                 else:
                     return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
             else:
