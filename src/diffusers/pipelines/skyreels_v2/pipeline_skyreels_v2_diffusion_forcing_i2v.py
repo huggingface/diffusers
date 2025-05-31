@@ -435,7 +435,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             image = image.unsqueeze(2)
             if last_image is not None:
                 last_image = last_image.unsqueeze(2)
-                video_condition = torch.cat([image, last_image], dim=2)
+                video_condition = torch.cat([image, last_image], dim=0)
             else:
                 video_condition = image
 
@@ -457,7 +457,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 latent_condition = torch.cat(latent_condition)
             else:
                 latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
-                latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
+                latent_condition = latent_condition.repeat_interleave(batch_size, dim=0)
 
             latent_condition = latent_condition.to(dtype)
             condition = (latent_condition - latents_mean) * latents_std
@@ -799,10 +799,9 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             #if last_image is not None:
             #    prefix_video_latents_length = prefix_video_latents_length // 2
 
-            channel_dim = condition.shape[1]
             print(latents.shape, condition.shape, prefix_video_latents_length)
 
-            latents[:, :channel_dim // 2, :prefix_video_latents_length, :, :] = condition[:, :channel_dim // 2, :, :, :].to(
+            latents[:, :, :prefix_video_latents_length, :, :] = condition[:condition.shape[0]//2].to(
                 transformer_dtype
             )
             base_num_frames = (
@@ -812,7 +811,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
             )
             if last_image is not None:
                 latents = torch.cat(
-                    [latents, condition[:, channel_dim // 2:, :, :, :].to(transformer_dtype)], dim=1
+                    [latents, condition[condition.shape[0]//2:].to(transformer_dtype)], dim=2
                 )
                 base_num_frames += prefix_video_latents_length
                 num_latent_frames += prefix_video_latents_length
