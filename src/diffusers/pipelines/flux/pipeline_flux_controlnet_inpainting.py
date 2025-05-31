@@ -1137,7 +1137,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 )
                 masks_prod.append(tmp_mask)
             prod_pixel_num  = torch.sum(tmp_mask[0])
-            print(f'tmp_mask shape = {tmp_mask.shape}, prod_pixel_num = {prod_pixel_num}')
 
         if image_ref_prod is not None:
             mask_original, _ = self.prepare_mask_latents(
@@ -1326,7 +1325,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                 if "prod_masks" in joint_attention_kwargs:
                     batch_size = latents.shape[0]
-                    print(f'latents shape = {latents.shape}, batch_size={batch_size}')
                     latents = latents.view(-1)
                     if i < averaging_steps:
                         masked_regions = []
@@ -1340,11 +1338,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                         avg_region = masked_regions.mean(dim=0) 
                         for tmp_init_mask in init_masks_prod:
-                            print(f'avg_region shape = {avg_region.shape}')
                             tmp_init_mask = tmp_init_mask.view(-1)
                             length = torch.sum(tmp_init_mask == 1)
-                            print(f'tmp_init_mask={torch.unique(tmp_init_mask)}, dim = {tmp_init_mask.shape}')
-                            print(f'length={length}, avg_region.shape[0]={avg_region.shape[0]}')
                             if length == avg_region.shape[0]:
                                 latents[tmp_init_mask.bool()] = avg_region
                             elif length < avg_region.shape[0]:
@@ -1356,7 +1351,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                                 latents[tmp_init_mask.bool()] = torch.cat((avg_region, tmp_tensor), dim = 0)
 
                     latents = latents.view(batch_size, 4096, -1)
-                    print(f'latents shape = {latents.shape}, batch_size={batch_size}')
                 if image_ref_prod is not None:
                     latents_1 = (1 - init_mask) * init_latents_proper
                     latents_2 = (init_mask - init_mask_ref_prod) * latents 
