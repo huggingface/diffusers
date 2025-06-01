@@ -837,6 +837,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
             video = None
             for long_video_iter in range(n_iter):
+                print(f"long_video_iter:{long_video_iter}")
                 # 5. Prepare latent variables
                 num_channels_latents = self.transformer.config.in_channels
                 latents, num_latent_frames, prefix_video_latents, prefix_video_latents_length = self.prepare_latents(

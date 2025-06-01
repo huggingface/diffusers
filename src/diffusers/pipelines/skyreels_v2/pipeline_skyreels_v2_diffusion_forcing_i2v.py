@@ -796,11 +796,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 last_image,
             )
 
-            #if last_image is not None:
-            #    prefix_video_latents_length = prefix_video_latents_length // 2
-
-            print(latents.shape, condition.shape, prefix_video_latents_length)
-
             latents[:, :, :prefix_video_latents_length, :, :] = condition[:condition.shape[0]//2].to(
                 transformer_dtype
             )
@@ -926,9 +921,9 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                     device, dtype=torch.float32
                 )
             for long_video_iter in range(n_iter):
+                print(f"long_video_iter:{long_video_iter}")
                 # 5. Prepare latent variables
                 num_channels_latents = self.vae.config.z_dim
-
                 latents, num_latent_frames, condition, prefix_video_latents_length = self.prepare_latents(
                     image if long_video_iter == 0 else None,
                     batch_size * num_videos_per_prompt,
@@ -950,12 +945,9 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 )
 
                 if long_video_iter == 0 and last_image is not None:
-                    prefix_video_latents_length = condition.shape[2] // 2
-                    end_video_latents = condition[:, :, prefix_video_latents_length:, :, :]
+                    end_video_latents = condition[condition.shape[0]//2:]
 
-                latents[:, :, :prefix_video_latents_length, :, :] = condition[
-                    :, :, :prefix_video_latents_length, :, :
-                ].to(transformer_dtype)
+                latents[:, :, :prefix_video_latents_length, :, :] = condition[:condition.shape[0]//2].to(transformer_dtype)
                 if last_image is not None and long_video_iter + 1 == n_iter:
                     latents = torch.cat([latents, end_video_latents.to(transformer_dtype)], dim=2)
                     num_latent_frames += prefix_video_latents_length
