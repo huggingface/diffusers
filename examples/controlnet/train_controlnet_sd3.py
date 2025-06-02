@@ -199,13 +199,13 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_v
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        free_memory()
+    del pipeline
+    free_memory()
 
-        if not is_final_validation:
-            controlnet.to(accelerator.device)
+    if not is_final_validation:
+        controlnet.to(accelerator.device)
 
-        return image_logs
+    return image_logs
 
 
 # Copied from dreambooth sd3 example
@@ -1352,7 +1352,7 @@ def main(args):
                     return_dict=False,
                 )[0]
 
-                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                # Follow: Section 5 of https://huggingface.co/papers/2206.00364.
                 # Preconditioning of the model outputs.
                 if args.precondition_outputs:
                     model_pred = model_pred * (-sigmas) + noisy_model_input

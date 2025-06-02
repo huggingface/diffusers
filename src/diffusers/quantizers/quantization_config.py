@@ -75,7 +75,7 @@ class QuantizationConfigMixin:
         Args:
             config_dict (`Dict[str, Any]`):
                 Dictionary that will be used to instantiate the configuration object.
-            return_unused_kwargs (`bool`,*optional*, defaults to `False`):
+            return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether or not to return a list of unused keyword arguments. Used for `from_pretrained` method in
                 `PreTrainedModel`.
             kwargs (`Dict[str, Any]`):
@@ -192,10 +192,10 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
             `bitsandbytes`.
         llm_int8_threshold (`float`, *optional*, defaults to 6.0):
             This corresponds to the outlier threshold for outlier detection as described in `LLM.int8() : 8-bit Matrix
-            Multiplication for Transformers at Scale` paper: https://arxiv.org/abs/2208.07339 Any hidden states value
-            that is above this threshold will be considered an outlier and the operation on those values will be done
-            in fp16. Values are usually normally distributed, that is, most values are in the range [-3.5, 3.5], but
-            there are some exceptional systematic outliers that are very differently distributed for large models.
+            Multiplication for Transformers at Scale` paper: https://huggingface.co/papers/2208.07339 Any hidden states
+            value that is above this threshold will be considered an outlier and the operation on those values will be
+            done in fp16. Values are usually normally distributed, that is, most values are in the range [-3.5, 3.5],
+            but there are some exceptional systematic outliers that are very differently distributed for large models.
             These outliers are often in the interval [-60, -6] or [6, 60]. Int8 quantization works well for values of
             magnitude ~5, but beyond that, there is a significant performance penalty. A good default threshold is 6,
             but a lower threshold might be needed for more unstable models (small models, fine-tuning).

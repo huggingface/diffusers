@@ -547,7 +547,7 @@ Video generation requires a lot of memory because you're generating many video f
 + frames = pipeline(image, decode_chunk_size=2, generator=generator, num_frames=25).frames[0]
 ```
 
-If memory is not an issue and you want to optimize for speed, try wrapping the UNet with [`torch.compile`](../optimization/torch2.0#torchcompile).
+If memory is not an issue and you want to optimize for speed, try wrapping the UNet with [`torch.compile`](../optimization/fp16#torchcompile).
 
 ```diff
 - pipeline.enable_model_cpu_offload()
