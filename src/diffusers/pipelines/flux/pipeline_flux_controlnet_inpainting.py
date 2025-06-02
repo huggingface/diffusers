@@ -1335,7 +1335,19 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                             masked_regions.append(latents[tmp_init_mask.bool()].reshape(-1))
         
                         min_length = min(t.size(0) for t in masked_regions)
-                        truncated = [t[:min_length] for t in masked_regions]
+                        #truncated = [t[:min_length] for t in masked_regions]
+                        truncated = []
+                        for tmp_mask_region in masked_regions:
+                            if tmp_mask_region.size(0) == min_length:
+                                truncated.append(tmp_mask_region)
+                            else:
+                                extra_dim = tmp_mask_region.size(0) - min_length
+                                half = extra_dim // 2
+                                if extra_dim % 2 == 0:
+                                    truncated.append(tmp_mask_region[half:(min_length-half+extra_dim)])
+                                else:
+                                    truncated.append(tmp_mask_region[half:(min_length-half+extra_dim-1)])
+
                         masked_regions = torch.stack(truncated)
 
                         avg_region = masked_regions.mean(dim=0) 
