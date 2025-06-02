@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
 import os
 from typing import Optional, Union
 
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
+from ..utils import logging
+
+
+logger = logging.get_logger(__name__)
 
 
 class AutoModel(ConfigMixin):
@@ -52,9 +55,8 @@ class AutoModel(ConfigMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
-                dtype is automatically derived from the model's weights.
+            torch_dtype (`torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -153,15 +155,50 @@ class AutoModel(ConfigMixin):
             "token": token,
             "local_files_only": local_files_only,
             "revision": revision,
-            "subfolder": subfolder,
         }
 
-        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-        orig_class_name = config["_class_name"]
+        library = None
+        orig_class_name = None
 
-        library = importlib.import_module("diffusers")
+        # Always attempt to fetch model_index.json first
+        try:
+            cls.config_name = "model_index.json"
+            config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
 
-        model_cls = getattr(library, orig_class_name, None)
+            if subfolder is not None and subfolder in config:
+                library, orig_class_name = config[subfolder]
+                load_config_kwargs.update({"subfolder": subfolder})
+
+        except EnvironmentError as e:
+            logger.debug(e)
+
+        # Unable to load from model_index.json so fallback to loading from config
+        if library is None and orig_class_name is None:
+            cls.config_name = "config.json"
+            config = cls.load_config(pretrained_model_or_path, subfolder=subfolder, **load_config_kwargs)
+
+            if "_class_name" in config:
+                # If we find a class name in the config, we can try to load the model as a diffusers model
+                orig_class_name = config["_class_name"]
+                library = "diffusers"
+                load_config_kwargs.update({"subfolder": subfolder})
+            elif "model_type" in config:
+                orig_class_name = "AutoModel"
+                library = "transformers"
+                load_config_kwargs.update({"subfolder": "" if subfolder is None else subfolder})
+            else:
+                raise ValueError(f"Couldn't find model associated with the config file at {pretrained_model_or_path}.")
+
+        from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
+
+        model_cls, _ = get_class_obj_and_candidates(
+            library_name=library,
+            class_name=orig_class_name,
+            importable_classes=ALL_IMPORTABLE_CLASSES,
+            pipelines=None,
+            is_pipeline_module=False,
+        )
+
         if model_cls is None:
             raise ValueError(f"AutoModel can't find a model linked to {orig_class_name}.")
 

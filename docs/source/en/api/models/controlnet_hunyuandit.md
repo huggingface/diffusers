@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # HunyuanDiT2DControlNetModel
 
-HunyuanDiT2DControlNetModel is an implementation of ControlNet for [Hunyuan-DiT](https://arxiv.org/abs/2405.08748).
+HunyuanDiT2DControlNetModel is an implementation of ControlNet for [Hunyuan-DiT](https://huggingface.co/papers/2405.08748).
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala.
 

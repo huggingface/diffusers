@@ -56,7 +56,7 @@ image = pipe(
 image.save("output.png")
 ```
 
-TorchAO is fully compatible with [torch.compile](./optimization/torch2.0#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
+TorchAO is fully compatible with [torch.compile](../optimization/fp16#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
 
 ```python
 # In the above code, add the following after initializing the transformer
@@ -91,7 +91,7 @@ The quantization methods supported are as follows:
 
 Some quantization methods are aliases (for example, `int8wo` is the commonly used shorthand for `int8_weight_only`). This allows using the quantization methods described in the torchao docs as-is, while also making it convenient to remember their shorthand notations.
 
-Refer to the official torchao documentation for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
+Refer to the [official torchao documentation](https://docs.pytorch.org/ao/stable/index.html) for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
 
 ## Serializing and Deserializing quantized models
 
@@ -155,5 +155,5 @@ transformer.load_state_dict(state_dict, strict=True, assign=True)
 
 ## Resources
 
-- [TorchAO Quantization API](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md)
+- [TorchAO Quantization API](https://docs.pytorch.org/ao/stable/index.html)
 - [Diffusers-TorchAO examples](https://github.com/sayakpaul/diffusers-torchao)
