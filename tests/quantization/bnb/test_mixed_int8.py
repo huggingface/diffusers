@@ -195,7 +195,7 @@ class BnB8bitBasicTests(Base8bitTests):
 
     def test_original_dtype(self):
         r"""
-        A simple test to check if the model succesfully stores the original dtype
+        A simple test to check if the model successfully stores the original dtype
         """
         self.assertTrue("_pre_quantization_dtype" in self.model_8bit.config)
         self.assertFalse("_pre_quantization_dtype" in self.model_fp16.config)

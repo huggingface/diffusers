@@ -10,7 +10,7 @@ This example shows how to fine-tune [Flux.1 Dev](https://huggingface.co/black-fo
 * `train_dreambooth_lora_flux_miniature.py` takes care of training:
   * Since we already precomputed the text embeddings, we don't load the text encoders.
   * We load the VAE and use it to precompute the image latents and we then delete it. 
-  * Load the Flux transformer, quantize it with the [NF4 datatype](https://arxiv.org/abs/2305.14314) through `bitsandbytes`, prepare it for 4bit training. 
+  * Load the Flux transformer, quantize it with the [NF4 datatype](https://huggingface.co/papers/2305.14314) through `bitsandbytes`, prepare it for 4bit training. 
   * Add LoRA adapter layers to it and then ensure they are kept in FP32 precision.
   * Train!
 

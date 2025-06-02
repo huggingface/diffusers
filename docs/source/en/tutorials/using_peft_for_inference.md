@@ -103,7 +103,7 @@ pipeline("A cute cnmt eating a slice of pizza, stunning color scheme, masterpiec
 
 ## torch.compile
 
-[torch.compile](../optimization/torch2.0#torchcompile) speeds up inference by compiling the PyTorch model to use optimized kernels. Before compiling, the LoRA weights need to be fused into the base model and unloaded first.
+[torch.compile](../optimization/fp16#torchcompile) speeds up inference by compiling the PyTorch model to use optimized kernels. Before compiling, the LoRA weights need to be fused into the base model and unloaded first.
 
 ```py
 import torch
