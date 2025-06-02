@@ -29,6 +29,7 @@ from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
+from ..embeddings import get_1d_sincos_pos_embed_from_grid
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -161,7 +162,9 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
     ):
         super().__init__()
 
-        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        #self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.time_freq_dim = time_freq_dim
+        self.timesteps_proj = get_1d_sincos_pos_embed_from_grid
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
         self.act_fn = nn.SiLU()
         self.time_proj = nn.Linear(dim, time_proj_dim)
@@ -177,9 +180,7 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
     ):
-        original_timestep_shape = timestep.shape
-        timestep = self.timesteps_proj(timestep.reshape(-1))
-        timestep = timestep.reshape(*original_timestep_shape, -1)
+        timestep = self.timesteps_proj(self.time_freq_dim, timestep, output_type="pt")
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
@@ -498,7 +499,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
             timestep, encoder_hidden_states, encoder_hidden_states_image
         )
-        timestep_proj = timestep_proj.unflatten(-1, (6, -1))
+        timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
