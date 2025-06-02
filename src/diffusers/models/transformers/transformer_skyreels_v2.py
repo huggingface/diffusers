@@ -180,7 +180,7 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
     ):
-        timestep = self.timesteps_proj(self.time_freq_dim, timestep, output_type="pt")
+        timestep = self.timesteps_proj(self.time_freq_dim, timestep, output_type="pt", flip_sin_to_cos=True)
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
