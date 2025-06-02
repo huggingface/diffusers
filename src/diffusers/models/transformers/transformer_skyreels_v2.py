@@ -186,13 +186,14 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
     ):
-        timestep = self.timesteps_proj(self.time_freq_dim, timestep, output_type="pt", flip_sin_to_cos=True)
+        with torch.amp.autocast("cuda", dtype=torch.float32):
+            timestep = self.timesteps_proj(self.time_freq_dim, timestep, output_type="pt", flip_sin_to_cos=True)
 
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
-            timestep = timestep.to(time_embedder_dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
-        timestep_proj = self.time_proj(self.act_fn(temb))
+            time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
+            if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
+                timestep = timestep.to(time_embedder_dtype)
+            temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+            timestep_proj = self.time_proj(self.act_fn(temb))
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)
         if encoder_hidden_states_image is not None:
