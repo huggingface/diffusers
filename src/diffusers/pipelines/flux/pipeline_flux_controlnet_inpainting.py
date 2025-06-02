@@ -1348,9 +1348,13 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                                 latents[tmp_init_mask.bool()] = avg_region[0:length]
                             else:
                                 add_dim = length - avg_region.shape[0]
-                                one_tensor = torch.ones(add_dim).to(device=latents.device, dtype=latents.dtype)
-                                tmp_tensor = one_tensor * torch.mean(avg_region)
-                                latents[tmp_init_mask.bool()] = torch.cat((avg_region, tmp_tensor), dim = 0)
+                                add_dim1 = add_dim // 2
+                                add_dim2 = add_dim - add_dim1
+                                one_tensor1 = torch.ones(add_dim1).to(device=latents.device, dtype=latents.dtype)
+                                one_tensor2 = torch.ones(add_dim2).to(device=latents.device, dtype=latents.dtype)
+                                tmp_tensor1 = one_tensor1 * torch.mean(avg_region)
+                                tmp_tensor2 = one_tensor2 * torch.mean(avg_region)
+                                latents[tmp_init_mask.bool()] = torch.cat((tmp_tensor1, avg_region, tmp_tensor2), dim = 0)
 
                     latents = latents.view(batch_size, 4096, -1)
                 
