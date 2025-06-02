@@ -11,15 +11,18 @@ specific language governing permissions and limitations under the License. -->
 
 # Caching
 
-Caching accelerates inference by storing and reusing redundant attention outputs instead of performing extra computation. It significantly improves efficiency and doesn't require additional training.
+Caching accelerates inference by storing and reusing intermediate outputs of different layers, such as attention and feedforward layers, instead of performing the entire computation at each inference step. It significantly improves generation speed at the expense of more memory and doesn't require additional training.
 
 This guide shows you how to use the caching methods supported in Diffusers.
 
 ## Pyramid Attention Broadcast
 
-[Pyramid Attention Broadcast (PAB)](https://huggingface.co/papers/2408.12588) is based on the observation that many of the attention output differences are redundant. The attention differences are smallest in the cross attention block so the cached attention states are broadcasted and reused over a longer range. This is followed by temporal attention and finally spatial attention.
+[Pyramid Attention Broadcast (PAB)](https://huggingface.co/papers/2408.12588) is based on the observation that attention outputs aren't that different between successive timesteps of the generation process. The attention differences are smallest in the cross attention layers and are generally cached over a longer timestep range. This is followed by temporal attention and spatial attention layers.
 
-PAB can be combined with other techniques like sequence parallelism and classifier-free guidance parallelism for near real-time video generation.
+> [!TIP]
+> Not all video models have three types of attention (cross, temporal, and spatial)!
+
+PAB can be combined with other techniques like sequence parallelism and classifier-free guidance parallelism (data parallelism) for near real-time video generation.
 
 Set up and pass a [`PyramidAttentionBroadcastConfig`] to a pipeline's transformer to enable it. The `spatial_attention_block_skip_range` controls how often to skip attention calculations in the spatial attention blocks and the `spatial_attention_timestep_skip_range` is the range of timesteps to skip. Take care to choose an appropriate range because a smaller interval can lead to slower inference speeds and a larger interval can result in lower generation quality.
 
@@ -40,9 +43,9 @@ pipeline.transformer.enable_cache(config)
 
 ## FasterCache
 
-[FasterCache](https://huggingface.co/papers/2410.19355) computes and caches attention features at every other timestep instead of directly reusing cached features because it can cause flickering or blurry details in the generated video. The features from the skipped step are calculated from the difference between the adjacent cached features.
+[FasterCache](https://huggingface.co/papers/2410.19355) caches and reuses attention features similar to [PAB](#pyramid-attention-broadcast) since output differences are small for each successive timestep.
 
-FasterCache also uses a classifier-free guidance (CFG) cache which computes both the conditional and unconditional outputs once. For future timesteps, only the conditional output is calculated and the unconditional output is estimated from the cached biases.
+This method may also choose to skip the unconditional branch prediction, when using classifier-free guidance for sampling (common in most base models), and estimate it from the conditional branch prediction if there is significant redundancy in the predicted latent outputs between successive timesteps.
 
 Set up and pass a [`FasterCacheConfig`] to a pipeline's transformer to enable it.
 

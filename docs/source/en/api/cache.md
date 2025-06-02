@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # Caching methods
 
-Cache methods speedup diffusion transformers by storing and reusing attention states instead of recalculating them.
+Cache methods speedup diffusion transformers by storing and reusing intermediate outputs of specific layers, such as attention and feedforward layers, instead of recalculating them at each inference step.
 
 ## CacheMixin
 
