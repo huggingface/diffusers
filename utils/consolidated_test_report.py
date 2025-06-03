@@ -521,6 +521,36 @@ def generate_report(consolidated_data):
     return "\n".join(report)
 
 
+def create_failures_table(failed_categories, total_failures):
+    """Create a table-like format for failures using monospace text."""
+    if not failed_categories:
+        return None
+    
+    # Sort by failure count (descending)
+    sorted_cats = sorted(failed_categories.items(), key=lambda x: x[1], reverse=True)
+    
+    # Create table lines
+    table_lines = ["```"]
+    table_lines.append("Category            | Failed Tests")
+    table_lines.append("------------------- | ------------")
+    
+    # Add rows (limit to top 10 to avoid too long message)
+    for category, count in sorted_cats[:10]:
+        # Pad category name to fixed width (19 chars)
+        padded_cat = category[:19].ljust(19)  # Truncate if too long
+        # Right-align count in 12-char field
+        padded_count = str(count).rjust(12)
+        table_lines.append(f"{padded_cat} | {padded_count}")
+    
+    if len(sorted_cats) > 10:
+        remaining = len(sorted_cats) - 10
+        table_lines.append(f"... and {remaining} more {'category' if remaining == 1 else 'categories'}")
+    
+    table_lines.append("```")
+    
+    return f"*Failures ({total_failures} {'test' if total_failures == 1 else 'tests'}):*\n" + "\n".join(table_lines)
+
+
 def create_slack_payload(consolidated_data):
     """Create a concise Slack message payload from consolidated data."""
     total = consolidated_data["total_stats"]
@@ -544,60 +574,46 @@ def create_slack_payload(consolidated_data):
         {"type": "section", "text": {"type": "mrkdwn", "text": summary}},
     ]
 
-    # Add failed test suites summary (compact version)
+    # Process failed test suites to extract categories
     failed_suites = [
         (name, data) for name, data in consolidated_data["test_suites"].items() if data["stats"]["failed"] > 0
     ]
 
     if failed_suites:
-        # If many failed suites, just show the count and top few
-        if len(failed_suites) > 5:
-            message = f"*Failed Test Suites ({len(failed_suites)}):* "
-            # Show only first 3 with counts
-            for i, (suite_name, suite_data) in enumerate(failed_suites[:3]):
-                short_name = suite_name.split("/")[-1] if "/" in suite_name else suite_name
-                message += f"{short_name} ({suite_data['stats']['failed']}), "
-            message += "..."
-        else:
-            # Show all failed suites if 5 or fewer
-            message = "*Failed Suites:* "
-            for suite_name, suite_data in failed_suites:
-                short_name = suite_name.split("/")[-1] if "/" in suite_name else suite_name
-                message += f"{short_name} ({suite_data['stats']['failed']}), "
-            message = message.rstrip(", ")
-
-        payload.append({"type": "section", "text": {"type": "mrkdwn", "text": message}})
-
-    # Add slowest tests summary (more concise)
-    slowest_tests = consolidated_data.get("slowest_tests", [])
-    if slowest_tests:
-        # Filter out "< 0.05 secs were omitted" entries
-        filtered_tests = [test for test in slowest_tests if "secs were omitted" not in test["test"]]
-
-        # Take only top 3 for a more concise message
-        top_slowest = filtered_tests[:3]
-
-        if top_slowest:
-            slowest_message = "*Slowest Tests:* "
-            for i, test in enumerate(top_slowest, 1):
-                # Extract just the test name without the full path
-                if "::" in test["test"]:
-                    parts = test["test"].split("::")
-                    if len(parts) >= 3:
-                        # Format: test_method (TestClass) - duration
-                        test_name = f"{parts[-1]} ({parts[-2]})"
-                    else:
-                        test_name = parts[-1]
-                else:
-                    test_name = test["test"].split("/")[-1] if "/" in test["test"] else test["test"]
-
-                # Add duration and make comma-separated instead of numbered list
-                if i < len(top_slowest):
-                    slowest_message += f"`{test_name}` ({test['duration']:.1f}s), "
-                else:
-                    slowest_message += f"`{test_name}` ({test['duration']:.1f}s)"
-
-            payload.append({"type": "section", "text": {"type": "mrkdwn", "text": slowest_message}})
+        # Group failures by category
+        categories = {}
+        for suite_name, suite_data in failed_suites:
+            # Extract category from suite name
+            if "/" in suite_name:
+                # Format: "directory/test_suite_name"
+                suite_name = suite_name.split("/")[-1]
+            
+            # Remove common prefixes and suffixes
+            category = suite_name
+            if category.startswith("tests_"):
+                category = category[6:]  # Remove "tests_" prefix
+            if category.endswith("_cuda"):
+                category = category[:-5]  # Remove "_cuda" suffix
+            
+            # Extract the actual category name
+            if category.startswith("pipeline_"):
+                category = category[9:]  # Remove "pipeline_" prefix
+            elif category.startswith("torch_"):
+                category = category[6:]  # Remove "torch_" prefix
+            elif category.startswith("gguf_torch"):
+                category = "gguf"
+            
+            # Add to categories
+            if category not in categories:
+                categories[category] = 0
+            categories[category] += suite_data["stats"]["failed"]
+        
+        # Create the table
+        total_failures = sum(categories.values())
+        table_text = create_failures_table(categories, total_failures)
+        
+        if table_text:
+            payload.append({"type": "section", "text": {"type": "mrkdwn", "text": table_text}})
 
     # Add action button
     if os.environ.get("GITHUB_RUN_ID"):
