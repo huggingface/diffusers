@@ -96,6 +96,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["quantizers.quantization_config"].append("TorchAoConfig")
 
+_import_structure["quantizers.quantization_config"].append("FinegrainedFP8Config")
+
 try:
     if not is_torch_available() and not is_accelerate_available() and not is_optimum_quanto_available():
         raise OptionalDependencyNotAvailable()
@@ -723,6 +725,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_optimum_quanto_objects import *
     else:
         from .quantizers.quantization_config import QuantoConfig
+
+    from .quantizers.quantization_config import FinegrainedFP8Config
 
     try:
         if not is_onnx_available():

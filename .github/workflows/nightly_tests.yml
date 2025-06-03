@@ -473,6 +473,8 @@ jobs:
             additional_deps: []
           - backend: "optimum_quanto"
             test_location: "quanto"
+          - backend: "finegrained_fp8"
+            test_location: "finegrained_fp8"
             additional_deps: []
     runs-on:
       group: aws-g6e-xlarge-plus

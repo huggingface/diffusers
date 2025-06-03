@@ -37,7 +37,7 @@ Diffusers currently supports the following quantization methods.
 - [TorchAO](./torchao)
 - [GGUF](./gguf)
 - [Quanto](./quanto.md)
-
+- [FinegrainedFP8](./finegrained_fp8.md)
 [This resource](https://huggingface.co/docs/transformers/main/en/quantization/overview#when-to-use-what) provides a good overview of the pros and cons of different quantization techniques.
 
 ## Pipeline-level quantization

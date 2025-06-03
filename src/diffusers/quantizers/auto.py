@@ -28,9 +28,11 @@ from .quantization_config import (
     QuantizationMethod,
     QuantoConfig,
     TorchAoConfig,
+    FinegrainedFP8Config,
 )
 from .quanto import QuantoQuantizer
 from .torchao import TorchAoHfQuantizer
+from .finegrained_fp8 import FinegrainedFP8Quantizer
 
 
 AUTO_QUANTIZER_MAPPING = {
@@ -39,6 +41,7 @@ AUTO_QUANTIZER_MAPPING = {
     "gguf": GGUFQuantizer,
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
+    "finegrained_fp8": FinegrainedFP8Quantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -47,6 +50,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "gguf": GGUFQuantizationConfig,
     "quanto": QuantoConfig,
     "torchao": TorchAoConfig,
+    "finegrained_fp8": FinegrainedFP8Config,
 }
 
 
