@@ -522,7 +522,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         debug_tensors["encoder_hidden_states_after_text_embedding"] = encoder_hidden_states.detach().clone()
         debug_tensors["encoder_hidden_states_after_text_embedding_shape"] = list(encoder_hidden_states.shape)
 
-        timestep_proj = timestep_proj.unflatten(1, (6, -1))
+        timestep_proj = timestep_proj.unflatten(-1, (6, -1))
 
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
