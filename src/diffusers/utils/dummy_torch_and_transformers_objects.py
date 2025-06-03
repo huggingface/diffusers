@@ -407,6 +407,36 @@ class ConsisIDPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class CosmosTextToWorldPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class CosmosVideoToWorldPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class CycleDiffusionPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -632,6 +662,21 @@ class FluxPriorReduxPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class HiDreamImagePipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class HunyuanDiTControlNetPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -678,6 +723,21 @@ class HunyuanDiTPipeline(metaclass=DummyObject):
 
 
 class HunyuanSkyreelsImageToVideoPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class HunyuanVideoFramepackPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1247,6 +1307,21 @@ class LTXImageToVideoPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class LTXLatentUpsamplePipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class LTXPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -1502,6 +1577,21 @@ class ReduxImageEncoder(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class SanaControlNetPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class SanaPAGPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -1518,6 +1608,21 @@ class SanaPAGPipeline(metaclass=DummyObject):
 
 
 class SanaPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class SanaSprintImg2ImgPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -2717,6 +2822,36 @@ class VideoToVideoSDPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class VisualClozeGenerationPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class VisualClozePipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class VQDiffusionPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -2748,6 +2883,21 @@ class WanImageToVideoPipeline(metaclass=DummyObject):
 
 
 class WanPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class WanVideoToVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

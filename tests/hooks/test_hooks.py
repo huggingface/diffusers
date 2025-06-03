@@ -168,9 +168,7 @@ class HookTests(unittest.TestCase):
         registry.register_hook(MultiplyHook(2), "multiply_hook")
 
         registry_repr = repr(registry)
-        expected_repr = (
-            "HookRegistry(\n" "  (0) add_hook - AddHook\n" "  (1) multiply_hook - MultiplyHook(value=2)\n" ")"
-        )
+        expected_repr = "HookRegistry(\n  (0) add_hook - AddHook\n  (1) multiply_hook - MultiplyHook(value=2)\n)"
 
         self.assertEqual(len(registry.hooks), 2)
         self.assertEqual(registry._hook_order, ["add_hook", "multiply_hook"])
@@ -285,12 +283,7 @@ class HookTests(unittest.TestCase):
             self.model(input)
         output = cap_logger.out.replace(" ", "").replace("\n", "")
         expected_invocation_order_log = (
-            (
-                "MultiplyHook pre_forward\n"
-                "AddHook pre_forward\n"
-                "AddHook post_forward\n"
-                "MultiplyHook post_forward\n"
-            )
+            ("MultiplyHook pre_forward\nAddHook pre_forward\nAddHook post_forward\nMultiplyHook post_forward\n")
             .replace(" ", "")
             .replace("\n", "")
         )

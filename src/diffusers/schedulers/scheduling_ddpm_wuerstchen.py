@@ -95,7 +95,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
     [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
     [`~SchedulerMixin.from_pretrained`] functions.
 
-    For more details, see the original paper: https://arxiv.org/abs/2006.11239
+    For more details, see the original paper: https://huggingface.co/papers/2006.11239
 
     Args:
         scaler (`float`): ....

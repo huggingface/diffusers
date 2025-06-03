@@ -299,8 +299,8 @@ def _best_guess_weight_name(
         targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
 
     if len(targeted_files) > 1:
-        raise ValueError(
-            f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
+        logger.warning(
+            f"Provided path contains more than one weights file in the {file_extension} format. `{targeted_files[0]}` is going to be loaded, for precise control, specify a `weight_name` in `load_lora_weights`."
         )
     weight_name = targeted_files[0]
     return weight_name
@@ -316,6 +316,7 @@ def _load_lora_into_text_encoder(
     adapter_name=None,
     _pipeline=None,
     low_cpu_mem_usage=False,
+    hotswap: bool = False,
 ):
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
@@ -341,9 +342,13 @@ def _load_lora_into_text_encoder(
     # their prefixes.
     prefix = text_encoder_name if prefix is None else prefix
 
+    # Safe prefix to check with.
+    if hotswap and any(text_encoder_name in key for key in state_dict.keys()):
+        raise ValueError("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`.")
+
     # Load the layers corresponding to text encoder and make necessary adjustments.
     if prefix is not None:
-        state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+        state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
     if len(state_dict) > 0:
         logger.info(f"Loading {prefix}.")
@@ -369,7 +374,7 @@ def _load_lora_into_text_encoder(
 
         if network_alphas is not None:
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
-            network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+            network_alphas = {k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys}
 
         lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False)
 
@@ -460,7 +465,7 @@ class LoraBaseMixin:
     """Utility class for handling LoRAs."""
 
     _lora_loadable_modules = []
-    num_fused_loras = 0
+    _merged_adapters = set()
 
     def load_lora_weights(self, **kwargs):
         raise NotImplementedError("`load_lora_weights()` is not implemented.")
@@ -587,6 +592,9 @@ class LoraBaseMixin:
         if len(components) == 0:
             raise ValueError("`components` cannot be an empty list.")
 
+        # Need to retrieve the names as `adapter_names` can be None. So we cannot directly use it
+        # in `self._merged_adapters = self._merged_adapters | merged_adapter_names`.
+        merged_adapter_names = set()
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
@@ -596,13 +604,19 @@ class LoraBaseMixin:
                 # check if diffusers model
                 if issubclass(model.__class__, ModelMixin):
                     model.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
+                    for module in model.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            merged_adapter_names.update(set(module.merged_adapters))
                 # handle transformers models.
                 if issubclass(model.__class__, PreTrainedModel):
                     fuse_text_encoder_lora(
                         model, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
                     )
+                    for module in model.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            merged_adapter_names.update(set(module.merged_adapters))
 
-        self.num_fused_loras += 1
+        self._merged_adapters = self._merged_adapters | merged_adapter_names
 
     def unfuse_lora(self, components: List[str] = [], **kwargs):
         r"""
@@ -656,9 +670,18 @@ class LoraBaseMixin:
                 if issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
+                            for adapter in set(module.merged_adapters):
+                                if adapter and adapter in self._merged_adapters:
+                                    self._merged_adapters = self._merged_adapters - {adapter}
                             module.unmerge()
 
-        self.num_fused_loras -= 1
+    @property
+    def num_fused_loras(self):
+        return len(self._merged_adapters)
+
+    @property
+    def fused_loras(self):
+        return self._merged_adapters
 
     def set_adapters(
         self,
@@ -908,3 +931,23 @@ class LoraBaseMixin:
         # property function that returns the lora scale which can be set at run time by the pipeline.
         # if _lora_scale has not been set, return 1
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
+
+    def enable_lora_hotswap(self, **kwargs) -> None:
+        """Enables the possibility to hotswap LoRA adapters.
+
+        Calling this method is only required when hotswapping adapters and if the model is compiled or if the ranks of
+        the loaded adapters differ.
+
+        Args:
+            target_rank (`int`):
+                The highest rank among all the adapters that will be loaded.
+            check_compiled (`str`, *optional*, defaults to `"error"`):
+                How to handle the case when the model is already compiled, which should generally be avoided. The
+                options are:
+                  - "error" (default): raise an error
+                  - "warn": issue a warning
+                  - "ignore": do nothing
+        """
+        for key, component in self.components.items():
+            if hasattr(component, "enable_lora_hotswap") and (key in self._lora_loadable_modules):
+                component.enable_lora_hotswap(**kwargs)

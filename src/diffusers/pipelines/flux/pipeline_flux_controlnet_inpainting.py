@@ -507,7 +507,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         if padding_mask_crop is not None:
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                    f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
                 )
             if not isinstance(mask_image, PIL.Image.Image):
                 raise ValueError(
@@ -515,7 +515,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                     f" {type(mask_image)}."
                 )
             if output_type != "pil":
-                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is {output_type}.")
 
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
@@ -801,7 +801,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             guidance_scale (`float`, *optional*, defaults to 7.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598).
             control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
                 The percentage of total steps at which the ControlNet starts applying.
             control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):

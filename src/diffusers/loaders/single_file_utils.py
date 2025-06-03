@@ -44,6 +44,7 @@ from ..utils import (
     is_transformers_available,
     logging,
 )
+from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..utils.hub_utils import _get_model_file
 
 
@@ -125,6 +126,7 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "wan": ["model.diffusion_model.head.modulation", "head.modulation"],
     "wan_vae": "decoder.middle.0.residual.0.gamma",
+    "hidream": "double_stream_blocks.0.block.adaLN_modulation.1.bias",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -176,6 +178,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
     "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
     "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
+    "ltx-video-0.9.5": {"pretrained_model_name_or_path": "Lightricks/LTX-Video-0.9.5"},
+    "ltx-video-0.9.7": {"pretrained_model_name_or_path": "Lightricks/LTX-Video-0.9.7-dev"},
     "autoencoder-dc-f128c512": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f128c512-mix-1.0-diffusers"},
     "autoencoder-dc-f64c128": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f64c128-mix-1.0-diffusers"},
     "autoencoder-dc-f32c32": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-mix-1.0-diffusers"},
@@ -188,6 +192,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-t2v-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"},
     "wan-t2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-14B-Diffusers"},
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
+    "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -403,13 +408,16 @@ def load_single_file_checkpoint(
     local_files_only=None,
     revision=None,
     disable_mmap=False,
+    user_agent=None,
 ):
+    if user_agent is None:
+        user_agent = {"file_type": "single_file", "framework": "pytorch"}
+
     if os.path.isfile(pretrained_model_link_or_path):
         pretrained_model_link_or_path = pretrained_model_link_or_path
 
     else:
         repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
-        user_agent = {"file_type": "single_file", "framework": "pytorch"}
         pretrained_model_link_or_path = _get_model_file(
             repo_id,
             weights_name=weights_name,
@@ -443,7 +451,7 @@ def fetch_original_config(original_config_file, local_files_only=False):
                 "Please provide a valid local file path."
             )
 
-        original_config_file = BytesIO(requests.get(original_config_file).content)
+        original_config_file = BytesIO(requests.get(original_config_file, timeout=DIFFUSERS_REQUEST_TIMEOUT).content)
 
     else:
         raise ValueError("Invalid `original_config_file` provided. Please set it to a valid file path or URL.")
@@ -637,7 +645,12 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "flux-schnell"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx-video"]):
-        if "vae.decoder.last_time_embedder.timestep_embedder.linear_1.weight" in checkpoint:
+        has_vae = "vae.encoder.conv_in.conv.bias" in checkpoint
+        if any(key.endswith("transformer_blocks.47.scale_shift_table") for key in checkpoint):
+            model_type = "ltx-video-0.9.7"
+        elif has_vae and checkpoint["vae.encoder.conv_out.conv.weight"].shape[1] == 2048:
+            model_type = "ltx-video-0.9.5"
+        elif "vae.decoder.last_time_embedder.timestep_embedder.linear_1.weight" in checkpoint:
             model_type = "ltx-video-0.9.1"
         else:
             model_type = "ltx-video"
@@ -694,6 +707,8 @@ def infer_diffusers_model_type(checkpoint):
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
         model_type = "wan-t2v-14B"
+    elif CHECKPOINT_KEY_NAMES["hidream"] in checkpoint:
+        model_type = "hidream"
     else:
         model_type = "v1"
 
@@ -2271,7 +2286,7 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             f"double_blocks.{i}.txt_attn.proj.bias"
         )
 
-    # single transfomer blocks
+    # single transformer blocks
     for i in range(num_single_layers):
         block_prefix = f"single_transformer_blocks.{i}."
         # norm.linear  <- single_blocks.0.modulation.lin
@@ -2402,14 +2417,41 @@ def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
         "last_scale_shift_table": "scale_shift_table",
     }
 
+    VAE_095_RENAME_DICT = {
+        # decoder
+        "up_blocks.0": "mid_block",
+        "up_blocks.1": "up_blocks.0.upsamplers.0",
+        "up_blocks.2": "up_blocks.0",
+        "up_blocks.3": "up_blocks.1.upsamplers.0",
+        "up_blocks.4": "up_blocks.1",
+        "up_blocks.5": "up_blocks.2.upsamplers.0",
+        "up_blocks.6": "up_blocks.2",
+        "up_blocks.7": "up_blocks.3.upsamplers.0",
+        "up_blocks.8": "up_blocks.3",
+        # encoder
+        "down_blocks.0": "down_blocks.0",
+        "down_blocks.1": "down_blocks.0.downsamplers.0",
+        "down_blocks.2": "down_blocks.1",
+        "down_blocks.3": "down_blocks.1.downsamplers.0",
+        "down_blocks.4": "down_blocks.2",
+        "down_blocks.5": "down_blocks.2.downsamplers.0",
+        "down_blocks.6": "down_blocks.3",
+        "down_blocks.7": "down_blocks.3.downsamplers.0",
+        "down_blocks.8": "mid_block",
+        # common
+        "last_time_embedder": "time_embedder",
+        "last_scale_shift_table": "scale_shift_table",
+    }
+
     VAE_SPECIAL_KEYS_REMAP = {
         "per_channel_statistics.channel": remove_keys_,
         "per_channel_statistics.mean-of-means": remove_keys_,
         "per_channel_statistics.mean-of-stds": remove_keys_,
-        "timestep_scale_multiplier": remove_keys_,
     }
 
-    if "vae.decoder.last_time_embedder.timestep_embedder.linear_1.weight" in converted_state_dict:
+    if converted_state_dict["vae.encoder.conv_out.conv.weight"].shape[1] == 2048:
+        VAE_KEYS_RENAME_DICT.update(VAE_095_RENAME_DICT)
+    elif "vae.decoder.last_time_embedder.timestep_embedder.linear_1.weight" in converted_state_dict:
         VAE_KEYS_RENAME_DICT.update(VAE_091_RENAME_DICT)
 
     for key in list(converted_state_dict.keys()):
@@ -2838,7 +2880,7 @@ def convert_auraflow_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 def convert_lumina2_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
 
-    # Original Lumina-Image-2 has an extra norm paramter that is unused
+    # Original Lumina-Image-2 has an extra norm parameter that is unused
     # We just remove it here
     checkpoint.pop("norm_final.weight", None)
 
@@ -3259,3 +3301,12 @@ def convert_wan_vae_to_diffusers(checkpoint, **kwargs):
             converted_state_dict[key] = value
 
     return converted_state_dict
+
+
+def convert_hidream_transformer_to_diffusers(checkpoint, **kwargs):
+    keys = list(checkpoint.keys())
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    return checkpoint

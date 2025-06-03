@@ -14,6 +14,7 @@ specific language governing permissions and limitations under the License.
 
 <div class="flex flex-wrap space-x-1">
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+  <img alt="MPS" src="https://img.shields.io/badge/MPS-000000?style=flat&logo=apple&logoColor=white%22">
 </div>
 
 ## Overview
@@ -346,7 +347,7 @@ pipe.to("cuda")
 image = pipe(image=image, prompt="<prompt>", strength=0.3).images
 ```
 
-You can also use [`torch.compile`](../../optimization/torch2.0). Note that we have not exhaustively tested `torch.compile`
+You can also use [`torch.compile`](../../optimization/fp16#torchcompile). Note that we have not exhaustively tested `torch.compile`
 with IF and it might not give expected results.
 
 ```py

@@ -13,7 +13,7 @@ from ...models import ModelMixin
 # Modified from ClipCaptionModel in https://github.com/thu-ml/unidiffuser/blob/main/libs/caption_decoder.py
 class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     """
-    Text decoder model for a image-text [UniDiffuser](https://arxiv.org/pdf/2303.06555.pdf) model. This is used to
+    Text decoder model for a image-text [UniDiffuser](https://huggingface.co/papers/2303.06555) model. This is used to
     generate text from the UniDiffuser image-text embedding.
 
     Parameters:
@@ -140,7 +140,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             input_ids (`torch.Tensor` of shape `(N, max_seq_len)`):
                 Text tokens to use for inference.
             prefix_embeds (`torch.Tensor` of shape `(N, prefix_length, 768)`):
-                Prefix embedding to preprend to the embedded tokens.
+                Prefix embedding to prepend to the embedded tokens.
             attention_mask (`torch.Tensor` of shape `(N, prefix_length + max_seq_len, 768)`, *optional*):
                 Attention mask for the prefix embedding.
             labels (`torch.Tensor`, *optional*):

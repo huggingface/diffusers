@@ -68,6 +68,8 @@ if is_torch_available():
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
 
+    from diffusers.quantizers.bitsandbytes import replace_with_bnb_linear
+
 
 @require_bitsandbytes_version_greater("0.43.2")
 @require_accelerate
@@ -193,7 +195,7 @@ class BnB8bitBasicTests(Base8bitTests):
 
     def test_original_dtype(self):
         r"""
-        A simple test to check if the model succesfully stores the original dtype
+        A simple test to check if the model successfully stores the original dtype
         """
         self.assertTrue("_pre_quantization_dtype" in self.model_8bit.config)
         self.assertFalse("_pre_quantization_dtype" in self.model_fp16.config)
@@ -221,7 +223,7 @@ class BnB8bitBasicTests(Base8bitTests):
                     self.assertTrue(module.weight.dtype == torch.int8)
 
         # test if inference works.
-        with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.no_grad() and torch.autocast(model.device.type, dtype=torch.float16):
             input_dict_for_transformer = self.get_dummy_inputs()
             model_inputs = {
                 k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
@@ -315,7 +317,19 @@ class BnB8bitBasicTests(Base8bitTests):
         _ = self.model_fp16.float()
 
         # Check that this does not throw an error
-        _ = self.model_fp16.cuda()
+        _ = self.model_fp16.to(torch_device)
+
+    def test_bnb_8bit_logs_warning_for_no_quantization(self):
+        model_with_no_linear = torch.nn.Sequential(torch.nn.Conv2d(4, 4, 3), torch.nn.ReLU())
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        logger = logging.get_logger("diffusers.quantizers.bitsandbytes.utils")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            _ = replace_with_bnb_linear(model_with_no_linear, quantization_config=quantization_config)
+        assert (
+            "You are loading your model in 8bit or 4bit but no linear modules were found in your model."
+            in cap_logger.out
+        )
 
 
 class Bnb8bitDeviceTests(Base8bitTests):
@@ -379,7 +393,7 @@ class BnB8bitTrainingTests(Base8bitTests):
         model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
 
         # Step 4: Check if the gradient is not None
-        with torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.amp.autocast(torch_device, dtype=torch.float16):
             out = self.model_8bit(**model_inputs)[0]
             out.norm().backward()
 
@@ -478,7 +492,7 @@ class SlowBnb8bitTests(Base8bitTests):
         self.assertTrue(max_diff < 1e-2)
 
         # 8bit models cannot be offloaded to CPU.
-        self.assertTrue(self.pipeline_8bit.transformer.device.type == "cuda")
+        self.assertTrue(self.pipeline_8bit.transformer.device.type == torch_device)
         # calling it again shouldn't be a problem
         _ = self.pipeline_8bit(
             prompt=self.prompt,
@@ -509,16 +523,18 @@ class SlowBnb8bitTests(Base8bitTests):
             torch_dtype=torch.float16,
             device_map=torch_device,
         )
+
         # CUDA device placement works.
+        device = torch_device if torch_device != "rocm" else "cuda"
         pipeline_8bit = DiffusionPipeline.from_pretrained(
             self.model_name,
             transformer=transformer_8bit,
             text_encoder_3=text_encoder_3_8bit,
             torch_dtype=torch.float16,
-        ).to("cuda")
+        ).to(device)
 
         # Check if inference works.
-        _ = pipeline_8bit("table", max_sequence_length=20, num_inference_steps=2)
+        _ = pipeline_8bit(self.prompt, max_sequence_length=20, num_inference_steps=2)
 
         del pipeline_8bit
 

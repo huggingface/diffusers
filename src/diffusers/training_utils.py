@@ -149,9 +149,9 @@ def compute_dream_and_update_latents(
     dream_detail_preservation: float = 1.0,
 ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
     """
-    Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from http://arxiv.org/abs/2312.00210.
-    DREAM helps align training with sampling to help training be more efficient and accurate at the cost of an extra
-    forward step without gradients.
+    Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from
+    https://huggingface.co/papers/2312.00210. DREAM helps align training with sampling to help training be more
+    efficient and accurate at the cost of an extra forward step without gradients.
 
     Args:
         `unet`: The state unet to use to make a prediction.
@@ -241,7 +241,7 @@ def _set_state_dict_into_text_encoder(
     """
 
     text_encoder_state_dict = {
-        f'{k.replace(prefix, "")}': v for k, v in lora_state_dict.items() if k.startswith(prefix)
+        f"{k.replace(prefix, '')}": v for k, v in lora_state_dict.items() if k.startswith(prefix)
     }
     text_encoder_state_dict = convert_state_dict_to_peft(convert_state_dict_to_diffusers(text_encoder_state_dict))
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
@@ -261,7 +261,7 @@ def compute_density_for_timestep_sampling(
 
     Courtesy: This was contributed by Rafie Walker in https://github.com/huggingface/diffusers/pull/8528.
 
-    SD3 paper reference: https://arxiv.org/abs/2403.03206v1.
+    SD3 paper reference: https://huggingface.co/papers/2403.03206v1.
     """
     if weighting_scheme == "logit_normal":
         u = torch.normal(mean=logit_mean, std=logit_std, size=(batch_size,), device=device, generator=generator)
@@ -280,7 +280,7 @@ def compute_loss_weighting_for_sd3(weighting_scheme: str, sigmas=None):
 
     Courtesy: This was contributed by Rafie Walker in https://github.com/huggingface/diffusers/pull/8528.
 
-    SD3 paper reference: https://arxiv.org/abs/2403.03206v1.
+    SD3 paper reference: https://huggingface.co/papers/2403.03206v1.
     """
     if weighting_scheme == "sigma_sqrt":
         weighting = (sigmas**-2.0).float()
@@ -583,7 +583,7 @@ class EMAModel:
         """
 
         if self.temp_stored_params is None:
-            raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
+            raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights to `restore()`")
         if self.foreach:
             torch._foreach_copy_(
                 [param.data for param in parameters], [c_param.data for c_param in self.temp_stored_params]
