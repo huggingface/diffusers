@@ -76,19 +76,14 @@ class WanAttnProcessor2_0:
                 freqs_cos: torch.Tensor,
                 freqs_sin: torch.Tensor,
             ):
-                dtype = (
-                    torch.float32
-                    if hidden_states.device.type == "mps"
-                    else torch.float64
-                )
-                x = hidden_states.view(*hidden_states.shape[:-1], -1, 2).to(dtype)
+                x = hidden_states.view(*hidden_states.shape[:-1], -1, 2)
                 x1, x2 = x[..., 0], x[..., 1]
                 cos = freqs_cos[..., 0::2]
                 sin = freqs_sin[..., 1::2]
                 out = torch.empty_like(hidden_states)
                 out[..., 0::2] = x1 * cos - x2 * sin
                 out[..., 1::2] = x1 * sin + x2 * cos
-                return out
+                return out.type_as(hidden_states)
 
             query = apply_rotary_emb(query, rotary_emb)
             key = apply_rotary_emb(key, rotary_emb)
