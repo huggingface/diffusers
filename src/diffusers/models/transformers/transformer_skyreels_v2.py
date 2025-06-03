@@ -456,6 +456,14 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        debug_tensors = {}
+        debug_tensors["initial_hidden_states"] = hidden_states.detach().clone()
+        debug_tensors["initial_hidden_states_shape"] = list(hidden_states.shape)
+        debug_tensors["initial_timestep"] = timestep.detach().clone()
+        debug_tensors["initial_timestep_shape"] = list(timestep.shape)
+        debug_tensors["initial_encoder_hidden_states"] = encoder_hidden_states.detach().clone()
+        debug_tensors["initial_encoder_hidden_states_shape"] = list(encoder_hidden_states.shape)
+
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -478,9 +486,15 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         post_patch_width = width // p_w
 
         rotary_emb = self.rope(hidden_states)
+        debug_tensors["rotary_emb"] = rotary_emb.detach().clone()
+        debug_tensors["rotary_emb_shape"] = list(rotary_emb.shape)
 
         hidden_states = self.patch_embedding(hidden_states)
+        debug_tensors["hidden_states_after_patch_embedding"] = hidden_states.detach().clone()
+        debug_tensors["hidden_states_after_patch_embedding_shape"] = list(hidden_states.shape)
         grid_sizes = torch.tensor(hidden_states.shape[2:], dtype=torch.long)
+        debug_tensors["grid_sizes"] = grid_sizes.detach().clone()
+        debug_tensors["grid_sizes_shape"] = list(grid_sizes.shape)
 
         if self.config.flag_causal_attention:
             frame_num, height, width = grid_sizes
@@ -495,10 +509,19 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
 
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        debug_tensors["hidden_states_after_flatten_transpose"] = hidden_states.detach().clone()
+        debug_tensors["hidden_states_after_flatten_transpose_shape"] = list(hidden_states.shape)
 
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
             timestep, encoder_hidden_states, encoder_hidden_states_image
         )
+        debug_tensors["temb_after_time_embedding"] = temb.detach().clone()
+        debug_tensors["temb_after_time_embedding_shape"] = list(temb.shape)
+        debug_tensors["timestep_proj_after_time_projection"] = timestep_proj.detach().clone()
+        debug_tensors["timestep_proj_after_time_projection_shape"] = list(timestep_proj.shape)
+        debug_tensors["encoder_hidden_states_after_text_embedding"] = encoder_hidden_states.detach().clone()
+        debug_tensors["encoder_hidden_states_after_text_embedding_shape"] = list(encoder_hidden_states.shape)
+
         timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
         if encoder_hidden_states_image is not None:
@@ -506,7 +529,9 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for block in self.blocks:
+            for i, block in enumerate(self.blocks):
+                debug_tensors[f"block_{i}_input_hidden_states"] = hidden_states.detach().clone()
+                debug_tensors[f"block_{i}_input_hidden_states_shape"] = list(hidden_states.shape)
                 hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
@@ -515,10 +540,14 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                     rotary_emb,
                     causal_mask if self.config.flag_causal_attention else None,
                 )
+                debug_tensors[f"block_{i}_output_hidden_states"] = hidden_states.detach().clone()
+                debug_tensors[f"block_{i}_output_hidden_states_shape"] = list(hidden_states.shape)
         if self.config.inject_sample_info:
             fps = torch.tensor(fps, dtype=torch.long, device=hidden_states.device)
 
             fps_emb = self.fps_embedding(fps).float()
+            debug_tensors["fps_emb"] = fps_emb.detach().clone()
+            debug_tensors["fps_emb_shape"] = list(fps_emb.shape)
             timestep_proj = timestep_proj.to(fps_emb.dtype)
             self.fps_projection.to(fps_emb.dtype)
             if flag_df:
@@ -527,6 +556,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 )
             else:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, -1))
+            debug_tensors["timestep_proj_after_fps_projection"] = timestep_proj.detach().clone()
+            debug_tensors["timestep_proj_after_fps_projection_shape"] = list(timestep_proj.shape)
             timestep_proj = timestep_proj.to(hidden_states.dtype)
 
         if flag_df:
@@ -537,7 +568,9 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             timestep_proj = timestep_proj.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1, 1).flatten(1, 3)
             timestep_proj = timestep_proj.transpose(1, 2).contiguous()
 
-        for block in self.blocks:
+        for i, block in enumerate(self.blocks):
+            debug_tensors[f"block_{i}_input_hidden_states"] = hidden_states.detach().clone()
+            debug_tensors[f"block_{i}_input_hidden_states_shape"] = list(hidden_states.shape)
             hidden_states = block(
                 hidden_states,
                 encoder_hidden_states,
@@ -545,8 +578,13 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 rotary_emb,
                 causal_mask if self.config.flag_causal_attention else None,
             )
+            debug_tensors[f"block_{i}_output_hidden_states"] = hidden_states.detach().clone()
+            debug_tensors[f"block_{i}_output_hidden_states_shape"] = list(hidden_states.shape)
 
-        # 5. Output norm, projection & unpatchify
+        debug_tensors["temb_before_output_modulation"] = temb.detach().clone()
+        debug_tensors["temb_before_output_modulation_shape"] = list(temb.shape)
+        debug_tensors["scale_shift_table"] = self.scale_shift_table.detach().clone()
+        debug_tensors["scale_shift_table_shape"] = list(self.scale_shift_table.shape)
         if temb.dim() == 2:
             shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
         elif temb.dim() == 3:
@@ -561,13 +599,20 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         scale = scale.to(hidden_states.device)
 
         hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        debug_tensors["hidden_states_after_output_modulation"] = hidden_states.detach().clone()
+        debug_tensors["hidden_states_after_output_modulation_shape"] = list(hidden_states.shape)
+
         hidden_states = self.proj_out(hidden_states)
+        debug_tensors["hidden_states_after_proj_out"] = hidden_states.detach().clone()
+        debug_tensors["hidden_states_after_proj_out_shape"] = list(hidden_states.shape)
 
         hidden_states = hidden_states.reshape(
             batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
         )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
         output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        debug_tensors["output_after_unpatchify"] = output.detach().clone()
+        debug_tensors["output_after_unpatchify_shape"] = list(output.shape)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
@@ -576,7 +621,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if not return_dict:
             return (output,)
 
-        return Transformer2DModelOutput(sample=output)
+        return Transformer2DModelOutput(sample=output, debug_tensors=debug_tensors)
 
     def set_ar_attention(self, causal_block_size):
         self.register_to_config(num_frame_per_block=causal_block_size, flag_causal_attention=True)
