@@ -486,62 +486,7 @@ jobs:
         with:
           name: torch_cuda_${{ matrix.config.backend }}_reports
           path: reports
-  generate_consolidated_report:
-    name: Generate Consolidated Test Report
-    needs: [
-      run_nightly_tests_for_torch_pipelines,
-      run_nightly_tests_for_other_torch_modules,
-      run_big_gpu_torch_tests,
-      run_nightly_onnx_tests,
-      run_nightly_quantization_tests,
-      run_flax_tpu_tests
-    ]
-    if: always()
-    runs-on:
-      group: aws-general-8-plus
-    container:
-      image: diffusers/diffusers-pytorch-cpu
-    steps:
-      - name: Checkout diffusers
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
-
-      - name: Create reports directory
-        run: mkdir -p combined_reports
-
-      - name: Download all test reports
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Prepare reports
-        run: |
-          # Move all report files to a single directory for processing
-          find artifacts -name "*.txt" -exec cp {} combined_reports/ \;
-
-      - name: Install dependencies
-        run: |
-          pip install -e .[test]
-          pip install slack_sdk tabulate
-
-      - name: Generate consolidated report
-        run: |
-          python utils/consolidated_test_report.py \
-            --reports_dir combined_reports \
-            --output_file $CONSOLIDATED_REPORT_PATH \
-            --slack_channel_name diffusers-ci-nightly
-
-      - name: Show consolidated report
-        run: |
-          cat $CONSOLIDATED_REPORT_PATH >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload consolidated report
-        uses: actions/upload-artifact@v4
-        with:
-          name: consolidated_test_report
-          path: ${{ env.CONSOLIDATED_REPORT_PATH }}
-
+          
   run_nightly_pipeline_level_quantization_tests:
     name: Torch quantization nightly tests
     strategy:
@@ -590,11 +535,63 @@ jobs:
         with:
           name: torch_cuda_pipeline_level_quant_reports
           path: reports
-      - name: Generate Report and Notify Channel
-        if: always()
+
+  generate_consolidated_report:
+    name: Generate Consolidated Test Report
+    needs: [
+      run_nightly_tests_for_torch_pipelines,
+      run_nightly_tests_for_other_torch_modules,
+      run_big_gpu_torch_tests,
+      run_nightly_onnx_tests,
+      run_nightly_quantization_tests,
+      run_nightly_pipeline_level_quantization_tests,
+      run_flax_tpu_tests
+    ]
+    if: always()
+    runs-on:
+      group: aws-general-8-plus
+    container:
+      image: diffusers/diffusers-pytorch-cpu
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Create reports directory
+        run: mkdir -p combined_reports
+
+      - name: Download all test reports
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare reports
         run: |
+          # Move all report files to a single directory for processing
+          find artifacts -name "*.txt" -exec cp {} combined_reports/ \;
+
+      - name: Install dependencies
+        run: |
+          pip install -e .[test]
           pip install slack_sdk tabulate
-          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate consolidated report
+        run: |
+          python utils/consolidated_test_report.py \
+            --reports_dir combined_reports \
+            --output_file $CONSOLIDATED_REPORT_PATH \
+            --slack_channel_name diffusers-ci-nightly
+
+      - name: Show consolidated report
+        run: |
+          cat $CONSOLIDATED_REPORT_PATH >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload consolidated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: consolidated_test_report
+          path: ${{ env.CONSOLIDATED_REPORT_PATH }}
 
 # M1 runner currently not well supported
 # TODO: (Dhruv) add these back when we setup better testing for Apple Silicon
