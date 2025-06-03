@@ -775,6 +775,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         max_sequence_length: int = 512,
         iterations: Optional[int] = 4, # modified for applying gradient to mask_image
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
+        ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1372,11 +1373,14 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 
                 # inject product raw images into latents
                 if image_ref_prod is not None:
-                    latents_1 = (1 - init_mask) * init_latents_proper
-                    latents_2 = (init_mask - init_mask_ref_prod) * latents 
-                    latents_3 = (1.0 - ratio_ref_prod) * init_mask_ref_prod * latents + ratio_ref_prod * init_mask_ref_prod * init_latents_proper_ref
-                    
-                    latents = latents_1 + latents_2 + latents_3 
+                    if i < ref_prod_injection_steps:
+                        latents_1 = (1 - init_mask) * init_latents_proper
+                        latents_2 = (init_mask - init_mask_ref_prod) * latents 
+                        latents_3 = (1.0 - ratio_ref_prod) * init_mask_ref_prod * latents + ratio_ref_prod * init_mask_ref_prod * init_latents_proper_ref
+                        
+                        latents = latents_1 + latents_2 + latents_3 
+                    else:
+                        latents = (1 - init_mask) * init_latents_proper + init_mask * latents
                 else:    
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 

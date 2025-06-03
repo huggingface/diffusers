@@ -240,6 +240,14 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+        latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor * 2,
+            vae_latent_channels=latent_channels,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
+        )
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
@@ -816,6 +824,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1325,19 +1334,20 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
                 # additional codes for injecting original prod images into latents
                 if image is not None:
-                    init_mask = mask
-                    init_latents_proper = image_latents
+                    if i < ref_prod_injection_steps:
+                        init_mask = mask
+                        init_latents_proper = image_latents
 
-                    if i < len(timesteps) - 1:
-                        noise_timestep = timesteps[i + 1]
-                        init_latents_proper = self.scheduler.scale_noise(
-                            init_latents_proper, torch.tensor([noise_timestep]), noise
-                        )
-    
-                    latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
-                    latents_2 = latents_1 + (1.0 - init_mask) * latents
-                    
-                    latents = latents_1 + latents_2
+                        if i < len(timesteps) - 1:
+                            noise_timestep = timesteps[i + 1]
+                            init_latents_proper = self.scheduler.scale_noise(
+                                init_latents_proper, torch.tensor([noise_timestep]), noise
+                            )
+        
+                        latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
+                        latents_2 = latents_1 + (1.0 - init_mask) * latents
+                        
+                        latents = latents_1 + latents_2
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
