@@ -70,9 +70,9 @@ class SkyReelsV2AttnProcessor2_0:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2).to(torch.float32)
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2).to(torch.float32)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2).to(torch.float32)
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
         if rotary_emb is not None:
 
@@ -100,26 +100,17 @@ class SkyReelsV2AttnProcessor2_0:
             hidden_states_img = hidden_states_img.transpose(1, 2).flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
 
-        if self._flag_ar_attention:
             hidden_states = F.scaled_dot_product_attention(
-                query.to(torch.bfloat16),
-                key.to(torch.bfloat16),
-                value.to(torch.bfloat16),
-                attn_mask=attention_mask,
-                dropout_p=0.0,
-                is_causal=False,
-            )
-        else:
-            hidden_states = F.scaled_dot_product_attention(
-                query.to(torch.bfloat16),
-                key.to(torch.bfloat16),
-                value.to(torch.bfloat16),
+                query,
+                key,
+                value,
+                attn_mask=attention_mask if self._flag_ar_attention else None,
                 dropout_p=0.0,
                 is_causal=False,
             )
 
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        #hidden_states = hidden_states.type_as(query)
+        hidden_states = hidden_states.type_as(query)
 
         if hidden_states_img is not None:
             hidden_states = hidden_states + hidden_states_img
@@ -329,7 +320,7 @@ class SkyReelsV2TransformerBlock(nn.Module):
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
-        return hidden_states.to(torch.bfloat16)
+        return hidden_states
 
     def set_ar_attention(self):
         self.attn1.processor.set_ar_attention()
@@ -572,7 +563,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
         )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
-        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3).float()
+        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
