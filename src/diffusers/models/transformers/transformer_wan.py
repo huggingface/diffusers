@@ -218,16 +218,13 @@ class WanRotaryPosEmbed(nn.Module):
             freqs_cos.append(freq_cos)
             freqs_sin.append(freq_sin)
 
-        self.freqs_cos = torch.cat(freqs_cos, dim=1)
-        self.freqs_sin = torch.cat(freqs_sin, dim=1)
+        self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
+        self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
-
-        self.freqs_cos = self.freqs_cos.to(hidden_states.device)
-        self.freqs_sin = self.freqs_sin.to(hidden_states.device)
 
         split_sizes = [
             self.attention_head_dim - 2 * (self.attention_head_dim // 3),
