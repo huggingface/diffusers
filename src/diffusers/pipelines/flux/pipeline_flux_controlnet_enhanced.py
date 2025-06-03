@@ -794,6 +794,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         image: PipelineImageInput = None,
         ratio_ref: Optional[float] = 0.1,
         mask_image: PipelineImageInput = None,
+        prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for injecting original prod images
         true_cfg_scale: float = 1.0,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -824,6 +825,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
         ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
     ):
         r"""
@@ -1207,6 +1209,30 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 device,
                 generator,
             )
+        
+        if prod_masks_original is not None:
+            mask_conditions_prod = []
+            for prod_mask in prod_masks_original:
+                tmp_mask_condition = self.mask_processor.preprocess(
+                    prod_mask, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
+                )
+                mask_conditions_prod.append(tmp_mask_condition)
+                
+            masks_prod = []
+            for tmp_mask_condition in mask_conditions_prod:
+                tmp_mask, _ = self.prepare_mask_latents(
+                    tmp_mask_condition,
+                    masked_image,
+                    batch_size,
+                    num_channels_latents,
+                    num_images_per_prompt,
+                    global_height,
+                    global_width,
+                    prompt_embeds.dtype,
+                    device,
+                    generator,
+                )
+                masks_prod.append(tmp_mask)
 
         # 6. Create tensor stating which controlnets to keep
         controlnet_keep = []
@@ -1332,6 +1358,53 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
+                # average multiple product latents         
+                if prod_masks_original is not None:
+                    init_masks_prod = masks_prod
+
+                    if i < averaging_steps:
+                        batch_size = latents.shape[0]
+                        latents = latents.view(-1)
+                        masked_regions = []
+                        for tmp_init_mask in init_masks_prod:
+                            tmp_init_mask = tmp_init_mask.view(-1)
+                            masked_regions.append(latents[tmp_init_mask.bool()].reshape(-1))
+        
+                        min_length = min(t.size(0) for t in masked_regions)
+                        #truncated = [t[:min_length] for t in masked_regions]
+                        truncated = []
+                        for tmp_mask_region in masked_regions:
+                            if tmp_mask_region.size(0) == min_length:
+                                truncated.append(tmp_mask_region)
+                            else:
+                                extra_dim = tmp_mask_region.size(0) - min_length
+                                half = extra_dim // 2
+                                if extra_dim % 2 == 0:
+                                    truncated.append(tmp_mask_region[half:(min_length-half+extra_dim)])
+                                else:
+                                    truncated.append(tmp_mask_region[half:(min_length-half+extra_dim-1)])
+
+                        masked_regions = torch.stack(truncated)
+
+                        avg_region = masked_regions.mean(dim=0) 
+                        for tmp_init_mask in init_masks_prod:
+                            tmp_init_mask = tmp_init_mask.view(-1)
+                            length = torch.sum(tmp_init_mask == 1)
+                            if length == avg_region.shape[0]:
+                                latents[tmp_init_mask.bool()] = avg_region
+                            elif length < avg_region.shape[0]:
+                                latents[tmp_init_mask.bool()] = avg_region[0:length]
+                            else:
+                                add_dim = length - avg_region.shape[0]
+                                add_dim1 = add_dim // 2
+                                add_dim2 = add_dim - add_dim1
+                                one_tensor1 = torch.ones(add_dim1).to(device=latents.device, dtype=latents.dtype)
+                                one_tensor2 = torch.ones(add_dim2).to(device=latents.device, dtype=latents.dtype)
+                                tmp_tensor1 = one_tensor1 * torch.mean(avg_region)
+                                tmp_tensor2 = one_tensor2 * torch.mean(avg_region)
+                                latents[tmp_init_mask.bool()] = torch.cat((tmp_tensor1, avg_region, tmp_tensor2), dim = 0)
+
+                    latents = latents.view(batch_size, 4096, -1)
                 # additional codes for injecting original prod images into latents
                 if image is not None:
                     if i < ref_prod_injection_steps:
