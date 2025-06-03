@@ -104,14 +104,14 @@ class SkyReelsV2AttnProcessor2_0:
             hidden_states_img = hidden_states_img.transpose(1, 2).flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
 
-            hidden_states = F.scaled_dot_product_attention(
-                query,
-                key,
-                value,
-                attn_mask=attention_mask if self._flag_ar_attention else None,
-                dropout_p=0.0,
-                is_causal=False,
-            )
+        hidden_states = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask if self._flag_ar_attention else None,
+            dropout_p=0.0,
+            is_causal=False,
+        )
 
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
