@@ -656,13 +656,13 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     @staticmethod
     def _is_cuda_capability_atleast_8_9() -> bool:
-        if not torch.cuda.is_available():
-            raise RuntimeError("TorchAO requires a CUDA compatible GPU and installation of PyTorch.")
-
-        major, minor = torch.cuda.get_device_capability()
-        if major == 8:
-            return minor >= 9
-        return major >= 9
+        if torch.cuda.is_available():
+            major, minor = torch.cuda.get_device_capability()
+            if major == 8:
+                return minor >= 9
+            return major >= 9
+        else:
+            return True
 
     def get_apply_tensor_subclass(self):
         TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()

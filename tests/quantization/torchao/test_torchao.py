@@ -30,12 +30,15 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import Attention
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_synchronize,
     enable_full_determinism,
     is_torch_available,
     is_torchao_available,
     nightly,
     numpy_cosine_similarity_distance,
     require_torch,
+    require_torch_accelerator,
     require_torch_gpu,
     require_torchao_version_greater_or_equal,
     slow,
@@ -61,7 +64,7 @@ if is_torchao_available():
 
 
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoConfigTest(unittest.TestCase):
     def test_to_dict(self):
@@ -119,12 +122,12 @@ class TorchAoConfigTest(unittest.TestCase):
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoTest(unittest.TestCase):
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_components(
         self, quantization_config: TorchAoConfig, model_id: str = "hf-internal-testing/tiny-flux-pipe"
@@ -518,14 +521,14 @@ class TorchAoTest(unittest.TestCase):
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoSerializationTest(unittest.TestCase):
     model_name = "hf-internal-testing/tiny-flux-pipe"
 
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_model(self, quant_method, quant_method_kwargs, device=None):
         quantization_config = TorchAoConfig(quant_method, **quant_method_kwargs)
@@ -596,14 +599,14 @@ class TorchAoSerializationTest(unittest.TestCase):
     def test_int_a8w8_cuda(self):
         quant_method, quant_method_kwargs = "int8_dynamic_activation_int8_weight", {}
         expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
-        device = "cuda"
+        device = torch_device
         self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
 
     def test_int_a16w8_cuda(self):
         quant_method, quant_method_kwargs = "int8_weight_only", {}
         expected_slice = np.array([0.3613, -0.127, -0.0223, -0.2539, -0.459, 0.4961, -0.1357, -0.6992, 0.4551])
-        device = "cuda"
+        device = torch_device
         self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
 
@@ -624,14 +627,14 @@ class TorchAoSerializationTest(unittest.TestCase):
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 @slow
 @nightly
 class SlowTorchAoTests(unittest.TestCase):
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_components(self, quantization_config: TorchAoConfig):
         # This is just for convenience, so that we can modify it at one place for custom environments and locally testing
@@ -713,8 +716,8 @@ class SlowTorchAoTests(unittest.TestCase):
             quantization_config = TorchAoConfig(quant_type=quantization_name, modules_to_not_convert=["x_embedder"])
             self._test_quant_type(quantization_config, expected_slice)
             gc.collect()
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+            backend_empty_cache(torch_device)
+            backend_synchronize(torch_device)
 
     def test_serialization_int8wo(self):
         quantization_config = TorchAoConfig("int8wo")
@@ -733,8 +736,8 @@ class SlowTorchAoTests(unittest.TestCase):
             pipe.remove_all_hooks()
             del pipe.transformer
             gc.collect()
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+            backend_empty_cache(torch_device)
+            backend_synchronize(torch_device)
             transformer = FluxTransformer2DModel.from_pretrained(
                 tmp_dir, torch_dtype=torch.bfloat16, use_safetensors=False
             )
@@ -783,14 +786,14 @@ class SlowTorchAoTests(unittest.TestCase):
 
 
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 @slow
 @nightly
 class SlowTorchAoPreserializedModelTests(unittest.TestCase):
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_inputs(self, device: torch.device, seed: int = 0):
         if str(device).startswith("mps"):
