@@ -25,11 +25,15 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
+from ..embeddings import (
+    PixArtAlphaTextProjection,
+    TimestepEmbedding,
+    get_1d_rotary_pos_embed,
+    get_1d_sincos_pos_embed_from_grid,
+)
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
-from ..embeddings import get_1d_sincos_pos_embed_from_grid
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

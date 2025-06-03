@@ -440,7 +440,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, WanLoraL
 
         prefix_video_latents = [
             retrieve_latents(
-                self.vae.encode(vid.unsqueeze(0)[:, :, -overlap_history:] if vid.dim() == 4 else vid[:, :, -overlap_history:]),
+                self.vae.encode(
+                    vid.unsqueeze(0)[:, :, -overlap_history:] if vid.dim() == 4 else vid[:, :, -overlap_history:]
+                ),
                 sample_mode="argmax",
             )
             for vid in video

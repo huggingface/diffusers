@@ -796,7 +796,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 last_image,
             )
 
-            latents[:, :, :prefix_video_latents_length, :, :] = condition[:condition.shape[0]//2].to(
+            latents[:, :, :prefix_video_latents_length, :, :] = condition[: condition.shape[0] // 2].to(
                 transformer_dtype
             )
             base_num_frames = (
@@ -805,9 +805,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 else num_latent_frames
             )
             if last_image is not None:
-                latents = torch.cat(
-                    [latents, condition[condition.shape[0]//2:].to(transformer_dtype)], dim=2
-                )
+                latents = torch.cat([latents, condition[condition.shape[0] // 2 :].to(transformer_dtype)], dim=2)
                 base_num_frames += prefix_video_latents_length
                 num_latent_frames += prefix_video_latents_length
 
@@ -945,8 +943,10 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 )
 
                 if long_video_iter == 0 and last_image is not None:
-                    end_video_latents = condition[condition.shape[0]//2:]
-                    latents[:, :, :prefix_video_latents_length, :, :] = condition[:condition.shape[0]//2].to(transformer_dtype)
+                    end_video_latents = condition[condition.shape[0] // 2 :]
+                    latents[:, :, :prefix_video_latents_length, :, :] = condition[: condition.shape[0] // 2].to(
+                        transformer_dtype
+                    )
                 else:
                     latents[:, :, :prefix_video_latents_length, :, :] = condition.to(transformer_dtype)
 

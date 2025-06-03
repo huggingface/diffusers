@@ -355,7 +355,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np", flip_sin
 
     # flip sine and cosine embeddings
     if flip_sin_to_cos:
-        emb = torch.cat([emb[:, embed_dim // 2:], emb[:, :embed_dim // 2]], dim=1)
+        emb = torch.cat([emb[:, embed_dim // 2 :], emb[:, : embed_dim // 2]], dim=1)
 
     return emb
 
