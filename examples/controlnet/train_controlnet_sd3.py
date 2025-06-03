@@ -199,13 +199,13 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_v
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        free_memory()
+    del pipeline
+    free_memory()
 
-        if not is_final_validation:
-            controlnet.to(accelerator.device)
+    if not is_final_validation:
+        controlnet.to(accelerator.device)
 
-        return image_logs
+    return image_logs
 
 
 # Copied from dreambooth sd3 example
