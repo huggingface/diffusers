@@ -201,7 +201,7 @@ jobs:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         RUN_COMPILE: yes
       run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_torch_compile_cuda_failures_short.txt
@@ -212,12 +212,6 @@ jobs:
       with:
         name: torch_compile_test_reports
         path: reports
-
-    - name: Generate Report and Notify Channel
-      if: always()
-      run: |
-        pip install slack_sdk tabulate
-        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_big_gpu_torch_tests:
     name: Torch tests on big GPU
@@ -269,6 +263,7 @@ jobs:
         with:
           name: torch_cuda_big_gpu_test_reports
           path: reports
+
   torch_minimum_version_cuda_tests:
     name: Torch Minimum Version CUDA Tests
     runs-on:
