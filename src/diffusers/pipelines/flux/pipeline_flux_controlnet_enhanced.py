@@ -791,10 +791,10 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         prompt_2: Optional[Union[str, List[str]]] = None,
         negative_prompt: Union[str, List[str]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
-        image: PipelineImageInput = None,
-        ratio_ref: Optional[float] = 0.1,
-        mask_image: PipelineImageInput = None,
-        prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for injecting original prod images
+        image: PipelineImageInput = None, # original prod image
+        ratio_ref: Optional[float] = 0.1, # ratio of original prod images
+        mask_image: PipelineImageInput = None, # modified for injecting original prod images
+        prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for averaging multiple copies
         true_cfg_scale: float = 1.0,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -1405,6 +1405,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                                 latents[tmp_init_mask.bool()] = torch.cat((tmp_tensor1, avg_region, tmp_tensor2), dim = 0)
 
                     latents = latents.view(batch_size, 4096, -1)
+                    
                 # additional codes for injecting original prod images into latents
                 if image is not None:
                     if i < ref_prod_injection_steps:
