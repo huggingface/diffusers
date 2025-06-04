@@ -823,6 +823,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         ratio_ref: Optional[float] = 0.1, # ratio of original prod images
         mask_image: PipelineImageInput = None, # modified for injecting original prod images
         prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for averaging multiple copies
+        masked_image_latents: PipelineImageInput = None,
         true_cfg_scale: float = 1.0,
         height: Optional[int] = None,
         width: Optional[int] = None,
