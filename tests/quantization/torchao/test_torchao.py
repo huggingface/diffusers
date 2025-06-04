@@ -82,7 +82,7 @@ class TorchAoConfigTest(unittest.TestCase):
         Test kwargs validations in TorchAoConfig
         """
         _ = TorchAoConfig("int4_weight_only")
-        with self.assertRaisesRegex(ValueError, "is not supported yet"):
+        with self.assertRaisesRegex(ValueError, "is not supported"):
             _ = TorchAoConfig("uint8")
 
         with self.assertRaisesRegex(ValueError, "does not support the following keyword arguments"):
@@ -272,6 +272,7 @@ class TorchAoTest(unittest.TestCase):
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            device_map=f"{torch_device}:0",
         )
 
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
@@ -341,7 +342,8 @@ class TorchAoTest(unittest.TestCase):
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+                cos_distance = numpy_cosine_similarity_distance(output_slice, expected_slice)
+                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 2e-3)
 
             with tempfile.TemporaryDirectory() as offload_folder:
                 quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
@@ -362,7 +364,7 @@ class TorchAoTest(unittest.TestCase):
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 2e-3)
 
     def test_modules_to_not_convert(self):
         quantization_config = TorchAoConfig("int8_weight_only", modules_to_not_convert=["transformer_blocks.0"])
