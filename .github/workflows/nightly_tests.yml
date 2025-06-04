@@ -541,7 +541,7 @@ jobs:
       run_nightly_tests_for_torch_pipelines,
       run_nightly_tests_for_other_torch_modules,
       run_torch_compile_tests,
-      run_big_gpu_torch_tests
+      run_big_gpu_torch_tests,
       run_nightly_quantization_tests,
       run_nightly_pipeline_level_quantization_tests,
       run_nightly_onnx_tests,
