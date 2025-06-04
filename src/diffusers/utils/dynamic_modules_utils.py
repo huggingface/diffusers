@@ -154,7 +154,7 @@ def check_imports(filename):
     return get_relative_imports(filename)
 
 
-def get_class_in_module(pretrained_model_name_or_path, class_name, module_path):
+def get_class_in_module(class_name, module_path, pretrained_model_name_or_path=None):
     """
     Import a module on the cache directory for modules and extract a class from it.
     """
@@ -165,7 +165,8 @@ def get_class_in_module(pretrained_model_name_or_path, class_name, module_path):
         # This can happen when the repo id contains ".", which Python's import machinery interprets as a directory
         # separator. We do a bit of monkey patching to detect and fix this case.
         if not (
-            "." in pretrained_model_name_or_path
+            pretrained_model_name_or_path is not None
+            and "." in pretrained_model_name_or_path
             and module_path.startswith("diffusers_modules")
             and pretrained_model_name_or_path.replace("/", "--") in module_path
         ):
@@ -471,4 +472,4 @@ def get_class_from_dynamic_module(
         revision=revision,
         local_files_only=local_files_only,
     )
-    return get_class_in_module(pretrained_model_name_or_path, class_name, final_module.replace(".py", ""))
+    return get_class_in_module(class_name, final_module.replace(".py", ""), pretrained_model_name_or_path)
