@@ -390,9 +390,11 @@ def generate_report(consolidated_data):
     else:
         suites_table = [["Test Suite", "Tests", "Passed", "Failed", "Skipped", "Success Rate"]]
 
-    # Sort test suites by number of failures (descending)
+    # Sort test suites by success rate (descending)
     sorted_suites = sorted(
-        consolidated_data["test_suites"].items(), key=lambda x: x[1]["stats"]["failed"], reverse=True
+        consolidated_data["test_suites"].items(),
+        key=lambda x: (x[1]["stats"]["passed"] / x[1]["stats"]["tests"] * 100) if x[1]["stats"]["tests"] > 0 else 0,
+        reverse=True,
     )
 
     for suite_name, suite_data in sorted_suites:
@@ -521,7 +523,7 @@ def generate_report(consolidated_data):
     return "\n".join(report)
 
 
-def create_failures_table(failed_categories, total_failures):
+def create_failures_table(failed_categories, total_failures, total_tests, success_rate):
     """Create a table-like format for failures using monospace text."""
     if not failed_categories:
         return None
@@ -531,6 +533,11 @@ def create_failures_table(failed_categories, total_failures):
 
     # Create table lines
     table_lines = ["```"]
+    table_lines.append("Test Results Summary")
+    table_lines.append("-------------------")
+    table_lines.append(f"Total Tests:  {total_tests:,}")
+    table_lines.append(f"Success Rate: {success_rate}")
+    table_lines.append("")
     table_lines.append("Category            | Failed Tests")
     table_lines.append("------------------- | ------------")
 
@@ -606,7 +613,7 @@ def create_slack_payload(consolidated_data):
 
         # Create the table
         total_failures = sum(categories.values())
-        table_text = create_failures_table(categories, total_failures)
+        table_text = create_failures_table(categories, total_failures, total["tests"], success_rate)
 
         if table_text:
             payload.append({"type": "section", "text": {"type": "mrkdwn", "text": table_text}})
