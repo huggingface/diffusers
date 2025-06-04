@@ -585,32 +585,24 @@ def create_slack_payload(consolidated_data):
     summary += ")"
 
     # Create the test suites table in markdown format
-    suite_durations = consolidated_data.get("duration_stats", {}).get("suite_durations", {})
-
     # Build the markdown table with proper alignment
     table_lines = []
     table_lines.append("```")
 
-    # Sort test suites by success rate (descending)
+    # Sort test suites by success rate (ascending - least successful first)
     sorted_suites = sorted(
         consolidated_data["test_suites"].items(),
         key=lambda x: (x[1]["stats"]["passed"] / x[1]["stats"]["tests"] * 100) if x[1]["stats"]["tests"] > 0 else 0,
-        reverse=True,
+        reverse=False,
     )
 
     # Calculate max widths for proper alignment
     max_suite_name_len = max(len(suite_name) for suite_name, _ in sorted_suites) if sorted_suites else 10
     max_suite_name_len = max(max_suite_name_len, len("Test Suite"))  # Ensure header fits
 
-    # Create header with proper spacing
-    if suite_durations:
-        header = f"| {'Test Suite'.ljust(max_suite_name_len)} | {'Tests'.rjust(6)} | {'Passed'.rjust(6)} | {'Failed'.rjust(6)} | {'Skipped'.rjust(7)} | {'Success Rate'.ljust(12)} | {'Duration (s)'.rjust(12)} |"
-        separator = (
-            f"|:{'-' * max_suite_name_len}|{'-' * 7}:|{'-' * 7}:|{'-' * 7}:|{'-' * 8}:|:{'-' * 11}|{'-' * 13}:|"
-        )
-    else:
-        header = f"| {'Test Suite'.ljust(max_suite_name_len)} | {'Tests'.rjust(6)} | {'Passed'.rjust(6)} | {'Failed'.rjust(6)} | {'Skipped'.rjust(7)} | {'Success Rate'.ljust(12)} |"
-        separator = f"|:{'-' * max_suite_name_len}|{'-' * 7}:|{'-' * 7}:|{'-' * 7}:|{'-' * 8}:|:{'-' * 11}|"
+    # Create header with proper spacing (no duration column)
+    header = f"| {'Test Suite'.ljust(max_suite_name_len)} | {'Tests'.rjust(6)} | {'Passed'.rjust(6)} | {'Failed'.rjust(6)} | {'Skipped'.rjust(7)} | {'Success Rate'.ljust(12)} |"
+    separator = f"|:{'-' * max_suite_name_len}|{'-' * 7}:|{'-' * 7}:|{'-' * 7}:|{'-' * 8}:|:{'-' * 11}|"
 
     table_lines.append(header)
     table_lines.append(separator)
@@ -620,51 +612,17 @@ def create_slack_payload(consolidated_data):
         stats = suite_data["stats"]
         suite_success_rate = f"{(stats['passed'] / stats['tests'] * 100):.2f}%" if stats["tests"] > 0 else "N/A"
 
-        if suite_durations:
-            duration = suite_durations.get(suite_name, 0)
-            row = f"| {suite_name.ljust(max_suite_name_len)} | {str(stats['tests']).rjust(6)} | {str(stats['passed']).rjust(6)} | {str(stats['failed']).rjust(6)} | {str(stats['skipped']).rjust(7)} | {suite_success_rate.ljust(12)} | {f'{duration:.2f}'.rjust(12)} |"
-        else:
-            row = f"| {suite_name.ljust(max_suite_name_len)} | {str(stats['tests']).rjust(6)} | {str(stats['passed']).rjust(6)} | {str(stats['failed']).rjust(6)} | {str(stats['skipped']).rjust(7)} | {suite_success_rate.ljust(12)} |"
+        row = f"| {suite_name.ljust(max_suite_name_len)} | {str(stats['tests']).rjust(6)} | {str(stats['passed']).rjust(6)} | {str(stats['failed']).rjust(6)} | {str(stats['skipped']).rjust(7)} | {suite_success_rate.ljust(12)} |"
 
         table_lines.append(row)
 
     table_lines.append("```")
 
-    # Create the Slack payload
+    # Create the Slack payload with character limit enforcement
     payload = [
         {"type": "section", "text": {"type": "mrkdwn", "text": summary}},
         {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(table_lines)}},
     ]
-
-    # Add failed tests section if there are any failures
-    if total["failed"] > 0:
-        failed_tests_text = "*Failed Tests:*\n```"
-        failed_tests_list = []
-
-        # Collect all failed tests
-        for suite_name, suite_data in consolidated_data["test_suites"].items():
-            if suite_data["stats"]["failed"] > 0:
-                for failure in suite_data.get("failures", []):
-                    test_name = failure["test"]
-                    # Only add if it looks like a full test path
-                    if "::" in test_name and "/" in test_name:
-                        failed_tests_list.append(test_name)
-                    elif "::" in test_name or "." in test_name:
-                        # Try to reconstruct path if partial
-                        if "/" not in test_name and suite_name not in test_name:
-                            test_name = f"{suite_name}::{test_name}"
-                        failed_tests_list.append(test_name)
-
-        # Sort and deduplicate
-        failed_tests_list = sorted(set(failed_tests_list))
-
-        # Add all tests to text
-        for test in failed_tests_list:
-            failed_tests_text += f"\n{test}"
-
-        failed_tests_text += "\n```"
-
-        payload.append({"type": "section", "text": {"type": "mrkdwn", "text": failed_tests_text}})
 
     # Add action button
     if os.environ.get("GITHUB_RUN_ID"):
@@ -692,7 +650,83 @@ def create_slack_payload(consolidated_data):
         }
     )
 
+    # Enforce 3001 character limit
+    payload_text = str(payload)
+    if len(payload_text) > 3001:
+        # Truncate table if payload is too long
+        # Remove rows from the bottom until under limit
+        original_table_lines = table_lines[:]
+        while len(str(payload)) > 3001 and len(table_lines) > 3:  # Keep at least header and separator
+            # Remove the last data row (but keep ``` at the end)
+            table_lines.pop(-2)  # Remove second to last (last is the closing ```)
+
+            # Recreate payload with truncated table
+            payload[1] = {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(table_lines)}}
+
+        # Add note if we had to truncate
+        if len(table_lines) < len(original_table_lines):
+            truncated_count = len(original_table_lines) - len(table_lines)
+            table_lines.insert(-1, f"... {truncated_count} more test suites (truncated due to message limit)")
+            payload[1] = {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(table_lines)}}
+
     return payload
+
+
+def create_failed_tests_by_group(consolidated_data):
+    """Group failed tests by test class and return a dictionary of groups."""
+    failed_groups = {}
+
+    # Collect all failed tests
+    for suite_name, suite_data in consolidated_data["test_suites"].items():
+        if suite_data["stats"]["failed"] > 0:
+            for failure in suite_data.get("failures", []):
+                test_name = failure["test"]
+
+                # Try to reconstruct full path if partial
+                if "::" in test_name and "/" in test_name:
+                    full_test_name = test_name
+                elif "::" in test_name or "." in test_name:
+                    if "/" not in test_name and suite_name not in test_name:
+                        full_test_name = f"{suite_name}::{test_name}"
+                    else:
+                        full_test_name = test_name
+                else:
+                    full_test_name = f"{suite_name}::{test_name}"
+
+                # Extract test class name from the test path
+                if "::" in full_test_name:
+                    # Format: path/file.py::TestClass::test_method
+                    parts = full_test_name.split("::")
+                    if len(parts) >= 2:
+                        test_class = parts[-2]  # Get the TestClass part
+                    else:
+                        test_class = "Other"
+                elif "." in full_test_name:
+                    # Format: TestClass.test_method
+                    parts = full_test_name.split(".")
+                    test_class = parts[0]
+                else:
+                    test_class = "Other"
+
+                # Skip invalid class names
+                if (
+                    test_class.startswith(("e.g", "i.e", "etc"))
+                    or test_class.replace(".", "").isdigit()
+                    or len(test_class) < 3
+                ):
+                    test_class = "Other"
+
+                # Add to the appropriate group
+                if test_class not in failed_groups:
+                    failed_groups[test_class] = []
+
+                failed_groups[test_class].append(full_test_name)
+
+    # Sort tests within each group and deduplicate
+    for group_name in failed_groups:
+        failed_groups[group_name] = sorted(set(failed_groups[group_name]))
+
+    return failed_groups
 
 
 def main(args):
@@ -731,8 +765,22 @@ def main(args):
 
         try:
             client = WebClient(token=slack_token)
-            client.chat_postMessage(channel=f"#{args.slack_channel_name}", blocks=payload)
+            # Send main message
+            response = client.chat_postMessage(channel=f"#{args.slack_channel_name}", blocks=payload)
             print(f"Report sent to Slack channel: {args.slack_channel_name}")
+
+            # Send failed tests as separate threaded replies grouped by test class
+            total = consolidated_data["total_stats"]
+            if total["failed"] > 0:
+                failed_groups = create_failed_tests_by_group(consolidated_data)
+                for group_name, group_tests in failed_groups.items():
+                    message_text = f"**{group_name}**\n```\n" + "\n".join(group_tests) + "\n```"
+                    client.chat_postMessage(
+                        channel=f"#{args.slack_channel_name}",
+                        thread_ts=response["ts"],  # Reply in thread
+                        text=message_text,  # Use text instead of blocks for markdown
+                    )
+                print(f"Failed tests details sent as {len(failed_groups)} thread replies")
         except Exception as e:
             print(f"Error sending report to Slack: {e}")
 
