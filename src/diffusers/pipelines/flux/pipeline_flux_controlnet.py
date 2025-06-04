@@ -1078,7 +1078,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 image, height=global_height, width=global_width, crops_coords=crops_coords, resize_mode=resize_mode
             )
             init_image = init_image.to(dtype=torch.float32)
-
+        else:
+            init_image = None
         # 3. Prepare control image
         num_channels_latents = self.transformer.config.in_channels // 4
         if isinstance(self.controlnet, FluxControlNetModel):
