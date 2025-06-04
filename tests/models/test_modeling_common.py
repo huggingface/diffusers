@@ -1118,7 +1118,7 @@ class ModelTesterMixin:
         self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
 
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_wrong_adapter_name_raises_error(self):
+    def test_lora_wrong_adapter_name_raises_error(self):
         from peft import LoraConfig
 
         from diffusers.loaders.peft import PeftAdapterMixin
