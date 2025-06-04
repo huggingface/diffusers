@@ -600,9 +600,9 @@ def create_slack_payload(consolidated_data):
     max_suite_name_len = max(len(suite_name) for suite_name, _ in sorted_suites) if sorted_suites else 10
     max_suite_name_len = max(max_suite_name_len, len("Test Suite"))  # Ensure header fits
 
-    # Create header with proper spacing (no duration column)
-    header = f"| {'Test Suite'.ljust(max_suite_name_len)} | {'Tests'.rjust(6)} | {'Passed'.rjust(6)} | {'Failed'.rjust(6)} | {'Skipped'.rjust(7)} | {'Success Rate'.ljust(12)} |"
-    separator = f"|:{'-' * max_suite_name_len}|{'-' * 7}:|{'-' * 7}:|{'-' * 7}:|{'-' * 8}:|:{'-' * 11}|"
+    # Create header with proper spacing (only Tests, Failed, Success Rate)
+    header = f"| {'Test Suite'.ljust(max_suite_name_len)} | {'Tests'.rjust(6)} | {'Failed'.rjust(6)} | {'Success Rate'.ljust(12)} |"
+    separator = f"|:{'-' * max_suite_name_len}|{'-' * 7}:|{'-' * 7}:|:{'-' * 11}|"
 
     table_lines.append(header)
     table_lines.append(separator)
@@ -612,7 +612,7 @@ def create_slack_payload(consolidated_data):
         stats = suite_data["stats"]
         suite_success_rate = f"{(stats['passed'] / stats['tests'] * 100):.2f}%" if stats["tests"] > 0 else "N/A"
 
-        row = f"| {suite_name.ljust(max_suite_name_len)} | {str(stats['tests']).rjust(6)} | {str(stats['passed']).rjust(6)} | {str(stats['failed']).rjust(6)} | {str(stats['skipped']).rjust(7)} | {suite_success_rate.ljust(12)} |"
+        row = f"| {suite_name.ljust(max_suite_name_len)} | {str(stats['tests']).rjust(6)} | {str(stats['failed']).rjust(6)} | {suite_success_rate.ljust(12)} |"
 
         table_lines.append(row)
 
@@ -672,13 +672,22 @@ def create_slack_payload(consolidated_data):
     return payload
 
 
-def create_failed_tests_by_group(consolidated_data):
-    """Group failed tests by test class and return a dictionary of groups."""
-    failed_groups = {}
+def create_failed_tests_by_suite_ordered(consolidated_data):
+    """Group failed tests by test suite, ordered by success rate (ascending)."""
+    # Sort test suites by success rate (ascending - least successful first)
+    sorted_suites = sorted(
+        consolidated_data["test_suites"].items(),
+        key=lambda x: (x[1]["stats"]["passed"] / x[1]["stats"]["tests"] * 100) if x[1]["stats"]["tests"] > 0 else 0,
+        reverse=False,
+    )
 
-    # Collect all failed tests
-    for suite_name, suite_data in consolidated_data["test_suites"].items():
+    failed_suite_tests = []
+
+    # Process suites in order of success rate
+    for suite_name, suite_data in sorted_suites:
         if suite_data["stats"]["failed"] > 0:
+            suite_failures = []
+
             for failure in suite_data.get("failures", []):
                 test_name = failure["test"]
 
@@ -693,40 +702,23 @@ def create_failed_tests_by_group(consolidated_data):
                 else:
                     full_test_name = f"{suite_name}::{test_name}"
 
-                # Extract test class name from the test path
-                if "::" in full_test_name:
-                    # Format: path/file.py::TestClass::test_method
-                    parts = full_test_name.split("::")
-                    if len(parts) >= 2:
-                        test_class = parts[-2]  # Get the TestClass part
-                    else:
-                        test_class = "Other"
-                elif "." in full_test_name:
-                    # Format: TestClass.test_method
-                    parts = full_test_name.split(".")
-                    test_class = parts[0]
-                else:
-                    test_class = "Other"
+                suite_failures.append(full_test_name)
 
-                # Skip invalid class names
-                if (
-                    test_class.startswith(("e.g", "i.e", "etc"))
-                    or test_class.replace(".", "").isdigit()
-                    or len(test_class) < 3
-                ):
-                    test_class = "Other"
+            # Sort and deduplicate tests within the suite
+            suite_failures = sorted(set(suite_failures))
 
-                # Add to the appropriate group
-                if test_class not in failed_groups:
-                    failed_groups[test_class] = []
+            if suite_failures:
+                failed_suite_tests.append(
+                    {
+                        "suite_name": suite_name,
+                        "tests": suite_failures,
+                        "success_rate": (suite_data["stats"]["passed"] / suite_data["stats"]["tests"] * 100)
+                        if suite_data["stats"]["tests"] > 0
+                        else 0,
+                    }
+                )
 
-                failed_groups[test_class].append(full_test_name)
-
-    # Sort tests within each group and deduplicate
-    for group_name in failed_groups:
-        failed_groups[group_name] = sorted(set(failed_groups[group_name]))
-
-    return failed_groups
+    return failed_suite_tests
 
 
 def main(args):
@@ -769,18 +761,25 @@ def main(args):
             response = client.chat_postMessage(channel=f"#{args.slack_channel_name}", blocks=payload)
             print(f"Report sent to Slack channel: {args.slack_channel_name}")
 
-            # Send failed tests as separate threaded replies grouped by test class
+            # Send failed tests as separate threaded replies grouped by test suite (ordered by success rate)
             total = consolidated_data["total_stats"]
             if total["failed"] > 0:
-                failed_groups = create_failed_tests_by_group(consolidated_data)
-                for group_name, group_tests in failed_groups.items():
-                    message_text = f"**{group_name}**\n```\n" + "\n".join(group_tests) + "\n```"
+                failed_suites = create_failed_tests_by_suite_ordered(consolidated_data)
+                for suite_info in failed_suites:
+                    suite_name = suite_info["suite_name"]
+                    suite_tests = suite_info["tests"]
+                    success_rate = suite_info["success_rate"]
+                    message_text = (
+                        f"**{suite_name}** (Success Rate: {success_rate:.2f}%)\n```\n"
+                        + "\n".join(suite_tests)
+                        + "\n```"
+                    )
                     client.chat_postMessage(
                         channel=f"#{args.slack_channel_name}",
                         thread_ts=response["ts"],  # Reply in thread
                         text=message_text,  # Use text instead of blocks for markdown
                     )
-                print(f"Failed tests details sent as {len(failed_groups)} thread replies")
+                print(f"Failed tests details sent as {len(failed_suites)} thread replies")
         except Exception as e:
             print(f"Error sending report to Slack: {e}")
 
