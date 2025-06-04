@@ -36,6 +36,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class WanAttnProcessor2_0:
+    _attention_backend = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
@@ -92,13 +94,25 @@ class WanAttnProcessor2_0:
             value_img = value_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
             hidden_states_img = dispatch_attention_fn(
-                query, key_img, value_img, attn_mask=None, dropout_p=0.0, is_causal=False
+                query,
+                key_img,
+                value_img,
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
             )
             hidden_states_img = hidden_states_img.transpose(1, 2).flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
 
         hidden_states = dispatch_attention_fn(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
         )
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.type_as(query)

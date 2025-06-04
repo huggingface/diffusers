@@ -72,6 +72,8 @@ class Lumina2AttnProcessor2_0:
     used in the Lumina2Transformer2DModel model. It applies normalization and RoPE on query and key vectors.
     """
 
+    _attention_backend = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
@@ -138,7 +140,9 @@ class Lumina2AttnProcessor2_0:
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
 
-        hidden_states = dispatch_attention_fn(query, key, value, attn_mask=attention_mask, scale=softmax_scale)
+        hidden_states = dispatch_attention_fn(
+            query, key, value, attn_mask=attention_mask, scale=softmax_scale, backend=self._attention_backend
+        )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.type_as(query)
 

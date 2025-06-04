@@ -198,9 +198,19 @@ def dispatch_attention_fn(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     attention_kwargs: Optional[Dict[str, Any]] = None,
+    *,
+    backend: Optional[AttentionBackendName] = None,
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
-    backend_name, backend_fn = _AttentionBackendRegistry.get_active_backend()
+
+    if backend is None:
+        # If no backend is specified, we either use the default backend (set via the DIFFUSERS_ATTN_BACKEND environment
+        # variable), or we use a custom backend based on whether user is using the `attention_backend` context manager
+        backend_name, backend_fn = _AttentionBackendRegistry.get_active_backend()
+    else:
+        backend_name = AttentionBackendName(backend)
+        backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
+
     kwargs = {
         "query": query,
         "key": key,
