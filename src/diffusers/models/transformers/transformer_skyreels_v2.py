@@ -583,6 +583,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 causal_mask if self.config.flag_causal_attention else None,
             )
             debug_tensors[f"block_{i}_debug_dict"] = debug_dict
+            return hidden_states, debug_dict
             debug_tensors[f"block_{i}_output_hidden_states"] = hidden_states.detach().clone()
             debug_tensors[f"block_{i}_output_hidden_states_shape"] = list(hidden_states.shape)
 
