@@ -1448,7 +1448,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                             )
         
                         latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
-                        latents_2 = latents_1 + (1.0 - init_mask) * latents
+                        latents_2 = (1.0 - init_mask) * latents
                         
                         latents = latents_1 + latents_2
 
