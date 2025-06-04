@@ -307,14 +307,16 @@ class SkyReelsV2TransformerBlock(nn.Module):
         debug_dict = {}
         debug_dict['x'] = hidden_states
          # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        debug_dict['mul_add_add_compile'] = norm_hidden_states
+        norm_x = self.norm1(hidden_states.float())
+        debug_dict['norm_x'] = norm_x
+        norm_hidden_states = (norm_x * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        debug_dict['mul_add_add'] = norm_hidden_states
         attn_output = self.attn1(
             hidden_states=norm_hidden_states, rotary_emb=rotary_emb, attention_mask=attention_mask
         )
-        debug_dict['self_attn'] = attn_output
+        #debug_dict['self_attn'] = attn_output
         hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
-        debug_dict['mul_add_compile'] = hidden_states
+        #debug_dict['mul_add_compile'] = hidden_states
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
         attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
@@ -326,7 +328,7 @@ class SkyReelsV2TransformerBlock(nn.Module):
         )
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
-        debug_dict['cross_attn_ffn'] = hidden_states
+        #debug_dict['cross_attn_ffn'] = hidden_states
         return hidden_states, debug_dict
 
     def set_ar_attention(self):
