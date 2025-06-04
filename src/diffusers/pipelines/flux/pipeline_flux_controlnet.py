@@ -1450,7 +1450,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                                 init_latents_proper, torch.tensor([noise_timestep]), noise
                             )
         
-                        latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
+                        #latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
+                        latents_1 = init_mask * (0 * init_latents_proper + (1.0 - 0) * latents)
                         latents_2 = (1.0 - init_mask) * latents
                         
                         latents = latents_1 + latents_2
