@@ -81,11 +81,16 @@ def _maybe_dequantize_weight_for_expanded_lora(model, module):
         from ..quantizers.gguf.utils import dequantize_gguf_tensor
 
     is_bnb_4bit_quantized = module.weight.__class__.__name__ == "Params4bit"
+    is_bnb_8bit_quantized = module.weight.__class__.__name__ == "Int8Params"
     is_gguf_quantized = module.weight.__class__.__name__ == "GGUFParameter"
 
     if is_bnb_4bit_quantized and not is_bitsandbytes_available():
         raise ValueError(
             "The checkpoint seems to have been quantized with `bitsandbytes` (4bits). Install `bitsandbytes` to load quantized checkpoints."
+        )
+    if is_bnb_8bit_quantized and not is_bitsandbytes_available():
+        raise ValueError(
+            "The checkpoint seems to have been quantized with `bitsandbytes` (8bits). Install `bitsandbytes` to load quantized checkpoints."
         )
     if is_gguf_quantized and not is_gguf_available():
         raise ValueError(
@@ -97,10 +102,10 @@ def _maybe_dequantize_weight_for_expanded_lora(model, module):
         weight_on_cpu = True
 
     device = torch.accelerator.current_accelerator().type if hasattr(torch, "accelerator") else "cuda"
-    if is_bnb_4bit_quantized:
+    if is_bnb_4bit_quantized or is_bnb_8bit_quantized:
         module_weight = dequantize_bnb_weight(
             module.weight.to(device) if weight_on_cpu else module.weight,
-            state=module.weight.quant_state,
+            state=module.weight.quant_state if is_bnb_4bit_quantized else module.state,
             dtype=model.dtype,
         ).data
     elif is_gguf_quantized:
