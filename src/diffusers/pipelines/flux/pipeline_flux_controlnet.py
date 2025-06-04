@@ -1491,6 +1491,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,)
+            return (image,init_mask)
 
         return FluxPipelineOutput(images=image)
