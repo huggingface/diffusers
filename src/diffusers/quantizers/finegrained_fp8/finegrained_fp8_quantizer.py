@@ -131,9 +131,8 @@ class FinegrainedFP8Quantizer(DiffusersQuantizer):
         scale = scale.reshape(scale_orig_shape).squeeze().reciprocal()
 
         # Load into the model
-        module._buffers[tensor_name] = quantized_param.to(target_device)
-        module._buffers["weight_scale_inv"] = scale.to(target_device)
-        # print("_buffers[0]", module._buffers["weight_scale_inv"])
+        module._parameters[tensor_name] = quantized_param.to(target_device)
+        module._parameters["weight_scale_inv"] = scale.to(target_device)
 
     def check_if_quantized_param(
         self,
