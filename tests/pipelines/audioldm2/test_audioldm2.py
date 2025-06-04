@@ -45,7 +45,13 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils.testing_utils import backend_empty_cache, enable_full_determinism, is_torch_version, nightly, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    is_torch_version,
+    nightly,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin

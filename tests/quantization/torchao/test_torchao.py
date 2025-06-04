@@ -39,7 +39,6 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch,
     require_torch_accelerator,
-    require_torch_gpu,
     require_torchao_version_greater_or_equal,
     slow,
     torch_device,
@@ -342,7 +341,6 @@ class TorchAoTest(unittest.TestCase):
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-                cos_distance = numpy_cosine_similarity_distance(output_slice, expected_slice)
                 self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 2e-3)
 
             with tempfile.TemporaryDirectory() as offload_folder:

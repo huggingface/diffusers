@@ -16,8 +16,6 @@
 import gc
 import unittest
 
-import torch
-
 from diffusers import (
     Lumina2Transformer2DModel,
 )
