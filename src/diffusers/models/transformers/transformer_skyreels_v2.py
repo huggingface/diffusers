@@ -304,17 +304,17 @@ class SkyReelsV2TransformerBlock(nn.Module):
         elif temb.dim() == 4:
             e = (self.scale_shift_table.unsqueeze(2) + temb.float()).chunk(6, dim=1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
-
-        print(f"scale_msa: {scale_msa.shape}, shift_msa: {shift_msa.shape}, gate_msa: {gate_msa.shape}, c_scale_msa: {c_scale_msa.shape}, c_shift_msa: {c_shift_msa.shape}, c_gate_msa: {c_gate_msa.shape}")
-        print(f"scale_msa: {scale_msa}, shift_msa: {shift_msa}, gate_msa: {gate_msa}, c_scale_msa: {c_scale_msa}, c_shift_msa: {c_shift_msa}, c_gate_msa: {c_gate_msa}")
-        print(f"hidden_states: {hidden_states.shape}, encoder_hidden_states: {encoder_hidden_states.shape}, temb: {temb.shape}, rotary_emb: {rotary_emb.shape}")
-        # 1. Self-attention
+        debug_dict = {}
+        debug_dict['x'] = hidden_states
+         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        debug_dict['mul_add_add_compile'] = norm_hidden_states
         attn_output = self.attn1(
             hidden_states=norm_hidden_states, rotary_emb=rotary_emb, attention_mask=attention_mask
         )
+        debug_dict['self_attn'] = attn_output
         hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
-
+        debug_dict['mul_add_compile'] = hidden_states
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
         attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
@@ -326,8 +326,8 @@ class SkyReelsV2TransformerBlock(nn.Module):
         )
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
-
-        return hidden_states
+        debug_dict['cross_attn_ffn'] = hidden_states
+        return hidden_states, debug_dict
 
     def set_ar_attention(self):
         self.attn1.processor.set_ar_attention()
@@ -535,7 +535,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             for i, block in enumerate(self.blocks):
                 debug_tensors[f"block_{i}_input_hidden_states"] = hidden_states.detach().clone()
                 debug_tensors[f"block_{i}_input_hidden_states_shape"] = list(hidden_states.shape)
-                hidden_states = self._gradient_checkpointing_func(
+                hidden_states, debug_dict = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,
@@ -543,6 +543,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                     rotary_emb,
                     causal_mask if self.config.flag_causal_attention else None,
                 )
+                debug_tensors[f"block_{i}_debug_dict"] = debug_dict
                 debug_tensors[f"block_{i}_output_hidden_states"] = hidden_states.detach().clone()
                 debug_tensors[f"block_{i}_output_hidden_states_shape"] = list(hidden_states.shape)
         if self.config.inject_sample_info:
@@ -574,13 +575,14 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         for i, block in enumerate(self.blocks):
             debug_tensors[f"block_{i}_input_hidden_states"] = hidden_states.detach().clone()
             debug_tensors[f"block_{i}_input_hidden_states_shape"] = list(hidden_states.shape)
-            hidden_states = block(
+            hidden_states, debug_dict = block(
                 hidden_states,
                 encoder_hidden_states,
                 timestep_proj,
                 rotary_emb,
                 causal_mask if self.config.flag_causal_attention else None,
             )
+            debug_tensors[f"block_{i}_debug_dict"] = debug_dict
             debug_tensors[f"block_{i}_output_hidden_states"] = hidden_states.detach().clone()
             debug_tensors[f"block_{i}_output_hidden_states_shape"] = list(hidden_states.shape)
 
