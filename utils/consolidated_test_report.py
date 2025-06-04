@@ -390,11 +390,11 @@ def generate_report(consolidated_data):
     else:
         suites_table = [["Test Suite", "Tests", "Passed", "Failed", "Skipped", "Success Rate"]]
 
-    # Sort test suites by success rate (descending)
+    # Sort test suites by success rate (ascending - least successful first)
     sorted_suites = sorted(
         consolidated_data["test_suites"].items(),
         key=lambda x: (x[1]["stats"]["passed"] / x[1]["stats"]["tests"] * 100) if x[1]["stats"]["tests"] > 0 else 0,
-        reverse=True,
+        reverse=False,
     )
 
     for suite_name, suite_data in sorted_suites:
@@ -523,35 +523,46 @@ def generate_report(consolidated_data):
     return "\n".join(report)
 
 
-def create_failures_table(failed_categories, total_failures, total_tests, success_rate):
-    """Create a table-like format for failures using monospace text."""
-    if not failed_categories:
+def create_test_groups_table(test_groups, total_tests, total_success_rate):
+    """Create a table-like format for test groups showing total tests and success rate."""
+    if not test_groups:
         return None
 
-    # Sort by failure count (descending)
-    sorted_cats = sorted(failed_categories.items(), key=lambda x: x[1], reverse=True)
+    # Sort by total test count (descending)
+    sorted_groups = sorted(test_groups.items(), key=lambda x: x[1]["total"], reverse=True)
 
     # Create table lines
     table_lines = ["```"]
     table_lines.append("Test Results Summary")
     table_lines.append("-------------------")
     table_lines.append(f"Total Tests:  {total_tests:,}")
-    table_lines.append(f"Success Rate: {success_rate}")
+    table_lines.append(f"Success Rate: {total_success_rate}")
     table_lines.append("")
-    table_lines.append("Category            | Failed Tests")
-    table_lines.append("------------------- | ------------")
+    table_lines.append("Category            | Total Tests | Failed | Success Rate")
+    table_lines.append("------------------- | ----------- | ------ | ------------")
 
-    # Add rows (limit to top 10 to avoid too long message)
-    for category, count in sorted_cats:
+    # Add rows
+    for category, stats in sorted_groups:
         # Pad category name to fixed width (19 chars)
         padded_cat = category[:19].ljust(19)  # Truncate if too long
-        # Right-align count in 12-char field
-        padded_count = str(count).rjust(12)
-        table_lines.append(f"{padded_cat} | {padded_count}")
+        # Right-align counts
+        padded_total = str(stats["total"]).rjust(11)
+        padded_failed = str(stats["failed"]).rjust(6)
+        # Calculate and format success rate
+        if stats["total"] > 0:
+            cat_success_rate = f"{((stats['total'] - stats['failed']) / stats['total'] * 100):.1f}%"
+        else:
+            cat_success_rate = "N/A"
+        padded_rate = cat_success_rate.rjust(12)
+        table_lines.append(f"{padded_cat} | {padded_total} | {padded_failed} | {padded_rate}")
 
     table_lines.append("```")
 
-    return f"*Failures ({total_failures} {'test' if total_failures == 1 else 'tests'}):*\n" + "\n".join(table_lines)
+    total_failures = sum(stats["failed"] for stats in test_groups.values())
+    return (
+        f"*Test Groups Summary ({total_failures} {'failure' if total_failures == 1 else 'failures'}):*\n"
+        + "\n".join(table_lines)
+    )
 
 
 def create_slack_payload(consolidated_data):
@@ -573,50 +584,87 @@ def create_slack_payload(consolidated_data):
         summary += f", {total['skipped']} skipped"
     summary += ")"
 
+    # Create the test suites table in markdown format
+    suite_durations = consolidated_data.get("duration_stats", {}).get("suite_durations", {})
+
+    # Build the markdown table with proper alignment
+    table_lines = []
+    table_lines.append("```")
+
+    # Sort test suites by success rate (descending)
+    sorted_suites = sorted(
+        consolidated_data["test_suites"].items(),
+        key=lambda x: (x[1]["stats"]["passed"] / x[1]["stats"]["tests"] * 100) if x[1]["stats"]["tests"] > 0 else 0,
+        reverse=True,
+    )
+
+    # Calculate max widths for proper alignment
+    max_suite_name_len = max(len(suite_name) for suite_name, _ in sorted_suites) if sorted_suites else 10
+    max_suite_name_len = max(max_suite_name_len, len("Test Suite"))  # Ensure header fits
+
+    # Create header with proper spacing
+    if suite_durations:
+        header = f"| {'Test Suite'.ljust(max_suite_name_len)} | {'Tests'.rjust(6)} | {'Passed'.rjust(6)} | {'Failed'.rjust(6)} | {'Skipped'.rjust(7)} | {'Success Rate'.ljust(12)} | {'Duration (s)'.rjust(12)} |"
+        separator = (
+            f"|:{'-' * max_suite_name_len}|{'-' * 7}:|{'-' * 7}:|{'-' * 7}:|{'-' * 8}:|:{'-' * 11}|{'-' * 13}:|"
+        )
+    else:
+        header = f"| {'Test Suite'.ljust(max_suite_name_len)} | {'Tests'.rjust(6)} | {'Passed'.rjust(6)} | {'Failed'.rjust(6)} | {'Skipped'.rjust(7)} | {'Success Rate'.ljust(12)} |"
+        separator = f"|:{'-' * max_suite_name_len}|{'-' * 7}:|{'-' * 7}:|{'-' * 7}:|{'-' * 8}:|:{'-' * 11}|"
+
+    table_lines.append(header)
+    table_lines.append(separator)
+
+    # Add data rows with proper alignment
+    for suite_name, suite_data in sorted_suites:
+        stats = suite_data["stats"]
+        suite_success_rate = f"{(stats['passed'] / stats['tests'] * 100):.2f}%" if stats["tests"] > 0 else "N/A"
+
+        if suite_durations:
+            duration = suite_durations.get(suite_name, 0)
+            row = f"| {suite_name.ljust(max_suite_name_len)} | {str(stats['tests']).rjust(6)} | {str(stats['passed']).rjust(6)} | {str(stats['failed']).rjust(6)} | {str(stats['skipped']).rjust(7)} | {suite_success_rate.ljust(12)} | {f'{duration:.2f}'.rjust(12)} |"
+        else:
+            row = f"| {suite_name.ljust(max_suite_name_len)} | {str(stats['tests']).rjust(6)} | {str(stats['passed']).rjust(6)} | {str(stats['failed']).rjust(6)} | {str(stats['skipped']).rjust(7)} | {suite_success_rate.ljust(12)} |"
+
+        table_lines.append(row)
+
+    table_lines.append("```")
+
+    # Create the Slack payload
     payload = [
         {"type": "section", "text": {"type": "mrkdwn", "text": summary}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(table_lines)}},
     ]
 
-    # Process failed test suites to extract categories
-    failed_suites = [
-        (name, data) for name, data in consolidated_data["test_suites"].items() if data["stats"]["failed"] > 0
-    ]
+    # Add failed tests section if there are any failures
+    if total["failed"] > 0:
+        failed_tests_text = "*Failed Tests:*\n```"
+        failed_tests_list = []
 
-    if failed_suites:
-        # Group failures by category
-        categories = {}
-        for suite_name, suite_data in failed_suites:
-            # Extract category from suite name
-            if "/" in suite_name:
-                # Format: "directory/test_suite_name"
-                suite_name = suite_name.split("/")[-1]
+        # Collect all failed tests
+        for suite_name, suite_data in consolidated_data["test_suites"].items():
+            if suite_data["stats"]["failed"] > 0:
+                for failure in suite_data.get("failures", []):
+                    test_name = failure["test"]
+                    # Only add if it looks like a full test path
+                    if "::" in test_name and "/" in test_name:
+                        failed_tests_list.append(test_name)
+                    elif "::" in test_name or "." in test_name:
+                        # Try to reconstruct path if partial
+                        if "/" not in test_name and suite_name not in test_name:
+                            test_name = f"{suite_name}::{test_name}"
+                        failed_tests_list.append(test_name)
 
-            # Remove common prefixes and suffixes
-            category = suite_name
-            if category.startswith("tests_"):
-                category = category[6:]  # Remove "tests_" prefix
-            if category.endswith("_cuda"):
-                category = category[:-5]  # Remove "_cuda" suffix
+        # Sort and deduplicate
+        failed_tests_list = sorted(set(failed_tests_list))
 
-            # Extract the actual category name
-            if category.startswith("pipeline_"):
-                category = category[9:]  # Remove "pipeline_" prefix
-            elif category.startswith("torch_"):
-                category = category[6:]  # Remove "torch_" prefix
-            elif category.startswith("gguf_torch"):
-                category = "gguf"
+        # Add all tests to text
+        for test in failed_tests_list:
+            failed_tests_text += f"\n{test}"
 
-            # Add to categories
-            if category not in categories:
-                categories[category] = 0
-            categories[category] += suite_data["stats"]["failed"]
+        failed_tests_text += "\n```"
 
-        # Create the table
-        total_failures = sum(categories.values())
-        table_text = create_failures_table(categories, total_failures, total["tests"], success_rate)
-
-        if table_text:
-            payload.append({"type": "section", "text": {"type": "mrkdwn", "text": table_text}})
+        payload.append({"type": "section", "text": {"type": "mrkdwn", "text": failed_tests_text}})
 
     # Add action button
     if os.environ.get("GITHUB_RUN_ID"):
