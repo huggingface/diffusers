@@ -9,7 +9,7 @@ from slack_sdk import WebClient
 from tabulate import tabulate
 
 
-MAX_LEN_MESSAGE = 2900  # slack endpoint has a limit of 3001 characters
+MAX_LEN_MESSAGE = 3001  # slack endpoint has a limit of 3001 characters
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--slack_channel_name", default="diffusers-ci-nightly")
@@ -652,11 +652,11 @@ def create_slack_payload(consolidated_data):
 
     # Enforce 3001 character limit
     payload_text = str(payload)
-    if len(payload_text) > 3001:
+    if len(payload_text) > MAX_LEN_MESSAGE:
         # Truncate table if payload is too long
         # Remove rows from the bottom until under limit
         original_table_lines = table_lines[:]
-        while len(str(payload)) > 3001 and len(table_lines) > 3:  # Keep at least header and separator
+        while len(str(payload)) > MAX_LEN_MESSAGE and len(table_lines) > 3:  # Keep at least header and separator
             # Remove the last data row (but keep ``` at the end)
             table_lines.pop(-2)  # Remove second to last (last is the closing ```)
 
