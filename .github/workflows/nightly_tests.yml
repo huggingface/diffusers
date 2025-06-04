@@ -13,7 +13,7 @@ env:
   PYTEST_TIMEOUT: 600
   RUN_SLOW: yes
   RUN_NIGHTLY: yes
-  PIPELINE_USAGE_CUTOFF: 2000000
+  PIPELINE_USAGE_CUTOFF: 0
   SLACK_API_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
   CONSOLIDATED_REPORT_PATH: consolidated_test_report.md
 
@@ -484,6 +484,57 @@ jobs:
           name: torch_cuda_pipeline_level_quant_reports
           path: reports
 
+  run_flax_tpu_tests:
+    name: Nightly Flax TPU Tests
+    runs-on:
+      group: gcp-ct5lp-hightpu-8t
+    if: github.event_name == 'schedule'
+
+    container:
+      image: diffusers/diffusers-flax-tpu
+      options: --shm-size "16gb" --ipc host --privileged ${{ vars.V5_LITEPOD_8_ENV}} -v /mnt/hf_cache:/mnt/hf_cache
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install pytest-reportlog
+
+    - name: Environment
+      run: python utils/print_env.py
+
+    - name: Run nightly Flax TPU tests
+      env:
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+      run: |
+        python -m pytest -n 0 \
+          -s -v -k "Flax" \
+          --make-reports=tests_flax_tpu \
+          --report-log=tests_flax_tpu.log \
+          tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_flax_tpu_stats.txt
+        cat reports/tests_flax_tpu_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: flax_tpu_test_reports
+        path: reports
+
   generate_consolidated_report:
     name: Generate Consolidated Test Report
     needs: [
@@ -494,6 +545,8 @@ jobs:
       run_nightly_quantization_tests,
       run_nightly_pipeline_level_quantization_tests,
       run_nightly_onnx_tests,
+      torch_minimum_version_cuda_tests,
+      run_flax_tpu_tests
     ]
     if: always()
     runs-on:
@@ -530,10 +583,6 @@ jobs:
             --reports_dir combined_reports \
             --output_file $CONSOLIDATED_REPORT_PATH \
             --slack_channel_name diffusers-ci-nightly
-
-      - name: Show consolidated report
-        run: |
-          cat $CONSOLIDATED_REPORT_PATH >> $GITHUB_STEP_SUMMARY
 
       - name: Upload consolidated report
         uses: actions/upload-artifact@v4
