@@ -598,14 +598,14 @@ class TorchAoSerializationTest(unittest.TestCase):
         )
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
-    def test_int_a8w8_cuda(self):
+    def test_int_a8w8_accelerator(self):
         quant_method, quant_method_kwargs = "int8_dynamic_activation_int8_weight", {}
         expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
         device = torch_device
         self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
 
-    def test_int_a16w8_cuda(self):
+    def test_int_a16w8_accelerator(self):
         quant_method, quant_method_kwargs = "int8_weight_only", {}
         expected_slice = np.array([0.3613, -0.127, -0.0223, -0.2539, -0.459, 0.4961, -0.1357, -0.6992, 0.4551])
         device = torch_device

@@ -19,7 +19,7 @@ from diffusers.utils.testing_utils import (
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
+@pytest.mark.big_accelerator
 class FluxReduxSlowTests(unittest.TestCase):
     pipeline_class = FluxPriorReduxPipeline
     repo_id = "black-forest-labs/FLUX.1-Redux-dev"

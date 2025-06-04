@@ -224,7 +224,7 @@ class FluxPipelineFastTests(
 
 @nightly
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
+@pytest.mark.big_accelerator
 class FluxPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
@@ -312,7 +312,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
+@pytest.mark.big_accelerator
 class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-dev"
