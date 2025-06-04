@@ -137,7 +137,6 @@ jobs:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
-        RUN_COMPILE: yes
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
@@ -201,7 +200,7 @@ jobs:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         RUN_COMPILE: yes
       run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_compile_cuda tests/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_torch_compile_cuda_failures_short.txt
@@ -489,11 +488,6 @@ jobs:
     name: Generate Consolidated Test Report
     needs: [
       run_nightly_tests_for_torch_pipelines,
-      run_nightly_tests_for_other_torch_modules,
-      run_big_gpu_torch_tests,
-      run_nightly_onnx_tests,
-      run_nightly_quantization_tests,
-      run_nightly_pipeline_level_quantization_tests,
     ]
     if: always()
     runs-on:

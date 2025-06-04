@@ -525,29 +525,25 @@ def create_failures_table(failed_categories, total_failures):
     """Create a table-like format for failures using monospace text."""
     if not failed_categories:
         return None
-    
+
     # Sort by failure count (descending)
     sorted_cats = sorted(failed_categories.items(), key=lambda x: x[1], reverse=True)
-    
+
     # Create table lines
     table_lines = ["```"]
     table_lines.append("Category            | Failed Tests")
     table_lines.append("------------------- | ------------")
-    
+
     # Add rows (limit to top 10 to avoid too long message)
-    for category, count in sorted_cats[:10]:
+    for category, count in sorted_cats:
         # Pad category name to fixed width (19 chars)
         padded_cat = category[:19].ljust(19)  # Truncate if too long
         # Right-align count in 12-char field
         padded_count = str(count).rjust(12)
         table_lines.append(f"{padded_cat} | {padded_count}")
-    
-    if len(sorted_cats) > 10:
-        remaining = len(sorted_cats) - 10
-        table_lines.append(f"... and {remaining} more {'category' if remaining == 1 else 'categories'}")
-    
+
     table_lines.append("```")
-    
+
     return f"*Failures ({total_failures} {'test' if total_failures == 1 else 'tests'}):*\n" + "\n".join(table_lines)
 
 
@@ -587,14 +583,14 @@ def create_slack_payload(consolidated_data):
             if "/" in suite_name:
                 # Format: "directory/test_suite_name"
                 suite_name = suite_name.split("/")[-1]
-            
+
             # Remove common prefixes and suffixes
             category = suite_name
             if category.startswith("tests_"):
                 category = category[6:]  # Remove "tests_" prefix
             if category.endswith("_cuda"):
                 category = category[:-5]  # Remove "_cuda" suffix
-            
+
             # Extract the actual category name
             if category.startswith("pipeline_"):
                 category = category[9:]  # Remove "pipeline_" prefix
@@ -602,16 +598,16 @@ def create_slack_payload(consolidated_data):
                 category = category[6:]  # Remove "torch_" prefix
             elif category.startswith("gguf_torch"):
                 category = "gguf"
-            
+
             # Add to categories
             if category not in categories:
                 categories[category] = 0
             categories[category] += suite_data["stats"]["failed"]
-        
+
         # Create the table
         total_failures = sum(categories.values())
         table_text = create_failures_table(categories, total_failures)
-        
+
         if table_text:
             payload.append({"type": "section", "text": {"type": "mrkdwn", "text": table_text}})
 
