@@ -305,6 +305,9 @@ class SkyReelsV2TransformerBlock(nn.Module):
             e = (self.scale_shift_table.unsqueeze(2) + temb.float()).chunk(6, dim=1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
 
+        print(f"scale_msa: {scale_msa.shape}, shift_msa: {shift_msa.shape}, gate_msa: {gate_msa.shape}, c_scale_msa: {c_scale_msa.shape}, c_shift_msa: {c_shift_msa.shape}, c_gate_msa: {c_gate_msa.shape}")
+        print(f"scale_msa: {scale_msa}, shift_msa: {shift_msa}, gate_msa: {gate_msa}, c_scale_msa: {c_scale_msa}, c_shift_msa: {c_shift_msa}, c_gate_msa: {c_gate_msa}")
+        print(f"hidden_states: {hidden_states.shape}, encoder_hidden_states: {encoder_hidden_states.shape}, temb: {temb.shape}, rotary_emb: {rotary_emb.shape}")
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.attn1(
