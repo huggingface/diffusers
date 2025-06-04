@@ -174,7 +174,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin, FluxIPAdapterMixin):
+class FluxControlNetPipelineEnhanced(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin, FluxIPAdapterMixin):
     r"""
     The Flux pipeline for text-to-image generation.
 
@@ -1405,7 +1405,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                                 latents[tmp_init_mask.bool()] = torch.cat((tmp_tensor1, avg_region, tmp_tensor2), dim = 0)
 
                     latents = latents.view(batch_size, 4096, -1)
-                    
+
                 # additional codes for injecting original prod images into latents
                 if image is not None:
                     if i < ref_prod_injection_steps:
