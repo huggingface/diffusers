@@ -555,7 +555,7 @@ class VideoDataset(Dataset):
 
         if any(not path.is_file() for path in instance_videos):
             raise ValueError(
-                "Expected '--video_column' to be a path to a file in `--instance_data_root` containing line-separated paths to video data but found atleast one path that is not a valid file."
+                "Expected '--video_column' to be a path to a file in `--instance_data_root` containing line-separated paths to video data but found at least one path that is not a valid file."
             )
 
         return instance_prompts, instance_videos
