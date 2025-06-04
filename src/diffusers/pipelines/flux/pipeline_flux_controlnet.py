@@ -1201,6 +1201,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
                 )
             latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        else:
+            latent_timestep = None
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
