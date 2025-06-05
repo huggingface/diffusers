@@ -992,7 +992,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latents = latents / latents_std + latents_mean
                 video = self.vae.decode(latents, return_dict=False)[0]
             from safetensors.torch import save_file
-            save_file(video, "diffusers_latents.safetensors")
+            save_file({"vae_decode": video}, "diffusers.safetensors")
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
