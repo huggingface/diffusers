@@ -314,7 +314,7 @@ def _best_guess_weight_name(
     return weight_name
 
 
-def _pack_sd_with_prefix(state_dict, prefix):
+def _pack_dict_with_prefix(state_dict, prefix):
     sd_with_prefix = {f"{prefix}.{key}": value for key, value in state_dict.items()}
     return sd_with_prefix
 
@@ -914,7 +914,7 @@ class LoraBaseMixin:
     @staticmethod
     def pack_weights(layers, prefix):
         layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
-        return _pack_sd_with_prefix(layers_weights, prefix)
+        return _pack_dict_with_prefix(layers_weights, prefix)
 
     @staticmethod
     def write_lora_layers(

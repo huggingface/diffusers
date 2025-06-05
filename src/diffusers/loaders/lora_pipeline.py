@@ -37,7 +37,7 @@ from .lora_base import (  # noqa
     LoraBaseMixin,
     _fetch_state_dict,
     _load_lora_into_text_encoder,
-    _pack_sd_with_prefix,
+    _pack_dict_with_prefix,
 )
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
@@ -511,11 +511,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
 
         if unet_lora_adapter_metadata:
-            lora_adapter_metadata.update(_pack_sd_with_prefix(unet_lora_adapter_metadata, cls.unet_name))
+            lora_adapter_metadata.update(_pack_dict_with_prefix(unet_lora_adapter_metadata, cls.unet_name))
 
         if text_encoder_lora_adapter_metadata:
             lora_adapter_metadata.update(
-                _pack_sd_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
             )
 
         # Save the model
@@ -2376,11 +2376,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
 
         if transformer_lora_adapter_metadata:
-            lora_adapter_metadata.update(_pack_sd_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(_pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name))
 
         if text_encoder_lora_adapter_metadata:
             lora_adapter_metadata.update(
-                _pack_sd_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
             )
 
         # Save the model
