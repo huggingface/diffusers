@@ -981,6 +981,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if not output_type == "latent":
             if overlap_history is None:
                 latents = latents.to(self.vae.dtype)
+                from safetensors.torch import save_file
+                save_file({"output_latents": video}, "diffusers.safetensors")
                 latents_mean = (
                     torch.tensor(self.vae.config.latents_mean)
                     .view(1, self.vae.config.z_dim, 1, 1, 1)
@@ -991,8 +993,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 ).to(latents.device, latents.dtype)
                 latents = latents / latents_std + latents_mean
                 video = self.vae.decode(latents, return_dict=False)[0]
-            from safetensors.torch import save_file
-            save_file({"vae_decode": video}, "diffusers.safetensors")
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
