@@ -589,7 +589,7 @@ For stage 2 of DeepFloyd IF with DreamBooth, pay attention to these parameters:
 
 * `--learning_rate=5e-6`, use a lower learning rate with a smaller effective batch size
 * `--resolution=256`, the expected resolution for the upscaler
-* `--train_batch_size=2` and `--gradient_accumulation_steps=6`, to effectively train on images wiht faces requires larger batch sizes
+* `--train_batch_size=2` and `--gradient_accumulation_steps=6`, to effectively train on images with faces requires larger batch sizes
 
 ```bash
 export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
