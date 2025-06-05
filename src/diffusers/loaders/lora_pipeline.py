@@ -1005,13 +1005,17 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
         if unet_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(unet_lora_adapter_metadata, cls.unet_name))
+            lora_adapter_metadata.update(_pack_dict_with_prefix(unet_lora_adapter_metadata, cls.unet_name))
 
         if text_encoder_lora_adapter_metadata:
-            lora_adapter_metadata.update(cls.pack_weights(text_encoder_lora_adapter_metadata, cls.text_encoder_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+            )
 
         if text_encoder_2_lora_adapter_metadata:
-            lora_adapter_metadata.update(cls.pack_weights(text_encoder_2_lora_adapter_metadata, "text_encoder_2"))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_2_lora_adapter_metadata, "text_encoder_2")
+            )
 
         cls.write_lora_layers(
             state_dict=state_dict,
@@ -1459,13 +1463,19 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         if text_encoder_lora_adapter_metadata:
-            lora_adapter_metadata.update(cls.pack_weights(text_encoder_lora_adapter_metadata, cls.text_encoder_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+            )
 
         if text_encoder_2_lora_adapter_metadata:
-            lora_adapter_metadata.update(cls.pack_weights(text_encoder_2_lora_adapter_metadata, "text_encoder_2"))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_2_lora_adapter_metadata, "text_encoder_2")
+            )
 
         cls.write_lora_layers(
             state_dict=state_dict,
@@ -1804,7 +1814,9 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -2376,7 +2388,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
 
         if transformer_lora_adapter_metadata:
-            lora_adapter_metadata.update(_pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         if text_encoder_lora_adapter_metadata:
             lora_adapter_metadata.update(
@@ -3173,7 +3187,9 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -3508,7 +3524,9 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -3847,7 +3865,9 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -4184,7 +4204,9 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -4523,7 +4545,9 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -4863,7 +4887,9 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -5253,7 +5279,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -5590,7 +5618,9 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -5929,7 +5959,9 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
