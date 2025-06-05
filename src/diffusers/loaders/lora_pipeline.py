@@ -281,7 +281,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -761,7 +762,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
