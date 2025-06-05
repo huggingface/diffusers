@@ -982,6 +982,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if overlap_history is None:
                 latents = latents.to(self.vae.dtype)
                 from safetensors.torch import save_file
+
                 save_file({"output_latents": latents}, "diffusers.safetensors")
                 latents_mean = (
                     torch.tensor(self.vae.config.latents_mean)

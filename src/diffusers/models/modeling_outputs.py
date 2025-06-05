@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
 
 from ..utils import BaseOutput
 
@@ -32,4 +31,3 @@ class Transformer2DModelOutput(BaseOutput):
     """
 
     sample: "torch.Tensor"  # noqa: F821
-    #debug_tensors: Optional[Dict[str, Any]] = None
