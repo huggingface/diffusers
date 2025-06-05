@@ -584,6 +584,10 @@ jobs:
             --output_file $CONSOLIDATED_REPORT_PATH \
             --slack_channel_name diffusers-ci-nightly
 
+      - name: Show consolidated report
+        run: |
+          cat $CONSOLIDATED_REPORT_PATH >> $GITHUB_STEP_SUMMARY
+
       - name: Upload consolidated report
         uses: actions/upload-artifact@v4
         with:
