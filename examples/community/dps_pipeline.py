@@ -312,9 +312,9 @@ if __name__ == "__main__":
                     # These are the coordinates of the output image
                     out_coordinates = np.arange(1, out_length + 1)
 
-                    # since both scale-factor and output size can be provided simulatneously, perserving the center of the image requires shifting
-                    # the output coordinates. the deviation is because out_length doesn't necesary equal in_length*scale.
-                    # to keep the center we need to subtract half of this deivation so that we get equal margins for boths sides and center is preserved.
+                    # since both scale-factor and output size can be provided simultaneously, preserving the center of the image requires shifting
+                    # the output coordinates. the deviation is because out_length doesn't necessary equal in_length*scale.
+                    # to keep the center we need to subtract half of this deviation so that we get equal margins for both sides and center is preserved.
                     shifted_out_coordinates = out_coordinates - (out_length - in_length * scale) / 2
 
                     # These are the matching positions of the output-coordinates on the input image coordinates.
@@ -336,13 +336,13 @@ if __name__ == "__main__":
                     expanded_kernel_width = np.ceil(kernel_width) + 2
 
                     # Determine a set of field_of_view for each each output position, these are the pixels in the input image
-                    # that the pixel in the output image 'sees'. We get a matrix whos horizontal dim is the output pixels (big) and the
+                    # that the pixel in the output image 'sees'. We get a matrix whose horizontal dim is the output pixels (big) and the
                     # vertical dim is the pixels it 'sees' (kernel_size + 2)
                     field_of_view = np.squeeze(
                         np.int16(np.expand_dims(left_boundary, axis=1) + np.arange(expanded_kernel_width) - 1)
                     )
 
-                    # Assign weight to each pixel in the field of view. A matrix whos horizontal dim is the output pixels and the
+                    # Assign weight to each pixel in the field of view. A matrix whose horizontal dim is the output pixels and the
                     # vertical dim is a list of weights matching to the pixel in the field of view (that are specified in
                     # 'field_of_view')
                     weights = fixed_kernel(1.0 * np.expand_dims(match_coordinates, axis=1) - field_of_view - 1)

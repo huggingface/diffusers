@@ -17,15 +17,18 @@ import unittest
 import torch
 
 from diffusers import HunyuanVideoTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    torch_device,
+)
 
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
 
 
-class HunyuanVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
+class HunyuanVideoTransformer3DTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -90,7 +93,7 @@ class HunyuanVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
+class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -158,7 +161,7 @@ class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, unittest.T
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
+class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -224,7 +227,9 @@ class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.Test
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
+class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(
+    ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase
+):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True

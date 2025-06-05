@@ -13,8 +13,9 @@ env:
   PYTEST_TIMEOUT: 600
   RUN_SLOW: yes
   RUN_NIGHTLY: yes
-  PIPELINE_USAGE_CUTOFF: 5000
+  PIPELINE_USAGE_CUTOFF: 0
   SLACK_API_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
+  CONSOLIDATED_REPORT_PATH: consolidated_test_report.md
 
 jobs:
   setup_torch_cuda_pipeline_matrix:
@@ -99,11 +100,6 @@ jobs:
         with:
           name: pipeline_${{ matrix.module }}_test_reports
           path: reports
-      - name: Generate Report and Notify Channel
-        if: always()
-        run: |
-          pip install slack_sdk tabulate
-          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_nightly_tests_for_other_torch_modules:
     name: Nightly Torch CUDA Tests
@@ -174,11 +170,48 @@ jobs:
         name: torch_${{ matrix.module }}_cuda_test_reports
         path: reports
 
-    - name: Generate Report and Notify Channel
-      if: always()
+  run_torch_compile_tests:
+    name: PyTorch Compile CUDA tests
+
+    runs-on:
+      group: aws-g4dn-2xlarge
+
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --gpus 0 --shm-size "16gb" --ipc host
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: NVIDIA-SMI
       run: |
-        pip install slack_sdk tabulate
-        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
+        nvidia-smi
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test,training]
+    - name: Environment
+      run: |
+        python utils/print_env.py
+    - name: Run torch compile tests on GPU
+      env:
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        RUN_COMPILE: yes
+      run: |
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_compile_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: torch_compile_test_reports
+        path: reports
 
   run_big_gpu_torch_tests:
     name: Torch tests on big GPU
@@ -230,12 +263,7 @@ jobs:
         with:
           name: torch_cuda_big_gpu_test_reports
           path: reports
-      - name: Generate Report and Notify Channel
-        if: always()
-        run: |
-          pip install slack_sdk tabulate
-          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
-          
+
   torch_minimum_version_cuda_tests:
     name: Torch Minimum Version CUDA Tests
     runs-on:
@@ -292,63 +320,6 @@ jobs:
         with:
           name: torch_minimum_version_cuda_test_reports
           path: reports
- 
-  run_flax_tpu_tests:
-    name: Nightly Flax TPU Tests
-    runs-on:
-      group: gcp-ct5lp-hightpu-8t
-    if: github.event_name == 'schedule'
-
-    container:
-      image: diffusers/diffusers-flax-tpu
-      options: --shm-size "16gb" --ipc host --privileged ${{ vars.V5_LITEPOD_8_ENV}} -v /mnt/hf_cache:/mnt/hf_cache
-    defaults:
-      run:
-        shell: bash
-    steps:
-    - name: Checkout diffusers
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 2
-
-    - name: Install dependencies
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-        python -m uv pip install pytest-reportlog
-
-    - name: Environment
-      run: python utils/print_env.py
-
-    - name: Run nightly Flax TPU tests
-      env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
-      run: |
-        python -m pytest -n 0 \
-          -s -v -k "Flax" \
-          --make-reports=tests_flax_tpu \
-          --report-log=tests_flax_tpu.log \
-          tests/
-
-    - name: Failure short reports
-      if: ${{ failure() }}
-      run: |
-        cat reports/tests_flax_tpu_stats.txt
-        cat reports/tests_flax_tpu_failures_short.txt
-
-    - name: Test suite reports artifacts
-      if: ${{ always() }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: flax_tpu_test_reports
-        path: reports
-
-    - name: Generate Report and Notify Channel
-      if: always()
-      run: |
-        pip install slack_sdk tabulate
-        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_nightly_onnx_tests:
     name: Nightly ONNXRuntime CUDA tests on Ubuntu
@@ -399,18 +370,12 @@ jobs:
         name: tests_onnx_cuda_reports
         path: reports
 
-    - name: Generate Report and Notify Channel
-      if: always()
-      run: |
-        pip install slack_sdk tabulate
-        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
-
   run_nightly_quantization_tests:
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
       max-parallel: 2
-      matrix: 
+      matrix:
         config:
           - backend: "bitsandbytes"
             test_location: "bnb"
@@ -470,11 +435,165 @@ jobs:
         with:
           name: torch_cuda_${{ matrix.config.backend }}_reports
           path: reports
-      - name: Generate Report and Notify Channel
-        if: always()
+          
+  run_nightly_pipeline_level_quantization_tests:
+    name: Torch quantization nightly tests
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+    runs-on:
+      group: aws-g6e-xlarge-plus
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --shm-size "20gb" --ipc host --gpus 0
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: NVIDIA-SMI
+        run: nvidia-smi
+      - name: Install dependencies
         run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+          python -m uv pip install -U bitsandbytes optimum_quanto
+          python -m uv pip install pytest-reportlog
+      - name: Environment
+        run: |
+          python utils/print_env.py
+      - name: Pipeline-level quantization tests on GPU
+        env:
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+          CUBLAS_WORKSPACE_CONFIG: :16:8
+          BIG_GPU_MEMORY: 40
+        run: |
+          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            --make-reports=tests_pipeline_level_quant_torch_cuda \
+            --report-log=tests_pipeline_level_quant_torch_cuda.log \
+            tests/quantization/test_pipeline_level_quantization.py
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_pipeline_level_quant_torch_cuda_stats.txt
+          cat reports/tests_pipeline_level_quant_torch_cuda_failures_short.txt
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: torch_cuda_pipeline_level_quant_reports
+          path: reports
+
+  run_flax_tpu_tests:
+    name: Nightly Flax TPU Tests
+    runs-on:
+      group: gcp-ct5lp-hightpu-8t
+    if: github.event_name == 'schedule'
+
+    container:
+      image: diffusers/diffusers-flax-tpu
+      options: --shm-size "16gb" --ipc host --privileged ${{ vars.V5_LITEPOD_8_ENV}} -v /mnt/hf_cache:/mnt/hf_cache
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install pytest-reportlog
+
+    - name: Environment
+      run: python utils/print_env.py
+
+    - name: Run nightly Flax TPU tests
+      env:
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+      run: |
+        python -m pytest -n 0 \
+          -s -v -k "Flax" \
+          --make-reports=tests_flax_tpu \
+          --report-log=tests_flax_tpu.log \
+          tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_flax_tpu_stats.txt
+        cat reports/tests_flax_tpu_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: flax_tpu_test_reports
+        path: reports
+
+  generate_consolidated_report:
+    name: Generate Consolidated Test Report
+    needs: [
+      run_nightly_tests_for_torch_pipelines,
+      run_nightly_tests_for_other_torch_modules,
+      run_torch_compile_tests,
+      run_big_gpu_torch_tests,
+      run_nightly_quantization_tests,
+      run_nightly_pipeline_level_quantization_tests,
+      run_nightly_onnx_tests,
+      torch_minimum_version_cuda_tests,
+      run_flax_tpu_tests
+    ]
+    if: always()
+    runs-on:
+      group: aws-general-8-plus
+    container:
+      image: diffusers/diffusers-pytorch-cpu
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Create reports directory
+        run: mkdir -p combined_reports
+
+      - name: Download all test reports
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare reports
+        run: |
+          # Move all report files to a single directory for processing
+          find artifacts -name "*.txt" -exec cp {} combined_reports/ \;
+
+      - name: Install dependencies
+        run: |
+          pip install -e .[test]
           pip install slack_sdk tabulate
-          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate consolidated report
+        run: |
+          python utils/consolidated_test_report.py \
+            --reports_dir combined_reports \
+            --output_file $CONSOLIDATED_REPORT_PATH \
+            --slack_channel_name diffusers-ci-nightly
+
+      - name: Show consolidated report
+        run: |
+          cat $CONSOLIDATED_REPORT_PATH >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload consolidated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: consolidated_test_report
+          path: ${{ env.CONSOLIDATED_REPORT_PATH }}
 
 # M1 runner currently not well supported
 # TODO: (Dhruv) add these back when we setup better testing for Apple Silicon
