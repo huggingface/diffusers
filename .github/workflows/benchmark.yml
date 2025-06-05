@@ -59,9 +59,9 @@ jobs:
       - name: Update benchmarking results to DB
         env:
           PGDATABASE: metrics
-          PGHOST: ${{ secrets.TRANSFORMERS_BENCHMARKS_PGHOST }}
+          PGHOST: ${{ secrets.TRANSFORMERS_BENCHMARKS_PGHOST }} # TODO
           PGUSER: transformers_benchmarks
-          PGPASSWORD: ${{ secrets.TRANSFORMERS_BENCHMARKS_PGPASSWORD }}
+          PGPASSWORD: ${{ secrets.DIFFUSERS_BENCHMARKS_PGPASSWORD }}
         run: cd benchmarks && python populate_into_db.py
 
       - name: Report success status
