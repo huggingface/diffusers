@@ -374,7 +374,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata: TODO
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -856,7 +858,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata: TODO
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
