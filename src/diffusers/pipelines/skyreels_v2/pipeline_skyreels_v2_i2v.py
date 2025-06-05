@@ -45,51 +45,47 @@ if is_ftfy_available():
     import ftfy
 
 
-EXAMPLE_DOC_STRING = """
+EXAMPLE_DOC_STRING = """\
     Examples:
-        ```python
+        ```py
         >>> import torch
-        >>> import numpy as np
-        >>> from diffusers import AutoencoderKLWan, SkyReelsV2ImageToVideoPipeline
-        >>> from diffusers.utils import export_to_video, load_image
-        >>> from transformers import CLIPVisionModel
-
-        >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers, Wan-AI/Wan2.1-I2V-14B-720P-Diffusers
-        >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
-        >>> image_encoder = CLIPVisionModel.from_pretrained(
-        ...     model_id, subfolder="image_encoder", torch_dtype=torch.float32
+        >>> from diffusers import (
+        ...     SkyReelsV2ImageToVideoPipeline,
+        ...     FlowMatchUniPCMultistepScheduler,
+        ...     AutoencoderKLWan,
         ... )
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+        >>> from diffusers.utils import export_to_video
+        >>> from PIL import Image
+
+        >>> # Load the pipeline
+        >>> vae = AutoencoderKLWan.from_pretrained(
+        ...     "<Official_HF_placeholder>/SkyReels-V2-1.3B-540P-Diffusers",
+        ...     subfolder="vae",
+        ...     torch_dtype=torch.float32,
+        ... )
         >>> pipe = SkyReelsV2ImageToVideoPipeline.from_pretrained(
-        ...     model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+        ...     "<Official_HF_placeholder>/SkyReels-V2-1.3B-540P-Diffusers",
+        ...     vae=vae,
+        ...     torch_dtype=torch.bfloat16,
         ... )
-        >>> pipe.to("cuda")
+        >>> shift = 5.0  # 8.0 for T2V, 5.0 for I2V
+        >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
+        >>> pipe = pipe.to("cuda")
 
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
-        ... )
-        >>> max_area = 480 * 832
-        >>> aspect_ratio = image.height / image.width
-        >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-        >>> height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        >>> width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        >>> image = image.resize((width, height))
-        >>> prompt = (
-        ...     "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
-        ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
-        ... )
-        >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+        >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
+        >>> image = Image.open("path/to/image.png")
 
         >>> output = pipe(
         ...     image=image,
         ...     prompt=prompt,
-        ...     negative_prompt=negative_prompt,
-        ...     height=height,
-        ...     width=width,
-        ...     num_frames=81,
-        ...     guidance_scale=5.0,
+        ...     num_inference_steps=50,
+        ...     height=544,
+        ...     width=960,
+        ...     guidance_scale=5.0,  # 6.0 for T2V, 5.0 for I2V
+        ...     num_frames=97,
+        ...     shift=5.0,
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=16)
+        >>> export_to_video(output, "video.mp4", fps=24, quality=8)
         ```
 """
 
@@ -503,6 +499,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        shift: float = 5.0,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -570,9 +567,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
             shift (`float`, *optional*, defaults to `5.0`):
-                The shift of the flow.
-            autocast_dtype (`torch.dtype`, *optional*, defaults to `torch.bfloat16`):
-                The dtype to use for the torch.amp.autocast.
+                Flow matching scheduler parameter (**5.0 for I2V**, **8.0 for T2V**)
         Examples:
 
         Returns:
@@ -647,7 +642,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables

@@ -65,23 +65,20 @@ EXAMPLE_DOC_STRING = """\
         ...     vae=vae,
         ...     torch_dtype=torch.bfloat16,
         ... )
-        >>> shift = 8.0  # 8.0 for T2V, 3.0 for I2V
+        >>> shift = 8.0  # 8.0 for T2V, 5.0 for I2V
         >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
         >>> pipe = pipe.to("cuda")
-        >>> pipe.transformer.set_ar_attention(causal_block_size=5)
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 
         >>> output = pipe(
         ...     prompt=prompt,
-        ...     num_inference_steps=30,
+        ...     num_inference_steps=50,
         ...     height=544,
         ...     width=960,
         ...     guidance_scale=6.0,  # 6.0 for T2V, 5.0 for I2V
         ...     num_frames=97,
-        ...     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
-        ...     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos
-        ...     addnoise_condition=20,  # Improves consistency in long video generation
+        ...     shift=8.0,
         ... ).frames[0]
         >>> export_to_video(output, "video.mp4", fps=24, quality=8)
         ```
@@ -399,6 +396,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        shift: float = 8.0,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -451,8 +449,10 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            autocast_dtype (`torch.dtype`, *optional*, defaults to `torch.bfloat16`):
-                The dtype to use for the torch.amp.autocast.
+            max_sequence_length (`int`, *optional*, defaults to `512`):
+                The maximum sequence length for the text encoder.
+            shift (`float`, *optional*, defaults to `8.0`):
+                Flow matching scheduler parameter (**8.0 for T2V**, **5.0 for I2V**)
 
         Examples:
 
@@ -517,7 +517,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
