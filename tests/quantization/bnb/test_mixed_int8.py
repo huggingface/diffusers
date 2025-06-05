@@ -195,7 +195,7 @@ class BnB8bitBasicTests(Base8bitTests):
 
     def test_original_dtype(self):
         r"""
-        A simple test to check if the model succesfully stores the original dtype
+        A simple test to check if the model successfully stores the original dtype
         """
         self.assertTrue("_pre_quantization_dtype" in self.model_8bit.config)
         self.assertFalse("_pre_quantization_dtype" in self.model_fp16.config)
@@ -492,7 +492,7 @@ class SlowBnb8bitTests(Base8bitTests):
         self.assertTrue(max_diff < 1e-2)
 
         # 8bit models cannot be offloaded to CPU.
-        self.assertTrue(self.pipeline_8bit.transformer.device.type == "cuda")
+        self.assertTrue(self.pipeline_8bit.transformer.device.type == torch_device)
         # calling it again shouldn't be a problem
         _ = self.pipeline_8bit(
             prompt=self.prompt,
@@ -534,7 +534,7 @@ class SlowBnb8bitTests(Base8bitTests):
         ).to(device)
 
         # Check if inference works.
-        _ = pipeline_8bit("table", max_sequence_length=20, num_inference_steps=2)
+        _ = pipeline_8bit(self.prompt, max_sequence_length=20, num_inference_steps=2)
 
         del pipeline_8bit
 

@@ -698,6 +698,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
+    from .quantizers import PipelineQuantizationConfig
 
     try:
         if not is_bitsandbytes_available():
