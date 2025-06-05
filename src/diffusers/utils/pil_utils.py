@@ -43,7 +43,7 @@ def numpy_to_pil(images):
         images = images[None, ...]
     images = (images * 255).round().astype("uint8", copy=False)
     if images.shape[-1] == 1:
-        # Only squeeze if needed for grayscale, avoid always squeezing
+        # special case for grayscale (single channel) images
         return [Image.fromarray(image[..., 0], mode="L") for image in images]
     else:
         return [Image.fromarray(image) for image in images]

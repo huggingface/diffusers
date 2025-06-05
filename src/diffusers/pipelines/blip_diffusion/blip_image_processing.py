@@ -98,16 +98,17 @@ class BlipImageProcessor(BaseImageProcessor):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if size is None:
-            size = {"height": 224, "width": 224}
-        self.size = get_size_dict(size, default_to_square=True)
+        size = size if size is not None else {"height": 224, "width": 224}
+        size = get_size_dict(size, default_to_square=True)
+
         self.do_resize = do_resize
+        self.size = size
         self.resample = resample
         self.do_rescale = do_rescale
         self.rescale_factor = rescale_factor
         self.do_normalize = do_normalize
-        self.image_mean = OPENAI_CLIP_MEAN if image_mean is None else image_mean
-        self.image_std = OPENAI_CLIP_STD if image_std is None else image_std
+        self.image_mean = image_mean if image_mean is not None else OPENAI_CLIP_MEAN
+        self.image_std = image_std if image_std is not None else OPENAI_CLIP_STD
         self.do_convert_rgb = do_convert_rgb
         self.do_center_crop = do_center_crop
 
@@ -311,9 +312,10 @@ class BlipImageProcessor(BaseImageProcessor):
         # Only move to CPU and numpy if necessary 
         if sample.device.type != "cpu":
             sample = sample.cpu()
+        # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
         sample = sample.permute(0, 2, 3, 1).contiguous().numpy()
         if output_type == "np":
             return sample
 
-        # output_type == "pil"
+        # Output_type must be 'pil'
         return numpy_to_pil(sample)
