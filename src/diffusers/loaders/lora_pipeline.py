@@ -1168,7 +1168,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1628,7 +1629,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1972,7 +1974,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3006,7 +3009,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -3342,7 +3346,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -3680,7 +3685,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4022,7 +4028,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -4360,7 +4367,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4701,7 +4709,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -5043,7 +5052,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -5436,7 +5446,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -5774,7 +5785,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata: TODO
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
