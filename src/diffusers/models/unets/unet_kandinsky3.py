@@ -390,10 +390,7 @@ class Kandinsky3ConditionalGroupNorm(nn.Module):
     def __init__(self, groups, normalized_shape, context_dim):
         super().__init__()
         self.norm = nn.GroupNorm(groups, normalized_shape, affine=False)
-        self.context_mlp = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(context_dim, 2 * normalized_shape)
-        )
+        self.context_mlp = nn.Sequential(nn.SiLU(), nn.Linear(context_dim, 2 * normalized_shape))
         self.context_mlp[1].weight.data.zero_()
         self.context_mlp[1].bias.data.zero_()
 
@@ -405,8 +402,7 @@ class Kandinsky3ConditionalGroupNorm(nn.Module):
         target_shape = list(context_out.shape) + [1] * (x.dim() - 2)
         context_out = context_out.view(*target_shape)
         scale, shift = context_out.chunk(2, dim=1)
-        x = self.norm(x)
-        x = x * (scale + 1.0) + shift
+        x = self.norm(x) * (scale + 1.0) + shift
         return x
 
 
