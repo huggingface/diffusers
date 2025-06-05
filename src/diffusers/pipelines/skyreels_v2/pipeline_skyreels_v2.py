@@ -43,34 +43,47 @@ if is_ftfy_available():
     import ftfy
 
 
-EXAMPLE_DOC_STRING = """
+EXAMPLE_DOC_STRING = """\
     Examples:
-        ```python
+        ```py
         >>> import torch
+        >>> from diffusers import (
+        ...     SkyReelsV2Pipeline,
+        ...     FlowMatchUniPCMultistepScheduler,
+        ...     AutoencoderKLWan,
+        ... )
         >>> from diffusers.utils import export_to_video
-        >>> from diffusers import AutoencoderKLWan, SkyReelsV2Pipeline
-        >>> from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 
-        >>> # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-        >>> model_id = "Wan-AI/Wan2.1-T2V-14B-Diffusers"
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = SkyReelsV2Pipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
-        >>> flow_shift = 5.0  # 5.0 for 720P, 3.0 for 480P
-        >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
-        >>> pipe.to("cuda")
+        >>> # Load the pipeline
+        >>> vae = AutoencoderKLWan.from_pretrained(
+        ...     "<Official_HF_placeholder>/SkyReels-V2-1.3B-540P-Diffusers",
+        ...     subfolder="vae",
+        ...     torch_dtype=torch.float32,
+        ... )
+        >>> pipe = SkyReelsV2Pipeline.from_pretrained(
+        ...     "<Official_HF_placeholder>/SkyReels-V2-1.3B-540P-Diffusers",
+        ...     vae=vae,
+        ...     torch_dtype=torch.bfloat16,
+        ... )
+        >>> shift = 8.0  # 8.0 for T2V, 3.0 for I2V
+        >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
+        >>> pipe = pipe.to("cuda")
+        >>> pipe.transformer.set_ar_attention(causal_block_size=5)
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
-        >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
         >>> output = pipe(
         ...     prompt=prompt,
-        ...     negative_prompt=negative_prompt,
-        ...     height=720,
-        ...     width=1280,
-        ...     num_frames=81,
-        ...     guidance_scale=5.0,
+        ...     num_inference_steps=30,
+        ...     height=544,
+        ...     width=960,
+        ...     guidance_scale=6.0,  # 6.0 for T2V, 5.0 for I2V
+        ...     num_frames=97,
+        ...     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
+        ...     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos
+        ...     addnoise_condition=20,  # Improves consistency in long video generation
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=16)
+        >>> export_to_video(output, "video.mp4", fps=24, quality=8)
         ```
 """
 
@@ -139,6 +152,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -180,6 +194,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -261,6 +276,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds, negative_prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -302,6 +318,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size: int,
@@ -364,11 +381,11 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
-        height: int = 480,
-        width: int = 832,
-        num_frames: int = 81,
+        height: int = 544,
+        width: int = 960,
+        num_frames: int = 97,
         num_inference_steps: int = 50,
-        guidance_scale: float = 5.0,
+        guidance_scale: float = 6.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -390,16 +407,16 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, defaults to `480`):
+            height (`int`, defaults to `544`):
                 The height in pixels of the generated image.
-            width (`int`, defaults to `832`):
+            width (`int`, defaults to `960`):
                 The width in pixels of the generated image.
-            num_frames (`int`, defaults to `81`):
+            num_frames (`int`, defaults to `97`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, defaults to `5.0`):
+            guidance_scale (`float`, defaults to `6.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
