@@ -11,6 +11,7 @@ env:
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
+  BASE_PATH: benchmark_outputs
 
 jobs:
   torch_models_cuda_benchmark_tests:
@@ -43,8 +44,7 @@ jobs:
           python utils/print_env.py
       - name: Diffusers Benchmarking
         env:
-            HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
-            BASE_PATH: benchmark_outputs
+          HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
         run: |
           cd benchmarks && python run_all.py && python push_results.py
           mkdir ${BASE_PATH} && mv *.csv ${BASE_PATH}
@@ -55,6 +55,14 @@ jobs:
         with:
           name: benchmark_test_reports
           path: benchmarks/benchmark_outputs
+
+      - name: Update benchmarking results to DB
+        env:
+          PGDATABASE: metrics
+          PGHOST: ${{ secrets.TRANSFORMERS_BENCHMARKS_PGHOST }}
+          PGUSER: transformers_benchmarks
+          PGPASSWORD: ${{ secrets.TRANSFORMERS_BENCHMARKS_PGPASSWORD }}
+        run: cd benchmarks && python populate_into_db.py
 
       - name: Report success status
         if: ${{ success() }}
