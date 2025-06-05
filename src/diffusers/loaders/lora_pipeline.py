@@ -5489,7 +5489,9 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        is_non_diffusers_format = any("diffusion_model" in k for k in state_dict)
+        kohya_format = any("diffusion_model" in k for k in state_dict)
+        is_omi_format = any(k.startswith(("clip_g.", "clip_l.", "t5.", "llama.", "transformer.")) for k in state_dict)
+        is_non_diffusers_format = kohya_format or is_omi_format
         if is_non_diffusers_format:
             state_dict = _convert_non_diffusers_hidream_lora_to_diffusers(state_dict)
 
