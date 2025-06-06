@@ -53,8 +53,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoencoderKLWan, WanPipeline
         >>> from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 
-        >>> # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-        >>> model_id = "Wan-AI/Wan2.1-T2V-14B-Diffusers"
+        >>> # Available models: Wan-AI/Wan2.1-T2V-14B-diffusers, Wan-AI/Wan2.1-T2V-1.3B-diffusers
+        >>> model_id = "Wan-AI/Wan2.1-T2V-14B-diffusers"
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
         >>> pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> flow_shift = 5.0  # 5.0 for 720P, 3.0 for 480P
