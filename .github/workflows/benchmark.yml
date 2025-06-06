@@ -57,14 +57,15 @@ jobs:
         with:
           name: benchmark_test_reports
           path: benchmarks/benchmark_outputs
-
-      - name: Update benchmarking results to DB
-        env:
-          PGDATABASE: metrics
-          PGHOST: ${{ secrets.DIFFUSERS_BENCHMARKS_PGHOST }} # TODO
-          PGUSER: transformers_benchmarks
-          PGPASSWORD: ${{ secrets.DIFFUSERS_BENCHMARKS_PGPASSWORD }}
-        run: cd benchmarks && python populate_into_db.py
+      
+      # TODO: enable this once the connection problem has been resolved.
+      # - name: Update benchmarking results to DB
+      #   env:
+      #     PGDATABASE: metrics
+      #     PGHOST: ${{ secrets.DIFFUSERS_BENCHMARKS_PGHOST }} # TODO
+      #     PGUSER: transformers_benchmarks
+      #     PGPASSWORD: ${{ secrets.DIFFUSERS_BENCHMARKS_PGPASSWORD }}
+      #   run: cd benchmarks && python populate_into_db.py
 
       - name: Report success status
         if: ${{ success() }}
