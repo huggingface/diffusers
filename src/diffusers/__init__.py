@@ -38,6 +38,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
+    "pipelines.photodoodle": ["PhotoDoodlePipeline"],
     "quantizers.quantization_config": [],
     "schedulers": [],
     "utils": [
@@ -340,6 +341,7 @@ else:
             "AnimateDiffControlNetPipeline",
             "AnimateDiffPAGPipeline",
             "AnimateDiffPipeline",
+            "PhotoDoodlePipeline",
             "AnimateDiffSDXLPipeline",
             "AnimateDiffSparseControlNetPipeline",
             "AnimateDiffVideoToVideoControlNetPipeline",
@@ -928,6 +930,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffControlNetPipeline,
             AnimateDiffPAGPipeline,
             AnimateDiffPipeline,
+            PhotoDoodlePipeline,
             AnimateDiffSDXLPipeline,
             AnimateDiffSparseControlNetPipeline,
             AnimateDiffVideoToVideoControlNetPipeline,

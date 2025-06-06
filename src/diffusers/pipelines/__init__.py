@@ -1,398 +1,596 @@
+__version__ = "0.34.0.dev0"
+
 from typing import TYPE_CHECKING
 
-from ..utils import (
+from .utils import (
     DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
-    get_objects_from_module,
+    is_accelerate_available,
+    is_bitsandbytes_available,
     is_flax_available,
+    is_gguf_available,
     is_k_diffusion_available,
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
+    is_optimum_quanto_available,
+    is_scipy_available,
     is_sentencepiece_available,
     is_torch_available,
-    is_torch_npu_available,
+    is_torchao_available,
+    is_torchsde_available,
     is_transformers_available,
 )
 
 
-# These modules contain pipelines from multiple libraries/frameworks
-_dummy_objects = {}
+# Lazy Import based on
+# https://github.com/huggingface/transformers/blob/main/src/transformers/__init__.py
+
+# When adding a new object to this init, please add it to `_import_structure`. The `_import_structure` is a dictionary submodule to list of object names,
+# and is used to defer the actual importing for when the objects are requested.
+# This way `import diffusers` provides the names in the namespace without actually importing anything (and especially none of the backends).
+
 _import_structure = {
-    "controlnet": [],
-    "controlnet_hunyuandit": [],
-    "controlnet_sd3": [],
-    "controlnet_xs": [],
-    "deprecated": [],
-    "latent_diffusion": [],
-    "ledits_pp": [],
-    "marigold": [],
-    "pag": [],
-    "stable_diffusion": [],
-    "stable_diffusion_xl": [],
+    "configuration_utils": ["ConfigMixin"],
+    "hooks": [],
+    "loaders": ["FromOriginalModelMixin"],
+    "models": [],
+    "pipelines": [],
+    "pipelines.photodoodle": ["PhotoDoodlePipeline"],
+    "quantizers.quantization_config": [],
+    "schedulers": [],
+    "utils": [
+        "OptionalDependencyNotAvailable",
+        "is_flax_available",
+        "is_inflect_available",
+        "is_invisible_watermark_available",
+        "is_k_diffusion_available",
+        "is_k_diffusion_version",
+        "is_librosa_available",
+        "is_note_seq_available",
+        "is_onnx_available",
+        "is_scipy_available",
+        "is_torch_available",
+        "is_torchsde_available",
+        "is_transformers_available",
+        "is_transformers_version",
+        "is_unidecode_available",
+        "logging",
+    ],
 }
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_bitsandbytes_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_bitsandbytes_objects
+
+    _import_structure["utils.dummy_bitsandbytes_objects"] = [
+        name for name in dir(dummy_bitsandbytes_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("BitsAndBytesConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_gguf_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_gguf_objects
+
+    _import_structure["utils.dummy_gguf_objects"] = [
+        name for name in dir(dummy_gguf_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("GGUFQuantizationConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_torchao_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torchao_objects
+
+    _import_structure["utils.dummy_torchao_objects"] = [
+        name for name in dir(dummy_torchao_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("TorchAoConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_optimum_quanto_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_optimum_quanto_objects
+
+    _import_structure["utils.dummy_optimum_quanto_objects"] = [
+        name for name in dir(dummy_optimum_quanto_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("QuantoConfig")
+
+try:
+    if not is_onnx_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_onnx_objects  # noqa F403
+
+    _import_structure["utils.dummy_onnx_objects"] = [
+        name for name in dir(dummy_onnx_objects) if not name.startswith("_")
+    ]
+
+else:
+    _import_structure["pipelines"].extend(["OnnxRuntimeModel"])
 
 try:
     if not is_torch_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import dummy_pt_objects  # noqa F403
+    from .utils import dummy_pt_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_pt_objects))
+    _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
+
 else:
-    _import_structure["auto_pipeline"] = [
-        "AutoPipelineForImage2Image",
-        "AutoPipelineForInpainting",
-        "AutoPipelineForText2Image",
-    ]
-    _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
-    _import_structure["dance_diffusion"] = ["DanceDiffusionPipeline"]
-    _import_structure["ddim"] = ["DDIMPipeline"]
-    _import_structure["ddpm"] = ["DDPMPipeline"]
-    _import_structure["dit"] = ["DiTPipeline"]
-    _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
-    _import_structure["pipeline_utils"] = [
-        "AudioPipelineOutput",
-        "DiffusionPipeline",
-        "StableDiffusionMixin",
-        "ImagePipelineOutput",
-    ]
-    _import_structure["deprecated"].extend(
+    _import_structure["hooks"].extend(
         [
-            "PNDMPipeline",
+            "FasterCacheConfig",
+            "HookRegistry",
+            "PyramidAttentionBroadcastConfig",
+            "apply_faster_cache",
+            "apply_pyramid_attention_broadcast",
+        ]
+    )
+    _import_structure["models"].extend(
+        [
+            "AllegroTransformer3DModel",
+            "AsymmetricAutoencoderKL",
+            "AuraFlowTransformer2DModel",
+            "AutoencoderDC",
+            "AutoencoderKL",
+            "AutoencoderKLAllegro",
+            "AutoencoderKLCogVideoX",
+            "AutoencoderKLCosmos",
+            "AutoencoderKLHunyuanVideo",
+            "AutoencoderKLLTXVideo",
+            "AutoencoderKLMagvit",
+            "AutoencoderKLMochi",
+            "AutoencoderKLTemporalDecoder",
+            "AutoencoderKLWan",
+            "AutoencoderOobleck",
+            "AutoencoderTiny",
+            "AutoModel",
+            "CacheMixin",
+            "CogVideoXTransformer3DModel",
+            "CogView3PlusTransformer2DModel",
+            "CogView4Transformer2DModel",
+            "ConsisIDTransformer3DModel",
+            "ConsistencyDecoderVAE",
+            "ControlNetModel",
+            "ControlNetUnionModel",
+            "ControlNetXSAdapter",
+            "CosmosTransformer3DModel",
+            "DiTTransformer2DModel",
+            "EasyAnimateTransformer3DModel",
+            "FluxControlNetModel",
+            "FluxMultiControlNetModel",
+            "FluxTransformer2DModel",
+            "HiDreamImageTransformer2DModel",
+            "HunyuanDiT2DControlNetModel",
+            "HunyuanDiT2DModel",
+            "HunyuanDiT2DMultiControlNetModel",
+            "HunyuanVideoFramepackTransformer3DModel",
+            "HunyuanVideoTransformer3DModel",
+            "I2VGenXLUNet",
+            "Kandinsky3UNet",
+            "LatteTransformer3DModel",
+            "LTXVideoTransformer3DModel",
+            "Lumina2Transformer2DModel",
+            "LuminaNextDiT2DModel",
+            "MochiTransformer3DModel",
+            "ModelMixin",
+            "MotionAdapter",
+            "MultiAdapter",
+            "MultiControlNetModel",
+            "OmniGenTransformer2DModel",
+            "PixArtTransformer2DModel",
+            "PriorTransformer",
+            "SanaControlNetModel",
+            "SanaTransformer2DModel",
+            "SD3ControlNetModel",
+            "SD3MultiControlNetModel",
+            "SD3Transformer2DModel",
+            "SparseControlNetModel",
+            "StableAudioDiTModel",
+            "StableCascadeUNet",
+            "T2IAdapter",
+            "T5FilmDecoder",
+            "Transformer2DModel",
+            "TransformerTemporalModel",
+            "UNet1DModel",
+            "UNet2DConditionModel",
+            "UNet2DModel",
+            "UNet3DConditionModel",
+            "UNetControlNetXSModel",
+            "UNetMotionModel",
+            "UNetSpatioTemporalConditionModel",
+            "UVit2DModel",
+            "VQModel",
+            "WanTransformer3DModel",
+        ]
+    )
+    _import_structure["optimization"] = [
+        "get_constant_schedule",
+        "get_constant_schedule_with_warmup",
+        "get_cosine_schedule_with_warmup",
+        "get_cosine_with_hard_restarts_schedule_with_warmup",
+        "get_linear_schedule_with_warmup",
+        "get_polynomial_decay_schedule_with_warmup",
+        "get_scheduler",
+    ]
+    _import_structure["pipelines"].extend(
+        [
+            "AudioPipelineOutput",
+            "AutoPipelineForImage2Image",
+            "AutoPipelineForInpainting",
+            "AutoPipelineForText2Image",
+            "ConsistencyModelPipeline",
+            "DanceDiffusionPipeline",
+            "DDIMPipeline",
+            "DDPMPipeline",
+            "DiffusionPipeline",
+            "DiTPipeline",
+            "ImagePipelineOutput",
+            "KarrasVePipeline",
             "LDMPipeline",
+            "LDMSuperResolutionPipeline",
+            "PNDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
-            "KarrasVePipeline",
+            "StableDiffusionMixin",
         ]
     )
-try:
-    if not (is_torch_available() and is_librosa_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import dummy_torch_and_librosa_objects  # noqa F403
-
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_librosa_objects))
-else:
-    _import_structure["deprecated"].extend(["AudioDiffusionPipeline", "Mel"])
-
-try:
-    if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import dummy_transformers_and_torch_and_note_seq_objects  # noqa F403
-
-    _dummy_objects.update(get_objects_from_module(dummy_transformers_and_torch_and_note_seq_objects))
-else:
-    _import_structure["deprecated"].extend(
+    _import_structure["quantizers"] = ["DiffusersQuantizer"]
+    _import_structure["schedulers"].extend(
         [
-            "MidiProcessor",
-            "SpectrogramDiffusionPipeline",
+            "AmusedScheduler",
+            "CMStochasticIterativeScheduler",
+            "CogVideoXDDIMScheduler",
+            "CogVideoXDPMScheduler",
+            "DDIMInverseScheduler",
+            "DDIMParallelScheduler",
+            "DDIMScheduler",
+            "DDPMParallelScheduler",
+            "DDPMScheduler",
+            "DDPMWuerstchenScheduler",
+            "DEISMultistepScheduler",
+            "DPMSolverMultistepInverseScheduler",
+            "DPMSolverMultistepScheduler",
+            "DPMSolverSinglestepScheduler",
+            "EDMDPMSolverMultistepScheduler",
+            "EDMEulerScheduler",
+            "EulerAncestralDiscreteScheduler",
+            "EulerDiscreteScheduler",
+            "FlowMatchEulerDiscreteScheduler",
+            "FlowMatchHeunDiscreteScheduler",
+            "FlowMatchLCMScheduler",
+            "HeunDiscreteScheduler",
+            "IPNDMScheduler",
+            "KarrasVeScheduler",
+            "KDPM2AncestralDiscreteScheduler",
+            "KDPM2DiscreteScheduler",
+            "LCMScheduler",
+            "PNDMScheduler",
+            "RePaintScheduler",
+            "SASolverScheduler",
+            "SchedulerMixin",
+            "SCMScheduler",
+            "ScoreSdeVeScheduler",
+            "TCDScheduler",
+            "UnCLIPScheduler",
+            "UniPCMultistepScheduler",
+            "VQDiffusionScheduler",
         ]
     )
+    _import_structure["training_utils"] = ["EMAModel"]
+
+try:
+    if not (is_torch_available() and is_scipy_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torch_and_scipy_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_scipy_objects"] = [
+        name for name in dir(dummy_torch_and_scipy_objects) if not name.startswith("_")
+    ]
+
+else:
+    _import_structure["schedulers"].extend(["LMSDiscreteScheduler"])
+
+try:
+    if not (is_torch_available() and is_torchsde_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torch_and_torchsde_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_torchsde_objects"] = [
+        name for name in dir(dummy_torch_and_torchsde_objects) if not name.startswith("_")
+    ]
+
+else:
+    _import_structure["schedulers"].extend(["CosineDPMSolverMultistepScheduler", "DPMSolverSDEScheduler"])
 
 try:
     if not (is_torch_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import dummy_torch_and_transformers_objects  # noqa F403
+    from .utils import dummy_torch_and_transformers_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
+    _import_structure["utils.dummy_torch_and_transformers_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_objects) if not name.startswith("_")
+    ]
+
 else:
-    _import_structure["deprecated"].extend(
+    _import_structure["pipelines"].extend(
         [
-            "VQDiffusionPipeline",
-            "AltDiffusionPipeline",
+            "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
+            "AltDiffusionPipeline",
+            "AmusedImg2ImgPipeline",
+            "AmusedInpaintPipeline",
+            "AmusedPipeline",
+            "AnimateDiffControlNetPipeline",
+            "AnimateDiffPAGPipeline",
+            "AnimateDiffPipeline",
+            "PhotoDoodlePipeline",
+            "AnimateDiffSDXLPipeline",
+            "AnimateDiffSparseControlNetPipeline",
+            "AnimateDiffVideoToVideoControlNetPipeline",
+            "AnimateDiffVideoToVideoPipeline",
+            "AudioLDM2Pipeline",
+            "AudioLDM2ProjectionModel",
+            "AudioLDM2UNet2DConditionModel",
+            "AudioLDMPipeline",
+            "AuraFlowPipeline",
+            "BlipDiffusionControlNetPipeline",
+            "BlipDiffusionPipeline",
+            "CLIPImageProjection",
+            "CogVideoXFunControlPipeline",
+            "CogVideoXImageToVideoPipeline",
+            "CogVideoXPipeline",
+            "CogVideoXVideoToVideoPipeline",
+            "CogView3PlusPipeline",
+            "CogView4ControlPipeline",
+            "CogView4Pipeline",
+            "ConsisIDPipeline",
+            "CosmosTextToWorldPipeline",
+            "CosmosVideoToWorldPipeline",
             "CycleDiffusionPipeline",
+            "EasyAnimateControlPipeline",
+            "EasyAnimateInpaintPipeline",
+            "EasyAnimatePipeline",
+            "FluxControlImg2ImgPipeline",
+            "FluxControlInpaintPipeline",
+            "FluxControlNetImg2ImgPipeline",
+            "FluxControlNetInpaintPipeline",
+            "FluxControlNetPipeline",
+            "FluxControlPipeline",
+            "FluxFillPipeline",
+            "FluxImg2ImgPipeline",
+            "FluxInpaintPipeline",
+            "FluxPipeline",
+            "FluxPriorReduxPipeline",
+            "HiDreamImagePipeline",
+            "HunyuanDiTControlNetPipeline",
+            "HunyuanDiTPAGPipeline",
+            "HunyuanDiTPipeline",
+            "HunyuanSkyreelsImageToVideoPipeline",
+            "HunyuanVideoFramepackPipeline",
+            "HunyuanVideoImageToVideoPipeline",
+            "HunyuanVideoPipeline",
+            "I2VGenXLPipeline",
+            "IFImg2ImgPipeline",
+            "IFImg2ImgSuperResolutionPipeline",
+            "IFInpaintingPipeline",
+            "IFInpaintingSuperResolutionPipeline",
+            "IFPipeline",
+            "IFSuperResolutionPipeline",
+            "ImageTextPipelineOutput",
+            "Kandinsky3Img2ImgPipeline",
+            "Kandinsky3Pipeline",
+            "KandinskyCombinedPipeline",
+            "KandinskyImg2ImgCombinedPipeline",
+            "KandinskyImg2ImgPipeline",
+            "KandinskyInpaintCombinedPipeline",
+            "KandinskyInpaintPipeline",
+            "KandinskyPipeline",
+            "KandinskyPriorPipeline",
+            "KandinskyV22CombinedPipeline",
+            "KandinskyV22ControlnetImg2ImgPipeline",
+            "KandinskyV22ControlnetPipeline",
+            "KandinskyV22Img2ImgCombinedPipeline",
+            "KandinskyV22Img2ImgPipeline",
+            "KandinskyV22InpaintCombinedPipeline",
+            "KandinskyV22InpaintPipeline",
+            "KandinskyV22Pipeline",
+            "KandinskyV22PriorEmb2EmbPipeline",
+            "KandinskyV22PriorPipeline",
+            "LatentConsistencyModelImg2ImgPipeline",
+            "LatentConsistencyModelPipeline",
+            "LattePipeline",
+            "LDMTextToImagePipeline",
+            "LEditsPPPipelineStableDiffusion",
+            "LEditsPPPipelineStableDiffusionXL",
+            "LTXConditionPipeline",
+            "LTXImageToVideoPipeline",
+            "LTXLatentUpsamplePipeline",
+            "LTXPipeline",
+            "Lumina2Pipeline",
+            "Lumina2Text2ImgPipeline",
+            "LuminaPipeline",
+            "LuminaText2ImgPipeline",
+            "MarigoldDepthPipeline",
+            "MarigoldIntrinsicsPipeline",
+            "MarigoldNormalsPipeline",
+            "MochiPipeline",
+            "MusicLDMPipeline",
+            "OmniGenPipeline",
+            "PaintByExamplePipeline",
+            "PIAPipeline",
+            "PixArtAlphaPipeline",
+            "PixArtSigmaPAGPipeline",
+            "PixArtSigmaPipeline",
+            "ReduxImageEncoder",
+            "SanaControlNetPipeline",
+            "SanaPAGPipeline",
+            "SanaPipeline",
+            "SanaSprintImg2ImgPipeline",
+            "SanaSprintPipeline",
+            "SemanticStableDiffusionPipeline",
+            "ShapEImg2ImgPipeline",
+            "ShapEPipeline",
+            "StableAudioPipeline",
+            "StableAudioProjectionModel",
+            "StableCascadeCombinedPipeline",
+            "StableCascadeDecoderPipeline",
+            "StableCascadePriorPipeline",
+            "StableDiffusion3ControlNetInpaintingPipeline",
+            "StableDiffusion3ControlNetPipeline",
+            "StableDiffusion3Img2ImgPipeline",
+            "StableDiffusion3InpaintPipeline",
+            "StableDiffusion3PAGImg2ImgPipeline",
+            "StableDiffusion3PAGImg2ImgPipeline",
+            "StableDiffusion3PAGPipeline",
+            "StableDiffusion3Pipeline",
+            "StableDiffusionAdapterPipeline",
+            "StableDiffusionAttendAndExcitePipeline",
+            "StableDiffusionControlNetImg2ImgPipeline",
+            "StableDiffusionControlNetInpaintPipeline",
+            "StableDiffusionControlNetPAGInpaintPipeline",
+            "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionControlNetPipeline",
+            "StableDiffusionControlNetXSPipeline",
+            "StableDiffusionDepth2ImgPipeline",
+            "StableDiffusionDiffEditPipeline",
+            "StableDiffusionGLIGENPipeline",
+            "StableDiffusionGLIGENTextImagePipeline",
+            "StableDiffusionImageVariationPipeline",
+            "StableDiffusionImg2ImgPipeline",
+            "StableDiffusionInpaintPipeline",
             "StableDiffusionInpaintPipelineLegacy",
-            "StableDiffusionPix2PixZeroPipeline",
-            "StableDiffusionParadigmsPipeline",
+            "StableDiffusionInstructPix2PixPipeline",
+            "StableDiffusionLatentUpscalePipeline",
+            "StableDiffusionLDM3DPipeline",
             "StableDiffusionModelEditingPipeline",
+            "StableDiffusionPAGImg2ImgPipeline",
+            "StableDiffusionPAGInpaintPipeline",
+            "StableDiffusionPAGPipeline",
+            "StableDiffusionPanoramaPipeline",
+            "StableDiffusionParadigmsPipeline",
+            "StableDiffusionPipeline",
+            "StableDiffusionPipelineSafe",
+            "StableDiffusionPix2PixZeroPipeline",
+            "StableDiffusionSAGPipeline",
+            "StableDiffusionUpscalePipeline",
+            "StableDiffusionXLAdapterPipeline",
+            "StableDiffusionXLControlNetImg2ImgPipeline",
+            "StableDiffusionXLControlNetInpaintPipeline",
+            "StableDiffusionXLControlNetPAGImg2ImgPipeline",
+            "StableDiffusionXLControlNetPAGPipeline",
+            "StableDiffusionXLControlNetPipeline",
+            "StableDiffusionXLControlNetUnionImg2ImgPipeline",
+            "StableDiffusionXLControlNetUnionInpaintPipeline",
+            "StableDiffusionXLControlNetUnionPipeline",
+            "StableDiffusionXLControlNetXSPipeline",
+            "StableDiffusionXLImg2ImgPipeline",
+            "StableDiffusionXLInpaintPipeline",
+            "StableDiffusionXLInstructPix2PixPipeline",
+            "StableDiffusionXLPAGImg2ImgPipeline",
+            "StableDiffusionXLPAGInpaintPipeline",
+            "StableDiffusionXLPAGPipeline",
+            "StableDiffusionXLPipeline",
+            "StableUnCLIPImg2ImgPipeline",
+            "StableUnCLIPPipeline",
+            "StableVideoDiffusionPipeline",
+            "TextToVideoSDPipeline",
+            "TextToVideoZeroPipeline",
+            "TextToVideoZeroSDXLPipeline",
+            "UnCLIPImageVariationPipeline",
+            "UnCLIPPipeline",
+            "UniDiffuserModel",
+            "UniDiffuserPipeline",
+            "UniDiffuserTextDecoder",
             "VersatileDiffusionDualGuidedPipeline",
             "VersatileDiffusionImageVariationPipeline",
             "VersatileDiffusionPipeline",
             "VersatileDiffusionTextToImagePipeline",
+            "VideoToVideoSDPipeline",
+            "VisualClozeGenerationPipeline",
+            "VisualClozePipeline",
+            "VQDiffusionPipeline",
+            "WanImageToVideoPipeline",
+            "WanPipeline",
+            "WanVideoToVideoPipeline",
+            "WuerstchenCombinedPipeline",
+            "WuerstchenDecoderPipeline",
+            "WuerstchenPriorPipeline",
         ]
     )
-    _import_structure["allegro"] = ["AllegroPipeline"]
-    _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
-    _import_structure["animatediff"] = [
-        "AnimateDiffPipeline",
-        "AnimateDiffControlNetPipeline",
-        "AnimateDiffSDXLPipeline",
-        "AnimateDiffSparseControlNetPipeline",
-        "AnimateDiffVideoToVideoPipeline",
-        "AnimateDiffVideoToVideoControlNetPipeline",
-    ]
-    _import_structure["flux"] = [
-        "FluxControlPipeline",
-        "FluxControlInpaintPipeline",
-        "FluxControlImg2ImgPipeline",
-        "FluxControlNetPipeline",
-        "FluxControlNetImg2ImgPipeline",
-        "FluxControlNetInpaintPipeline",
-        "FluxImg2ImgPipeline",
-        "FluxInpaintPipeline",
-        "FluxPipeline",
-        "FluxFillPipeline",
-        "FluxPriorReduxPipeline",
-        "ReduxImageEncoder",
-    ]
-    _import_structure["audioldm"] = ["AudioLDMPipeline"]
-    _import_structure["audioldm2"] = [
-        "AudioLDM2Pipeline",
-        "AudioLDM2ProjectionModel",
-        "AudioLDM2UNet2DConditionModel",
-    ]
-    _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
-    _import_structure["cogvideo"] = [
-        "CogVideoXPipeline",
-        "CogVideoXImageToVideoPipeline",
-        "CogVideoXVideoToVideoPipeline",
-        "CogVideoXFunControlPipeline",
-    ]
-    _import_structure["cogview3"] = ["CogView3PlusPipeline"]
-    _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
-    _import_structure["consisid"] = ["ConsisIDPipeline"]
-    _import_structure["cosmos"] = ["CosmosTextToWorldPipeline", "CosmosVideoToWorldPipeline"]
-    _import_structure["controlnet"].extend(
-        [
-            "BlipDiffusionControlNetPipeline",
-            "StableDiffusionControlNetImg2ImgPipeline",
-            "StableDiffusionControlNetInpaintPipeline",
-            "StableDiffusionControlNetPipeline",
-            "StableDiffusionXLControlNetImg2ImgPipeline",
-            "StableDiffusionXLControlNetInpaintPipeline",
-            "StableDiffusionXLControlNetPipeline",
-            "StableDiffusionXLControlNetUnionPipeline",
-            "StableDiffusionXLControlNetUnionInpaintPipeline",
-            "StableDiffusionXLControlNetUnionImg2ImgPipeline",
-        ]
-    )
-    _import_structure["pag"].extend(
-        [
-            "StableDiffusionControlNetPAGInpaintPipeline",
-            "AnimateDiffPAGPipeline",
-            "KolorsPAGPipeline",
-            "HunyuanDiTPAGPipeline",
-            "StableDiffusion3PAGPipeline",
-            "StableDiffusion3PAGImg2ImgPipeline",
-            "StableDiffusionPAGPipeline",
-            "StableDiffusionPAGImg2ImgPipeline",
-            "StableDiffusionPAGInpaintPipeline",
-            "StableDiffusionControlNetPAGPipeline",
-            "StableDiffusionXLPAGPipeline",
-            "StableDiffusionXLPAGInpaintPipeline",
-            "StableDiffusionXLControlNetPAGImg2ImgPipeline",
-            "StableDiffusionXLControlNetPAGPipeline",
-            "StableDiffusionXLPAGImg2ImgPipeline",
-            "PixArtSigmaPAGPipeline",
-            "SanaPAGPipeline",
-        ]
-    )
-    _import_structure["controlnet_xs"].extend(
-        [
-            "StableDiffusionControlNetXSPipeline",
-            "StableDiffusionXLControlNetXSPipeline",
-        ]
-    )
-    _import_structure["controlnet_hunyuandit"].extend(
-        [
-            "HunyuanDiTControlNetPipeline",
-        ]
-    )
-    _import_structure["controlnet_sd3"].extend(
-        [
-            "StableDiffusion3ControlNetPipeline",
-            "StableDiffusion3ControlNetInpaintingPipeline",
-        ]
-    )
-    _import_structure["deepfloyd_if"] = [
-        "IFImg2ImgPipeline",
-        "IFImg2ImgSuperResolutionPipeline",
-        "IFInpaintingPipeline",
-        "IFInpaintingSuperResolutionPipeline",
-        "IFPipeline",
-        "IFSuperResolutionPipeline",
-    ]
-    _import_structure["easyanimate"] = [
-        "EasyAnimatePipeline",
-        "EasyAnimateInpaintPipeline",
-        "EasyAnimateControlPipeline",
-    ]
-    _import_structure["hidream_image"] = ["HiDreamImagePipeline"]
-    _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
-    _import_structure["hunyuan_video"] = [
-        "HunyuanVideoPipeline",
-        "HunyuanSkyreelsImageToVideoPipeline",
-        "HunyuanVideoImageToVideoPipeline",
-        "HunyuanVideoFramepackPipeline",
-    ]
-    _import_structure["kandinsky"] = [
-        "KandinskyCombinedPipeline",
-        "KandinskyImg2ImgCombinedPipeline",
-        "KandinskyImg2ImgPipeline",
-        "KandinskyInpaintCombinedPipeline",
-        "KandinskyInpaintPipeline",
-        "KandinskyPipeline",
-        "KandinskyPriorPipeline",
-    ]
-    _import_structure["kandinsky2_2"] = [
-        "KandinskyV22CombinedPipeline",
-        "KandinskyV22ControlnetImg2ImgPipeline",
-        "KandinskyV22ControlnetPipeline",
-        "KandinskyV22Img2ImgCombinedPipeline",
-        "KandinskyV22Img2ImgPipeline",
-        "KandinskyV22InpaintCombinedPipeline",
-        "KandinskyV22InpaintPipeline",
-        "KandinskyV22Pipeline",
-        "KandinskyV22PriorEmb2EmbPipeline",
-        "KandinskyV22PriorPipeline",
-    ]
-    _import_structure["kandinsky3"] = [
-        "Kandinsky3Img2ImgPipeline",
-        "Kandinsky3Pipeline",
-    ]
-    _import_structure["latent_consistency_models"] = [
-        "LatentConsistencyModelImg2ImgPipeline",
-        "LatentConsistencyModelPipeline",
-    ]
-    _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
-    _import_structure["ledits_pp"].extend(
-        [
-            "LEditsPPPipelineStableDiffusion",
-            "LEditsPPPipelineStableDiffusionXL",
-        ]
-    )
-    _import_structure["latte"] = ["LattePipeline"]
-    _import_structure["ltx"] = [
-        "LTXPipeline",
-        "LTXImageToVideoPipeline",
-        "LTXConditionPipeline",
-        "LTXLatentUpsamplePipeline",
-    ]
-    _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
-    _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
-    _import_structure["marigold"].extend(
-        [
-            "MarigoldDepthPipeline",
-            "MarigoldIntrinsicsPipeline",
-            "MarigoldNormalsPipeline",
-        ]
-    )
-    _import_structure["mochi"] = ["MochiPipeline"]
-    _import_structure["musicldm"] = ["MusicLDMPipeline"]
-    _import_structure["omnigen"] = ["OmniGenPipeline"]
-    _import_structure["visualcloze"] = ["VisualClozePipeline", "VisualClozeGenerationPipeline"]
-    _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
-    _import_structure["pia"] = ["PIAPipeline"]
-    _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
-    _import_structure["sana"] = [
-        "SanaPipeline",
-        "SanaSprintPipeline",
-        "SanaControlNetPipeline",
-        "SanaSprintImg2ImgPipeline",
-    ]
-    _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
-    _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
-    _import_structure["stable_audio"] = [
-        "StableAudioProjectionModel",
-        "StableAudioPipeline",
-    ]
-    _import_structure["stable_cascade"] = [
-        "StableCascadeCombinedPipeline",
-        "StableCascadeDecoderPipeline",
-        "StableCascadePriorPipeline",
-    ]
-    _import_structure["stable_diffusion"].extend(
-        [
-            "CLIPImageProjection",
-            "StableDiffusionDepth2ImgPipeline",
-            "StableDiffusionImageVariationPipeline",
-            "StableDiffusionImg2ImgPipeline",
-            "StableDiffusionInpaintPipeline",
-            "StableDiffusionInstructPix2PixPipeline",
-            "StableDiffusionLatentUpscalePipeline",
-            "StableDiffusionPipeline",
-            "StableDiffusionUpscalePipeline",
-            "StableUnCLIPImg2ImgPipeline",
-            "StableUnCLIPPipeline",
-            "StableDiffusionLDM3DPipeline",
-        ]
-    )
-    _import_structure["aura_flow"] = ["AuraFlowPipeline"]
-    _import_structure["stable_diffusion_3"] = [
-        "StableDiffusion3Pipeline",
-        "StableDiffusion3Img2ImgPipeline",
-        "StableDiffusion3InpaintPipeline",
-    ]
-    _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
-    _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
-    _import_structure["stable_diffusion_sag"] = ["StableDiffusionSAGPipeline"]
-    _import_structure["stable_diffusion_gligen"] = [
-        "StableDiffusionGLIGENPipeline",
-        "StableDiffusionGLIGENTextImagePipeline",
-    ]
-    _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline"]
-    _import_structure["stable_diffusion_xl"].extend(
-        [
-            "StableDiffusionXLImg2ImgPipeline",
-            "StableDiffusionXLInpaintPipeline",
-            "StableDiffusionXLInstructPix2PixPipeline",
-            "StableDiffusionXLPipeline",
-        ]
-    )
-    _import_structure["stable_diffusion_diffedit"] = ["StableDiffusionDiffEditPipeline"]
-    _import_structure["stable_diffusion_ldm3d"] = ["StableDiffusionLDM3DPipeline"]
-    _import_structure["stable_diffusion_panorama"] = ["StableDiffusionPanoramaPipeline"]
-    _import_structure["t2i_adapter"] = [
-        "StableDiffusionAdapterPipeline",
-        "StableDiffusionXLAdapterPipeline",
-    ]
-    _import_structure["text_to_video_synthesis"] = [
-        "TextToVideoSDPipeline",
-        "TextToVideoZeroPipeline",
-        "TextToVideoZeroSDXLPipeline",
-        "VideoToVideoSDPipeline",
-    ]
-    _import_structure["i2vgen_xl"] = ["I2VGenXLPipeline"]
-    _import_structure["unclip"] = ["UnCLIPImageVariationPipeline", "UnCLIPPipeline"]
-    _import_structure["unidiffuser"] = [
-        "ImageTextPipelineOutput",
-        "UniDiffuserModel",
-        "UniDiffuserPipeline",
-        "UniDiffuserTextDecoder",
-    ]
-    _import_structure["wuerstchen"] = [
-        "WuerstchenCombinedPipeline",
-        "WuerstchenDecoderPipeline",
-        "WuerstchenPriorPipeline",
-    ]
-    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline"]
+
 try:
-    if not is_onnx_available():
+    if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import dummy_onnx_objects  # noqa F403
+    from .utils import dummy_torch_and_transformers_and_opencv_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_onnx_objects))
+    _import_structure["utils.dummy_torch_and_transformers_and_opencv_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_and_opencv_objects) if not name.startswith("_")
+    ]
+
 else:
-    _import_structure["onnx_utils"] = ["OnnxRuntimeModel"]
+    _import_structure["pipelines"].extend(["ConsisIDPipeline"])
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torch_and_transformers_and_k_diffusion_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_transformers_and_k_diffusion_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_and_k_diffusion_objects) if not name.startswith("_")
+    ]
+
+else:
+    _import_structure["pipelines"].extend(["StableDiffusionKDiffusionPipeline", "StableDiffusionXLKDiffusionPipeline"])
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torch_and_transformers_and_sentencepiece_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_transformers_and_sentencepiece_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_and_sentencepiece_objects) if not name.startswith("_")
+    ]
+
+else:
+    _import_structure["pipelines"].extend(["KolorsImg2ImgPipeline", "KolorsPAGPipeline", "KolorsPipeline"])
+
 try:
     if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
+    from .utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_onnx_objects))
+    _import_structure["utils.dummy_torch_and_transformers_and_onnx_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_and_onnx_objects) if not name.startswith("_")
+    ]
+
 else:
-    _import_structure["stable_diffusion"].extend(
+    _import_structure["pipelines"].extend(
         [
             "OnnxStableDiffusionImg2ImgPipeline",
             "OnnxStableDiffusionInpaintPipeline",
+            "OnnxStableDiffusionInpaintPipelineLegacy",
             "OnnxStableDiffusionPipeline",
             "OnnxStableDiffusionUpscalePipeline",
             "StableDiffusionOnnxPipeline",
@@ -400,194 +598,362 @@ else:
     )
 
 try:
-    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
+    if not (is_torch_available() and is_librosa_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import (
-        dummy_torch_and_transformers_and_k_diffusion_objects,
-    )
+    from .utils import dummy_torch_and_librosa_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
-else:
-    _import_structure["stable_diffusion_k_diffusion"] = [
-        "StableDiffusionKDiffusionPipeline",
-        "StableDiffusionXLKDiffusionPipeline",
+    _import_structure["utils.dummy_torch_and_librosa_objects"] = [
+        name for name in dir(dummy_torch_and_librosa_objects) if not name.startswith("_")
     ]
 
+else:
+    _import_structure["pipelines"].extend(["AudioDiffusionPipeline", "Mel"])
+
 try:
-    if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
+    if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import (
-        dummy_torch_and_transformers_and_sentencepiece_objects,
-    )
+    from .utils import dummy_transformers_and_torch_and_note_seq_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_sentencepiece_objects))
-else:
-    _import_structure["kolors"] = [
-        "KolorsPipeline",
-        "KolorsImg2ImgPipeline",
+    _import_structure["utils.dummy_transformers_and_torch_and_note_seq_objects"] = [
+        name for name in dir(dummy_transformers_and_torch_and_note_seq_objects) if not name.startswith("_")
     ]
 
-try:
-    if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import (
-        dummy_torch_and_transformers_and_opencv_objects,
-    )
 
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_opencv_objects))
 else:
-    _import_structure["consisid"] = ["ConsisIDPipeline"]
+    _import_structure["pipelines"].extend(["SpectrogramDiffusionPipeline"])
 
 try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import dummy_flax_objects  # noqa F403
+    from .utils import dummy_flax_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_flax_objects))
+    _import_structure["utils.dummy_flax_objects"] = [
+        name for name in dir(dummy_flax_objects) if not name.startswith("_")
+    ]
+
+
 else:
-    _import_structure["pipeline_flax_utils"] = ["FlaxDiffusionPipeline"]
+    _import_structure["models.controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
+    _import_structure["models.modeling_flax_utils"] = ["FlaxModelMixin"]
+    _import_structure["models.unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
+    _import_structure["models.vae_flax"] = ["FlaxAutoencoderKL"]
+    _import_structure["pipelines"].extend(["FlaxDiffusionPipeline"])
+    _import_structure["schedulers"].extend(
+        [
+            "FlaxDDIMScheduler",
+            "FlaxDDPMScheduler",
+            "FlaxDPMSolverMultistepScheduler",
+            "FlaxEulerDiscreteScheduler",
+            "FlaxKarrasVeScheduler",
+            "FlaxLMSDiscreteScheduler",
+            "FlaxPNDMScheduler",
+            "FlaxSchedulerMixin",
+            "FlaxScoreSdeVeScheduler",
+        ]
+    )
+
+
 try:
     if not (is_flax_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import dummy_flax_and_transformers_objects  # noqa F403
+    from .utils import dummy_flax_and_transformers_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_flax_and_transformers_objects))
+    _import_structure["utils.dummy_flax_and_transformers_objects"] = [
+        name for name in dir(dummy_flax_and_transformers_objects) if not name.startswith("_")
+    ]
+
+
 else:
-    _import_structure["controlnet"].extend(["FlaxStableDiffusionControlNetPipeline"])
-    _import_structure["stable_diffusion"].extend(
+    _import_structure["pipelines"].extend(
         [
+            "FlaxStableDiffusionControlNetPipeline",
             "FlaxStableDiffusionImg2ImgPipeline",
             "FlaxStableDiffusionInpaintPipeline",
             "FlaxStableDiffusionPipeline",
-        ]
-    )
-    _import_structure["stable_diffusion_xl"].extend(
-        [
             "FlaxStableDiffusionXLPipeline",
         ]
     )
 
+try:
+    if not (is_note_seq_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_note_seq_objects  # noqa F403
+
+    _import_structure["utils.dummy_note_seq_objects"] = [
+        name for name in dir(dummy_note_seq_objects) if not name.startswith("_")
+    ]
+
+
+else:
+    _import_structure["pipelines"].extend(["MidiProcessor"])
+
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
+    from .configuration_utils import ConfigMixin
+
+    try:
+        if not is_bitsandbytes_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_bitsandbytes_objects import *
+    else:
+        from .quantizers.quantization_config import BitsAndBytesConfig
+
+    try:
+        if not is_gguf_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_gguf_objects import *
+    else:
+        from .quantizers.quantization_config import GGUFQuantizationConfig
+
+    try:
+        if not is_torchao_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torchao_objects import *
+    else:
+        from .quantizers.quantization_config import TorchAoConfig
+
+    try:
+        if not is_optimum_quanto_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_optimum_quanto_objects import *
+    else:
+        from .quantizers.quantization_config import QuantoConfig
+
+    try:
+        if not is_onnx_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_onnx_objects import *  # noqa F403
+    else:
+        from .pipelines import OnnxRuntimeModel
+
     try:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from ..utils.dummy_pt_objects import *  # noqa F403
-
+        from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .auto_pipeline import (
+        from .hooks import (
+            FasterCacheConfig,
+            HookRegistry,
+            PyramidAttentionBroadcastConfig,
+            apply_faster_cache,
+            apply_pyramid_attention_broadcast,
+        )
+        from .models import (
+            AllegroTransformer3DModel,
+            AsymmetricAutoencoderKL,
+            AuraFlowTransformer2DModel,
+            AutoencoderDC,
+            AutoencoderKL,
+            AutoencoderKLAllegro,
+            AutoencoderKLCogVideoX,
+            AutoencoderKLCosmos,
+            AutoencoderKLHunyuanVideo,
+            AutoencoderKLLTXVideo,
+            AutoencoderKLMagvit,
+            AutoencoderKLMochi,
+            AutoencoderKLTemporalDecoder,
+            AutoencoderKLWan,
+            AutoencoderOobleck,
+            AutoencoderTiny,
+            AutoModel,
+            CacheMixin,
+            CogVideoXTransformer3DModel,
+            CogView3PlusTransformer2DModel,
+            CogView4Transformer2DModel,
+            ConsisIDTransformer3DModel,
+            ConsistencyDecoderVAE,
+            ControlNetModel,
+            ControlNetUnionModel,
+            ControlNetXSAdapter,
+            CosmosTransformer3DModel,
+            DiTTransformer2DModel,
+            EasyAnimateTransformer3DModel,
+            FluxControlNetModel,
+            FluxMultiControlNetModel,
+            FluxTransformer2DModel,
+            HiDreamImageTransformer2DModel,
+            HunyuanDiT2DControlNetModel,
+            HunyuanDiT2DModel,
+            HunyuanDiT2DMultiControlNetModel,
+            HunyuanVideoFramepackTransformer3DModel,
+            HunyuanVideoTransformer3DModel,
+            I2VGenXLUNet,
+            Kandinsky3UNet,
+            LatteTransformer3DModel,
+            LTXVideoTransformer3DModel,
+            Lumina2Transformer2DModel,
+            LuminaNextDiT2DModel,
+            MochiTransformer3DModel,
+            ModelMixin,
+            MotionAdapter,
+            MultiAdapter,
+            MultiControlNetModel,
+            OmniGenTransformer2DModel,
+            PixArtTransformer2DModel,
+            PriorTransformer,
+            SanaControlNetModel,
+            SanaTransformer2DModel,
+            SD3ControlNetModel,
+            SD3MultiControlNetModel,
+            SD3Transformer2DModel,
+            SparseControlNetModel,
+            StableAudioDiTModel,
+            T2IAdapter,
+            T5FilmDecoder,
+            Transformer2DModel,
+            TransformerTemporalModel,
+            UNet1DModel,
+            UNet2DConditionModel,
+            UNet2DModel,
+            UNet3DConditionModel,
+            UNetControlNetXSModel,
+            UNetMotionModel,
+            UNetSpatioTemporalConditionModel,
+            UVit2DModel,
+            VQModel,
+            WanTransformer3DModel,
+        )
+        from .optimization import (
+            get_constant_schedule,
+            get_constant_schedule_with_warmup,
+            get_cosine_schedule_with_warmup,
+            get_cosine_with_hard_restarts_schedule_with_warmup,
+            get_linear_schedule_with_warmup,
+            get_polynomial_decay_schedule_with_warmup,
+            get_scheduler,
+        )
+        from .pipelines import (
+            AudioPipelineOutput,
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
-        )
-        from .consistency_models import ConsistencyModelPipeline
-        from .dance_diffusion import DanceDiffusionPipeline
-        from .ddim import DDIMPipeline
-        from .ddpm import DDPMPipeline
-        from .deprecated import KarrasVePipeline, LDMPipeline, PNDMPipeline, RePaintPipeline, ScoreSdeVePipeline
-        from .dit import DiTPipeline
-        from .latent_diffusion import LDMSuperResolutionPipeline
-        from .pipeline_utils import (
-            AudioPipelineOutput,
+            BlipDiffusionControlNetPipeline,
+            BlipDiffusionPipeline,
+            CLIPImageProjection,
+            ConsistencyModelPipeline,
+            DanceDiffusionPipeline,
+            DDIMPipeline,
+            DDPMPipeline,
             DiffusionPipeline,
+            DiTPipeline,
             ImagePipelineOutput,
+            KarrasVePipeline,
+            LDMPipeline,
+            LDMSuperResolutionPipeline,
+            PNDMPipeline,
+            RePaintPipeline,
+            ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
+        from .quantizers import DiffusersQuantizer
+        from .schedulers import (
+            AmusedScheduler,
+            CMStochasticIterativeScheduler,
+            CogVideoXDDIMScheduler,
+            CogVideoXDPMScheduler,
+            DDIMInverseScheduler,
+            DDIMParallelScheduler,
+            DDIMScheduler,
+            DDPMParallelScheduler,
+            DDPMScheduler,
+            DDPMWuerstchenScheduler,
+            DEISMultistepScheduler,
+            DPMSolverMultistepInverseScheduler,
+            DPMSolverMultistepScheduler,
+            DPMSolverSinglestepScheduler,
+            EDMDPMSolverMultistepScheduler,
+            EDMEulerScheduler,
+            EulerAncestralDiscreteScheduler,
+            EulerDiscreteScheduler,
+            FlowMatchEulerDiscreteScheduler,
+            FlowMatchHeunDiscreteScheduler,
+            FlowMatchLCMScheduler,
+            HeunDiscreteScheduler,
+            IPNDMScheduler,
+            KarrasVeScheduler,
+            KDPM2AncestralDiscreteScheduler,
+            KDPM2DiscreteScheduler,
+            LCMScheduler,
+            PNDMScheduler,
+            RePaintScheduler,
+            SASolverScheduler,
+            SchedulerMixin,
+            SCMScheduler,
+            ScoreSdeVeScheduler,
+            TCDScheduler,
+            UnCLIPScheduler,
+            UniPCMultistepScheduler,
+            VQDiffusionScheduler,
+        )
+        from .training_utils import EMAModel
 
     try:
-        if not (is_torch_available() and is_librosa_available()):
+        if not (is_torch_available() and is_scipy_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from ..utils.dummy_torch_and_librosa_objects import *
+        from .utils.dummy_torch_and_scipy_objects import *  # noqa F403
     else:
-        from .deprecated import AudioDiffusionPipeline, Mel
+        from .schedulers import LMSDiscreteScheduler
+
+    try:
+        if not (is_torch_available() and is_torchsde_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_torchsde_objects import *  # noqa F403
+    else:
+        from .schedulers import CosineDPMSolverMultistepScheduler, DPMSolverSDEScheduler
 
     try:
         if not (is_torch_available() and is_transformers_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from ..utils.dummy_torch_and_transformers_objects import *
+        from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .allegro import AllegroPipeline
-        from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
-        from .animatediff import (
+        from .pipelines import (
+            AllegroPipeline,
+            AltDiffusionImg2ImgPipeline,
+            AltDiffusionPipeline,
+            AmusedImg2ImgPipeline,
+            AmusedInpaintPipeline,
+            AmusedPipeline,
             AnimateDiffControlNetPipeline,
+            AnimateDiffPAGPipeline,
             AnimateDiffPipeline,
+            PhotoDoodlePipeline,
             AnimateDiffSDXLPipeline,
             AnimateDiffSparseControlNetPipeline,
             AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
-        )
-        from .audioldm import AudioLDMPipeline
-        from .audioldm2 import (
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
-        )
-        from .aura_flow import AuraFlowPipeline
-        from .blip_diffusion import BlipDiffusionPipeline
-        from .cogvideo import (
+            AudioLDMPipeline,
+            AuraFlowPipeline,
+            CLIPImageProjection,
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
             CogVideoXPipeline,
             CogVideoXVideoToVideoPipeline,
-        )
-        from .cogview3 import CogView3PlusPipeline
-        from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
-        from .controlnet import (
-            BlipDiffusionControlNetPipeline,
-            StableDiffusionControlNetImg2ImgPipeline,
-            StableDiffusionControlNetInpaintPipeline,
-            StableDiffusionControlNetPipeline,
-            StableDiffusionXLControlNetImg2ImgPipeline,
-            StableDiffusionXLControlNetInpaintPipeline,
-            StableDiffusionXLControlNetPipeline,
-            StableDiffusionXLControlNetUnionImg2ImgPipeline,
-            StableDiffusionXLControlNetUnionInpaintPipeline,
-            StableDiffusionXLControlNetUnionPipeline,
-        )
-        from .controlnet_hunyuandit import (
-            HunyuanDiTControlNetPipeline,
-        )
-        from .controlnet_sd3 import StableDiffusion3ControlNetInpaintingPipeline, StableDiffusion3ControlNetPipeline
-        from .controlnet_xs import (
-            StableDiffusionControlNetXSPipeline,
-            StableDiffusionXLControlNetXSPipeline,
-        )
-        from .cosmos import CosmosTextToWorldPipeline, CosmosVideoToWorldPipeline
-        from .deepfloyd_if import (
-            IFImg2ImgPipeline,
-            IFImg2ImgSuperResolutionPipeline,
-            IFInpaintingPipeline,
-            IFInpaintingSuperResolutionPipeline,
-            IFPipeline,
-            IFSuperResolutionPipeline,
-        )
-        from .deprecated import (
-            AltDiffusionImg2ImgPipeline,
-            AltDiffusionPipeline,
+            CogView3PlusPipeline,
+            CogView4ControlPipeline,
+            CogView4Pipeline,
+            ConsisIDPipeline,
+            CosmosTextToWorldPipeline,
+            CosmosVideoToWorldPipeline,
             CycleDiffusionPipeline,
-            StableDiffusionInpaintPipelineLegacy,
-            StableDiffusionModelEditingPipeline,
-            StableDiffusionParadigmsPipeline,
-            StableDiffusionPix2PixZeroPipeline,
-            VersatileDiffusionDualGuidedPipeline,
-            VersatileDiffusionImageVariationPipeline,
-            VersatileDiffusionPipeline,
-            VersatileDiffusionTextToImagePipeline,
-            VQDiffusionPipeline,
-        )
-        from .easyanimate import (
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
-        )
-        from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
             FluxControlNetImg2ImgPipeline,
@@ -599,18 +965,24 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxInpaintPipeline,
             FluxPipeline,
             FluxPriorReduxPipeline,
-            ReduxImageEncoder,
-        )
-        from .hidream_image import HiDreamImagePipeline
-        from .hunyuan_video import (
+            HiDreamImagePipeline,
+            HunyuanDiTControlNetPipeline,
+            HunyuanDiTPAGPipeline,
+            HunyuanDiTPipeline,
             HunyuanSkyreelsImageToVideoPipeline,
             HunyuanVideoFramepackPipeline,
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
-        )
-        from .hunyuandit import HunyuanDiTPipeline
-        from .i2vgen_xl import I2VGenXLPipeline
-        from .kandinsky import (
+            I2VGenXLPipeline,
+            IFImg2ImgPipeline,
+            IFImg2ImgSuperResolutionPipeline,
+            IFInpaintingPipeline,
+            IFInpaintingSuperResolutionPipeline,
+            IFPipeline,
+            IFSuperResolutionPipeline,
+            ImageTextPipelineOutput,
+            Kandinsky3Img2ImgPipeline,
+            Kandinsky3Pipeline,
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
             KandinskyImg2ImgPipeline,
@@ -618,8 +990,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyInpaintPipeline,
             KandinskyPipeline,
             KandinskyPriorPipeline,
-        )
-        from .kandinsky2_2 import (
             KandinskyV22CombinedPipeline,
             KandinskyV22ControlnetImg2ImgPipeline,
             KandinskyV22ControlnetPipeline,
@@ -630,210 +1000,225 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
-        )
-        from .kandinsky3 import (
-            Kandinsky3Img2ImgPipeline,
-            Kandinsky3Pipeline,
-        )
-        from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
-        )
-        from .latent_diffusion import LDMTextToImagePipeline
-        from .latte import LattePipeline
-        from .ledits_pp import (
-            LEditsPPDiffusionPipelineOutput,
-            LEditsPPInversionPipelineOutput,
+            LattePipeline,
+            LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
-        )
-        from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline
-        from .lumina import LuminaPipeline, LuminaText2ImgPipeline
-        from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
-        from .marigold import (
+            LTXConditionPipeline,
+            LTXImageToVideoPipeline,
+            LTXLatentUpsamplePipeline,
+            LTXPipeline,
+            Lumina2Pipeline,
+            Lumina2Text2ImgPipeline,
+            LuminaPipeline,
+            LuminaText2ImgPipeline,
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
-        )
-        from .mochi import MochiPipeline
-        from .musicldm import MusicLDMPipeline
-        from .omnigen import OmniGenPipeline
-        from .pag import (
-            AnimateDiffPAGPipeline,
-            HunyuanDiTPAGPipeline,
-            KolorsPAGPipeline,
+            MochiPipeline,
+            MusicLDMPipeline,
+            OmniGenPipeline,
+            PaintByExamplePipeline,
+            PIAPipeline,
+            PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
+            PixArtSigmaPipeline,
+            ReduxImageEncoder,
+            SanaControlNetPipeline,
             SanaPAGPipeline,
-            StableDiffusion3PAGImg2ImgPipeline,
-            StableDiffusion3PAGPipeline,
-            StableDiffusionControlNetPAGInpaintPipeline,
-            StableDiffusionControlNetPAGPipeline,
-            StableDiffusionPAGImg2ImgPipeline,
-            StableDiffusionPAGInpaintPipeline,
-            StableDiffusionPAGPipeline,
-            StableDiffusionXLControlNetPAGImg2ImgPipeline,
-            StableDiffusionXLControlNetPAGPipeline,
-            StableDiffusionXLPAGImg2ImgPipeline,
-            StableDiffusionXLPAGInpaintPipeline,
-            StableDiffusionXLPAGPipeline,
-        )
-        from .paint_by_example import PaintByExamplePipeline
-        from .pia import PIAPipeline
-        from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
-        from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintImg2ImgPipeline, SanaSprintPipeline
-        from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
-        from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
-        from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
-        from .stable_cascade import (
+            SanaPipeline,
+            SanaSprintImg2ImgPipeline,
+            SanaSprintPipeline,
+            SemanticStableDiffusionPipeline,
+            ShapEImg2ImgPipeline,
+            ShapEPipeline,
+            StableAudioPipeline,
+            StableAudioProjectionModel,
             StableCascadeCombinedPipeline,
             StableCascadeDecoderPipeline,
             StableCascadePriorPipeline,
-        )
-        from .stable_diffusion import (
-            CLIPImageProjection,
+            StableDiffusion3ControlNetInpaintingPipeline,
+            StableDiffusion3ControlNetPipeline,
+            StableDiffusion3Img2ImgPipeline,
+            StableDiffusion3InpaintPipeline,
+            StableDiffusion3PAGImg2ImgPipeline,
+            StableDiffusion3PAGPipeline,
+            StableDiffusion3Pipeline,
+            StableDiffusionAdapterPipeline,
+            StableDiffusionAttendAndExcitePipeline,
+            StableDiffusionControlNetImg2ImgPipeline,
+            StableDiffusionControlNetInpaintPipeline,
+            StableDiffusionControlNetPAGInpaintPipeline,
+            StableDiffusionControlNetPAGPipeline,
+            StableDiffusionControlNetPipeline,
+            StableDiffusionControlNetXSPipeline,
             StableDiffusionDepth2ImgPipeline,
+            StableDiffusionDiffEditPipeline,
+            StableDiffusionGLIGENPipeline,
+            StableDiffusionGLIGENTextImagePipeline,
             StableDiffusionImageVariationPipeline,
             StableDiffusionImg2ImgPipeline,
             StableDiffusionInpaintPipeline,
+            StableDiffusionInpaintPipelineLegacy,
             StableDiffusionInstructPix2PixPipeline,
             StableDiffusionLatentUpscalePipeline,
+            StableDiffusionLDM3DPipeline,
+            StableDiffusionModelEditingPipeline,
+            StableDiffusionPAGImg2ImgPipeline,
+            StableDiffusionPAGInpaintPipeline,
+            StableDiffusionPAGPipeline,
+            StableDiffusionPanoramaPipeline,
+            StableDiffusionParadigmsPipeline,
             StableDiffusionPipeline,
+            StableDiffusionPipelineSafe,
+            StableDiffusionPix2PixZeroPipeline,
+            StableDiffusionSAGPipeline,
             StableDiffusionUpscalePipeline,
-            StableUnCLIPImg2ImgPipeline,
-            StableUnCLIPPipeline,
-        )
-        from .stable_diffusion_3 import (
-            StableDiffusion3Img2ImgPipeline,
-            StableDiffusion3InpaintPipeline,
-            StableDiffusion3Pipeline,
-        )
-        from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
-        from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
-        from .stable_diffusion_gligen import StableDiffusionGLIGENPipeline, StableDiffusionGLIGENTextImagePipeline
-        from .stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
-        from .stable_diffusion_panorama import StableDiffusionPanoramaPipeline
-        from .stable_diffusion_safe import StableDiffusionPipelineSafe
-        from .stable_diffusion_sag import StableDiffusionSAGPipeline
-        from .stable_diffusion_xl import (
+            StableDiffusionXLAdapterPipeline,
+            StableDiffusionXLControlNetImg2ImgPipeline,
+            StableDiffusionXLControlNetInpaintPipeline,
+            StableDiffusionXLControlNetPAGImg2ImgPipeline,
+            StableDiffusionXLControlNetPAGPipeline,
+            StableDiffusionXLControlNetPipeline,
+            StableDiffusionXLControlNetUnionImg2ImgPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
+            StableDiffusionXLControlNetUnionPipeline,
+            StableDiffusionXLControlNetXSPipeline,
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,
             StableDiffusionXLInstructPix2PixPipeline,
+            StableDiffusionXLPAGImg2ImgPipeline,
+            StableDiffusionXLPAGInpaintPipeline,
+            StableDiffusionXLPAGPipeline,
             StableDiffusionXLPipeline,
-        )
-        from .stable_video_diffusion import StableVideoDiffusionPipeline
-        from .t2i_adapter import (
-            StableDiffusionAdapterPipeline,
-            StableDiffusionXLAdapterPipeline,
-        )
-        from .text_to_video_synthesis import (
+            StableUnCLIPImg2ImgPipeline,
+            StableUnCLIPPipeline,
+            StableVideoDiffusionPipeline,
             TextToVideoSDPipeline,
             TextToVideoZeroPipeline,
             TextToVideoZeroSDXLPipeline,
-            VideoToVideoSDPipeline,
-        )
-        from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
-        from .unidiffuser import (
-            ImageTextPipelineOutput,
+            UnCLIPImageVariationPipeline,
+            UnCLIPPipeline,
             UniDiffuserModel,
             UniDiffuserPipeline,
             UniDiffuserTextDecoder,
-        )
-        from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
-        from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
-        from .wuerstchen import (
+            VersatileDiffusionDualGuidedPipeline,
+            VersatileDiffusionImageVariationPipeline,
+            VersatileDiffusionPipeline,
+            VersatileDiffusionTextToImagePipeline,
+            VideoToVideoSDPipeline,
+            VisualClozeGenerationPipeline,
+            VisualClozePipeline,
+            VQDiffusionPipeline,
+            WanImageToVideoPipeline,
+            WanPipeline,
+            WanVideoToVideoPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
 
-        try:
-            if not is_onnx_available():
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_onnx_objects import *  # noqa F403
+    try:
+        if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
+    else:
+        from .pipelines import StableDiffusionKDiffusionPipeline, StableDiffusionXLKDiffusionPipeline
 
-        else:
-            from .onnx_utils import OnnxRuntimeModel
+    try:
+        if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_transformers_and_sentencepiece_objects import *  # noqa F403
+    else:
+        from .pipelines import KolorsImg2ImgPipeline, KolorsPAGPipeline, KolorsPipeline
 
-        try:
-            if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_torch_and_transformers_and_onnx_objects import *
-        else:
-            from .stable_diffusion import (
-                OnnxStableDiffusionImg2ImgPipeline,
-                OnnxStableDiffusionInpaintPipeline,
-                OnnxStableDiffusionPipeline,
-                OnnxStableDiffusionUpscalePipeline,
-                StableDiffusionOnnxPipeline,
-            )
+    try:
+        if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_transformers_and_opencv_objects import *  # noqa F403
+    else:
+        from .pipelines import ConsisIDPipeline
 
-        try:
-            if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
-        else:
-            from .stable_diffusion_k_diffusion import (
-                StableDiffusionKDiffusionPipeline,
-                StableDiffusionXLKDiffusionPipeline,
-            )
+    try:
+        if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
+    else:
+        from .pipelines import (
+            OnnxStableDiffusionImg2ImgPipeline,
+            OnnxStableDiffusionInpaintPipeline,
+            OnnxStableDiffusionInpaintPipelineLegacy,
+            OnnxStableDiffusionPipeline,
+            OnnxStableDiffusionUpscalePipeline,
+            StableDiffusionOnnxPipeline,
+        )
 
-        try:
-            if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_torch_and_transformers_and_sentencepiece_objects import *
-        else:
-            from .kolors import (
-                KolorsImg2ImgPipeline,
-                KolorsPipeline,
-            )
+    try:
+        if not (is_torch_available() and is_librosa_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_librosa_objects import *  # noqa F403
+    else:
+        from .pipelines import AudioDiffusionPipeline, Mel
 
-        try:
-            if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_torch_and_transformers_and_opencv_objects import *
-        else:
-            from .consisid import ConsisIDPipeline
+    try:
+        if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
+    else:
+        from .pipelines import SpectrogramDiffusionPipeline
 
-        try:
-            if not is_flax_available():
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_flax_objects import *  # noqa F403
-        else:
-            from .pipeline_flax_utils import FlaxDiffusionPipeline
+    try:
+        if not is_flax_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_flax_objects import *  # noqa F403
+    else:
+        from .models.controlnets.controlnet_flax import FlaxControlNetModel
+        from .models.modeling_flax_utils import FlaxModelMixin
+        from .models.unets.unet_2d_condition_flax import FlaxUNet2DConditionModel
+        from .models.vae_flax import FlaxAutoencoderKL
+        from .pipelines import FlaxDiffusionPipeline
+        from .schedulers import (
+            FlaxDDIMScheduler,
+            FlaxDDPMScheduler,
+            FlaxDPMSolverMultistepScheduler,
+            FlaxEulerDiscreteScheduler,
+            FlaxKarrasVeScheduler,
+            FlaxLMSDiscreteScheduler,
+            FlaxPNDMScheduler,
+            FlaxSchedulerMixin,
+            FlaxScoreSdeVeScheduler,
+        )
 
-        try:
-            if not (is_flax_available() and is_transformers_available()):
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_flax_and_transformers_objects import *
-        else:
-            from .controlnet import FlaxStableDiffusionControlNetPipeline
-            from .stable_diffusion import (
-                FlaxStableDiffusionImg2ImgPipeline,
-                FlaxStableDiffusionInpaintPipeline,
-                FlaxStableDiffusionPipeline,
-            )
-            from .stable_diffusion_xl import (
-                FlaxStableDiffusionXLPipeline,
-            )
+    try:
+        if not (is_flax_available() and is_transformers_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
+    else:
+        from .pipelines import (
+            FlaxStableDiffusionControlNetPipeline,
+            FlaxStableDiffusionImg2ImgPipeline,
+            FlaxStableDiffusionInpaintPipeline,
+            FlaxStableDiffusionPipeline,
+            FlaxStableDiffusionXLPipeline,
+        )
 
-        try:
-            if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
-
-        else:
-            from .deprecated import (
-                MidiProcessor,
-                SpectrogramDiffusionPipeline,
-            )
+    try:
+        if not (is_note_seq_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_note_seq_objects import *  # noqa F403
+    else:
+        from .pipelines import MidiProcessor
 
 else:
     import sys
@@ -843,6 +1228,5 @@ else:
         globals()["__file__"],
         _import_structure,
         module_spec=__spec__,
+        extra_objects={"__version__": __version__},
     )
-    for name, value in _dummy_objects.items():
-        setattr(sys.modules[__name__], name, value)
