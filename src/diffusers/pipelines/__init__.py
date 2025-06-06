@@ -184,6 +184,7 @@ else:
             "StableDiffusionPAGImg2ImgPipeline",
             "StableDiffusionPAGInpaintPipeline",
             "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionControlNetPAGImg2ImgPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGImg2ImgPipeline",
@@ -659,6 +660,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .musicldm import MusicLDMPipeline
         from .omnigen import OmniGenPipeline
         from .pag import (
+            StableDiffusionControlNetPAGImg2ImgPipeline,
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
             KolorsPAGPipeline,
