@@ -219,7 +219,8 @@ class FluxFillPipeline(
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
             transformer=transformer,
-            scheduler=scheduler,
+            scheduler=scheduler
+            ip_adapter=ip_adapter,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
@@ -239,6 +240,14 @@ class FluxFillPipeline(
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
         self.default_sample_size = 128
+
+    def load_ip_adapter(self, ip_adapter_path):
+        try:
+            self.ip_adapter = torch.load(ip_adapter_path)
+            print(f"[FluxFillPipeline] IP Adapter loaded from: {ip_adapter_path}")
+        except Exception as e:
+            print(f"[FluxFillPipeline] Failed to load IP Adapter: {str(e}")
+            raise
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
