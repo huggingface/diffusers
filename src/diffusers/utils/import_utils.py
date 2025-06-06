@@ -99,6 +99,7 @@ if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VA
 else:
     logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
+    _torch_version = "N/A"
 
 _jax_version = "N/A"
 _flax_version = "N/A"
