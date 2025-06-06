@@ -28,6 +28,7 @@ from diffusers import (
     DiffusionPipeline,
     FluxControlPipeline,
     FluxTransformer2DModel,
+    PipelineQuantizationConfig,
     SD3Transformer2DModel,
 )
 from diffusers.utils import is_accelerate_version, logging
@@ -44,6 +45,8 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch,
     require_torch_accelerator,
+    require_torch_gpu,
+    require_torch_version_greater_equal,
     require_transformers_version_greater,
     slow,
     torch_device,
@@ -855,3 +858,34 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
 
     def test_fp4_double_safe(self):
         self.test_serialization(quant_type="fp4", double_quant=True, safe_serialization=True)
+
+
+@require_torch_gpu
+@slow
+class Bnb4BitCompileTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        backend_empty_cache(torch_device)
+        torch.compiler.reset()
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        backend_empty_cache(torch_device)
+        torch.compiler.reset()
+
+    @require_torch_version_greater_equal("2.8")
+    def test_torch_compile_4bit(self):
+        quantization_config = PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={"load_in_4bit": True},
+            components_to_quantize=["transformer"],
+        )
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-flux-pipe", quantization_config=quantization_config, torch_dtype=torch.bfloat16
+        ).to("cuda")
+        pipe.transformer.compile(fullgraph=True)
+
+        for _ in range(2):
+            pipe("a dog", num_inference_steps=4, max_sequence_length=16)
