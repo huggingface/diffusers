@@ -46,10 +46,17 @@ jobs:
           python utils/print_env.py
       - name: Diffusers Benchmarking
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         run: |
-          cd benchmarks && python run_all.py && python push_results.py
+          cd benchmarks && python run_all.py
           mkdir $BASE_PATH && mv *.csv $BASE_PATH
+
+      - name: Push results to the Hub
+        env: 
+          HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
+        run: 
+          cd benchmarks && cp $BASE_PATH/collated_results.csv .
+          python push_results.py
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
