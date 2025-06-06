@@ -192,7 +192,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
     def scale_noise(
         self,
         sample: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
+        timestep: torch.FloatTensor,
         noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         """
@@ -201,8 +201,10 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`):
                 The input sample.
-            timestep (`int`, *optional*):
+            timestep (`torch.FloatTensor`):
                 The current timestep in the diffusion chain.
+            noise (`torch.FloatTensor`, *optional*):
+                The noise tensor.
 
         Returns:
             `torch.FloatTensor`:
@@ -232,6 +234,9 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(sample.shape):
             sigma = sigma.unsqueeze(-1)
+
+        if noise is None:
+            noise = torch.randn_like(sample)
 
         sample = sigma * noise + (1.0 - sigma) * sample
 
