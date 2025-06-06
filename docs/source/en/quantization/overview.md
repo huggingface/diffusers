@@ -43,7 +43,6 @@ pipeline_quant_config = PipelineQuantizationConfig(
     components_to_quantize=["transformer", "text_encoder_2"],
 )
 ```
-
 Pass the `pipeline_quant_config` to [`~DiffusionPipeline.from_pretrained`] to quantize the pipeline.
 
 ```py
