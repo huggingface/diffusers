@@ -28,9 +28,9 @@ from diffusers import (
     DiffusionPipeline,
     FluxControlPipeline,
     FluxTransformer2DModel,
-    PipelineQuantizationConfig,
     SD3Transformer2DModel,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_accelerate_version, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -46,7 +46,7 @@ from diffusers.utils.testing_utils import (
     require_torch,
     require_torch_accelerator,
     require_torch_gpu,
-    require_torch_version_greater_equal,
+    require_torch_version_greater,
     require_transformers_version_greater,
     slow,
     torch_device,
@@ -875,17 +875,26 @@ class Bnb4BitCompileTests(unittest.TestCase):
         backend_empty_cache(torch_device)
         torch.compiler.reset()
 
-    @require_torch_version_greater_equal("2.8")
+    @require_torch_version_greater("2.7.1")
     def test_torch_compile_4bit(self):
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
         quantization_config = PipelineQuantizationConfig(
             quant_backend="bitsandbytes_4bit",
-            quant_kwargs={"load_in_4bit": True},
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
             components_to_quantize=["transformer"],
         )
         pipe = DiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-flux-pipe", quantization_config=quantization_config, torch_dtype=torch.bfloat16
+            "stabilityai/stable-diffusion-3-medium-diffusers",
+            quantization_config=quantization_config,
+            torch_dtype=torch.bfloat16,
         ).to("cuda")
         pipe.transformer.compile(fullgraph=True)
 
         for _ in range(2):
-            pipe("a dog", num_inference_steps=4, max_sequence_length=16)
+            # with torch._dynamo.config.patch(error_on_recompile=True):
+            pipe("a dog", num_inference_steps=4, max_sequence_length=16, height=256, width=256)
