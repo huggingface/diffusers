@@ -478,6 +478,7 @@ class SlowBnb8bitTests(Base8bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
+        torch.use_deterministic_algorithms(True)
         self.pipeline_8bit.transformer.dequantize()
         output = self.pipeline_8bit(
             prompt=self.prompt,
