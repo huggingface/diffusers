@@ -476,6 +476,7 @@ class SlowBnb4BitTests(Base4bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
+        torch.use_deterministic_algorithms(True)
         self.pipeline_4bit.transformer.dequantize()
         output = self.pipeline_4bit(
             prompt=self.prompt,
