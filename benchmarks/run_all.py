@@ -1,7 +1,9 @@
 import glob
 import os
 import subprocess
+
 import pandas as pd
+
 
 PATTERN = "benchmarking_*.py"
 FINAL_CSV_FILENAME = "collated_results.py"
@@ -18,9 +20,7 @@ def run_command(command: list[str], return_stdout=False):
         if return_stdout and hasattr(output, "decode"):
             return output.decode("utf-8")
     except subprocess.CalledProcessError as e:
-        raise SubprocessCallException(
-            f"Command `{' '.join(command)}` failed with:\n{e.output.decode()}"
-        ) from e
+        raise SubprocessCallException(f"Command `{' '.join(command)}` failed with:\n{e.output.decode()}") from e
 
 
 def merge_csvs(final_csv: str = "collated_results.csv"):
@@ -54,7 +54,7 @@ def run_scripts():
     python_files = [f for f in python_files if f != "benchmarking_utils.py"]
 
     for file in python_files:
-        script_name = file.split(".py")[0].split("_")[-1] # example: benchmarking_foo.py -> foo
+        script_name = file.split(".py")[0].split("_")[-1]  # example: benchmarking_foo.py -> foo
         print(f"\n****** Running file: {file} ******")
 
         partial_csv = f"{script_name}.csv"
@@ -73,3 +73,7 @@ def run_scripts():
             merge_csvs(final_csv=FINAL_CSV_FILENAME)
 
     print(f"\nAll scripts attempted. Final collated CSV: {FINAL_CSV_FILENAME}")
+
+
+if __name__ == "__main__":
+    run_scripts()
