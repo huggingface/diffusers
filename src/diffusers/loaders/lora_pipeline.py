@@ -37,6 +37,7 @@ from .lora_base import (  # noqa
     LoraBaseMixin,
     _fetch_state_dict,
     _load_lora_into_text_encoder,
+    _pack_dict_with_prefix,
 )
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
@@ -197,7 +198,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, network_alphas, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -208,6 +210,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             network_alphas=network_alphas,
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -221,6 +224,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            metadata=metadata,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -277,6 +281,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -290,18 +296,16 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         weight_name = kwargs.pop("weight_name", None)
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -338,7 +342,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
             state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
 
-        return state_dict, network_alphas
+        out = (state_dict, network_alphas, metadata) if return_lora_metadata else (state_dict, network_alphas)
+        return out
 
     @classmethod
     def load_lora_into_unet(
@@ -347,6 +352,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         network_alphas,
         unet,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -368,6 +374,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -391,6 +400,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             prefix=cls.unet_name,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -405,6 +415,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -430,6 +441,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -444,6 +458,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             prefix=prefix,
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -459,6 +474,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        unet_lora_adapter_metadata=None,
+        text_encoder_lora_adapter_metadata=None,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -481,8 +498,13 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            unet_lora_adapter_metadata:
+                LoRA adapter metadata associated with the unet to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not (unet_lora_layers or text_encoder_lora_layers):
             raise ValueError("You must pass at least one of `unet_lora_layers` and `text_encoder_lora_layers`.")
@@ -493,6 +515,14 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
 
+        if unet_lora_adapter_metadata:
+            lora_adapter_metadata.update(_pack_dict_with_prefix(unet_lora_adapter_metadata, cls.unet_name))
+
+        if text_encoder_lora_adapter_metadata:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+            )
+
         # Save the model
         cls.write_lora_layers(
             state_dict=state_dict,
@@ -501,6 +531,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
@@ -636,7 +667,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(
+        kwargs["return_lora_metadata"] = True
+        state_dict, network_alphas, metadata = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
             unet_config=self.unet.config,
             **kwargs,
@@ -651,6 +683,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             network_alphas=network_alphas,
             unet=self.unet,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -662,6 +695,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             prefix=self.text_encoder_name,
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -673,6 +707,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             prefix=f"{self.text_encoder_name}_2",
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -731,6 +766,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -744,18 +781,16 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         weight_name = kwargs.pop("weight_name", None)
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -792,7 +827,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
             state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
 
-        return state_dict, network_alphas
+        out = (state_dict, network_alphas, metadata) if return_lora_metadata else (state_dict, network_alphas)
+        return out
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_unet
@@ -802,6 +838,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         network_alphas,
         unet,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -823,6 +860,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -846,6 +886,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             prefix=cls.unet_name,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -861,6 +902,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -886,6 +928,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -900,6 +945,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             prefix=prefix,
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -916,6 +962,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        unet_lora_adapter_metadata=None,
+        text_encoder_lora_adapter_metadata=None,
+        text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -941,8 +990,15 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            unet_lora_adapter_metadata:
+                LoRA adapter metadata associated with the unet to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
+            text_encoder_2_lora_adapter_metadata:
+                LoRA adapter metadata associated with the second text encoder to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
@@ -958,6 +1014,19 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         if text_encoder_2_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
+        if unet_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(_pack_dict_with_prefix(unet_lora_adapter_metadata, cls.unet_name))
+
+        if text_encoder_lora_adapter_metadata:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+            )
+
+        if text_encoder_2_lora_adapter_metadata:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_2_lora_adapter_metadata, "text_encoder_2")
+            )
+
         cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
@@ -965,6 +1034,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
@@ -1098,6 +1168,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1111,18 +1183,16 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1143,7 +1213,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     def load_lora_weights(
         self,
@@ -1192,7 +1263,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -1202,6 +1274,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -1213,6 +1286,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             prefix=self.text_encoder_name,
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -1224,6 +1298,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             prefix=f"{self.text_encoder_name}_2",
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -1231,7 +1306,14 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1246,6 +1328,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -1263,6 +1348,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -1278,6 +1364,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -1303,6 +1390,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -1317,6 +1407,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             prefix=prefix,
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -1334,6 +1425,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata=None,
+        text_encoder_lora_adapter_metadata=None,
+        text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -1359,8 +1453,15 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
+            text_encoder_2_lora_adapter_metadata:
+                LoRA adapter metadata associated with the second text encoder to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not (transformer_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
@@ -1376,6 +1477,21 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         if text_encoder_2_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
+
+        if text_encoder_lora_adapter_metadata:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+            )
+
+        if text_encoder_2_lora_adapter_metadata:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_2_lora_adapter_metadata, "text_encoder_2")
+            )
+
         cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
@@ -1383,6 +1499,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.fuse_lora with unet->transformer
@@ -1514,6 +1631,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1527,18 +1646,16 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1559,7 +1676,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -1604,7 +1722,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -1614,6 +1733,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -1622,7 +1742,14 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->AuraFlowTransformer2DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1637,6 +1764,9 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -1654,6 +1784,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -1669,9 +1800,10 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -1688,14 +1820,21 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -1705,6 +1844,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
@@ -1838,7 +1978,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -1851,18 +1992,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1916,8 +2055,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                         f"The alpha key ({k}) seems to be incorrect. If you think this error is unexpected, please open as issue."
                     )
 
-        if return_alphas:
-            return state_dict, network_alphas
+        if return_alphas or return_lora_metadata:
+            outputs = [state_dict]
+            if return_alphas:
+                outputs.append(network_alphas)
+            if return_lora_metadata:
+                outputs.append(metadata)
+            return tuple(outputs)
         else:
             return state_dict
 
@@ -1968,7 +2112,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(
+        kwargs["return_lora_metadata"] = True
+        state_dict, network_alphas, metadata = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
         )
 
@@ -2019,6 +2164,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             network_alphas=network_alphas,
             transformer=transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -2038,6 +2184,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             prefix=self.text_encoder_name,
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -2050,6 +2197,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         network_alphas,
         transformer,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -2071,6 +2219,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -2088,6 +2239,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -2157,6 +2309,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -2182,6 +2335,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -2196,6 +2352,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             prefix=prefix,
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -2212,6 +2369,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata=None,
+        text_encoder_lora_adapter_metadata=None,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -2234,8 +2393,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not (transformer_lora_layers or text_encoder_lora_layers):
             raise ValueError("You must pass at least one of `transformer_lora_layers` and `text_encoder_lora_layers`.")
@@ -2246,6 +2410,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
 
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
+
+        if text_encoder_lora_adapter_metadata:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+            )
+
         # Save the model
         cls.write_lora_layers(
             state_dict=state_dict,
@@ -2254,6 +2428,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
@@ -2621,6 +2796,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         network_alphas,
         transformer,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -2642,6 +2818,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -2659,6 +2838,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             state_dict,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -2674,6 +2854,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
@@ -2699,6 +2880,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -2713,6 +2897,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             prefix=prefix,
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -2832,6 +3017,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -2845,18 +3032,16 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2877,7 +3062,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     def load_lora_weights(
         self,
@@ -2921,7 +3107,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -2931,6 +3118,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -2939,7 +3127,14 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->CogVideoXTransformer3DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -2954,6 +3149,9 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -2971,6 +3169,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -2986,9 +3185,10 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -3005,14 +3205,21 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -3022,6 +3229,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
@@ -3148,6 +3356,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -3161,18 +3371,16 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3193,7 +3401,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -3238,7 +3447,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -3248,6 +3458,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3256,7 +3467,14 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->MochiTransformer3DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -3271,6 +3489,9 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -3288,6 +3509,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3303,9 +3525,10 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -3322,14 +3545,21 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -3339,6 +3569,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -3466,7 +3697,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3479,18 +3711,16 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3515,7 +3745,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         if is_non_diffusers_format:
             state_dict = _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict)
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -3560,7 +3791,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -3570,6 +3802,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3578,7 +3811,14 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->LTXVideoTransformer3DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -3593,6 +3833,9 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -3610,6 +3853,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3625,9 +3869,10 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -3644,14 +3889,21 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -3661,6 +3913,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -3789,6 +4042,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -3802,18 +4057,16 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3834,7 +4087,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -3879,7 +4133,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -3889,6 +4144,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3897,7 +4153,14 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->SanaTransformer2DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -3912,6 +4175,9 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -3929,6 +4195,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -3944,9 +4211,10 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -3963,14 +4231,21 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -3980,6 +4255,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -4107,7 +4383,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4120,18 +4397,16 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4156,7 +4431,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         if is_original_hunyuan_video:
             state_dict = _convert_hunyuan_video_lora_to_diffusers(state_dict)
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -4201,7 +4477,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -4211,6 +4488,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4219,7 +4497,14 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->HunyuanVideoTransformer3DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -4234,6 +4519,9 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -4251,6 +4539,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4266,9 +4555,10 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -4285,14 +4575,21 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -4302,6 +4599,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -4429,7 +4727,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4442,18 +4741,16 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4479,7 +4776,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         if non_diffusers:
             state_dict = _convert_non_diffusers_lumina2_lora_to_diffusers(state_dict)
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -4524,7 +4822,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -4534,6 +4833,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4542,7 +4842,14 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->Lumina2Transformer2DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -4557,6 +4864,9 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -4574,6 +4884,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4589,9 +4900,10 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -4608,14 +4920,21 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -4625,6 +4944,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
@@ -4752,7 +5072,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4765,18 +5086,16 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4801,7 +5120,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     @classmethod
     def _maybe_expand_t2v_lora_for_i2v(
@@ -4893,7 +5213,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         # convert T2V LoRA to I2V LoRA (when loaded to Wan I2V) by adding zeros for the additional (missing) _img layers
         state_dict = self._maybe_expand_t2v_lora_for_i2v(
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
@@ -4907,6 +5228,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4915,7 +5237,14 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->WanTransformer3DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -4930,6 +5259,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -4947,6 +5279,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -4962,9 +5295,10 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -4981,14 +5315,21 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -4998,6 +5339,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -5126,6 +5468,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -5139,18 +5483,16 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5171,7 +5513,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -5216,7 +5559,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -5226,6 +5570,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -5234,7 +5579,14 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->CogView4Transformer2DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -5249,6 +5601,9 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -5266,6 +5621,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -5281,9 +5637,10 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -5300,14 +5657,21 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -5317,6 +5681,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -5444,7 +5809,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -5457,18 +5823,16 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5493,7 +5857,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         if is_non_diffusers_format:
             state_dict = _convert_non_diffusers_hidream_lora_to_diffusers(state_dict)
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
@@ -5538,7 +5903,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -5548,6 +5914,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -5556,7 +5923,14 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->HiDreamImageTransformer2DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        metadata=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -5571,6 +5945,9 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
@@ -5588,6 +5965,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -5603,9 +5981,10 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -5622,14 +6001,21 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -5639,6 +6025,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
