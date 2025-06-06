@@ -1,15 +1,13 @@
 import glob
-import logging as std_logging
+import logging
 import os
 import subprocess
 
 import pandas as pd
 
-from diffusers.utils import logging
 
-
-std_logging.basicConfig(level=std_logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = logging.get_logger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 PATTERN = "benchmarking_*.py"
 FINAL_CSV_FILENAME = "collated_results.py"

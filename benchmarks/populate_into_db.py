@@ -7,7 +7,7 @@ import psycopg2
 import psycopg2.extras
 
 
-# FINAL_CSV_FILENAME = "benchmark_outputs/collated_results.csv"
+FINAL_CSV_FILENAME = "collated_results.csv"
 # https://github.com/huggingface/transformers/blob/593e29c5e2a9b17baec010e8dc7c1431fed6e841/benchmark/init_db.sql#L27
 TABLE_NAME = "model_measurements"
 
@@ -24,8 +24,7 @@ if __name__ == "__main__":
         raise
     cur = conn.cursor()
 
-    # df = pd.read_csv(FINAL_CSV_FILENAME)
-    df = pd.read_csv("collated_results.csv")
+    df = pd.read_csv(FINAL_CSV_FILENAME)
 
     # Helper to cast values (or None) given a dtype
     def _cast_value(val, dtype: str):

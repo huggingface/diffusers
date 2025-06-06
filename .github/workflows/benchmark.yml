@@ -49,26 +49,26 @@ jobs:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         run: |
           cd benchmarks && python run_all.py
-          mkdir $BASE_PATH && mv *.csv $BASE_PATH
 
       - name: Push results to the Hub
         env: 
           HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
-        run: 
-          cd benchmarks && cp $BASE_PATH/collated_results.csv . && python push_results.py
+        run: |
+          cd benchmarks && python push_results.py
+          mkdir $BASE_PATH && cp *.csv $BASE_PATH
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: benchmark_test_reports
-          path: benchmarks/benchmark_outputs
+          path: benchmarks/$BASE_PATH
       
       # TODO: enable this once the connection problem has been resolved.
       # - name: Update benchmarking results to DB
       #   env:
       #     PGDATABASE: metrics
-      #     PGHOST: ${{ secrets.DIFFUSERS_BENCHMARKS_PGHOST }} # TODO
+      #     PGHOST: ${{ secrets.DIFFUSERS_BENCHMARKS_PGHOST }}
       #     PGUSER: transformers_benchmarks
       #     PGPASSWORD: ${{ secrets.DIFFUSERS_BENCHMARKS_PGPASSWORD }}
       #   run: cd benchmarks && python populate_into_db.py

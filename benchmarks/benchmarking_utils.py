@@ -1,6 +1,6 @@
 import gc
 import inspect
-import logging as std_logging
+import logging
 import os
 import queue
 import threading
@@ -13,12 +13,11 @@ import torch
 import torch.utils.benchmark as benchmark
 
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.utils import logging
 from diffusers.utils.testing_utils import require_torch_gpu, torch_device
 
 
-std_logging.basicConfig(level=std_logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = logging.get_logger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def benchmark_fn(f, *args, **kwargs):
