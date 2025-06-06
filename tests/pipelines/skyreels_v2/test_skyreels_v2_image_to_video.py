@@ -25,7 +25,12 @@ from transformers import (
     T5EncoderModel,
 )
 
-from diffusers import AutoencoderKLWan, FlowMatchUniPCMultistepScheduler, SkyReelsV2ImageToVideoPipeline, SkyReelsV2Transformer3DModel
+from diffusers import (
+    AutoencoderKLWan,
+    FlowMatchUniPCMultistepScheduler,
+    SkyReelsV2ImageToVideoPipeline,
+    SkyReelsV2Transformer3DModel,
+)
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -159,6 +164,7 @@ class SkyReelsV2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.Test
     @unittest.skip("TODO: revisit failing as it requires a very high threshold to pass")
     def test_inference_batch_single_identical(self):
         pass
+
 
 # TODO: Is this FLF2V test necessary, because the original repo doesn't seem to have this functionality for this pipeline?
 # or doesn't it have to be implemented?

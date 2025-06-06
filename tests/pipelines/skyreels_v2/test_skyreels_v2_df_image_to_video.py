@@ -22,7 +22,12 @@ from transformers import (
     T5EncoderModel,
 )
 
-from diffusers import AutoencoderKLWan, FlowMatchUniPCMultistepScheduler, SkyReelsV2DiffusionForcingImageToVideoPipeline, SkyReelsV2Transformer3DModel
+from diffusers import (
+    AutoencoderKLWan,
+    FlowMatchUniPCMultistepScheduler,
+    SkyReelsV2DiffusionForcingImageToVideoPipeline,
+    SkyReelsV2Transformer3DModel,
+)
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS

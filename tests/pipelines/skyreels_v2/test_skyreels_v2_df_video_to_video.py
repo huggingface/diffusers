@@ -19,7 +19,12 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLWan, FlowMatchUniPCMultistepScheduler, SkyReelsV2Transformer3DModel, SkyReelsV2DiffusionForcingVideoToVideoPipeline
+from diffusers import (
+    AutoencoderKLWan,
+    FlowMatchUniPCMultistepScheduler,
+    SkyReelsV2DiffusionForcingVideoToVideoPipeline,
+    SkyReelsV2Transformer3DModel,
+)
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
 )

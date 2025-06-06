@@ -127,7 +127,7 @@ def retrieve_latents(
 
 class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Pipeline for image-to-video generation using SkyReels-V2.
+    Pipeline for Image-to-Video (i2v) generation using SkyReels-V2.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -483,9 +483,9 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
-        height: int = 480,
-        width: int = 832,
-        num_frames: int = 81,
+        height: int = 544,
+        width: int = 960,
+        num_frames: int = 97,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
@@ -518,11 +518,11 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            height (`int`, defaults to `480`):
+            height (`int`, defaults to `544`):
                 The height of the generated video.
-            width (`int`, defaults to `832`):
+            width (`int`, defaults to `960`):
                 The width of the generated video.
-            num_frames (`int`, defaults to `81`):
+            num_frames (`int`, defaults to `97`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the

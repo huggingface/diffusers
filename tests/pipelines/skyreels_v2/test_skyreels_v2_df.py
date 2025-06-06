@@ -19,7 +19,12 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLWan, FlowMatchUniPCMultistepScheduler, SkyReelsV2DiffusionForcingPipeline, SkyReelsV2Transformer3DModel
+from diffusers import (
+    AutoencoderKLWan,
+    FlowMatchUniPCMultistepScheduler,
+    SkyReelsV2DiffusionForcingPipeline,
+    SkyReelsV2Transformer3DModel,
+)
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_accelerator,
