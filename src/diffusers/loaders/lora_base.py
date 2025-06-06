@@ -336,7 +336,7 @@ def _load_lora_into_text_encoder(
         raise ValueError("PEFT backend is required for this method.")
 
     if network_alphas and metadata:
-        raise ValueError("Both `network_alphas` and `metadata` cannot be specified.")
+        raise ValueError("`network_alphas` and `metadata` cannot be specified both at the same time.")
 
     peft_kwargs = {}
     if low_cpu_mem_usage:
@@ -423,7 +423,7 @@ def _load_lora_into_text_encoder(
             try:
                 lora_config = LoraConfig(**lora_config_kwargs)
             except TypeError as e:
-                raise TypeError(f"`LoraConfig` class could not be instantiated:\n{e}.")
+                raise TypeError("`LoraConfig` class could not be instantiated.") from e
 
         # adapter_name
         if adapter_name is None:
@@ -933,7 +933,7 @@ class LoraBaseMixin:
         if lora_adapter_metadata and not safe_serialization:
             raise ValueError("`lora_adapter_metadata` cannot be specified when not using `safe_serialization`.")
         if lora_adapter_metadata and not isinstance(lora_adapter_metadata, dict):
-            raise ValueError("`lora_adapter_metadata` must be of type `dict`.")
+            raise TypeError("`lora_adapter_metadata` must be of type `dict`.")
 
         if save_function is None:
             if safe_serialization:
