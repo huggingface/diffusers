@@ -59,6 +59,7 @@ def run_scripts():
 
         partial_csv = f"{script_name}.csv"
         if os.path.exists(partial_csv):
+            print(f"Found {partial_csv}. Removing for safer numbers and duplication.")
             os.remove(partial_csv)
 
         command = ["python", file]
