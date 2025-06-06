@@ -1115,6 +1115,14 @@ class PipelineTesterMixin:
         gc.collect()
         backend_empty_cache(torch_device)
 
+        # Skip tests for pipelines that inherit from DeprecatedPipelineMixin
+        from diffusers.pipelines.pipeline_utils import DeprecatedPipelineMixin
+
+        if hasattr(self, "pipeline_class") and issubclass(self.pipeline_class, DeprecatedPipelineMixin):
+            import pytest
+
+            pytest.skip(reason=f"Deprecated Pipeline: {self.pipeline_class.__name__}")
+
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()

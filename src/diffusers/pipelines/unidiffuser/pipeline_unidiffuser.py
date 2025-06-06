@@ -28,7 +28,7 @@ from ...utils import (
 )
 from ...utils.outputs import BaseOutput
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from .modeling_text_decoder import UniDiffuserTextDecoder
 from .modeling_uvit import UniDiffuserModel
 
@@ -62,7 +62,7 @@ class ImageTextPipelineOutput(BaseOutput):
     text: Optional[Union[List[str], List[List[str]]]]
 
 
-class UniDiffuserPipeline(DiffusionPipeline):
+class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     r"""
     Pipeline for a bimodal image-text model which supports unconditional text and image generation, text-conditioned
     image generation, image-conditioned text generation, and joint image-text generation.
@@ -96,6 +96,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             original UniDiffuser paper uses the [`DPMSolverMultistepScheduler`] scheduler.
     """
 
+    _last_supported_version = "0.33.1"
     # TODO: support for moving submodules for components with enable_model_cpu_offload
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae->text_decoder"
 
