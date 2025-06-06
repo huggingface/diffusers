@@ -1,9 +1,15 @@
 import glob
+import logging as std_logging
 import os
 import subprocess
 
 import pandas as pd
 
+from diffusers.utils import logging
+
+
+std_logging.basicConfig(level=std_logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.get_logger(__name__)
 
 PATTERN = "benchmarking_*.py"
 FINAL_CSV_FILENAME = "collated_results.py"
@@ -26,7 +32,7 @@ def run_command(command: list[str], return_stdout=False):
 def merge_csvs(final_csv: str = "collated_results.csv"):
     all_csvs = glob.glob("*.csv")
     if not all_csvs:
-        print("No result CSVs found to merge.")
+        logger.info("No result CSVs found to merge.")
         return
 
     df_list = []
@@ -39,14 +45,14 @@ def merge_csvs(final_csv: str = "collated_results.csv"):
         df_list.append(d)
 
     if not df_list:
-        print("All result CSVs were empty or invalid; nothing to merge.")
+        logger.info("All result CSVs were empty or invalid; nothing to merge.")
         return
 
     final_df = pd.concat(df_list, ignore_index=True)
     if GITHUB_SHA is not None:
         final_df["github_sha"] = GITHUB_SHA
     final_df.to_csv(final_csv, index=False)
-    print(f"Merged {len(all_csvs)} partial CSVs → {final_csv}.")
+    logger.info(f"Merged {len(all_csvs)} partial CSVs → {final_csv}.")
 
 
 def run_scripts():
@@ -55,24 +61,24 @@ def run_scripts():
 
     for file in python_files:
         script_name = file.split(".py")[0].split("_")[-1]  # example: benchmarking_foo.py -> foo
-        print(f"\n****** Running file: {file} ******")
+        logger.info(f"\n****** Running file: {file} ******")
 
         partial_csv = f"{script_name}.csv"
         if os.path.exists(partial_csv):
-            print(f"Found {partial_csv}. Removing for safer numbers and duplication.")
+            logger.info(f"Found {partial_csv}. Removing for safer numbers and duplication.")
             os.remove(partial_csv)
 
         command = ["python", file]
         try:
             run_command(command)
-            print(f"→ {file} finished normally.")
+            logger.info(f"→ {file} finished normally.")
         except SubprocessCallException as e:
-            print(f"Error running {file}:\n{e}")
+            logger.info(f"Error running {file}:\n{e}")
         finally:
-            print(f"→ Merging partial CSVs after {file} …")
+            logger.info(f"→ Merging partial CSVs after {file} …")
             merge_csvs(final_csv=FINAL_CSV_FILENAME)
 
-    print(f"\nAll scripts attempted. Final collated CSV: {FINAL_CSV_FILENAME}")
+    logger.info(f"\nAll scripts attempted. Final collated CSV: {FINAL_CSV_FILENAME}")
 
 
 if __name__ == "__main__":
