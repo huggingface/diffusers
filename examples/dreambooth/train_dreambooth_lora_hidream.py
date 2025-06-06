@@ -1771,16 +1771,16 @@ def main(args):
             free_memory()
 
         validation_prompt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
-        save_model_card(
-            (args.hub_model_id or Path(args.output_dir).name) if not args.push_to_hub else repo_id,
-            images=images,
-            base_model=args.pretrained_model_name_or_path,
-            instance_prompt=args.instance_prompt,
-            validation_prompt=validation_prompt,
-            repo_folder=args.output_dir,
-        )
 
         if args.push_to_hub:
+            save_model_card(
+                (args.hub_model_id or Path(args.output_dir).name) if not args.push_to_hub else repo_id,
+                images=images,
+                base_model=args.pretrained_model_name_or_path,
+                instance_prompt=args.instance_prompt,
+                validation_prompt=validation_prompt,
+                repo_folder=args.output_dir,
+            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
@@ -1789,6 +1789,7 @@ def main(args):
             )
 
         images = None
+        del pipeline
 
     accelerator.end_training()
 
