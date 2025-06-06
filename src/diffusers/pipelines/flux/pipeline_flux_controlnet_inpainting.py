@@ -776,6 +776,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         iterations: Optional[int] = 4, # modified for applying gradient to mask_image
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
         ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
+        inpainting_starting_step: Optional[int] = 0, # modified for starting inpainting
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1381,8 +1382,9 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         latents = latents_1 + latents_2 + latents_3 
                     else:
                         latents = (1 - init_mask) * init_latents_proper + init_mask * latents
-                else:    
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                else:
+                    if i >= inpainting_starting_step:
+                        latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
