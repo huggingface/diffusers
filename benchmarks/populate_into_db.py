@@ -60,8 +60,8 @@ if __name__ == "__main__":
         for _, row in df.iterrows():
             scenario = _cast_value(row.get("scenario"), "text")
             model_cls = _cast_value(row.get("model_cls"), "text")
-            num_params_M = _cast_value(row.get("num_params_M"), "float")
-            flops_M = _cast_value(row.get("flops_M"), "float")
+            num_params_B = _cast_value(row.get("num_params_B"), "float")
+            flops_G = _cast_value(row.get("flops_G"), "float")
             time_plain_s = _cast_value(row.get("time_plain_s"), "float")
             mem_plain_GB = _cast_value(row.get("mem_plain_GB"), "float")
             time_compile_s = _cast_value(row.get("time_compile_s"), "float")
@@ -84,8 +84,8 @@ if __name__ == "__main__":
                 "repository": "huggingface/diffusers",
                 "scenario": scenario,
                 "model_cls": model_cls,
-                "num_params_M": num_params_M,
-                "flops_M": flops_M,
+                "num_params_B": num_params_B,
+                "flops_G": flops_G,
                 "time_plain_s": time_plain_s,
                 "mem_plain_GB": mem_plain_GB,
                 "time_compile_s": time_compile_s,

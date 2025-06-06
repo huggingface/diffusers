@@ -112,8 +112,12 @@ class BenchmarkMixin:
         logger.info(f"Running scenario: {scenario.name}.")
         try:
             model = model_init_fn(scenario.model_cls, **scenario.model_init_kwargs)
-            num_params = round(calculate_params(model) / 1e6, 2)
-            flops = round(calculate_flops(model, input_dict=scenario.get_model_input_dict()) / 1e6, 2)
+            num_params = round(calculate_params(model) / 1e9, 2)
+            try:
+                flops = round(calculate_flops(model, input_dict=scenario.get_model_input_dict()) / 1e9, 2)
+            except Exception as e:
+                logger.info(f"Problem in calculating FLOPs:\n{e}")
+                flops = None
             model.cpu()
             del model
         except Exception as e:
@@ -156,8 +160,8 @@ class BenchmarkMixin:
         result = {
             "scenario": scenario.name,
             "model_cls": scenario.model_cls.__name__,
-            "num_params_M": num_params,
-            "flops_M": flops,
+            "num_params_B": num_params,
+            "flops_G": flops,
             "time_plain_s": plain["time"],
             "mem_plain_GB": plain["memory"],
             "time_compile_s": compiled["time"],

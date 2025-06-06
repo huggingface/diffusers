@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 from huggingface_hub import hf_hub_download, upload_file
 from huggingface_hub.utils import EntryNotFoundError
@@ -50,7 +52,7 @@ def push_to_hf_dataset():
 
             # combine
             current_results[column] = curr_str + append_str
-
+        os.remove(FINAL_CSV_FILENAME)
         current_results.to_csv(FINAL_CSV_FILENAME, index=False)
 
     commit_message = f"upload from sha: {GITHUB_SHA}" if GITHUB_SHA is not None else "upload benchmark results"
