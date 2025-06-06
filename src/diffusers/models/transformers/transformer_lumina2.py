@@ -24,6 +24,7 @@ from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import LuminaFeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
 from ..embeddings import TimestepEmbedding, Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -70,6 +71,8 @@ class Lumina2AttnProcessor2_0:
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the Lumina2Transformer2DModel model. It applies normalization and RoPE on query and key vectors.
     """
+
+    _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -137,8 +140,8 @@ class Lumina2AttnProcessor2_0:
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, scale=softmax_scale
+        hidden_states = dispatch_attention_fn(
+            query, key, value, attn_mask=attention_mask, scale=softmax_scale, backend=self._attention_backend
         )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.type_as(query)

@@ -23,6 +23,7 @@ from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, is_torch_xla_available, logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_version, is_xformers_available
 from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
+from .attention_dispatch import dispatch_attention_fn
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -996,6 +997,8 @@ class MochiAttention(nn.Module):
 class MochiAttnProcessor2_0:
     """Attention processor used in Mochi."""
 
+    _attention_backend = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("MochiAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
@@ -1073,8 +1076,8 @@ class MochiAttnProcessor2_0:
             valid_key = torch.cat([key[idx : idx + 1], valid_encoder_key], dim=2)
             valid_value = torch.cat([value[idx : idx + 1], valid_encoder_value], dim=2)
 
-            attn_output = F.scaled_dot_product_attention(
-                valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False
+            attn_output = dispatch_attention_fn(
+                valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False, backend=self._attention_backend
             )
             valid_sequence_length = attn_output.size(2)
             attn_output = F.pad(attn_output, (0, 0, 0, total_length - valid_sequence_length))
@@ -2275,6 +2278,8 @@ class FusedAuraFlowAttnProcessor2_0:
 class FluxAttnProcessor2_0:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
+    _attention_backend = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("FluxAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
@@ -2339,8 +2344,14 @@ class FluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -2366,6 +2377,8 @@ class FluxAttnProcessor2_0:
 
 class FluxAttnProcessor2_0_NPU:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
+
+    _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2449,7 +2462,9 @@ class FluxAttnProcessor2_0_NPU:
                 inner_precise=0,
             )[0]
         else:
-            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+            hidden_states = dispatch_attention_fn(
+                query, key, value, dropout_p=0.0, is_causal=False, backend=self._attention_backend
+            )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2472,6 +2487,8 @@ class FluxAttnProcessor2_0_NPU:
 
 class FusedFluxAttnProcessor2_0:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
+
+    _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2543,7 +2560,9 @@ class FusedFluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = dispatch_attention_fn(
+            query, key, value, dropout_p=0.0, is_causal=False, backend=self._attention_backend
+        )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -2567,6 +2586,8 @@ class FusedFluxAttnProcessor2_0:
 
 class FusedFluxAttnProcessor2_0_NPU:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
+
+    _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2654,7 +2675,9 @@ class FusedFluxAttnProcessor2_0_NPU:
                 inner_precise=0,
             )[0]
         else:
-            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+            hidden_states = dispatch_attention_fn(
+                query, key, value, dropout_p=0.0, is_causal=False, backend=self._attention_backend
+            )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -2678,6 +2701,8 @@ class FusedFluxAttnProcessor2_0_NPU:
 
 class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
     """Flux Attention processor for IP-Adapter."""
+
+    _attention_backend = None
 
     def __init__(
         self, hidden_size: int, cross_attention_dim: int, num_tokens=(4,), scale=1.0, device=None, dtype=None
@@ -2776,7 +2801,9 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = dispatch_attention_fn(
+            query, key, value, dropout_p=0.0, is_causal=False, backend=self._attention_backend
+        )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2806,8 +2833,14 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
                 ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 # the output of sdp = (batch, num_heads, seq_len, head_dim)
                 # TODO: add support for attn.scale when we move to Torch 2.1
-                current_ip_hidden_states = F.scaled_dot_product_attention(
-                    ip_query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+                current_ip_hidden_states = dispatch_attention_fn(
+                    ip_query,
+                    ip_key,
+                    ip_value,
+                    attn_mask=None,
+                    dropout_p=0.0,
+                    is_causal=False,
+                    backend=self._attention_backend,
                 )
                 current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
                     batch_size, -1, attn.heads * head_dim
@@ -2825,6 +2858,8 @@ class CogVideoXAttnProcessor2_0:
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
     query and key vectors, but does not include spatial normalization.
     """
+
+    _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2872,8 +2907,14 @@ class CogVideoXAttnProcessor2_0:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -2894,6 +2935,8 @@ class FusedCogVideoXAttnProcessor2_0:
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
     query and key vectors, but does not include spatial normalization.
     """
+
+    _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2943,8 +2986,14 @@ class FusedCogVideoXAttnProcessor2_0:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -3130,8 +3179,9 @@ class AttnProcessorNPU:
     Processor for implementing flash attention using torch_npu. Torch_npu supports only fp16 and bf16 data types. If
     fp32 is used, F.scaled_dot_product_attention will be used for computation, but the acceleration effect on NPU is
     not significant.
-
     """
+
+    _attention_backend = None
 
     def __init__(self):
         if not is_torch_npu_available():
@@ -3216,8 +3266,14 @@ class AttnProcessorNPU:
             )[0]
         else:
             # TODO: add support for attn.scale when we move to Torch 2.1
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            hidden_states = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
             )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -3243,6 +3299,8 @@ class AttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     """
+
+    _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -3310,8 +3368,14 @@ class AttnProcessor2_0:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -3554,6 +3618,8 @@ class MochiVaeAttnProcessor2_0:
     Attention processor used in Mochi VAE.
     """
 
+    _attention_backend = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
@@ -3614,8 +3680,14 @@ class MochiVaeAttnProcessor2_0:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=attn.is_causal
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=attn.is_causal,
+            backend=self._attention_backend,
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)

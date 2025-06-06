@@ -143,6 +143,7 @@ else:
         [
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
+            "AttentionBackendName",
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
@@ -215,6 +216,7 @@ else:
             "UVit2DModel",
             "VQModel",
             "WanTransformer3DModel",
+            "attention_backend",
         ]
     )
     _import_structure["optimization"] = [
@@ -750,6 +752,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
+            AttentionBackendName,
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
@@ -821,6 +824,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UVit2DModel,
             VQModel,
             WanTransformer3DModel,
+            attention_backend,
         )
         from .optimization import (
             get_constant_schedule,
