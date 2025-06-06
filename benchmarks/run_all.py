@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(__name__)
 
 PATTERN = "benchmarking_*.py"
-FINAL_CSV_FILENAME = "collated_results.py"
+FINAL_CSV_FILENAME = "collated_results.csv"
 GITHUB_SHA = os.getenv("GITHUB_SHA", None)
 
 

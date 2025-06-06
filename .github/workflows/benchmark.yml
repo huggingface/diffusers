@@ -62,7 +62,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: benchmark_test_reports
-          path: benchmarks/$BASE_PATH
+          path: benchmarks/${{ env.BASE_PATH }}
       
       # TODO: enable this once the connection problem has been resolved.
       # - name: Update benchmarking results to DB
