@@ -35,8 +35,7 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
-from ...utils.import_utils import is_torch_version
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..pixart_alpha.pipeline_pixart_alpha import (
     ASPECT_RATIO_512_BIN,
