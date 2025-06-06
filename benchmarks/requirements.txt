@@ -1,5 +1,4 @@
 pandas 
-peft 
 psutil
 torchprofile
 bitsandbytes
