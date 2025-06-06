@@ -36,6 +36,8 @@ jobs:
           nvidia-smi
       - name: Install dependencies
         run: |
+          apt update
+          apt install -y libpq-dev postgresql-client
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install -r benchmarks/requirements.txt
