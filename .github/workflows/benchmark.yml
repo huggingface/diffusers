@@ -49,7 +49,7 @@ jobs:
           HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
         run: |
           cd benchmarks && python run_all.py && python push_results.py
-          mkdir ${BASE_PATH} && mv *.csv ${BASE_PATH}
+          mkdir $BASE_PATH && mv *.csv $BASE_PATH
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
