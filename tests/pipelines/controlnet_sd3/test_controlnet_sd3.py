@@ -221,7 +221,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
+@pytest.mark.big_accelerator
 class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3ControlNetPipeline
 

@@ -24,6 +24,7 @@ from transformers import AutoTokenizer, T5Config, T5EncoderModel
 
 from diffusers import AllegroPipeline, AllegroTransformer3DModel, AutoencoderKLAllegro, DDIMScheduler
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_hf_hub_version_greater,
@@ -341,12 +342,12 @@ class AllegroPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_allegro(self):
         generator = torch.Generator("cpu").manual_seed(0)
