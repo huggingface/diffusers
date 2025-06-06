@@ -55,13 +55,16 @@ EXAMPLE_DOC_STRING = """\
         >>> from diffusers.utils import export_to_video
 
         >>> # Load the pipeline
+        >>> # Available models:
+        >>> # - <Official_HF_placeholder>/SkyReels-V2-T2V-14B-540P-Diffusers
+        >>> # - <Official_HF_placeholder>/SkyReels-V2-T2V-14B-720P-Diffusers
         >>> vae = AutoencoderKLWan.from_pretrained(
-        ...     "<Official_HF_placeholder>/SkyReels-V2-1.3B-540P-Diffusers",
+        ...     "<Official_HF_placeholder>/SkyReels-V2-T2V-14B-720P-Diffusers",
         ...     subfolder="vae",
         ...     torch_dtype=torch.float32,
         ... )
         >>> pipe = SkyReelsV2Pipeline.from_pretrained(
-        ...     "<Official_HF_placeholder>/SkyReels-V2-1.3B-540P-Diffusers",
+        ...     "<Official_HF_placeholder>/SkyReels-V2-T2V-14B-720P-Diffusers",
         ...     vae=vae,
         ...     torch_dtype=torch.bfloat16,
         ... )
