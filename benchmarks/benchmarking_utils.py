@@ -1,6 +1,9 @@
 import gc
 import inspect
 import logging as std_logging
+import os
+import queue
+import threading
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Union
@@ -171,18 +174,34 @@ class BenchmarkMixin:
     def run_bencmarks_and_collate(self, scenarios: Union[BenchmarkScenario, list[BenchmarkScenario]], filename: str):
         if not isinstance(scenarios, list):
             scenarios = [scenarios]
-        records = []
+        record_queue = queue.Queue()
+        stop_signal = object()
+
+        def _writer_thread():
+            while True:
+                item = record_queue.get()
+                if item is stop_signal:
+                    break
+                df_row = pd.DataFrame([item])
+                write_header = not os.path.exists(filename)
+                df_row.to_csv(filename, mode="a", header=write_header, index=False)
+                record_queue.task_done()
+
+            record_queue.task_done()
+
+        writer = threading.Thread(target=_writer_thread, daemon=True)
+        writer.start()
+
         for s in scenarios:
             try:
                 record = self.run_benchmark(s)
                 if record:
-                    records.append(record)
+                    record_queue.put(record)
                 else:
                     logger.info(f"Record empty from scenario: {s.name}.")
             except Exception as e:
                 logger.info(f"Running scenario ({s.name}) led to error:\n{e}")
-        df = pd.DataFrame.from_records([r for r in records if r])
-        df.to_csv(filename, index=False)
+        record_queue.put(stop_signal)
         logger.info(f"Results serialized to {filename=}.")
 
     def _run_phase(
