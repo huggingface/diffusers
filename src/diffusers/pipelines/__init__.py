@@ -371,7 +371,7 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
-    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline"]
+    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline", "WanVACEPipeline"]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
         "SkyReelsV2DiffusionForcingImageToVideoPipeline",
@@ -745,7 +745,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserTextDecoder,
         )
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
-        from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
+        from .wan import WanImageToVideoPipeline, WanPipeline, WanVACEPipeline, WanVideoToVideoPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
