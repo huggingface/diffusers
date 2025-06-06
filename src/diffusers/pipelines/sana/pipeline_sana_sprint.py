@@ -38,8 +38,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import get_device, randn_tensor
-from ...utils.import_utils import is_torch_version
+from ...utils.torch_utils import get_device, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..pixart_alpha.pipeline_pixart_alpha import ASPECT_RATIO_1024_BIN
 from .pipeline_output import SanaPipelineOutput
