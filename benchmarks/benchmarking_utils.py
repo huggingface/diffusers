@@ -172,7 +172,11 @@ class BenchmarkMixin:
         records = []
         for s in scenarios:
             try:
-                records.append(self.run_benchmark(s))
+                record = self.run_benchmark(s)
+                if record:
+                    records.append(record)
+                else:
+                    logger.info(f"Record empty from scenario: {s.name}.")
             except Exception as e:
                 logger.info(f"Running scenario ({s.name}) led to error:\n{e}")
         df = pd.DataFrame.from_records([r for r in records if r])
