@@ -1,5 +1,6 @@
 import gc
 import inspect
+import logging as std_logging
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Union
@@ -13,6 +14,7 @@ from diffusers.utils import logging
 from diffusers.utils.testing_utils import require_torch_gpu, torch_device
 
 
+std_logging.basicConfig(level=std_logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.get_logger(__name__)
 
 
