@@ -1,12 +1,10 @@
 import glob
 import os
 import subprocess
-
 import pandas as pd
 
-
 PATTERN = "benchmarking_*.py"
-FINAL_CSV_FILENAME = "collated_results.csv"
+FINAL_CSV_FILENAME = "collated_results.py"
 GITHUB_SHA = os.getenv("GITHUB_SHA", None)
 
 
@@ -14,22 +12,41 @@ class SubprocessCallException(Exception):
     pass
 
 
-# Taken from `test_examples_utils.py`
 def run_command(command: list[str], return_stdout=False):
-    """
-    Runs `command` with `subprocess.check_output` and will potentially return the `stdout`. Will also properly capture
-    if an error occurred while running `command`
-    """
     try:
         output = subprocess.check_output(command, stderr=subprocess.STDOUT)
-        if return_stdout:
-            if hasattr(output, "decode"):
-                output = output.decode("utf-8")
-            return output
+        if return_stdout and hasattr(output, "decode"):
+            return output.decode("utf-8")
     except subprocess.CalledProcessError as e:
         raise SubprocessCallException(
-            f"Command `{' '.join(command)}` failed with the following error:\n\n{e.output.decode()}"
+            f"Command `{' '.join(command)}` failed with:\n{e.output.decode()}"
         ) from e
+
+
+def merge_csvs(final_csv: str = "collated_results.csv"):
+    all_csvs = glob.glob("*.csv")
+    if not all_csvs:
+        print("No result CSVs found to merge.")
+        return
+
+    df_list = []
+    for f in all_csvs:
+        try:
+            d = pd.read_csv(f)
+        except pd.errors.EmptyDataError:
+            # If a file existed but was zero‐bytes or corrupted, skip it
+            continue
+        df_list.append(d)
+
+    if not df_list:
+        print("All result CSVs were empty or invalid; nothing to merge.")
+        return
+
+    final_df = pd.concat(df_list, ignore_index=True)
+    if GITHUB_SHA is not None:
+        final_df["github_sha"] = GITHUB_SHA
+    final_df.to_csv(final_csv, index=False)
+    print(f"Merged {len(all_csvs)} partial CSVs → {final_csv}.")
 
 
 def run_scripts():
@@ -37,23 +54,21 @@ def run_scripts():
     python_files = [f for f in python_files if f != "benchmarking_utils.py"]
 
     for file in python_files:
-        print(f"****** Running file: {file} ******")
-        command = f"python {file}"
+        script_name = file.split(".py")[0].split("_")[-1] # example: benchmarking_foo.py -> foo
+        print(f"\n****** Running file: {file} ******")
+
+        partial_csv = f"{script_name}.csv"
+        if os.path.exists(partial_csv):
+            os.remove(partial_csv)
+
+        command = ["python", file]
         try:
-            run_command(command.split())
+            run_command(command)
+            print(f"→ {file} finished normally.")
         except SubprocessCallException as e:
             print(f"Error running {file}:\n{e}")
-            continue
+        finally:
+            print(f"→ Merging partial CSVs after {file} …")
+            merge_csvs(final_csv=FINAL_CSV_FILENAME)
 
-
-def merge_csvs():
-    all_csvs = glob.glob("*.csv")
-    final_df = pd.concat([pd.read_csv(f) for f in all_csvs]).reset_index(drop=True)
-    if GITHUB_SHA:
-        final_df["github_sha"] = GITHUB_SHA
-    final_df.to_csv(FINAL_CSV_FILENAME)
-
-
-if __name__ == "__main__":
-    run_scripts()
-    merge_csvs()
+    print(f"\nAll scripts attempted. Final collated CSV: {FINAL_CSV_FILENAME}")
