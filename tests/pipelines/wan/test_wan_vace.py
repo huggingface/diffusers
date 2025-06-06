@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -107,7 +107,7 @@ class WanVACEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "video": video,
             "mask": mask,
             "prompt": "dance monkey",
-            "negative_prompt": "negative",  # TODO
+            "negative_prompt": "negative",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
@@ -128,13 +128,17 @@ class WanVACEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
-        generated_video = video[0]
+        video = pipe(**inputs).frames[0]
+        self.assertEqual(video.shape, (17, 3, 16, 16))
 
-        self.assertEqual(generated_video.shape, (17, 3, 16, 16))
-        expected_video = torch.randn(17, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+        # fmt: off
+        expected_slice = [0.4523, 0.45198, 0.44872, 0.45326, 0.45211, 0.45258, 0.45344, 0.453, 0.52431, 0.52572, 0.50701, 0.5118, 0.53717, 0.53093, 0.50557, 0.51402]
+        # fmt: on
+
+        video_slice = video.flatten()
+        video_slice = torch.cat([video_slice[:8], video_slice[-8:]])
+        video_slice = [round(x, 5) for x in video_slice.tolist()]
+        self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
 
     def test_inference_with_single_reference_image(self):
         device = "cpu"
@@ -146,13 +150,17 @@ class WanVACEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         inputs["reference_images"] = Image.new("RGB", (16, 16))
-        video = pipe(**inputs).frames
-        generated_video = video[0]
+        video = pipe(**inputs).frames[0]
+        self.assertEqual(video.shape, (17, 3, 16, 16))
 
-        self.assertEqual(generated_video.shape, (17, 3, 16, 16))
-        expected_video = torch.randn(17, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+        # fmt: off
+        expected_slice = [0.45247, 0.45214, 0.44874, 0.45314, 0.45171, 0.45299, 0.45428, 0.45317, 0.51378, 0.52658, 0.53361, 0.52303, 0.46204, 0.50435, 0.52555, 0.51342]
+        # fmt: on
+
+        video_slice = video.flatten()
+        video_slice = torch.cat([video_slice[:8], video_slice[-8:]])
+        video_slice = [round(x, 5) for x in video_slice.tolist()]
+        self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
 
     def test_inference_with_multiple_reference_image(self):
         device = "cpu"
@@ -164,13 +172,17 @@ class WanVACEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         inputs["reference_images"] = [[Image.new("RGB", (16, 16))] * 2]
-        video = pipe(**inputs).frames
-        generated_video = video[0]
+        video = pipe(**inputs).frames[0]
+        self.assertEqual(video.shape, (17, 3, 16, 16))
 
-        self.assertEqual(generated_video.shape, (17, 3, 16, 16))
-        expected_video = torch.randn(17, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+        # fmt: off
+        expected_slice = [0.45321, 0.45221, 0.44818, 0.45375, 0.45268, 0.4519, 0.45271, 0.45253, 0.51244, 0.52223, 0.51253, 0.51321, 0.50743, 0.51177, 0.51626, 0.50983]
+        # fmt: on
+
+        video_slice = video.flatten()
+        video_slice = torch.cat([video_slice[:8], video_slice[-8:]])
+        video_slice = [round(x, 5) for x in video_slice.tolist()]
+        self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
