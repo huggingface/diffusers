@@ -3,7 +3,7 @@ name: Benchmarking tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *" # every day at midnight
+    - cron: "0 17 * * 1" # every monday at 5 PM.
 
 env:
   DIFFUSERS_IS_CI: yes
