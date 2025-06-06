@@ -38,7 +38,8 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_device, randn_tensor
+from ...utils.import_utils import is_torch_version
 from ..pipeline_utils import DiffusionPipeline
 from ..pixart_alpha.pipeline_pixart_alpha import ASPECT_RATIO_1024_BIN
 from .pipeline_output import SanaPipelineOutput
@@ -864,9 +865,11 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             image = latents
         else:
             latents = latents.to(self.vae.dtype)
+            torch_accelerator_module = getattr(torch, get_device(), torch.cuda)
+            oom_error = torch.OutOfMemoryError if is_torch_version(">=", "2.5.0") else torch_accelerator_module.OutOfMemoryError
             try:
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            except torch.cuda.OutOfMemoryError as e:
+            except oom_error as e:
                 warnings.warn(
                     f"{e}. \n"
                     f"Try to use VAE tiling for large images. For example: \n"
