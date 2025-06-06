@@ -22,6 +22,7 @@ from typing import Optional
 from packaging import version
 
 from .import_utils import is_peft_available, is_torch_available
+from .torch_utils import empty_device_cache
 
 
 if is_torch_available():
@@ -95,8 +96,7 @@ def recurse_remove_peft_layers(model):
                 setattr(model, name, new_module)
                 del module
 
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                empty_device_cache()
     return model
 
 
