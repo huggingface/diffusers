@@ -1,5 +1,6 @@
 pandas 
 peft 
+psutil
 torchprofile
 bitsandbytes
 psycopg2==2.9.9
