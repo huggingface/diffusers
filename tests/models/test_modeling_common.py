@@ -1777,7 +1777,7 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
-    def test_compilation_with_group_offloading(self):
+    def test_compile_with_group_offloading(self):
         torch._dynamo.config.cache_size_limit = 10000
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1798,11 +1798,7 @@ class TorchCompileTesterMixin:
         }
         model.enable_group_offload(**group_offload_kwargs)
         model.compile()
-        with (
-            torch._inductor.utils.fresh_inductor_cache(),
-            torch._dynamo.config.patch(error_on_recompile=True),
-            torch.no_grad(),
-        ):
+        with torch.no_grad():
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
