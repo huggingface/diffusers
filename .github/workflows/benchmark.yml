@@ -55,8 +55,7 @@ jobs:
         env: 
           HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
         run: 
-          cd benchmarks && cp $BASE_PATH/collated_results.csv .
-          python push_results.py
+          cd benchmarks && cp $BASE_PATH/collated_results.csv . && python push_results.py
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
