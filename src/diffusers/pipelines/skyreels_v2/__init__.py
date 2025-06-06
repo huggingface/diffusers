@@ -27,6 +27,9 @@ else:
     _import_structure["pipeline_skyreels_v2_diffusion_forcing_i2v"] = [
         "SkyReelsV2DiffusionForcingImageToVideoPipeline"
     ]
+    _import_structure["pipeline_skyreels_v2_diffusion_forcing_v2v"] = [
+        "SkyReelsV2DiffusionForcingVideoToVideoPipeline"
+    ]
     _import_structure["pipeline_skyreels_v2_i2v"] = ["SkyReelsV2ImageToVideoPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -39,6 +42,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_skyreels_v2 import SkyReelsV2Pipeline
         from .pipeline_skyreels_v2_diffusion_forcing import SkyReelsV2DiffusionForcingPipeline
         from .pipeline_skyreels_v2_diffusion_forcing_i2v import SkyReelsV2DiffusionForcingImageToVideoPipeline
+        from .pipeline_skyreels_v2_diffusion_forcing_v2v import SkyReelsV2DiffusionForcingVideoToVideoPipeline
         from .pipeline_skyreels_v2_i2v import SkyReelsV2ImageToVideoPipeline
 
 else:
