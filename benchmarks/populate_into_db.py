@@ -82,6 +82,7 @@ if __name__ == "__main__":
                 benchmark_id = f"{model_cls}-{scenario}-{id_for_benchmark}"
 
             measurements = {
+                "repository": "huggingface/diffusers",
                 "scenario": scenario,
                 "model_cls": model_cls,
                 "num_params_M": num_params_M,

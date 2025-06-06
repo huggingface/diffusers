@@ -1,0 +1,4 @@
+Unnamed: 0,scenario,model_cls,num_params_M,flops_M,time_plain_s,mem_plain_GB,time_compile_s,mem_compile_GB,fullgraph,mode,github_sha
+0.0,stabilityai/stable-diffusion-xl-base-1.0-bf16,UNet2DConditionModel,2567.46,5979098.32,0.074 (0.079),5.05,0.054 (0.055),5.24,True,default,8dd326fdba7c2063029b502e3b2ebd7a20a1bb95
+1.0,stabilityai/stable-diffusion-xl-base-1.0-layerwise-upcasting,UNet2DConditionModel,2567.46,5979098.32,0.152 (0.164),4.89,nan,nan,,,8dd326fdba7c2063029b502e3b2ebd7a20a1bb95
+2.0,stabilityai/stable-diffusion-xl-base-1.0-group-offload-leaf,UNet2DConditionModel,2567.46,5979098.32,0.56 (0.516),0.2,nan,nan,,,8dd326fdba7c2063029b502e3b2ebd7a20a1bb95
