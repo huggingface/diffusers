@@ -9,7 +9,11 @@ import torch
 import torch.utils.benchmark as benchmark
 
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import require_torch_gpu, torch_device
+
+
+logger = logging.get_logger(__name__)
 
 
 def benchmark_fn(f, *args, **kwargs):
@@ -101,12 +105,16 @@ class BenchmarkMixin:
     @torch.no_grad()
     def run_benchmark(self, scenario: BenchmarkScenario):
         # 0) Basic stats
-        print(f"Running scenario: {scenario.name}.")
-        model = model_init_fn(scenario.model_cls, **scenario.model_init_kwargs)
-        num_params = round(calculate_params(model) / 1e6, 2)
-        flops = round(calculate_flops(model, input_dict=scenario.get_model_input_dict()) / 1e6, 2)
-        model.cpu()
-        del model
+        logger.info(f"Running scenario: {scenario.name}.")
+        try:
+            model = model_init_fn(scenario.model_cls, **scenario.model_init_kwargs)
+            num_params = round(calculate_params(model) / 1e6, 2)
+            flops = round(calculate_flops(model, input_dict=scenario.get_model_input_dict()) / 1e6, 2)
+            model.cpu()
+            del model
+        except Exception as e:
+            logger.info(f"Error while initializing the model and calculating FLOPs:\n{e}")
+            return {}
         self.pre_benchmark()
 
         # 1) plain stats
@@ -121,7 +129,7 @@ class BenchmarkMixin:
                 compile_kwargs=None,
             )
         except Exception as e:
-            print(f"Benchmark could not be run with the following error\n: {e}")
+            logger.info(f"Benchmark could not be run with the following error:\n{e}")
             return results
 
         # 2) compiled stats (if any)
@@ -136,7 +144,7 @@ class BenchmarkMixin:
                     compile_kwargs=scenario.compile_kwargs,
                 )
             except Exception as e:
-                print(f"Compilation benchmark could not be run with the following error\n: {e}")
+                logger.info(f"Compilation benchmark could not be run with the following error\n: {e}")
                 if plain is None:
                     return results
 
@@ -166,10 +174,10 @@ class BenchmarkMixin:
             try:
                 records.append(self.run_benchmark(s))
             except Exception as e:
-                print(f"Running scenario ({s.name}) led to error:\n{e}")
+                logger.info(f"Running scenario ({s.name}) led to error:\n{e}")
         df = pd.DataFrame.from_records([r for r in records if r])
         df.to_csv(filename, index=False)
-        print(f"Results serialized to {filename=}.")
+        logger.info(f"Results serialized to {filename=}.")
 
     def _run_phase(
         self,

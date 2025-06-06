@@ -34,16 +34,16 @@ def run_command(command: list[str], return_stdout=False):
 
 def run_scripts():
     python_files = sorted(glob.glob(PATTERN))
+    python_files = [f for f in python_files if f != "benchmarking_utils.py"]
 
     for file in python_files:
-        if file != "benchmarking_utils.py":
-            print(f"****** Running file: {file} ******")
-            command = f"python {file}"
-            try:
-                run_command(command.split())
-            except SubprocessCallException as e:
-                print(f"Error running {file}: {e}")
-                continue
+        print(f"****** Running file: {file} ******")
+        command = f"python {file}"
+        try:
+            run_command(command.split())
+        except SubprocessCallException as e:
+            print(f"Error running {file}:\n{e}")
+            continue
 
 
 def merge_csvs():
