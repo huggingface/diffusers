@@ -69,7 +69,7 @@ def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -
 
 
 def load_sharded_safetensors(dir: pathlib.Path):
-    if "SkyReels-V2-DF-14B-720P" in str(dir):
+    if "720P" in str(dir):
         file_paths = list(dir.glob("diffusion_pytorch_model*.safetensors"))
     else:
         file_paths = list(dir.glob("model*.safetensors"))
