@@ -29,6 +29,7 @@ def run_command(command: list[str], return_stdout=False):
 
 def merge_csvs(final_csv: str = "collated_results.csv"):
     all_csvs = glob.glob("*.csv")
+    all_csvs = [f for f in all_csvs if f != final_csv]
     if not all_csvs:
         logger.info("No result CSVs found to merge.")
         return
