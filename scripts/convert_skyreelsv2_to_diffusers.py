@@ -511,7 +511,7 @@ if __name__ == "__main__":
     dtype = DTYPE_MAPPING[args.dtype]
 
     #transformer = convert_transformer(args.model_type).to(dtype=dtype)
-    #vae = convert_vae()
+    vae = convert_vae()
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     scheduler = FlowMatchUniPCMultistepScheduler(
@@ -520,17 +520,17 @@ if __name__ == "__main__":
     )
 
     if "I2V" in args.model_type:
-        #image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        #    "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-        #image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         pipe = SkyReelsV2ImageToVideoPipeline(
             transformer=None,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            vae=None,
+            vae=vae,
             scheduler=scheduler,
-            image_encoder=None,
-            image_processor=None,
+            image_encoder=image_encoder,
+            image_processor=image_processor,
         )
     else:
         pipe = SkyReelsV2DiffusionForcingPipeline(
