@@ -54,17 +54,18 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import CosmosTextToWorldPipeline
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import CosmosTextToImagePipeline
 
-        >>> model_id = "nvidia/Cosmos-1.0-Diffusion-7B-Text2World"
-        >>> pipe = CosmosTextToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> # TODO(aryan): update model_id
+        >>> model_id = "/raid/aryan/diffusers-cosmos2-t2i-2B"
+        >>> pipe = CosmosTextToImagePipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = "A sleek, humanoid robot stands in a vast warehouse filled with neatly stacked cardboard boxes on industrial shelves. The robot's metallic body gleams under the bright, even lighting, highlighting its futuristic design and intricate joints. A glowing blue light emanates from its chest, adding a touch of advanced technology. The background is dominated by rows of boxes, suggesting a highly organized storage system. The floor is lined with wooden pallets, enhancing the industrial setting. The camera remains static, capturing the robot's poised stance amidst the orderly environment, with a shallow depth of field that keeps the focus on the robot while subtly blurring the background for a cinematic effect."
+        >>> prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."
+        >>> negative_prompt = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
 
-        >>> output = pipe(prompt=prompt).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=30)
+        >>> output = pipe(prompt=prompt, height=1024, width=1024, generator=torch.Generator().manual_seed(1)).images[0]
+        >>> output.save("output.png")
         ```
 """
 
