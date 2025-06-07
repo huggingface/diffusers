@@ -14,6 +14,7 @@ from diffusers import (
     FlowMatchUniPCMultistepScheduler,
     SkyReelsV2DiffusionForcingPipeline,
     SkyReelsV2ImageToVideoPipeline,
+    SkyReelsV2Pipeline,
     SkyReelsV2Transformer3DModel,
 )
 
@@ -532,7 +533,15 @@ if __name__ == "__main__":
             image_encoder=image_encoder,
             image_processor=image_processor,
         )
-    else:
+    elif "T2V" in args.model_type:
+        pipe = SkyReelsV2Pipeline(
+            transformer=None,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+        )
+    elif "DF" in args.model_type:
         pipe = SkyReelsV2DiffusionForcingPipeline(
             transformer=transformer,
             text_encoder=None,
