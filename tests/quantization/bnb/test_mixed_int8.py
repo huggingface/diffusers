@@ -28,6 +28,7 @@ from diffusers import (
     SD3Transformer2DModel,
     logging,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_accelerate_version
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -42,10 +43,13 @@ from diffusers.utils.testing_utils import (
     require_peft_version_greater,
     require_torch,
     require_torch_accelerator,
+    require_torch_version_greater_equal,
     require_transformers_version_greater,
     slow,
     torch_device,
 )
+
+from ..utils import QuantCompileMiscTests
 
 
 def get_some_linear_layer(model):
@@ -773,3 +777,18 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         out_0 = self.model_0(**inputs)[0]
         out_1 = model_1(**inputs)[0]
         self.assertTrue(torch.equal(out_0, out_1))
+
+
+class Bnb8BitCompileTests(QuantCompileMiscTests):
+    @require_torch_version_greater_equal("2.6.0")
+    def test_torch_compile(self):
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
+        quantization_config = PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_8bit",
+            quant_kwargs={
+                "load_in_8bit": True,
+            },
+            components_to_quantize=["transformer", "text_encoder_2"],
+        )
+        super().test_torch_compile(quantization_config=quantization_config, torch_dtype=torch.float16)

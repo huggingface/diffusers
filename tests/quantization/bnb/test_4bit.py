@@ -45,12 +45,13 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch,
     require_torch_accelerator,
-    require_torch_gpu,
     require_torch_version_greater,
     require_transformers_version_greater,
     slow,
     torch_device,
 )
+
+from ..utils import QuantCompileMiscTests
 
 
 def get_some_linear_layer(model):
@@ -860,23 +861,9 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
         self.test_serialization(quant_type="fp4", double_quant=True, safe_serialization=True)
 
 
-@require_torch_gpu
-@slow
-class Bnb4BitCompileTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-        torch.compiler.reset()
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-        torch.compiler.reset()
-
+class Bnb4BitCompileTests(QuantCompileMiscTests):
     @require_torch_version_greater("2.7.1")
-    def test_torch_compile_4bit(self):
+    def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
         quantization_config = PipelineQuantizationConfig(
@@ -886,15 +873,6 @@ class Bnb4BitCompileTests(unittest.TestCase):
                 "bnb_4bit_quant_type": "nf4",
                 "bnb_4bit_compute_dtype": torch.bfloat16,
             },
-            components_to_quantize=["transformer"],
+            components_to_quantize=["transformer", "text_encoder_2"],
         )
-        pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-3-medium-diffusers",
-            quantization_config=quantization_config,
-            torch_dtype=torch.bfloat16,
-        ).to("cuda")
-        pipe.transformer.compile(fullgraph=True)
-
-        for _ in range(2):
-            # with torch._dynamo.config.patch(error_on_recompile=True):
-            pipe("a dog", num_inference_steps=4, max_sequence_length=16, height=256, width=256)
+        super().test_torch_compile(quantization_config=quantization_config)
