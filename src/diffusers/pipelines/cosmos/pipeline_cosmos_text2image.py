@@ -312,7 +312,6 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size: int,

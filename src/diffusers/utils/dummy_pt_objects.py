@@ -1808,6 +1808,21 @@ class FlowMatchEulerDiscreteScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class FlowMatchEulerEDMCosmos2_0Scheduler(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class FlowMatchHeunDiscreteScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
