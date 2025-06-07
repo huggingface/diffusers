@@ -21,7 +21,7 @@ from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLWan, CosmosTransformer3DModel
-from ...schedulers import FlowMatchEulerEDMCosmos2_0Scheduler
+from ...schedulers import EDMEulerScheduler
 from ...utils import is_cosmos_guardrail_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -56,15 +56,17 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import CosmosTextToImagePipeline
 
-        >>> # TODO(aryan): update model_id
-        >>> model_id = "/raid/aryan/diffusers-cosmos2-t2i-2B"
+        >>> # Available checkpoints: nvidia/Cosmos-Predict2-2B-Text2Image, nvidia/Cosmos-Predict2-14B-Text2Image
+        >>> model_id = "nvidia/Cosmos-Predict2-2B-Text2Image"
         >>> pipe = CosmosTextToImagePipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."
         >>> negative_prompt = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
 
-        >>> output = pipe(prompt=prompt, height=1024, width=1024, generator=torch.Generator().manual_seed(1)).images[0]
+        >>> output = pipe(
+        ...     prompt=prompt, negative_prompt=negative_prompt, generator=torch.Generator().manual_seed(1)
+        ... ).images[0]
         >>> output.save("output.png")
         ```
 """
@@ -147,7 +149,7 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
         transformer ([`CosmosTransformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
-        scheduler ([`FlowMatchEulerEDMCosmos2_0Scheduler`]):
+        scheduler ([`EDMEulerScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
@@ -164,7 +166,7 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
         tokenizer: T5TokenizerFast,
         transformer: CosmosTransformer3DModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowMatchEulerEDMCosmos2_0Scheduler,
+        scheduler: EDMEulerScheduler,
         safety_checker: CosmosSafetyChecker = None,
     ):
         super().__init__()
@@ -228,13 +230,13 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline.encode_prompt
+    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline.encode_prompt with num_videos_per_prompt->num_images_per_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
         do_classifier_free_guidance: bool = True,
-        num_videos_per_prompt: int = 1,
+        num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: int = 512,
@@ -253,7 +255,7 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
                 less than `1`).
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 Whether to use classifier free guidance or not.
-            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
                 Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
@@ -282,8 +284,8 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
 
             # duplicate text embeddings for each generation per prompt, using mps friendly method
             _, seq_len, _ = prompt_embeds.shape
-            prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-            prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+            prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
@@ -307,8 +309,8 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
 
             # duplicate text embeddings for each generation per prompt, using mps friendly method
             _, seq_len, _ = negative_prompt_embeds.shape
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -402,7 +404,7 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
         width: int = 1280,
         num_inference_steps: int = 35,
         guidance_scale: float = 7.0,
-        num_videos_per_prompt: Optional[int] = 1,
+        num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -434,7 +436,7 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`.
-            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
@@ -521,7 +523,7 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
             prompt=prompt,
             negative_prompt=negative_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
-            num_videos_per_prompt=num_videos_per_prompt,
+            num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             device=device,
@@ -535,7 +537,7 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
         transformer_dtype = self.transformer.dtype
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
-            batch_size * num_videos_per_prompt,
+            batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
             width,
@@ -612,7 +614,7 @@ class CosmosTextToImagePipeline(DiffusionPipeline):
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
                 latents.device, latents.dtype
             )
-            latents = latents / latents_std + latents_mean
+            latents = latents / latents_std / self.scheduler.config.sigma_data + latents_mean
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
 
             if self.safety_checker is not None:

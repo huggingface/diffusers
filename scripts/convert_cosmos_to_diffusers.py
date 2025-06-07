@@ -14,7 +14,6 @@ from diffusers import (
     CosmosTextToWorldPipeline,
     CosmosTransformer3DModel,
     EDMEulerScheduler,
-    FlowMatchEulerEDMCosmos2_0Scheduler,
 )
 
 
@@ -187,6 +186,51 @@ TRANSFORMER_CONFIGS = {
         "concat_padding_mask": True,
         "extra_pos_embed_type": None,
     },
+    "Cosmos-2.0-Diffusion-14B-Text2Image": {
+        "in_channels": 16,
+        "out_channels": 16,
+        "num_attention_heads": 40,
+        "attention_head_dim": 128,
+        "num_layers": 36,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (20 / 24, 2.0, 2.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": None,
+    },
+    "Cosmos-2.0-Diffusion-2B-Video2World": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "num_layers": 28,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (1.0, 1.0, 1.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": None,
+    },
+    "Cosmos-2.0-Diffusion-14B-Video2World": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 40,
+        "attention_head_dim": 128,
+        "num_layers": 36,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (20 / 24, 2.0, 2.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": None,
+    },
 }
 
 VAE_KEYS_RENAME_DICT = {
@@ -352,8 +396,8 @@ def convert_vae(vae_type: str):
     return vae
 
 
-def save_pipeline_cosmos_1_0(args, transformer, vae, dtype):
-    text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=dtype)
+def save_pipeline_cosmos_1_0(args, transformer, vae):
+    text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.bfloat16)
     tokenizer = T5TokenizerFast.from_pretrained(args.tokenizer_path)
     # The original code initializes EDM config with sigma_min=0.0002, but does not make use of it anywhere directly.
     # So, the sigma_min values that is used is the default value of 0.002.
@@ -378,11 +422,11 @@ def save_pipeline_cosmos_1_0(args, transformer, vae, dtype):
     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
 
-def save_pipeline_cosmos_2_0(args, transformer, vae, dtype):
-    text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=dtype)
+def save_pipeline_cosmos_2_0(args, transformer, vae):
+    text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.bfloat16)
     tokenizer = T5TokenizerFast.from_pretrained(args.tokenizer_path)
 
-    scheduler = FlowMatchEulerEDMCosmos2_0Scheduler(
+    scheduler = EDMEulerScheduler(
         sigma_min=0.0002,
         sigma_max=80,
         sigma_data=1.0,
@@ -391,6 +435,7 @@ def save_pipeline_cosmos_2_0(args, transformer, vae, dtype):
         prediction_type="epsilon",
         rho=7.0,
         final_sigmas_type="sigma_min",
+        use_flow_sigmas=True,
     )
 
     pipe = CosmosTextToImagePipeline(
@@ -458,8 +503,8 @@ if __name__ == "__main__":
 
     if args.save_pipeline:
         if "Cosmos-1.0" in args.transformer_type:
-            save_pipeline_cosmos_1_0(args, transformer, vae, dtype)
+            save_pipeline_cosmos_1_0(args, transformer, vae)
         elif "Cosmos-2.0" in args.transformer_type:
-            save_pipeline_cosmos_2_0(args, transformer, vae, dtype)
+            save_pipeline_cosmos_2_0(args, transformer, vae)
         else:
             assert False
