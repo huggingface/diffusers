@@ -441,7 +441,7 @@ def _func_optionally_disable_offloading(_pipeline):
     is_model_cpu_offload = False
     is_sequential_cpu_offload = False
 
-    if _pipeline is not None and _pipeline.hf_device_map is None:
+    if _pipeline is not None and hasattr(_pipeline, "hf_device_map") and _pipeline.hf_device_map is None:
         for _, component in _pipeline.components.items():
             if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
                 if not is_model_cpu_offload:
@@ -491,6 +491,7 @@ class LoraBaseMixin:
             tuple:
                 A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
         """
+
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
     @classmethod
@@ -731,8 +732,10 @@ class LoraBaseMixin:
         # Decompose weights into weights for denoiser and text encoders.
         _component_adapter_weights = {}
         for component in self._lora_loadable_modules:
-            model = getattr(self, component)
-
+            model = getattr(self, component, None)
+            if model is None:
+                logger.warning(f"Model {component} not found in pipeline.")
+                continue
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
                     component_adapter_weights = weights.pop(component, None)
