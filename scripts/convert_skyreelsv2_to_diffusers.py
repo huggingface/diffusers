@@ -258,13 +258,14 @@ def convert_transformer(model_type: str):
         model_dir = pathlib.Path(model_type)
         if "720P" in model_type:
             top_shard = 7 if "I2V" in model_type else 6
+            zeros = "0" * (4 if "I2V" or "T2V" in model_type else 3)
             model_name = "diffusion_pytorch_model"
         elif "540P" in model_type:
             top_shard = 14 if "I2V" in model_type else 12
             model_name = "model"
 
         for i in range(1, top_shard + 1):
-            shard_path = f"{model_name}-{i:05d}-of-000{top_shard}.safetensors"
+            shard_path = f"{model_name}-{i:05d}-of-{zeros}{top_shard}.safetensors"
             hf_hub_download(model_id, shard_path, local_dir=model_dir)
         original_state_dict = load_sharded_safetensors(model_dir)
 
