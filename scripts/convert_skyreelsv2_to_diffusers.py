@@ -183,7 +183,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
         config = {
             "model_id": "Skywork/SkyReels-V2-I2V-1.3B-540P",
             "diffusers_config": {
-                "added_kv_proj_dim": None,
+                "added_kv_proj_dim": 1536,
                 "attention_head_dim": 128,
                 "cross_attn_norm": True,
                 "eps": 1e-06,
@@ -204,7 +204,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
         config = {
             "model_id": "Skywork/SkyReels-V2-I2V-14B-540P",
             "diffusers_config": {
-                "added_kv_proj_dim": None,
+                "added_kv_proj_dim": 5120,
                 "attention_head_dim": 128,
                 "cross_attn_norm": True,
                 "eps": 1e-06,
@@ -225,7 +225,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
         config = {
             "model_id": "Skywork/SkyReels-V2-I2V-14B-720P",
             "diffusers_config": {
-                "added_kv_proj_dim": None,
+                "added_kv_proj_dim": 5120,
                 "attention_head_dim": 128,
                 "cross_attn_norm": True,
                 "eps": 1e-06,
