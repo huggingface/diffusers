@@ -524,13 +524,13 @@ if __name__ == "__main__":
         #    "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         #image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         pipe = SkyReelsV2ImageToVideoPipeline(
-            #transformer=None,
+            transformer=None,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            #vae=None,
+            vae=None,
             scheduler=scheduler,
-            #image_encoder=None,
-            #image_processor=None,
+            image_encoder=None,
+            image_processor=None,
         )
     else:
         pipe = SkyReelsV2DiffusionForcingPipeline(
