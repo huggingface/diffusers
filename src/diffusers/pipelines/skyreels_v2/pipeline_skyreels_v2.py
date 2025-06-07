@@ -21,7 +21,7 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import WanLoraLoaderMixin
-from ...models import AutoencoderKLWan, WanTransformer3DModel
+from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import FlowMatchUniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -119,7 +119,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
-        transformer ([`WanTransformer3DModel`]):
+        transformer ([`SkyReelsV2Transformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         scheduler ([`FlowMatchUniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
@@ -134,7 +134,7 @@ class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        transformer: WanTransformer3DModel,
+        transformer: SkyReelsV2Transformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchUniPCMultistepScheduler,
     ):
