@@ -880,8 +880,5 @@ class Bnb4BitCompileTests(QuantCompileMiscTests):
     def test_torch_compile_with_cpu_offload(self):
         super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
 
-    @pytest.mark.xfail(
-        reason="Test fails because of an illegal memory access.",
-    )
     def test_torch_compile_with_group_offload(self):
         super()._test_torch_compile_with_group_offload(quantization_config=self.quantization_config)

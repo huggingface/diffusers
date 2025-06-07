@@ -71,8 +71,7 @@ class QuantCompileMiscTests(unittest.TestCase):
         group_offload_kwargs = {
             "onload_device": torch.device("cuda"),
             "offload_device": torch.device("cpu"),
-            "offload_type": "block_level",
-            "num_blocks_per_group": 1,
+            "offload_type": "leaf_level",
             "use_stream": True,
             "non_blocking": True,
         }
