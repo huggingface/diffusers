@@ -253,7 +253,7 @@ def convert_transformer(model_type: str):
 
     if model_type in ("SkyReels-V2-DF-1.3B-540P", "SkyReels-V2-I2V-1.3B-540P"):
         original_state_dict = load_file(hf_hub_download(model_id, "model.safetensors"))
-    elif model_type in ("SkyReels-V2-DF-14B-720P", "SkyReels-V2-DF-14B-540P"):
+    else:
         os.makedirs(model_type, exist_ok=True)
         model_dir = pathlib.Path(model_type)
         if model_type == "SkyReels-V2-DF-14B-720P":
@@ -511,35 +511,35 @@ if __name__ == "__main__":
     transformer = None
     dtype = DTYPE_MAPPING[args.dtype]
 
-    #transformer = convert_transformer(args.model_type).to(dtype=dtype)
-    vae = convert_vae()
-    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
-    tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
-    scheduler = FlowMatchUniPCMultistepScheduler(
-        prediction_type="flow_prediction",
-        num_train_timesteps=1000,
-    )
+    transformer = convert_transformer(args.model_type).to(dtype=dtype)
+    #vae = convert_vae()
+    #text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
+    #tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    #scheduler = FlowMatchUniPCMultistepScheduler(
+    #    prediction_type="flow_prediction",
+    #    num_train_timesteps=1000,
+    #)
 
     if "I2V" in args.model_type:
-        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-        image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        #image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+        #    "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        #image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         pipe = SkyReelsV2ImageToVideoPipeline(
-            transformer=None,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            vae=vae,
-            scheduler=scheduler,
-            image_encoder=image_encoder,
-            image_processor=image_processor,
+            transformer=transformer,
+            text_encoder=None,
+            tokenizer=None,
+            vae=None,
+            scheduler=None,
+            image_encoder=None,
+            image_processor=None,
         )
     elif "T2V" in args.model_type:
         pipe = SkyReelsV2Pipeline(
-            transformer=None,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            vae=vae,
-            scheduler=scheduler,
+            transformer=transformer,
+            text_encoder=None,
+            tokenizer=None,
+            vae=None,
+            scheduler=None,
         )
     elif "DF" in args.model_type:
         pipe = SkyReelsV2DiffusionForcingPipeline(
