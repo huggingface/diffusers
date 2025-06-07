@@ -139,6 +139,106 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "text_dim": 4096,
             },
         }
+    elif model_type == "SkyReels-V2-T2V-14B-720P":
+        config = {
+            "model_id": "Skywork/SkyReels-V2-T2V-14B-720P",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "inject_sample_info": False,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+    elif model_type == "SkyReels-V2-T2V-14B-540P":
+        config = {
+            "model_id": "Skywork/SkyReels-V2-T2V-14B-540P",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "inject_sample_info": False,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+    elif model_type == "SkyReels-V2-I2V-1.3B-540P":
+        config = {
+            "model_id": "Skywork/SkyReels-V2-I2V-1.3B-540P",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 8960,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 12,
+                "inject_sample_info": False,
+                "num_layers": 30,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+    elif model_type == "SkyReels-V2-I2V-14B-540P":
+        config = {
+            "model_id": "Skywork/SkyReels-V2-I2V-14B-540P",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "inject_sample_info": False,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+    elif model_type == "SkyReels-V2-I2V-14B-720P":
+        config = {
+            "model_id": "Skywork/SkyReels-V2-I2V-14B-720P",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "inject_sample_info": False,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
     return config
 
 
@@ -147,9 +247,9 @@ def convert_transformer(model_type: str):
     diffusers_config = config["diffusers_config"]
     model_id = config["model_id"]
 
-    if model_type == "SkyReels-V2-DF-1.3B-540P":
+    if model_type in ("SkyReels-V2-DF-1.3B-540P", "SkyReels-V2-I2V-1.3B-540P"):
         original_state_dict = load_file(hf_hub_download(model_id, "model.safetensors"))
-    elif model_type in ["SkyReels-V2-DF-14B-720P", "SkyReels-V2-DF-14B-540P"]:
+    elif model_type in ("SkyReels-V2-DF-14B-720P", "SkyReels-V2-DF-14B-540P"):
         os.makedirs(model_type, exist_ok=True)
         model_dir = pathlib.Path(model_type)
         if model_type == "SkyReels-V2-DF-14B-720P":
@@ -409,7 +509,7 @@ if __name__ == "__main__":
 
     transformer = convert_transformer(args.model_type).to(dtype=dtype)
     vae = convert_vae()
-    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
+    #text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     scheduler = FlowMatchUniPCMultistepScheduler(
         prediction_type="flow_prediction",
@@ -418,12 +518,11 @@ if __name__ == "__main__":
 
     if "I2V" in args.model_type:
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
-        )
+            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         pipe = SkyReelsV2ImageToVideoPipeline(
             transformer=transformer,
-            text_encoder=text_encoder,
+            text_encoder=None,
             tokenizer=tokenizer,
             vae=vae,
             scheduler=scheduler,
@@ -433,7 +532,7 @@ if __name__ == "__main__":
     else:
         pipe = SkyReelsV2DiffusionForcingPipeline(
             transformer=transformer,
-            text_encoder=text_encoder,
+            text_encoder=None,
             tokenizer=tokenizer,
             vae=vae,
             scheduler=scheduler,
