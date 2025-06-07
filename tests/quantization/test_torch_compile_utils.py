@@ -63,3 +63,20 @@ class QuantCompileMiscTests(unittest.TestCase):
         for _ in range(2):
             # small resolutions to ensure speedy execution.
             pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
+
+    def _test_torch_compile_with_group_offload(self, quantization_config, torch_dtype=torch.bfloat16):
+        pipe = self._init_pipeline(quantization_config, torch_dtype)
+        group_offload_kwargs = {
+            "onload_device": "cuda",
+            "offload_device": "cpu",
+            "offload_type": "block_level",
+            "num_blocks_per_group": 1,
+            "use_stream": True,
+            "non_blocking": True,
+        }
+        pipe.enable_group_offload(**group_offload_kwargs)
+        pipe.transformer.compile()
+
+        for _ in range(2):
+            # small resolutions to ensure speedy execution.
+            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
