@@ -24,6 +24,8 @@ from diffusers.utils.testing_utils import backend_empty_cache, require_torch_gpu
 @require_torch_gpu
 @slow
 class QuantCompileMiscTests(unittest.TestCase):
+    quantization_config = None
+
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -36,14 +38,28 @@ class QuantCompileMiscTests(unittest.TestCase):
         backend_empty_cache(torch_device)
         torch.compiler.reset()
 
-    def test_torch_compile(self, quantization_config, torch_dtype=torch.bfloat16):
+    def _init_pipeline(self, quantization_config, torch_dtype):
         pipe = DiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-3-medium-diffusers",
             quantization_config=quantization_config,
             torch_dtype=torch_dtype,
-        ).to("cuda")
+        )
+        return pipe
+
+    def _test_torch_compile(self, quantization_config, torch_dtype=torch.bfloat16):
+        pipe = self._init_pipeline(quantization_config, torch_dtype).to("cuda")
+        # import to ensure fullgraph True
         pipe.transformer.compile(fullgraph=True)
 
         for _ in range(2):
             # small resolutions to ensure speedy execution.
-            pipe("a dog", num_inference_steps=4, max_sequence_length=16, height=256, width=256)
+            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
+
+    def _test_torch_compile_with_cpu_offload(self, quantization_config, torch_dtype=torch.bfloat16):
+        pipe = self._init_pipeline(quantization_config, torch_dtype)
+        pipe.enable_model_cpu_offload()
+        pipe.transformer.compile()
+
+        for _ in range(2):
+            # small resolutions to ensure speedy execution.
+            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)

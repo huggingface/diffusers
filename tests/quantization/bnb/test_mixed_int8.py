@@ -49,7 +49,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..utils import QuantCompileMiscTests
+from ..test_torch_compile_utils import QuantCompileMiscTests
 
 
 def get_some_linear_layer(model):
@@ -779,16 +779,20 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         self.assertTrue(torch.equal(out_0, out_1))
 
 
+@require_torch_version_greater_equal("2.6.0")
 class Bnb8BitCompileTests(QuantCompileMiscTests):
-    @require_torch_version_greater_equal("2.6.0")
+    quantization_config = PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_8bit",
+        quant_kwargs={"load_in_8bit": True},
+        components_to_quantize=["transformer", "text_encoder_2"],
+    )
+
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        super()._test_torch_compile(quantization_config=self.quantization_config, torch_dtype=torch.float16)
 
-        quantization_config = PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_8bit",
-            quant_kwargs={
-                "load_in_8bit": True,
-            },
-            components_to_quantize=["transformer", "text_encoder_2"],
+    def test_torch_compile_with_cpu_offload(self):
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        super()._test_torch_compile_with_cpu_offload(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16
         )
-        super().test_torch_compile(quantization_config=quantization_config, torch_dtype=torch.float16)

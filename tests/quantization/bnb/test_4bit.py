@@ -51,7 +51,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..utils import QuantCompileMiscTests
+from ..test_torch_compile_utils import QuantCompileMiscTests
 
 
 def get_some_linear_layer(model):
@@ -861,18 +861,24 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
         self.test_serialization(quant_type="fp4", double_quant=True, safe_serialization=True)
 
 
+@require_torch_version_greater("2.7.1")
 class Bnb4BitCompileTests(QuantCompileMiscTests):
-    @require_torch_version_greater("2.7.1")
+    quantization_config = PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_8bit",
+        quant_kwargs={
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": torch.bfloat16,
+        },
+        components_to_quantize=["transformer", "text_encoder_2"],
+    )
+
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        super()._test_torch_compile(quantization_config=self.quantization_config)
 
-        quantization_config = PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            components_to_quantize=["transformer", "text_encoder_2"],
+    def test_torch_compile_with_cpu_offload(self):
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        super()._test_torch_compile_with_cpu_offload(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16
         )
-        super().test_torch_compile(quantization_config=quantization_config)
