@@ -63,6 +63,13 @@ def push_to_hf_dataset():
         repo_type="dataset",
         commit_message=commit_message,
     )
+    upload_file(
+        repo_id="diffusers/benchmark-analyzer",
+        path_in_repo=FINAL_CSV_FILENAME,
+        path_or_fileobj=FINAL_CSV_FILENAME,
+        repo_type="space",
+        commit_message=commit_message,
+    )
 
 
 if __name__ == "__main__":
