@@ -251,15 +251,15 @@ def convert_transformer(model_type: str):
     diffusers_config = config["diffusers_config"]
     model_id = config["model_id"]
 
-    if model_type in ("SkyReels-V2-DF-1.3B-540P", "SkyReels-V2-I2V-1.3B-540P"):
+    if "1.3B" in model_type:
         original_state_dict = load_file(hf_hub_download(model_id, "model.safetensors"))
     else:
         os.makedirs(model_type, exist_ok=True)
         model_dir = pathlib.Path(model_type)
-        if model_type == "SkyReels-V2-DF-14B-720P":
+        if "720P" in model_type:
             top_shard = 6
             model_name = "diffusion_pytorch_model"
-        elif model_type == "SkyReels-V2-DF-14B-540P":
+        elif "540P" in model_type:
             top_shard = 12
             model_name = "model"
 
