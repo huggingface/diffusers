@@ -23,7 +23,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
-from ...models import AutoencoderKLWan, WanTransformer3DModel
+from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import FlowMatchUniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -144,7 +144,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             the
             [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large)
             variant.
-        transformer ([`WanTransformer3DModel`]):
+        transformer ([`SkyReelsV2Transformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         scheduler ([`FlowMatchUniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
@@ -161,7 +161,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder: UMT5EncoderModel,
         image_encoder: CLIPVisionModel,
         image_processor: CLIPImageProcessor,
-        transformer: WanTransformer3DModel,
+        transformer: SkyReelsV2Transformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchUniPCMultistepScheduler,
     ):

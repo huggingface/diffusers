@@ -197,6 +197,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
+                "image_dim": 1280,
             },
         }
     elif model_type == "SkyReels-V2-I2V-14B-540P":
@@ -217,6 +218,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
+                "image_dim": 1280,
             },
         }
     elif model_type == "SkyReels-V2-I2V-14B-720P":
@@ -237,6 +239,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
+                "image_dim": 1280,
             },
         }
     return config
