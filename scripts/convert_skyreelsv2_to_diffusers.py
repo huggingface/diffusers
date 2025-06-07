@@ -257,10 +257,10 @@ def convert_transformer(model_type: str):
         os.makedirs(model_type, exist_ok=True)
         model_dir = pathlib.Path(model_type)
         if "720P" in model_type:
-            top_shard = 6
+            top_shard = 7 if "I2V" in model_type else 6
             model_name = "diffusion_pytorch_model"
         elif "540P" in model_type:
-            top_shard = 12
+            top_shard = 14 if "I2V" in model_type else 12
             model_name = "model"
 
         for i in range(1, top_shard + 1):
