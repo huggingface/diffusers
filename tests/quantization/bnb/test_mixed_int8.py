@@ -792,13 +792,12 @@ class Bnb8BitCompileTests(QuantCompileMiscTests):
         super()._test_torch_compile(quantization_config=self.quantization_config, torch_dtype=torch.float16)
 
     def test_torch_compile_with_cpu_offload(self):
-        torch._dynamo.config.capture_dynamic_output_shape_ops = True
         super()._test_torch_compile_with_cpu_offload(
             quantization_config=self.quantization_config, torch_dtype=torch.float16
         )
 
+    @pytest.mark.xfail(reason="Test fails because of an offloading problem from Accelerate with confusion in hooks.")
     def test_torch_compile_with_group_offload(self):
-        torch._dynamo.config.capture_dynamic_output_shape_ops = True
         super()._test_torch_compile_with_group_offload(
             quantization_config=self.quantization_config, torch_dtype=torch.float16
         )

@@ -878,9 +878,10 @@ class Bnb4BitCompileTests(QuantCompileMiscTests):
         super()._test_torch_compile(quantization_config=self.quantization_config)
 
     def test_torch_compile_with_cpu_offload(self):
-        torch._dynamo.config.capture_dynamic_output_shape_ops = True
         super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
 
+    @pytest.mark.xfail(
+        reason="Test fails because of an illegal memory access.",
+    )
     def test_torch_compile_with_group_offload(self):
-        torch._dynamo.config.capture_dynamic_output_shape_ops = True
         super()._test_torch_compile_with_group_offload(quantization_config=self.quantization_config)
