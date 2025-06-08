@@ -19,7 +19,12 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanPipeline, WanTransformer3DModel
+from diffusers import (
+    AutoencoderKLWan,
+    FlowMatchUniPCMultistepScheduler,
+    SkyReelsV2Pipeline,
+    SkyReelsV2Transformer3DModel,
+)
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_accelerator,
@@ -35,8 +40,8 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class WanPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = WanPipeline
+class SkyReelsV2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = SkyReelsV2Pipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -65,13 +70,12 @@ class WanPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        # TODO: impl FlowDPMSolverMultistepScheduler
-        scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
+        scheduler = FlowMatchUniPCMultistepScheduler(shift=8.0)
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
-        transformer = WanTransformer3DModel(
+        transformer = SkyReelsV2Transformer3DModel(
             patch_size=(1, 2, 2),
             num_attention_heads=2,
             attention_head_dim=12,
@@ -138,7 +142,7 @@ class WanPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_accelerator
-class WanPipelineIntegrationTests(unittest.TestCase):
+class SkyReelsV2PipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
@@ -152,5 +156,5 @@ class WanPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     @unittest.skip("TODO: test needs to be implemented")
-    def test_Wanx(self):
+    def test_SkyReelsV2x(self):
         pass

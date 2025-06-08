@@ -70,7 +70,7 @@ class SkyReelsV2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.Test
         )
 
         torch.manual_seed(0)
-        scheduler = FlowMatchUniPCMultistepScheduler(shift=7.0)
+        scheduler = FlowMatchUniPCMultistepScheduler(shift=5.0)
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
@@ -180,7 +180,7 @@ class SkyReelsV2ImageToVideoPipelineFastTests(SkyReelsV2ImageToVideoPipelineFast
         )
 
         torch.manual_seed(0)
-        scheduler = FlowMatchUniPCMultistepScheduler(shift=7.0)
+        scheduler = FlowMatchUniPCMultistepScheduler(shift=5.0)
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
