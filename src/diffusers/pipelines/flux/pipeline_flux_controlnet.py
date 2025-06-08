@@ -860,6 +860,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
         inpainting_starting_step: Optional[int] = 0, # modified for starting inpainting
         inpainting_ending_step: Optional[int] = 22, # modified for ending inpainting
+        redux_starting_step: Optional[int] = 0, # modified for starting using redux output
+        redux_ending_step: Optional[int] = 22, # modified for ending using redux output
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1391,41 +1393,81 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
-                # controlnet
-                controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
-                    hidden_states=latents,
-                    controlnet_cond=control_image,
-                    controlnet_mode=control_mode,
-                    conditioning_scale=cond_scale,
-                    timestep=timestep / 1000,
-                    guidance=guidance,
-                    pooled_projections=pooled_prompt_embeds,
-                    encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                )
+                if i >= redux_starting_step and i <= redux_ending_step:
+                    print(f'pooled_prompt_embeds shape = {pooled_prompt_embeds.shape}')
+                    print(f'prompt_embeds = {prompt_embeds.shape}')
+                    print(f'text_ids shape = {text_ids.shape}')
+                    # controlnet
+                    controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
+                        hidden_states=latents,
+                        controlnet_cond=control_image,
+                        controlnet_mode=control_mode,
+                        conditioning_scale=cond_scale,
+                        timestep=timestep / 1000,
+                        guidance=guidance,
+                        pooled_projections=pooled_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )
 
-                guidance = (
-                    torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
-                )
-                guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
+                    guidance = (
+                        torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
+                    )
+                    guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
-                noise_pred = self.transformer(
-                    hidden_states=latents,
-                    timestep=timestep / 1000,
-                    guidance=guidance,
-                    pooled_projections=pooled_prompt_embeds,
-                    encoder_hidden_states=prompt_embeds,
-                    controlnet_block_samples=controlnet_block_samples,
-                    controlnet_single_block_samples=controlnet_single_block_samples,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                    controlnet_blocks_repeat=controlnet_blocks_repeat,
-                )[0]
+                    noise_pred = self.transformer(
+                        hidden_states=latents,
+                        timestep=timestep / 1000,
+                        guidance=guidance,
+                        pooled_projections=pooled_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
+                        controlnet_block_samples=controlnet_block_samples,
+                        controlnet_single_block_samples=controlnet_single_block_samples,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                        controlnet_blocks_repeat=controlnet_blocks_repeat,
+                    )[0]
+                else:
+                    # controlnet
+                    controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
+                        hidden_states=latents,
+                        controlnet_cond=control_image,
+                        controlnet_mode=control_mode,
+                        conditioning_scale=cond_scale,
+                        timestep=timestep / 1000,
+                        guidance=guidance,
+                        pooled_projections=pooled_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds[:, 0:512, :],
+                        txt_ids=text_ids[:, 0:512],
+                        img_ids=latent_image_ids,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )
+
+                    guidance = (
+                        torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
+                    )
+                    guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
+
+                    noise_pred = self.transformer(
+                        hidden_states=latents,
+                        timestep=timestep / 1000,
+                        guidance=guidance,
+                        pooled_projections=pooled_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds[:, 0:512, :],
+                        controlnet_block_samples=controlnet_block_samples,
+                        controlnet_single_block_samples=controlnet_single_block_samples,
+                        txt_ids=text_ids[:, 0:512],
+                        img_ids=latent_image_ids,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                        controlnet_blocks_repeat=controlnet_blocks_repeat,
+                    )[0]
 
                 if do_true_cfg:
                     if negative_image_embeds is not None:
