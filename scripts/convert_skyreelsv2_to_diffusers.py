@@ -7,15 +7,15 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import AutoTokenizer, CLIPVisionModelWithProjection, AutoProcessor, UMT5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
-    FlowMatchUniPCMultistepScheduler,
     SkyReelsV2DiffusionForcingPipeline,
     SkyReelsV2ImageToVideoPipeline,
     SkyReelsV2Pipeline,
     SkyReelsV2Transformer3DModel,
+    FlowMatchUniPCMultistepScheduler,
 )
 
 
@@ -513,39 +513,39 @@ if __name__ == "__main__":
     dtype = DTYPE_MAPPING[args.dtype]
 
     transformer = convert_transformer(args.model_type).to(dtype=dtype)
-    #vae = convert_vae()
-    #text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
-    #tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
-    #scheduler = FlowMatchUniPCMultistepScheduler(
-    #    prediction_type="flow_prediction",
-    #    num_train_timesteps=1000,
-    #)
+    vae = convert_vae()
+    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
+    tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    scheduler = FlowMatchUniPCMultistepScheduler(
+        prediction_type="flow_prediction",
+        num_train_timesteps=1000,
+    )
 
     if "I2V" in args.model_type:
-        #image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        #    "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-        #image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         pipe = SkyReelsV2ImageToVideoPipeline(
             transformer=transformer,
-            text_encoder=None,
-            tokenizer=None,
-            vae=None,
-            scheduler=None,
-            image_encoder=None,
-            image_processor=None,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+            image_encoder=image_encoder,
+            image_processor=image_processor,
         )
     elif "T2V" in args.model_type:
         pipe = SkyReelsV2Pipeline(
             transformer=transformer,
-            text_encoder=None,
-            tokenizer=None,
-            vae=None,
-            scheduler=None,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
         )
     elif "DF" in args.model_type:
         pipe = SkyReelsV2DiffusionForcingPipeline(
             transformer=transformer,
-            text_encoder=None,
+            text_encoder=text_encoder,
             tokenizer=tokenizer,
             vae=vae,
             scheduler=scheduler,
@@ -555,6 +555,6 @@ if __name__ == "__main__":
         args.output_path,
         safe_serialization=True,
         max_shard_size="5GB",
-        push_to_hub=True,
-        repo_id=f"tolgacangoz/{args.model_type}-Diffusers",
+        #push_to_hub=True,
+        #repo_id=f"<place_holder>/{args.model_type}-Diffusers",
     )
