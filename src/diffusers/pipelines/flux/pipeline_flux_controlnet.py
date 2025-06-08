@@ -859,6 +859,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
         ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
         inpainting_starting_step: Optional[int] = 0, # modified for starting inpainting
+        inpainting_ending_step: Optional[int] = 22, # modified for ending inpainting
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1515,7 +1516,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                         latents = latents_1 + latents_2
 
                 if image_bg is not None:
-                    if i >= inpainting_starting_step:
+                    if i >= inpainting_starting_step and i <= inpainting_ending_step:
                         init_mask_bg = mask_bg
                         init_latents_proper_bg = image_latents_bg
 
