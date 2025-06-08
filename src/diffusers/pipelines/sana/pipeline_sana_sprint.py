@@ -865,7 +865,11 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         else:
             latents = latents.to(self.vae.dtype)
             torch_accelerator_module = getattr(torch, get_device(), torch.cuda)
-            oom_error = torch.OutOfMemoryError if is_torch_version(">=", "2.5.0") else torch_accelerator_module.OutOfMemoryError
+            oom_error = (
+                torch.OutOfMemoryError
+                if is_torch_version(">=", "2.5.0")
+                else torch_accelerator_module.OutOfMemoryError
+            )
             try:
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             except oom_error as e:

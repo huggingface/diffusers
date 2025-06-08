@@ -35,7 +35,7 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
-from ...utils.torch_utils import is_torch_version, randn_tensor
+from ...utils.torch_utils import get_device, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..pixart_alpha.pipeline_pixart_alpha import (
     ASPECT_RATIO_512_BIN,
@@ -918,8 +918,11 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         else:
             latents = latents.to(self.vae.dtype)
             torch_accelerator_module = getattr(torch, get_device(), torch.cuda)
-            oom_error = torch.OutOfMemoryError if is_torch_version(">=", "2.5.0") else torch_accelerator_module.OutOfM
-emoryError
+            oom_error = (
+                torch.OutOfMemoryError
+                if is_torch_version(">=", "2.5.0")
+                else torch_accelerator_module.OutOfMemoryError
+            )
             try:
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             except oom_error as e:

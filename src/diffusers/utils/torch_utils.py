@@ -173,7 +173,8 @@ def get_device():
     else:
         return "cpu"
 
-def empty_device_cache(device_type: Optional[str] = None)
+
+def empty_device_cache(device_type: Optional[str] = None):
     if device_type is None:
         device_type = get_device()
     device_mod = getattr(torch, device_type, torch.cuda)
