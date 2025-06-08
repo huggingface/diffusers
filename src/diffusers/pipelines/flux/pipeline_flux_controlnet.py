@@ -821,7 +821,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None, # original prod image
         image_bg: PipelineImageInput = None, # original bg image
-        ratio_ref: Optional[float] = 0.1, # ratio of original prod images
+        ratio_prod: Optional[float] = 0.1, # ratio of original prod images
+        ratio_bg: Optional[float] = 0.1, # ratio of original bg images
         mask_image: PipelineImageInput = None, # modified for injecting original prod images
         mask_image_bg: PipelineImageInput = None, # modified for injecting bg image
         prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for averaging multiple copies
@@ -1552,7 +1553,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                                 init_latents_proper, torch.tensor([noise_timestep]), noise
                             )
         
-                        latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
+                        latents_1 = init_mask * (ratio_prod * init_latents_proper + (1.0 - ratio_prod) * latents)
                         latents_2 = (1.0 - init_mask) * latents
                         
                         latents = latents_1 + latents_2
@@ -1568,7 +1569,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                                 init_latents_proper_bg, torch.tensor([noise_timestep]), noise_bg
                             )
                         
-                        latents = (1 - init_mask_bg) * init_latents_proper_bg + init_mask_bg * latents
+                        latents = (1 - init_mask_bg) * (ratio_bg * init_latents_proper_bg + (1.0 - ratio_bg) * latents) + init_mask_bg * latents
         
 
                 if latents.dtype != latents_dtype:
