@@ -614,13 +614,12 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
         result_mean = jnp.mean(jnp.abs(sample))
 
         if jax_device == "tpu":
-            pass
-            # FIXME: both result_sum and result_mean are nan on TPU
-            # assert jnp.isnan(result_sum)
-            # assert jnp.isnan(result_mean)
-        else:
-            assert abs(result_sum - 149.0784) < 1e-2
-            assert abs(result_mean - 0.1941) < 1e-3
+            # Skip test on TPU due to numerical instability with float32 precision
+            self.skipTest("Skipping test on TPU due to numerical instability with float32 precision")
+        
+        # Assert expected values for non-TPU devices
+        assert abs(result_sum - 149.0784) < 1e-2, f"Expected sum ~149.0784, got {result_sum}"
+        assert abs(result_mean - 0.1941) < 1e-3, f"Expected mean ~0.1941, got {result_mean}"
 
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "sample", "v_prediction"]:
