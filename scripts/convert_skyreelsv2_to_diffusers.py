@@ -7,15 +7,15 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from transformers import AutoTokenizer, CLIPVisionModelWithProjection, AutoProcessor, UMT5EncoderModel
+from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
+    FlowMatchUniPCMultistepScheduler,
     SkyReelsV2DiffusionForcingPipeline,
     SkyReelsV2ImageToVideoPipeline,
     SkyReelsV2Pipeline,
     SkyReelsV2Transformer3DModel,
-    FlowMatchUniPCMultistepScheduler,
 )
 
 
@@ -522,8 +522,7 @@ if __name__ == "__main__":
     )
 
     if "I2V" in args.model_type:
-        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         pipe = SkyReelsV2ImageToVideoPipeline(
             transformer=transformer,
@@ -555,6 +554,6 @@ if __name__ == "__main__":
         args.output_path,
         safe_serialization=True,
         max_shard_size="5GB",
-        #push_to_hub=True,
-        #repo_id=f"<place_holder>/{args.model_type}-Diffusers",
+        # push_to_hub=True,
+        # repo_id=f"<place_holder>/{args.model_type}-Diffusers",
     )
