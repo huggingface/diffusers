@@ -333,6 +333,8 @@
         title: TransformerTemporalModel
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
+      - local: api/models/skyreels_v2_transformer_3d
+        title: SkyReelsV2Transformer3DModel
       title: Transformers
     - sections:
       - local: api/models/stable_cascade_unet
@@ -575,6 +577,8 @@
       title: VisualCloze
     - local: api/pipelines/wan
       title: Wan
+    - local: api/pipelines/skyreels_v2
+      title: SkyReels-V2
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines
@@ -620,6 +624,8 @@
       title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/flow_match_heun_discrete
       title: FlowMatchHeunDiscreteScheduler
+    - local: api/schedulers/flow_match_unipc
+      title: FlowMatchUniPCMultistepScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
