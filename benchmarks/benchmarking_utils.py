@@ -19,6 +19,8 @@ from diffusers.utils.testing_utils import require_torch_gpu, torch_device
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+NUM_WARMUP_ROUNDS = 5
+
 
 def benchmark_fn(f, *args, **kwargs):
     t0 = benchmark.Timer(
@@ -230,6 +232,8 @@ class BenchmarkMixin:
         # measure
         run_ctx = torch._inductor.utils.fresh_inductor_cache() if compile_kwargs else nullcontext()
         with run_ctx:
+            for _ in range(NUM_WARMUP_ROUNDS):
+                _ = model(**inp)
             time_s = benchmark_fn(lambda m, d: m(**d), model, inp)
         mem_gb = torch.cuda.max_memory_allocated() / (1024**3)
         mem_gb = round(mem_gb, 2)
