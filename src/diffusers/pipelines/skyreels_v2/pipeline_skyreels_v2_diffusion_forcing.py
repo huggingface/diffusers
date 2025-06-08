@@ -636,6 +636,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 sequence which means it will be SLOWER than synchronous mode. In our experiments, asynchronous
                 inference may improve the instruction following and visual consistent performance.
             causal_block_size (`int`, *optional*, defaults to `None`):
+                The number of frames in each block/chunk.
                 Recommended when using asynchronous inference (when ar_step > 0)
             fps (`int`, *optional*, defaults to `24`):
                 Frame rate of the generated video
