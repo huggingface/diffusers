@@ -20,37 +20,51 @@
   </div>
 </div>
 
-# Wan2.1
+# SkyReels-V2: Infinite-length Film Generative model
 
-[Wan2.1](https://files.alicdn.com/tpsservice/5c9de1c74de03972b7aa657e5a54756b.pdf) is a series of large diffusion transformer available in two versions, a high-performance 14B parameter model and a more accessible 1.3B version. Trained on billions of images and videos, it supports tasks like text-to-video (T2V) and image-to-video (I2V) while enabling features such as camera control and stylistic diversity. The Wan-VAE features better image data compression and a feature cache mechanism that encodes and decodes a video in chunks. To maintain continuity, features from previous chunks are cached and reused for processing subsequent chunks. This improves inference efficiency by reducing memory usage. Wan2.1 also uses a multilingual text encoder and the diffusion transformer models space and time relationships and text conditions with each time step to capture more complex video dynamics.
+[SkyReels-V2](https://huggingface.co/papers/2504.13074) by the SkyReels Team.
 
-You can find all the original Wan2.1 checkpoints under the [Wan-AI](https://huggingface.co/Wan-AI) organization.
+*Recent advances in video generation have been driven by diffusion models and autoregressive frameworks, yet critical challenges persist in harmonizing prompt adherence, visual quality, motion dynamics, and duration: compromises in motion dynamics to enhance temporal visual quality, constrained video duration (5-10 seconds) to prioritize resolution, and inadequate shot-aware generation stemming from general-purpose MLLMs' inability to interpret cinematic grammar, such as shot composition, actor expressions, and camera motions. These intertwined limitations hinder realistic long-form synthesis and professional film-style generation. To address these limitations, we propose SkyReels-V2, an Infinite-length Film Generative Model, that synergizes Multi-modal Large Language Model (MLLM), Multi-stage Pretraining, Reinforcement Learning, and Diffusion Forcing Framework. Firstly, we design a comprehensive structural representation of video that combines the general descriptions by the Multi-modal LLM and the detailed shot language by sub-expert models. Aided with human annotation, we then train a unified Video Captioner, named SkyCaptioner-V1, to efficiently label the video data. Secondly, we establish progressive-resolution pretraining for the fundamental video generation, followed by a four-stage post-training enhancement: Initial concept-balanced Supervised Fine-Tuning (SFT) improves baseline quality; Motion-specific Reinforcement Learning (RL) training with human-annotated and synthetic distortion data addresses dynamic artifacts; Our diffusion forcing framework with non-decreasing noise schedules enables long-video synthesis in an efficient search space; Final high-quality SFT refines visual fidelity. All the code and models are available at [this https URL](https://github.com/SkyworkAI/SkyReels-V2).*
+
+You can find all the original SkyReels-V2 checkpoints under the [Skywork](https://huggingface.co/collections/Skywork/skyreels-v2-6801b1b93df627d441d0d0d9) organization.
+
+The following SkyReels-V2 models are supported in Diffusers:
+- [SkyReels-V2 DF 1.3B - 540P](https://huggingface.co/Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers)
+- [SkyReels-V2 DF 14B - 540P](https://huggingface.co/Skywork/SkyReels-V2-DF-14B-540P-Diffusers)
+- [SkyReels-V2 DF 14B - 720P](https://huggingface.co/Skywork/SkyReels-V2-DF-14B-720P-Diffusers)
+- [SkyReels-V2 T2V 14B - 540P](https://huggingface.co/Skywork/SkyReels-V2-T2V-14B-540P-Diffusers)
+- [SkyReels-V2 T2V 14B - 720P](https://huggingface.co/Skywork/SkyReels-V2-T2V-14B-720P-Diffusers)
+- [SkyReels-V2 I2V 1.3B - 540P](https://huggingface.co/Skywork/SkyReels-V2-I2V-1.3B-540P-Diffusers)
+- [SkyReels-V2 I2V 14B - 540P](https://huggingface.co/Skywork/SkyReels-V2-I2V-14B-540P-Diffusers)
+- [SkyReels-V2 I2V 14B - 720P](https://huggingface.co/Skywork/SkyReels-V2-I2V-14B-720P-Diffusers)
 
 > [!TIP]
-> Click on the Wan2.1 models in the right sidebar for more examples of video generation.
+> Click on the SkyReels-V2 models in the right sidebar for more examples of video generation.
+
+### Text-to-Video Generation
 
 The example below demonstrates how to generate a video from text optimized for memory or inference speed.
 
-<hfoptions id="usage">
-<hfoption id="memory">
+<hfoptions id="T2V usage">
+<hfoption id="T2V memory">
 
 Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
 
-The Wan2.1 text-to-video model below requires ~13GB of VRAM.
+The SkyReels-V2 text-to-video model below requires ~13GB of VRAM.
 
 ```py
 # pip install ftfy
 import torch
 import numpy as np
-from diffusers import AutoModel, WanPipeline
+from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -68,8 +82,8 @@ transformer.enable_group_offload(
     use_stream=True
 )
 
-pipeline = WanPipeline.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
+pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
+    "Skywork/SkyReels-V2-DF-14B-540P-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
@@ -78,29 +92,29 @@ pipeline = WanPipeline.from_pretrained(
 pipeline.to("cuda")
 
 prompt = """
-The camera rushes from far to near in a low-angle shot, 
-revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+The camera rushes from far to near in a low-angle shot,
+revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
 shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
 """
 negative_prompt = """
-Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, 
-low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, 
+Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
+low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured,
 misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
 """
 
 output = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
-    num_frames=81,
-    guidance_scale=5.0,
+    num_frames=97,
+    guidance_scale=6.0,
 ).frames[0]
-export_to_video(output, "output.mp4", fps=16)
+export_to_video(output, "output.mp4", fps=24)
 ```
 
 </hfoption>
-<hfoption id="inference speed">
+<hfoption id="T2V inference speed">
 
 [Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
 
@@ -108,17 +122,17 @@ export_to_video(output, "output.mp4", fps=16)
 # pip install ftfy
 import torch
 import numpy as np
-from diffusers import AutoModel, WanPipeline
+from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 
-pipeline = WanPipeline.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
+pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
+    "Skywork/SkyReels-V2-DF-14B-540P-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
@@ -133,33 +147,108 @@ pipeline.transformer = torch.compile(
 )
 
 prompt = """
-The camera rushes from far to near in a low-angle shot, 
-revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+The camera rushes from far to near in a low-angle shot,
+revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
 shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
 """
 negative_prompt = """
-Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, 
-low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, 
+Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
+low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured,
 misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
 """
 
 output = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
-    num_frames=81,
-    guidance_scale=5.0,
+    num_frames=97,
+    guidance_scale=6.0,
 ).frames[0]
-export_to_video(output, "output.mp4", fps=16)
+export_to_video(output, "output.mp4", fps=24)
 ```
 
 </hfoption>
 </hfoptions>
 
+### First-Last-Frame-to-Video Generation
+
+The example below demonstrates how to use the image-to-video pipeline to generate a video using a text description, a starting frame, and an ending frame.
+
+<hfoptions id="FLF2V usage">
+<hfoption id="usage">
+
+```python
+import numpy as np
+import torch
+import torchvision.transforms.functional as TF
+from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingImageToVideoPipeline
+from diffusers.utils import export_to_video, load_image
+from transformers import CLIPVisionModel
+
+
+model_id = "Skywork/SkyReels-V2-DF-14B-720P-Diffusers"
+image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+pipe = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
+    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
+last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
+
+def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
+    aspect_ratio = image.height / image.width
+    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+    image = image.resize((width, height))
+    return image, height, width
+
+def center_crop_resize(image, height, width):
+    # Calculate resize ratio to match first frame dimensions
+    resize_ratio = max(width / image.width, height / image.height)
+
+    # Resize the image
+    width = round(image.width * resize_ratio)
+    height = round(image.height * resize_ratio)
+    size = [width, height]
+    image = TF.center_crop(image, size)
+
+    return image, height, width
+
+first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
+if last_frame.size != first_frame.size:
+    last_frame, _, _ = center_crop_resize(last_frame, height, width)
+
+prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+
+output = pipe(
+    image=first_frame, last_image=last_frame, prompt=prompt, height=height, width=width, guidance_scale=5.0
+).frames[0]
+export_to_video(output, "output.mp4", fps=24)
+```
+
+</hfoption>
+</hfoptions>
+
+### Any-to-Video Controllable Generation
+
+SkyReels-V2 supports various generation techniques which achieve controllable video generation. Some of the capabilities include:
+- Control to Video (Depth, Pose, Sketch, Flow, Grayscale, Scribble, Layout, Boundary Box, etc.). Recommended library for preprocessing videos to obtain control videos: [huggingface/controlnet_aux]()
+- Image/Video to Video (first frame, last frame, starting clip, ending clip, random clips)
+- Inpainting and Outpainting
+- Subject to Video (faces, object, characters, etc.)
+- Composition to Video (reference anything, animate anything, swap anything, expand anything, move anything, etc.)
+
+The general rule of thumb to keep in mind when preparing inputs for the SkyReels-V2 pipeline is that the input images, or frames of a video that you want to use for conditioning, should have a corresponding mask that is black in color. The black mask signifies that the model will not generate new content for that area, and only use those parts for conditioning the generation process. For parts/frames that should be generated by the model, the mask should be white in color.
+
+The code snippets available in [this](https://github.com/huggingface/diffusers/pull/11582) pull request demonstrate some examples of how videos can be generated with controllability signals.
+
 ## Notes
 
-- Wan2.1 supports LoRAs with [`~loaders.WanLoraLoaderMixin.load_lora_weights`].
+- SkyReels-V2 supports LoRAs with [`~loaders.WanLoraLoaderMixin.load_lora_weights`].
 
   <details>
   <summary>Show example code</summary>
@@ -167,17 +256,17 @@ export_to_video(output, "output.mp4", fps=16)
   ```py
   # pip install ftfy
   import torch
-  from diffusers import AutoModel, WanPipeline
-  from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+  from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
+  from diffusers import FlowMatchUniPCMultistepScheduler
   from diffusers.utils import export_to_video
 
   vae = AutoModel.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+      "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32
   )
-  pipeline = WanPipeline.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
+  pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
+      "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers", vae=vae, torch_dtype=torch.bfloat16
   )
-  pipeline.scheduler = UniPCMultistepScheduler.from_config(
+  pipeline.scheduler = FlowMatchUniPCMultistepScheduler.from_config(
       pipeline.scheduler.config, flow_shift=5.0
   )
   pipeline.to("cuda")
@@ -189,19 +278,19 @@ export_to_video(output, "output.mp4", fps=16)
 
   # use "steamboat willie style" to trigger the LoRA
   prompt = """
-  steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot, 
-  revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-  for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-  Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+  steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot,
+  revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+  for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+  Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
   shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
   """
 
   output = pipeline(
       prompt=prompt,
-      num_frames=81,
-      guidance_scale=5.0,
+      num_frames=97,
+      guidance_scale=6.0,
   ).frames[0]
-  export_to_video(output, "output.mp4", fps=16)
+  export_to_video(output, "output.mp4", fps=24)
   ```
 
   </details>
@@ -214,17 +303,17 @@ export_to_video(output, "output.mp4", fps=16)
   ```py
   # pip install ftfy
   import torch
-  from diffusers import WanPipeline, AutoModel
+  from diffusers import SkyReelsV2DiffusionForcingPipeline, AutoModel
 
   vae = AutoModel.from_single_file(
-      "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors"
+      "https://huggingface.co/Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers/blob/main/split_files/vae/skyreels_v2_vae.safetensors"
   )
   transformer = AutoModel.from_single_file(
-      "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors",
+      "https://huggingface.co/Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers/blob/main/split_files/diffusion_models/skyreels_v2_df_1.3b_bf16.safetensors",
       torch_dtype=torch.bfloat16
   )
-  pipeline = WanPipeline.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+  pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
+      "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers",
       vae=vae,
       transformer=transformer,
       torch_dtype=torch.bfloat16
@@ -239,18 +328,36 @@ export_to_video(output, "output.mp4", fps=16)
 
 - Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos and higher `shift` values (`7.0` to `12.0`) for higher resolution images.
 
-## WanPipeline
+## SkyReelsV2DiffusionForcingPipeline
 
-[[autodoc]] WanPipeline
+[[autodoc]] SkyReelsV2DiffusionForcingPipeline
   - all
   - __call__
 
-## WanImageToVideoPipeline
+## SkyReelsV2DiffusionForcingImageToVideoPipeline
 
-[[autodoc]] WanImageToVideoPipeline
+[[autodoc]] SkyReelsV2DiffusionForcingImageToVideoPipeline
   - all
   - __call__
 
-## WanPipelineOutput
+## SkyReelsV2DiffusionForcingVideoToVideoPipeline
 
-[[autodoc]] pipelines.wan.pipeline_output.WanPipelineOutput
+[[autodoc]] SkyReelsV2DiffusionForcingVideoToVideoPipeline
+  - all
+  - __call__
+
+## SkyReelsV2Pipeline
+
+[[autodoc]] SkyReelsV2Pipeline
+  - all
+  - __call__
+
+## SkyReelsV2ImageToVideoPipeline
+
+[[autodoc]] SkyReelsV2ImageToVideoPipeline
+  - all
+  - __call__
+
+## SkyReelsV2PipelineOutput
+
+[[autodoc]] pipelines.skyreels_v2.pipeline_output.SkyReelsV2PipelineOutput
