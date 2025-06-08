@@ -72,7 +72,7 @@ EXAMPLE_DOC_STRING = """\
         ...     vae=vae,
         ...     torch_dtype=torch.bfloat16,
         ... )
-        >>> shift = 8.0  # 8.0 for T2V, 3.0 for I2V
+        >>> shift = 8.0  # 8.0 for T2V, 5.0 for I2V
         >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
         >>> pipe = pipe.to("cuda")
         >>> pipe.transformer.set_ar_attention(causal_block_size=5)
@@ -619,7 +619,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
             shift (`float`, *optional*, defaults to `8.0`):
-                Flow matching scheduler parameter (**3.0 for I2V**, **8.0 for T2V**)
+                Flow matching scheduler parameter (**5.0 for I2V**, **8.0 for T2V**)
             overlap_history (`int`, *optional*, defaults to `None`):
                 Number of frames to overlap for smooth transitions in long videos. If `None`, the pipeline assumes
                 short video generation mode, and no overlap is applied. 17 and 37 are recommended to set.
