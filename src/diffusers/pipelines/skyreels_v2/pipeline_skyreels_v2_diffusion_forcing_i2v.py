@@ -486,9 +486,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
         num_frames_block = num_frames // causal_block_size
         base_num_frames_block = base_num_frames // causal_block_size
         if base_num_frames_block < num_frames_block:
-            infer_step_num = len(step_template)
-            gen_block = base_num_frames_block
-            min_ar_step = infer_step_num / gen_block
+            min_ar_step = len(step_template) / base_num_frames_block
             if ar_step < min_ar_step:
                 raise ValueError(f"ar_step should be at least {math.ceil(min_ar_step)} in your setting")
 
@@ -692,8 +690,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraL
                 sequence which means it will be SLOWER than synchronous mode. In our experiments, asynchronous
                 inference may improve the instruction following and visual consistent performance.
             causal_block_size (`int`, *optional*, defaults to `None`):
-                The number of frames in each block/chunk.
-                Recommended when using asynchronous inference (when ar_step > 0)
+                The number of frames in each block/chunk. Recommended when using asynchronous inference (when ar_step >
+                0)
             fps (`int`, *optional*, defaults to `24`):
                 Frame rate of the generated video
 
