@@ -53,10 +53,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```py
         >>> import torch
         >>> from diffusers import FluxPipeline
-
         >>> pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
@@ -64,8 +62,8 @@ EXAMPLE_DOC_STRING = """
         >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
         >>> image.save("flux.png")
-        ```
 """
+
 
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
