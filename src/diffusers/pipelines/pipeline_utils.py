@@ -766,10 +766,27 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # Validate device_map using our Accelerate integration
         if device_map is not None:
+            # Convert integer device_map to dict format (device_map=0 -> {"": 0})
+            if isinstance(device_map, int):
+                device_map = {"": device_map}
+
             from ..utils.accelerate_utils import validate_device_map
-            
+
             validate_device_map(device_map)
-            
+
+            # Check if disk offloading is used and validate offload_folder (matches Accelerate behavior)
+            if isinstance(device_map, dict):
+                uses_disk_offloading = "disk" in device_map.values()
+                if uses_disk_offloading and not offload_folder:
+                    raise ValueError(
+                        "At least one of the model submodule will be offloaded to disk, "
+                        "please pass along an `offload_folder`."
+                    )
+
+            # Log when using auto device mapping
+            if device_map == "auto":
+                logger.info("Using accelerate device_map='auto'")
+
             # Check accelerate version requirement
             if is_accelerate_version("<", "0.28.0"):
                 raise NotImplementedError("Device placement requires `accelerate` version `0.28.0` or later.")
@@ -932,7 +949,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         component_device_maps = {}
         if device_map is not None:
             from ..utils.accelerate_utils import PipelineDeviceMapper
-            
+
             device_mapper = PipelineDeviceMapper(
                 pipeline_class=pipeline_class,
                 init_dict=init_dict,
@@ -948,7 +965,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 token=token,
                 revision=revision,
             )
-            
+
             component_device_maps = device_mapper.resolve_component_device_maps(
                 device_map=device_map,
                 max_memory=max_memory,
@@ -1060,7 +1077,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 12. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         if device_map is not None:
-            setattr(model, "hf_device_map", final_device_map)
+            # Store the resolved component device maps
+            setattr(model, "hf_device_map", component_device_maps)
+
+            # Log the final device mapping
+            if device_map == "auto":
+                logger.info(f"Final device_map: {component_device_maps}")
         return model
 
     @property
@@ -1299,16 +1321,25 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     def reset_device_map(self):
         r"""
-        Resets the device maps (if any) to None.
+        Resets the device maps and moves all components to CPU.
+
+        This is useful when you want to use other offloading methods like
+        enable_sequential_cpu_offload() or enable_model_cpu_offload() after
+        loading with device_map.
         """
         if self.hf_device_map is None:
+            logger.info("No device_map to reset")
             return
-        else:
-            self.remove_all_hooks()
-            for name, component in self.components.items():
-                if isinstance(component, torch.nn.Module):
-                    component.to("cpu")
-            self.hf_device_map = None
+
+        logger.info("Resetting device_map and moving all components to CPU")
+        self.remove_all_hooks()
+
+        for name, component in self.components.items():
+            if isinstance(component, torch.nn.Module):
+                component.to("cpu")
+                logger.debug(f"Moved {name} to CPU")
+
+        self.hf_device_map = None
 
     @classmethod
     @validate_hf_hub_args

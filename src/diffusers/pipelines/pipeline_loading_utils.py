@@ -54,9 +54,6 @@ if is_transformers_available():
 
 if is_accelerate_available():
     import accelerate
-    from accelerate import dispatch_model
-    from accelerate.hooks import remove_hook_from_module
-    from accelerate.utils import compute_module_sizes, get_max_memory
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
