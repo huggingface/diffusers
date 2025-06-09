@@ -814,10 +814,30 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`Union[int, str, torch.Device]` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device. Defaults to `None`, meaning that the model will be loaded on CPU.
+
+                Examples:
+
+                ```py
+                >>> from diffusers import AutoModel
+                >>> import torch
+
+                >>> # This works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map="cuda"
+                ... )
+                >>> # This also works (integer accelerator device ID).
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map=0
+                ... )
+                >>> # Specify a supported offloading strategy like "auto" also works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map="auto"
+                ... )
+                ```
 
                 Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
@@ -1390,7 +1410,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage: bool = True,
         dtype: Optional[Union[str, torch.dtype]] = None,
         keep_in_fp32_modules: Optional[List[str]] = None,
-        device_map: Dict[str, Union[int, str, torch.device]] = None,
+        device_map: Dict[Union[str, int, torch.device], Union[int, str, torch.device]] = None,
         offload_state_dict: Optional[bool] = None,
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,

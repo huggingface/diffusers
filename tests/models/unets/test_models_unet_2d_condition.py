@@ -1086,6 +1086,22 @@ class UNet2DConditionModelTests(
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
+    def test_wrong_device_map_raises_error(self):
+        with self.assertRaises(ValueError) as err_ctx:
+            _ = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy-subfolder", device_map=-1)
+            msg_substring = "You can't pass device_map as a negative int"
+            assert msg_substring in str(err_ctx.exception)
+
+    @require_torch_gpu
+    @parameterized.expand([0, "cuda", torch.device("cuda"), torch.device("cuda:0")])
+    def test_passing_non_dict_device_map_works(self, device_map):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(
+            "hf-internal-testing/unet2d-sharded-dummy-subfolder", device_map=device_map
+        )
+        output = loaded_model(**inputs_dict)
+        assert output.sample.shape == (4, 4, 16, 16)
+
     @require_peft_backend
     def test_load_attn_procs_raise_warning(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
