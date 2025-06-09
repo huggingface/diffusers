@@ -1,4 +1,4 @@
-# Copyright 2024 The NVIDIA Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The NVIDIA Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...models import AutoencoderKLCosmos, CosmosTransformer3DModel
+from ...models import AutoencoderKLWan, CosmosTransformer3DModel
 from ...schedulers import EDMEulerScheduler
 from ...utils import is_cosmos_guardrail_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -53,47 +53,26 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        Image conditioning:
-
         ```python
         >>> import torch
-        >>> from diffusers import CosmosVideoToWorldPipeline
+        >>> from diffusers import Cosmos2VideoToWorldPipeline
         >>> from diffusers.utils import export_to_video, load_image
 
-        >>> model_id = "nvidia/Cosmos-1.0-Diffusion-7B-Video2World"
-        >>> pipe = CosmosVideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> # Available checkpoints: nvidia/Cosmos-Predict2-2B-Video2World, nvidia/Cosmos-Predict2-14B-Video2World
+        >>> model_id = "nvidia/Cosmos-Predict2-2B-Video2World"
+        >>> pipe = Cosmos2VideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = "The video depicts a long, straight highway stretching into the distance, flanked by metal guardrails. The road is divided into multiple lanes, with a few vehicles visible in the far distance. The surrounding landscape features dry, grassy fields on one side and rolling hills on the other. The sky is mostly clear with a few scattered clouds, suggesting a bright, sunny day."
+        >>> prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."
+        >>> negative_prompt = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
         >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input.jpg"
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yellow-scrubber.png"
         ... )
 
-        >>> video = pipe(image=image, prompt=prompt).frames[0]
-        >>> export_to_video(video, "output.mp4", fps=30)
-        ```
-
-        Video conditioning:
-
-        ```python
-        >>> import torch
-        >>> from diffusers import CosmosVideoToWorldPipeline
-        >>> from diffusers.utils import export_to_video, load_video
-
-        >>> model_id = "nvidia/Cosmos-1.0-Diffusion-7B-Video2World"
-        >>> pipe = CosmosVideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-        >>> pipe.transformer = torch.compile(pipe.transformer)
-        >>> pipe.to("cuda")
-
-        >>> prompt = "The video depicts a winding mountain road covered in snow, with a single vehicle traveling along it. The road is flanked by steep, rocky cliffs and sparse vegetation. The landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the solitude and beauty of a winter drive through a mountainous region."
-        >>> video = load_video(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input-vid.mp4"
-        ... )[
-        ...     :21
-        ... ]  # This example uses only the first 21 frames
-
-        >>> video = pipe(video=video, prompt=prompt).frames[0]
-        >>> export_to_video(video, "output.mp4", fps=30)
+        >>> video = pipe(
+        ...     image=image, prompt=prompt, negative_prompt=negative_prompt, generator=torch.Generator().manual_seed(1)
+        ... ).frames[0]
+        >>> export_to_video(video, "output.mp4", fps=16)
         ```
 """
 
@@ -172,9 +151,9 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class CosmosVideoToWorldPipeline(DiffusionPipeline):
+class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
     r"""
-    Pipeline for image-to-video and video-to-video generation using [Cosmos](https://github.com/NVIDIA/Cosmos).
+    Pipeline for text-to-image generation using [Cosmos](https://github.com/NVIDIA/Cosmos).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -189,9 +168,9 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
         transformer ([`CosmosTransformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
-        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+        scheduler ([`EDMEulerScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKLCosmos`]):
+        vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
     """
 
@@ -205,14 +184,14 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
         transformer: CosmosTransformer3DModel,
-        vae: AutoencoderKLCosmos,
+        vae: AutoencoderKLWan,
         scheduler: EDMEulerScheduler,
         safety_checker: CosmosSafetyChecker = None,
     ):
         super().__init__()
 
-        if safety_checker is None:
-            safety_checker = CosmosSafetyChecker()
+        # if safety_checker is None:
+        #     safety_checker = CosmosSafetyChecker()
 
         self.register_modules(
             vae=vae,
@@ -223,10 +202,8 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
         )
 
-        self.vae_scale_factor_temporal = (
-            self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 8
-        )
-        self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
+        self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline._get_t5_prompt_embeds
@@ -363,9 +340,8 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         num_channels_latents: 16,
         height: int = 704,
         width: int = 1280,
-        num_frames: int = 121,
+        num_frames: int = 77,
         do_classifier_free_guidance: bool = True,
-        input_frames_guidance: bool = False,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -385,7 +361,8 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         else:
             num_cond_latent_frames = (num_cond_frames - 1) // self.vae_scale_factor_temporal + 1
             num_padding_frames = num_frames - num_cond_frames
-            padding = video.new_zeros(video.size(0), video.size(1), num_padding_frames, video.size(3), video.size(4))
+            last_frame = video[:, :, -1:]
+            padding = last_frame.repeat(1, 1, num_padding_frames, 1, 1)
             video = torch.cat([video, padding], dim=2)
 
         if isinstance(generator, list):
@@ -398,21 +375,13 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
 
         init_latents = torch.cat(init_latents, dim=0).to(dtype)
 
-        if self.vae.config.latents_mean is not None:
-            latents_mean, latents_std = self.vae.config.latents_mean, self.vae.config.latents_std
-            latents_mean = (
-                torch.tensor(latents_mean)
-                .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : init_latents.size(2)]
-                .to(init_latents)
-            )
-            latents_std = (
-                torch.tensor(latents_std)
-                .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : init_latents.size(2)]
-                .to(init_latents)
-            )
-            init_latents = (init_latents - latents_mean) * self.scheduler.config.sigma_data / latents_std
-        else:
-            init_latents = init_latents * self.scheduler.config.sigma_data
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).to(device, dtype)
+        )
+        latents_std = (
+            torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(device, dtype)
+        )
+        init_latents = (init_latents - latents_mean) / latents_std * self.scheduler.config.sigma_data
 
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
@@ -438,12 +407,11 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             uncond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
             uncond_indicator[:, :, :num_cond_latent_frames] = 1.0
-            uncond_mask = zeros_padding
-            if not input_frames_guidance:
-                uncond_mask = uncond_indicator * ones_padding + (1 - uncond_indicator) * zeros_padding
+            uncond_mask = uncond_indicator * ones_padding + (1 - uncond_indicator) * zeros_padding
 
         return latents, init_latents, cond_indicator, uncond_indicator, cond_mask, uncond_mask
 
+    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -451,8 +419,6 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         width,
         prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
-        image=None,
-        video=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -475,11 +441,6 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if image is None and video is None:
-            raise ValueError("Either `image` or `video` has to be provided.")
-        if image is not None and video is not None:
-            raise ValueError("Only one of `image` or `video` has to be provided.")
 
     @property
     def guidance_scale(self):
@@ -511,12 +472,10 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 704,
         width: int = 1280,
-        num_frames: int = 121,
-        num_inference_steps: int = 36,
+        num_frames: int = 77,
+        num_inference_steps: int = 35,
         guidance_scale: float = 7.0,
-        input_frames_guidance: bool = False,
-        augment_sigma: float = 0.001,
-        fps: int = 30,
+        fps: int = 16,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -529,21 +488,26 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        sigma_conditioning: float = 0.0001,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, *optional*):
+                The image to be used as a conditioning input for the video generation.
+            video (`List[PIL.Image.Image]`, `np.ndarray`, `torch.Tensor`, *optional*):
+                The video to be used as a conditioning input for the video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, defaults to `720`):
+            height (`int`, defaults to `704`):
                 The height in pixels of the generated image.
             width (`int`, defaults to `1280`):
                 The width in pixels of the generated image.
-            num_frames (`int`, defaults to `121`):
+            num_frames (`int`, defaults to `77`):
                 The number of frames in the generated video.
-            num_inference_steps (`int`, defaults to `36`):
+            num_inference_steps (`int`, defaults to `35`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, defaults to `7.0`):
@@ -551,7 +515,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`.
-            fps (`int`, defaults to `30`):
+            fps (`int`, defaults to `16`):
                 The frames per second of the generated video.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
@@ -581,6 +545,12 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated. If
+                the prompt is shorter than this length, it will be padded.
+            sigma_conditioning (`float`, defaults to `0.0001`):
+                The sigma value used for scaling conditioning latents. Ideally, it should not be changed or should be
+                set to a small value close to zero.
 
         Examples:
 
@@ -591,18 +561,18 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
 
-        if self.safety_checker is None:
-            raise ValueError(
-                f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
-                "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
-                f"Please ensure that you are compliant with the license agreement."
-            )
+        # if self.safety_checker is None:
+        #     raise ValueError(
+        #         f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
+        #         "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
+        #         f"Please ensure that you are compliant with the license agreement."
+        #     )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs, image, video)
+        self.check_inputs(prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs)
 
         self._guidance_scale = guidance_scale
         self._current_timestep = None
@@ -667,18 +637,21 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             width,
             num_frames,
             self.do_classifier_free_guidance,
-            input_frames_guidance,
             torch.float32,
             device,
             generator,
             latents,
         )
+        unconditioning_latents = None
+
         cond_mask = cond_mask.to(transformer_dtype)
         if self.do_classifier_free_guidance:
             uncond_mask = uncond_mask.to(transformer_dtype)
+            unconditioning_latents = conditioning_latents
 
-        augment_sigma = torch.tensor([augment_sigma], device=device, dtype=torch.float32)
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
+        sigma_conditioning = torch.full((batch_size,), sigma_conditioning, dtype=torch.float32, device=device)
+        sigma_conditioning_t = self.scheduler.precondition_noise(sigma_conditioning)
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -690,76 +663,51 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                     continue
 
                 self._current_timestep = t
-                timestep = t.expand(latents.shape[0]).to(transformer_dtype)
-
+                timestep = t.view(1, 1, 1, 1, 1).repeat(latents.size(0), 1, latents.size(2), 1, 1)  # [B, 1, T, 1, 1]
                 current_sigma = self.scheduler.sigmas[i]
-                is_augment_sigma_greater = augment_sigma >= current_sigma
 
-                c_in_augment = self.scheduler._get_conditioning_c_in(augment_sigma)
-                c_in_original = self.scheduler._get_conditioning_c_in(current_sigma)
-
-                current_cond_indicator = cond_indicator * 0 if is_augment_sigma_greater else cond_indicator
-                cond_noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=torch.float32)
-                cond_latent = conditioning_latents + cond_noise * augment_sigma[:, None, None, None, None]
-                cond_latent = cond_latent * c_in_augment / c_in_original
-                cond_latent = current_cond_indicator * cond_latent + (1 - current_cond_indicator) * latents
-                cond_latent = self.scheduler.scale_model_input(cond_latent, t)
+                cond_latent = self.scheduler.scale_model_input(latents, t)
+                cond_latent = cond_indicator * conditioning_latents + (1 - cond_indicator) * cond_latent
                 cond_latent = cond_latent.to(transformer_dtype)
+                cond_timestep = cond_indicator * sigma_conditioning_t + (1 - cond_indicator) * timestep
+                cond_timestep = cond_timestep.to(transformer_dtype)
 
                 noise_pred = self.transformer(
                     hidden_states=cond_latent,
-                    timestep=timestep,
+                    timestep=cond_timestep,
                     encoder_hidden_states=prompt_embeds,
                     fps=fps,
                     condition_mask=cond_mask,
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
+                noise_pred = self.scheduler.precondition_outputs(latents, noise_pred, current_sigma)
+                noise_pred = cond_indicator * conditioning_latents + (1 - cond_indicator) * noise_pred
 
-                sample = latents
                 if self.do_classifier_free_guidance:
-                    current_uncond_indicator = uncond_indicator * 0 if is_augment_sigma_greater else uncond_indicator
-                    uncond_noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=torch.float32)
-                    uncond_latent = conditioning_latents + uncond_noise * augment_sigma[:, None, None, None, None]
-                    uncond_latent = uncond_latent * c_in_augment / c_in_original
-                    uncond_latent = current_uncond_indicator * uncond_latent + (1 - current_uncond_indicator) * latents
-                    uncond_latent = self.scheduler.scale_model_input(uncond_latent, t)
+                    uncond_latent = self.scheduler.scale_model_input(latents, t)
+                    uncond_latent = uncond_indicator * unconditioning_latents + (1 - uncond_indicator) * uncond_latent
                     uncond_latent = uncond_latent.to(transformer_dtype)
+                    uncond_timestep = uncond_indicator * sigma_conditioning_t + (1 - uncond_indicator) * timestep
+                    uncond_timestep = uncond_timestep.to(transformer_dtype)
 
                     noise_pred_uncond = self.transformer(
                         hidden_states=uncond_latent,
-                        timestep=timestep,
+                        timestep=uncond_timestep,
                         encoder_hidden_states=negative_prompt_embeds,
                         fps=fps,
                         condition_mask=uncond_mask,
                         padding_mask=padding_mask,
                         return_dict=False,
                     )[0]
-                    noise_pred = torch.cat([noise_pred_uncond, noise_pred])
-                    sample = torch.cat([sample, sample])
-
-                # pred_original_sample (x0)
-                noise_pred = self.scheduler.step(noise_pred, t, sample, return_dict=False)[1]
-                self.scheduler._step_index -= 1
-
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2, dim=0)
+                    noise_pred_uncond = self.scheduler.precondition_outputs(latents, noise_pred_uncond, current_sigma)
                     noise_pred_uncond = (
-                        current_uncond_indicator * conditioning_latents
-                        + (1 - current_uncond_indicator) * noise_pred_uncond
+                        uncond_indicator * unconditioning_latents + (1 - uncond_indicator) * noise_pred_uncond
                     )
-                    noise_pred_cond = (
-                        current_cond_indicator * conditioning_latents + (1 - current_cond_indicator) * noise_pred_cond
-                    )
-                    noise_pred = noise_pred_cond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
-                else:
-                    noise_pred = (
-                        current_cond_indicator * conditioning_latents + (1 - current_cond_indicator) * noise_pred
-                    )
+                    noise_pred = noise_pred + self.guidance_scale * (noise_pred - noise_pred_uncond)
 
-                # pred_sample (eps)
                 latents = self.scheduler.step(
-                    noise_pred, t, latents, return_dict=False, pred_original_sample=noise_pred
+                    noise_pred, t, latents, pred_original_sample=noise_pred, return_dict=False
                 )[0]
 
                 if callback_on_step_end is not None:
@@ -782,22 +730,18 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         self._current_timestep = None
 
         if not output_type == "latent":
-            if self.vae.config.latents_mean is not None:
-                latents_mean, latents_std = self.vae.config.latents_mean, self.vae.config.latents_std
-                latents_mean = (
-                    torch.tensor(latents_mean)
-                    .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : latents.size(2)]
-                    .to(latents)
-                )
-                latents_std = (
-                    torch.tensor(latents_std)
-                    .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : latents.size(2)]
-                    .to(latents)
-                )
-                latents = latents * latents_std / self.scheduler.config.sigma_data + latents_mean
-            else:
-                latents = latents / self.scheduler.config.sigma_data
-            video = self.vae.decode(latents.to(vae_dtype), return_dict=False)[0]
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents_std = (
+                torch.tensor(self.vae.config.latents_std)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents = latents * latents_std / self.scheduler.config.sigma_data + latents_mean
+            video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
 
             if self.safety_checker is not None:
                 self.safety_checker.to(device)
