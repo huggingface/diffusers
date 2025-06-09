@@ -55,20 +55,24 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import CosmosTextToImagePipeline
+        >>> from diffusers import Cosmos2VideoToWorldPipeline
+        >>> from diffusers.utils import export_to_video, load_image
 
-        >>> # Available checkpoints: nvidia/Cosmos-Predict2-2B-Text2Image, nvidia/Cosmos-Predict2-14B-Text2Image
-        >>> model_id = "nvidia/Cosmos-Predict2-2B-Text2Image"
-        >>> pipe = CosmosTextToImagePipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> # Available checkpoints: nvidia/Cosmos-Predict2-2B-Video2World, nvidia/Cosmos-Predict2-14B-Video2World
+        >>> model_id = "nvidia/Cosmos-Predict2-2B-Video2World"
+        >>> pipe = Cosmos2VideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."
         >>> negative_prompt = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yellow-scrubber.png"
+        ... )
 
-        >>> output = pipe(
-        ...     prompt=prompt, negative_prompt=negative_prompt, generator=torch.Generator().manual_seed(1)
-        ... ).images[0]
-        >>> output.save("output.png")
+        >>> video = pipe(
+        ...     image=image, prompt=prompt, negative_prompt=negative_prompt, generator=torch.Generator().manual_seed(1)
+        ... ).frames[0]
+        >>> export_to_video(video, "output.mp4", fps=16)
         ```
 """
 
@@ -485,12 +489,15 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         sigma_conditioning: float = 0.0001,
-        drop_unconditional: bool = False,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, *optional*):
+                The image to be used as a conditioning input for the video generation.
+            video (`List[PIL.Image.Image]`, `np.ndarray`, `torch.Tensor`, *optional*):
+                The video to be used as a conditioning input for the video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -538,6 +545,12 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated. If
+                the prompt is shorter than this length, it will be padded.
+            sigma_conditioning (`float`, defaults to `0.0001`):
+                The sigma value used for scaling conditioning latents. Ideally, it should not be changed or should be
+                set to a small value close to zero.
 
         Examples:
 
@@ -634,9 +647,7 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
         cond_mask = cond_mask.to(transformer_dtype)
         if self.do_classifier_free_guidance:
             uncond_mask = uncond_mask.to(transformer_dtype)
-            unconditioning_latents = (
-                torch.zeros_like(conditioning_latents) if drop_unconditional else conditioning_latents
-            )
+            unconditioning_latents = conditioning_latents
 
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
         sigma_conditioning = torch.full((batch_size,), sigma_conditioning, dtype=torch.float32, device=device)
