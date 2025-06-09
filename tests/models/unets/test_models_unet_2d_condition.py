@@ -1108,6 +1108,18 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         output = loaded_model(**inputs_dict)
         assert output.sample.shape == (4, 4, 16, 16)
 
+    @parameterized.expand([{"": "cuda"}, {"": torch.device("cuda")}, {"": "cpu"}, {"": torch.device("cpu")}])
+    @require_torch_gpu
+    def test_passing_dict_device_map_works(self, device_map):
+        # There are other valid dict-based `device_map` values too. It's best to refer to
+        # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(
+            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=device_map
+        )
+        output = loaded_model(**inputs_dict)
+        assert output.sample.shape == (4, 4, 16, 16)
+
     @require_peft_backend
     def test_load_attn_procs_raise_warning(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
