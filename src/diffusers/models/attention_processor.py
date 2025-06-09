@@ -3754,16 +3754,6 @@ class PAGIdentitySanaLinearAttnProcessor:
 # Deprecated classes for backward compatibility
 
 
-class AttnProcessor:
-    def __new__(cls, *args, **kwargs):
-        deprecation_message = (
-            "`AttnProcessor` is deprecated and this will be removed in a future version. Please use `AttnProcessor`"
-        )
-        deprecate("AttnProcessor", "1.0.0", deprecation_message)
-
-        return AttnProcessor(*args, **kwargs)
-
-
 class AttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = (
@@ -3845,7 +3835,7 @@ class FluxSingleAttnProcessor2_0:
         deprecation_message = "`FluxSingleAttnProcessor` is deprecated and will be removed in a future version. Please use `FluxAttnProcessorSDPA` instead."
         deprecate("FluxSingleAttnProcessor2_0", "1.0.0", deprecation_message)
 
-        from .transformers.transformer_allegro import FluxAttnProcessor
+        from .transformers.transformer_flux import FluxAttnProcessor
 
         return FluxAttnProcessor(*args, **kwargs)
 

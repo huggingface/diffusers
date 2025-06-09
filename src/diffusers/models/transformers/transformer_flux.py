@@ -147,7 +147,7 @@ class FluxAttnProcessor:
             return hidden_states
 
 
-class FluxIPAdapterAttnProcessorSDPA(torch.nn.Module):
+class FluxIPAdapterAttnProcessor(torch.nn.Module):
     """Flux Attention processor for IP-Adapter."""
 
     def __init__(
