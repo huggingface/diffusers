@@ -82,7 +82,6 @@ from .pipeline_loading_utils import (
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
-    _get_final_device_map,
     _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
@@ -107,7 +106,9 @@ LIBRARIES = []
 for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
 
-SUPPORTED_DEVICE_MAP = ["balanced"]
+# Device map strategies are now handled by Accelerate integration
+# Keeping for backward compatibility reference
+SUPPORTED_DEVICE_MAP = ["auto", "balanced", "balanced_low_0", "sequential"]
 
 logger = logging.get_logger(__name__)
 
@@ -716,7 +717,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         provider_options = kwargs.pop("provider_options", None)
-        device_map = kwargs.pop("device_map", None)
+        device_map = kwargs.pop("device_map", "auto")
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
         offload_state_dict = kwargs.pop("offload_state_dict", None)
@@ -763,15 +764,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "Using `device_map` requires the `accelerate` library. Please install it using: `pip install accelerate`."
             )
 
-        if device_map is not None and not isinstance(device_map, str):
-            raise ValueError("`device_map` must be a string.")
-
-        if device_map is not None and device_map not in SUPPORTED_DEVICE_MAP:
-            raise NotImplementedError(
-                f"{device_map} not supported. Supported strategies are: {', '.join(SUPPORTED_DEVICE_MAP)}"
-            )
-
-        if device_map is not None and device_map in SUPPORTED_DEVICE_MAP:
+        # Validate device_map using our Accelerate integration
+        if device_map is not None:
+            from ..utils.accelerate_utils import validate_device_map
+            
+            validate_device_map(device_map)
+            
+            # Check accelerate version requirement
             if is_accelerate_version("<", "0.28.0"):
                 raise NotImplementedError("Device placement requires `accelerate` version `0.28.0` or later.")
 
@@ -929,35 +928,37 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # import it here to avoid circular import
         from diffusers import pipelines
 
-        # 6. device map delegation
-        final_device_map = None
+        # 6. Resolve component-specific device maps for direct device loading
+        component_device_maps = {}
         if device_map is not None:
-            final_device_map = _get_final_device_map(
-                device_map=device_map,
+            from ..utils.accelerate_utils import PipelineDeviceMapper
+            
+            device_mapper = PipelineDeviceMapper(
                 pipeline_class=pipeline_class,
-                passed_class_obj=passed_class_obj,
                 init_dict=init_dict,
-                library=library,
-                max_memory=max_memory,
-                torch_dtype=torch_dtype,
+                passed_class_obj=passed_class_obj,
                 cached_folder=cached_folder,
+                # Loading kwargs needed for size calculation in auto strategies
+                importable_classes=ALL_IMPORTABLE_CLASSES,
+                pipelines=pipelines,
+                is_pipeline_module=True,
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
                 revision=revision,
             )
+            
+            component_device_maps = device_mapper.resolve_component_device_maps(
+                device_map=device_map,
+                max_memory=max_memory,
+                torch_dtype=torch_dtype,
+            )
 
         # 7. Load each module in the pipeline
-        current_device_map = None
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
-            # 7.1 device_map shenanigans
-            if final_device_map is not None and len(final_device_map) > 0:
-                component_device = final_device_map.get(name, None)
-                if component_device is not None:
-                    current_device_map = {"": component_device}
-                else:
-                    current_device_map = None
+            # 7.1 Get component-specific device_map
+            component_device_map = component_device_maps.get(name) if device_map is not None else None
 
             # 7.2 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
@@ -993,7 +994,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     torch_dtype=sub_model_dtype,
                     provider=provider,
                     sess_options=sess_options,
-                    device_map=current_device_map,
+                    device_map=component_device_map,
                     max_memory=max_memory,
                     offload_folder=offload_folder,
                     offload_state_dict=offload_state_dict,
