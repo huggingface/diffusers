@@ -12,41 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+from typing import Optional
+
+import torch.nn as nn
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+    T5EncoderModel,
+)
+
+from diffusers import DiffusionPipeline, StableDiffusionXLPipeline
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.schedulers import KarrasDiffusionSchedulers
+
+
 # Note: At this time, the intent is to use the T5 encoder mentioned
 # below, with zero changes.
 # Therefore, the model deliberately does not store the T5 encoder model bytes,
 # (Since they are not unique!)
 # but instead takes advantage of huggingface hub cache loading
 
-T5_NAME  = "mcmonkey/google_t5-v1_1-xxl_encoderonly"
-
+T5_NAME = "mcmonkey/google_t5-v1_1-xxl_encoderonly"
 
 # Caller is expected to load this, or equivalent, as model name for now
 #   eg: pipe = StableDiffusionXL_T5Pipeline(SDXL_NAME)
 SDXL_NAME = "stabilityai/stable-diffusion-xl-base-1.0"
 
-
-
-from diffusers import StableDiffusionXLPipeline, DiffusionPipeline
-from transformers import T5Tokenizer, T5EncoderModel
-from transformers import (
-    CLIPImageProcessor,
-    CLIPTextModel,
-    CLIPTextModelWithProjection,
-    CLIPTokenizer,
-    CLIPVisionModelWithProjection,
-)
-
-from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-
-
-from typing import Optional
-
-import torch.nn as nn, torch, types
-
-import torch.nn as nn
 
 class LinearWithDtype(nn.Linear):
     @property
@@ -56,14 +50,23 @@ class LinearWithDtype(nn.Linear):
 
 class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
     _expected_modules = [
-        "vae", "unet", "scheduler", "tokenizer",
-        "image_encoder", "feature_extractor",
-        "t5_encoder", "t5_projection", "t5_pooled_projection",
+        "vae",
+        "unet",
+        "scheduler",
+        "tokenizer",
+        "image_encoder",
+        "feature_extractor",
+        "t5_encoder",
+        "t5_projection",
+        "t5_pooled_projection",
     ]
 
     _optional_components = [
-        "image_encoder", "feature_extractor",
-        "t5_encoder", "t5_projection", "t5_pooled_projection",
+        "image_encoder",
+        "feature_extractor",
+        "t5_encoder",
+        "t5_projection",
+        "t5_pooled_projection",
     ]
 
     def __init__(
@@ -83,25 +86,24 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
         DiffusionPipeline.__init__(self)
 
         if t5_encoder is None:
-            self.t5_encoder     = T5EncoderModel.from_pretrained(T5_NAME,
-                                torch_dtype=unet.dtype)
+            self.t5_encoder = T5EncoderModel.from_pretrained(T5_NAME, torch_dtype=unet.dtype)
         else:
-            self.t5_encoder     = t5_encoder
+            self.t5_encoder = t5_encoder
 
         # ----- build T5 4096 => 2048 dim projection -----
         if t5_projection is None:
-            self.t5_projection  = LinearWithDtype(4096, 2048)   # trainable
+            self.t5_projection = LinearWithDtype(4096, 2048)  # trainable
         else:
-            self.t5_projection  = t5_projection
+            self.t5_projection = t5_projection
         self.t5_projection.to(dtype=unet.dtype)
         # ----- build T5 4096 => 1280 dim projection -----
         if t5_pooled_projection is None:
-            self.t5_pooled_projection  = LinearWithDtype(4096, 1280)   # trainable
+            self.t5_pooled_projection = LinearWithDtype(4096, 1280)  # trainable
         else:
-            self.t5_pooled_projection  = t5_pooled_projection
+            self.t5_pooled_projection = t5_pooled_projection
         self.t5_pooled_projection.to(dtype=unet.dtype)
 
-        print("dtype of Linear is ",self.t5_projection.dtype)
+        print("dtype of Linear is ", self.t5_projection.dtype)
 
         self.register_modules(
             vae=vae,
@@ -165,13 +167,13 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
 
         # ---------- positive stream -------------------------------------
         ids, mask = _tok(prompt)
-        h_pos = self.t5_encoder(ids, attention_mask=mask).last_hidden_state   # [b, T, 4096]
-        tok_pos = self.t5_projection(h_pos)                                   # [b, T, 2048]
-        pool_pos = self.t5_pooled_projection(h_pos.mean(dim=1))               # [b, 1280]
+        h_pos = self.t5_encoder(ids, attention_mask=mask).last_hidden_state  # [b, T, 4096]
+        tok_pos = self.t5_projection(h_pos)  # [b, T, 2048]
+        pool_pos = self.t5_pooled_projection(h_pos.mean(dim=1))  # [b, 1280]
 
         # expand for multiple images per prompt
-        tok_pos   = tok_pos.repeat_interleave(num_images_per_prompt, 0)
-        pool_pos  = pool_pos.repeat_interleave(num_images_per_prompt, 0)
+        tok_pos = tok_pos.repeat_interleave(num_images_per_prompt, 0)
+        pool_pos = pool_pos.repeat_interleave(num_images_per_prompt, 0)
 
         # ---------- negative / CFG stream --------------------------------
         if do_classifier_free_guidance:
@@ -181,7 +183,7 @@ class StableDiffusionXL_T5Pipeline(StableDiffusionXLPipeline):
             tok_neg = self.t5_projection(h_neg)
             pool_neg = self.t5_pooled_projection(h_neg.mean(dim=1))
 
-            tok_neg  = tok_neg.repeat_interleave(num_images_per_prompt, 0)
+            tok_neg = tok_neg.repeat_interleave(num_images_per_prompt, 0)
             pool_neg = pool_neg.repeat_interleave(num_images_per_prompt, 0)
         else:
             tok_neg = pool_neg = None
