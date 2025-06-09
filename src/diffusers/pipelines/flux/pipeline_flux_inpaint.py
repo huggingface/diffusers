@@ -1193,7 +1193,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FluxIPAdapterM
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
-            # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint
             if padding_mask_crop is not None:
                 image = [
                     self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image
