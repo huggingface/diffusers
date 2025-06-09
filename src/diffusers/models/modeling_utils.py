@@ -987,7 +987,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 device_map = {"": device_map}
         # {"": device} case.
-        elif isinstance(device_map, dict) and len(dict) == 1:
+        elif isinstance(device_map, dict) and len(device_map) == 1:
             device_value = list(device_map.values())[0]
             if isinstance(device_value, str):
                 try:
