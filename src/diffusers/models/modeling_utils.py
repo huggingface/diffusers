@@ -1410,7 +1410,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage: bool = True,
         dtype: Optional[Union[str, torch.dtype]] = None,
         keep_in_fp32_modules: Optional[List[str]] = None,
-        device_map: Dict[Union[str, int, torch.device], Union[int, str, torch.device]] = None,
+        device_map: Union[str, int, torch.device, Dict[str, Union[int, str, torch.device]]] = None,
         offload_state_dict: Optional[bool] = None,
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
