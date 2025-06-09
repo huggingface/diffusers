@@ -139,6 +139,43 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
+class DeprecatedPipelineMixin:
+    """
+    A mixin that can be used to mark a pipeline as deprecated.
+
+    Pipelines inheriting from this mixin will raise a warning when instantiated, indicating that they are deprecated
+    and won't receive updates past the specified version. Tests will be skipped for pipelines that inherit from this
+    mixin.
+
+    Example usage:
+    ```python
+    class MyDeprecatedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
+        _last_supported_version = "0.20.0"
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+    ```
+    """
+
+    # Override this in the inheriting class to specify the last version that will support this pipeline
+    _last_supported_version = None
+
+    def __init__(self, *args, **kwargs):
+        # Get the class name for the warning message
+        class_name = self.__class__.__name__
+
+        # Get the last supported version or use the current version if not specified
+        version_info = getattr(self.__class__, "_last_supported_version", __version__)
+
+        # Raise a warning that this pipeline is deprecated
+        logger.warning(
+            f"The {class_name} has been deprecated and will not receive bug fixes or feature updates after Diffusers version {version_info}. "
+        )
+
+        # Call the parent class's __init__ method
+        super().__init__(*args, **kwargs)
+
+
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for all pipelines.
