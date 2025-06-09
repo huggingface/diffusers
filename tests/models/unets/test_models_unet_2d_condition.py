@@ -1084,13 +1084,18 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    def test_wrong_device_map_raises_error(self):
+    @parameterized.expand(
+        [
+            (-1, "You can't pass device_map as a negative int"),
+            ("foo", "When passing device_map as a string, the value needs to be a device name"),
+        ]
+    )
+    def test_wrong_device_map_raises_error(self, device_map, msg_substring):
         with self.assertRaises(ValueError) as err_ctx:
             _ = self.model_class.from_pretrained(
-                "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=-1
+                "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=device_map
             )
 
-        msg_substring = "You can't pass device_map as a negative int"
         assert msg_substring in str(err_ctx.exception)
 
     @parameterized.expand([0, "cuda", torch.device("cuda"), torch.device("cuda:0")])
