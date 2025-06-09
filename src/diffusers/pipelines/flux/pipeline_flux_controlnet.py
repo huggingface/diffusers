@@ -1226,6 +1226,15 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
                 )
             latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        elif image_bg is not None:
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+
+            if num_inference_steps < 1:
+                raise ValueError(
+                    f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
+                    f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
+                )
+            latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         else:
             latent_timestep = None
 
