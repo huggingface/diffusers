@@ -1093,8 +1093,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         msg_substring = "You can't pass device_map as a negative int"
         assert msg_substring in str(err_ctx.exception)
 
-    @require_torch_gpu
     @parameterized.expand([0, "cuda", torch.device("cuda"), torch.device("cuda:0")])
+    @require_torch_gpu
     def test_passing_non_dict_device_map_works(self, device_map):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained(
