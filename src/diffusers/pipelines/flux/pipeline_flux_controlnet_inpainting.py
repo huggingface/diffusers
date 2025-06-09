@@ -575,6 +575,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         device,
         generator,
         latents=None,
+        inpainting_starting_step = 0,
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -607,6 +608,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             latents = self.scheduler.scale_noise(image_latents, timestep, noise)
         else:
+            noise = latents.to(device)
+            latents = noise
+        
+        if inpainting_starting_step < 0:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             noise = latents.to(device)
             latents = noise
 
@@ -1068,9 +1074,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             device,
             generator,
             latents,
+            inpainting_starting_step,
         )
-        if inpainting_starting_step < 0:
-            latents = None
 
         if image_ref_prod is not None:
             _, _, image_latents_ref, _ = self.prepare_latents(
