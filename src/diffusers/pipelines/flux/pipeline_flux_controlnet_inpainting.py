@@ -777,6 +777,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
         ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
         inpainting_starting_step: Optional[int] = 0, # modified for starting inpainting
+        inpainting_ending_step: Optional[int] = 0, # modified for starting inpainting
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1068,6 +1069,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             generator,
             latents,
         )
+        if inpainting_starting_step < 0:
+            latents = None
 
         if image_ref_prod is not None:
             _, _, image_latents_ref, _ = self.prepare_latents(
@@ -1307,27 +1310,17 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                 # For inpainting, we need to apply the mask and add the masked image latents
                 init_latents_proper = image_latents
-                if image_ref_prod is not None:
-                    init_latents_proper_ref = image_latents_ref
                 init_mask = mask
-                if prod_masks_original is not None:
-                    init_masks_prod = masks_prod
-
-                if image_ref_prod is not None:
-                    init_mask_ref_prod = mask_original
 
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
                     init_latents_proper = self.scheduler.scale_noise(
                         init_latents_proper, torch.tensor([noise_timestep]), noise
                     )
-                    if image_ref_prod is not None:
-                        init_latents_proper_ref = self.scheduler.scale_noise(
-                            init_latents_proper_ref, torch.tensor([noise_timestep]), noise
-                        )
-
+                    
                 # average multiple product latents         
                 if prod_masks_original is not None:
+                    init_masks_prod = masks_prod
                     if i < averaging_steps:
                         batch_size = latents.shape[0]
                         latents = latents.view(-1)
@@ -1373,18 +1366,36 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                     latents = latents.view(batch_size, 4096, -1)
                 
                 # inject product raw images into latents
+                #if image_ref_prod is not None:
+                #    if i < ref_prod_injection_steps:
+                #        latents_1 = (1 - init_mask) * init_latents_proper
+                #        latents_2 = (init_mask - init_mask_ref_prod) * latents 
+                #        latents_3 = (1.0 - ratio_ref_prod) * init_mask_ref_prod * latents + ratio_ref_prod * init_mask_ref_prod * init_latents_proper_ref
+                        
+                #        latents = latents_1 + latents_2 + latents_3 
+
                 if image_ref_prod is not None:
                     if i < ref_prod_injection_steps:
-                        latents_1 = (1 - init_mask) * init_latents_proper
-                        latents_2 = (init_mask - init_mask_ref_prod) * latents 
-                        latents_3 = (1.0 - ratio_ref_prod) * init_mask_ref_prod * latents + ratio_ref_prod * init_mask_ref_prod * init_latents_proper_ref
+                        init_mask_ref_prod = mask_original
+                        init_latents_proper_ref = image_latents_ref
+
+                        init_latents_proper_ref = self.scheduler.scale_noise(
+                            init_latents_proper_ref, torch.tensor([noise_timestep]), noise
+                        )
+
+                        if i < len(timesteps) - 1:
+                            noise_timestep = timesteps[i + 1]
+                            init_latents_proper_ref = self.scheduler.scale_noise(
+                                init_latents_proper_ref, torch.tensor([noise_timestep]), noise
+                            )
+        
+                        latents_1 = init_mask_ref_prod * (ratio_ref_prod * init_latents_proper_ref + (1.0 - ratio_ref_prod) * latents)
+                        latents_2 = (1.0 - init_mask_ref_prod) * latents
                         
-                        latents = latents_1 + latents_2 + latents_3 
-                    else:
-                        latents = (1 - init_mask) * init_latents_proper + init_mask * latents
-                else:
-                    if i >= inpainting_starting_step:
-                        latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                        latents = latents_1 + latents_2
+
+                if i >= inpainting_starting_step and i < inpainting_ending_step:
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
