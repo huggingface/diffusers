@@ -12,6 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+###########################################################################
+# This pipeline attempts to use a model that has SDXL vae, T5 text encoder, 
+# and SDXL unet. 
+# At the present time, there are no pretrained models that give pleasing
+# output. So as yet, (2025/06/10) this pipeline is somewhat of a tech
+# demo proving that the pieces can at least be put together.
+# Hopefully, it will encourage someone with the hardware available to
+# throw enough resources into training one up.
+
 
 from typing import Optional
 
