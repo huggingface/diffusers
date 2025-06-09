@@ -161,6 +161,7 @@ else:
         "CosmosTextToImagePipeline",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
+        "Cosmos2VideoToWorldPipeline",
     ]
     _import_structure["controlnet"].extend(
         [
@@ -563,7 +564,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
         )
-        from .cosmos import CosmosTextToImagePipeline, CosmosTextToWorldPipeline, CosmosVideoToWorldPipeline
+        from .cosmos import (
+            Cosmos2VideoToWorldPipeline,
+            CosmosTextToImagePipeline,
+            CosmosTextToWorldPipeline,
+            CosmosVideoToWorldPipeline,
+        )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,

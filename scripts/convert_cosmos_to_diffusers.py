@@ -182,7 +182,7 @@ TRANSFORMER_CONFIGS = {
         "adaln_lora_dim": 256,
         "max_size": (128, 240, 240),
         "patch_size": (1, 2, 2),
-        "rope_scale": (1.0, 1.0, 1.0),
+        "rope_scale": (1.0, 4.0, 4.0),
         "concat_padding_mask": True,
         "extra_pos_embed_type": None,
     },
@@ -197,7 +197,7 @@ TRANSFORMER_CONFIGS = {
         "adaln_lora_dim": 256,
         "max_size": (128, 240, 240),
         "patch_size": (1, 2, 2),
-        "rope_scale": (20 / 24, 2.0, 2.0),
+        "rope_scale": (1.0, 4.0, 4.0),
         "concat_padding_mask": True,
         "extra_pos_embed_type": None,
     },
@@ -212,7 +212,7 @@ TRANSFORMER_CONFIGS = {
         "adaln_lora_dim": 256,
         "max_size": (128, 240, 240),
         "patch_size": (1, 2, 2),
-        "rope_scale": (1.0, 1.0, 1.0),
+        "rope_scale": (1.0, 3.0, 3.0),
         "concat_padding_mask": True,
         "extra_pos_embed_type": None,
     },
@@ -427,7 +427,7 @@ def save_pipeline_cosmos_2_0(args, transformer, vae):
     tokenizer = T5TokenizerFast.from_pretrained(args.tokenizer_path)
 
     scheduler = EDMEulerScheduler(
-        sigma_min=0.0002,
+        sigma_min=0.002,
         sigma_max=80,
         sigma_data=1.0,
         sigma_schedule="karras",
