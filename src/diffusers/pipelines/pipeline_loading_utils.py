@@ -587,7 +587,6 @@ def load_sub_model(
     name: str,
     from_flax: bool,
     variant: str,
-    low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
     use_safetensors: bool,
     dduf_entries: Optional[Dict[str, DDUFEntry]],
@@ -655,8 +654,7 @@ def load_sub_model(
         and transformers_version >= version.parse("4.20.0")
     )
 
-    # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
-    # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
+    # Always use memory-efficient loading for faster model loading.
     # This makes sure that the weights won't be initialized which significantly speeds up loading.
     if is_diffusers_model or is_transformers_model:
         loading_kwargs["device_map"] = device_map
@@ -682,11 +680,9 @@ def load_sub_model(
         elif is_transformers_model and loading_kwargs["variant"] is None:
             loading_kwargs.pop("variant")
 
-        # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
-        if not (from_flax and is_transformers_model):
-            loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-        else:
-            loading_kwargs["low_cpu_mem_usage"] = False
+        # Always use memory-efficient loading for external transformers models
+        if is_transformers_model:
+            loading_kwargs["low_cpu_mem_usage"] = True
 
     if (
         quantization_config is not None

@@ -111,11 +111,6 @@ TORCH_INIT_FUNCTIONS = {
     "kaiming_normal": nn.init.kaiming_normal,
 }
 
-if is_torch_version(">=", "1.9.0"):
-    _LOW_CPU_MEM_USAGE_DEFAULT = True
-else:
-    _LOW_CPU_MEM_USAGE_DEFAULT = False
-
 
 if is_accelerate_available():
     import accelerate
@@ -831,11 +826,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 If `True`, temporarily offloads the CPU state dict to the hard drive to avoid running out of CPU RAM if
                 the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to `True`
                 when there is some disk offload.
-            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
-                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
-                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
-                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
-                argument to `True` will raise an error.
             variant (`str`, *optional*):
                 Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
@@ -883,11 +873,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
-        device_map = kwargs.pop("device_map", None)
+        device_map = kwargs.pop("device_map", "auto")
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
         offload_state_dict = kwargs.pop("offload_state_dict", None)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
@@ -905,39 +894,19 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             use_safetensors = True
             allow_pickle = True
 
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+
+        if not is_accelerate_available():
+            raise NotImplementedError(
+                "Memory-efficient loading requires `accelerate`. Please install accelerate with: \n```\npip"
                 " install accelerate\n```\n."
             )
-
-        if device_map is not None and not is_accelerate_available():
+        
+        if not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Loading and dispatching requires `accelerate`. Please make sure to install accelerate or set"
-                " `device_map=None`. You can install accelerate with `pip install accelerate`."
+                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
             )
 
-        # Check if we can handle device_map and dispatching the weights
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
 
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
-        if low_cpu_mem_usage is False and device_map is not None:
-            raise ValueError(
-                f"You cannot set `low_cpu_mem_usage` to `False` while using device_map={device_map} for loading and"
-                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
-            )
 
         # change device_map into a map if we passed an int, a str or a torch.device
         if isinstance(device_map, torch.device):
@@ -958,16 +927,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 device_map = {"": device_map}
 
-        if device_map is not None:
-            if low_cpu_mem_usage is None:
-                low_cpu_mem_usage = True
-            elif not low_cpu_mem_usage:
-                raise ValueError("Passing along a `device_map` requires `low_cpu_mem_usage=True`")
-
-        if low_cpu_mem_usage:
-            if device_map is not None and not is_torch_version(">=", "1.10"):
-                # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
-                raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
 
         user_agent = {
             "diffusers": __version__,
@@ -1022,12 +981,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
 
-            # Force-set to `True` for more mem efficiency
-            if low_cpu_mem_usage is None:
-                low_cpu_mem_usage = True
-                logger.info("Set `low_cpu_mem_usage` to True as `hf_quantizer` is not None.")
-            elif not low_cpu_mem_usage:
-                raise ValueError("`low_cpu_mem_usage` cannot be False or None when using quantization.")
 
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = cls._keep_in_fp32_modules is not None and (
@@ -1039,11 +992,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if not isinstance(keep_in_fp32_modules, list):
                 keep_in_fp32_modules = [keep_in_fp32_modules]
 
-            if low_cpu_mem_usage is None:
-                low_cpu_mem_usage = True
-                logger.info("Set `low_cpu_mem_usage` to True as `_keep_in_fp32_modules` is not None.")
-            elif not low_cpu_mem_usage:
-                raise ValueError("`low_cpu_mem_usage` cannot be False when `keep_in_fp32_modules` is True.")
         else:
             keep_in_fp32_modules = []
 
@@ -1172,10 +1120,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
             dtype_orig = cls._set_default_torch_dtype(torch_dtype)
 
-        init_contexts = [no_init_weights()]
-
-        if low_cpu_mem_usage:
-            init_contexts.append(accelerate.init_empty_weights())
+        init_contexts = [no_init_weights(), accelerate.init_empty_weights()]
 
         with ContextManagers(init_contexts):
             model = cls.from_config(config, **unused_kwargs)
@@ -1221,7 +1166,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             pretrained_model_name_or_path,
             loaded_keys,
             ignore_mismatched_sizes=ignore_mismatched_sizes,
-            low_cpu_mem_usage=low_cpu_mem_usage,
             device_map=device_map,
             offload_folder=offload_folder,
             offload_state_dict=offload_state_dict,
@@ -1384,7 +1328,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         ignore_mismatched_sizes: bool = False,
         assign_to_params_buffers: bool = False,
         hf_quantizer: Optional[DiffusersQuantizer] = None,
-        low_cpu_mem_usage: bool = True,
         dtype: Optional[Union[str, torch.dtype]] = None,
         keep_in_fp32_modules: Optional[List[str]] = None,
         device_map: Dict[str, Union[int, str, torch.device]] = None,
@@ -1472,25 +1415,19 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 ignore_mismatched_sizes,
             )
 
-            if low_cpu_mem_usage:
-                offload_index, state_dict_index = load_model_dict_into_meta(
-                    model,
-                    state_dict,
-                    device_map=device_map,
-                    dtype=dtype,
-                    hf_quantizer=hf_quantizer,
-                    keep_in_fp32_modules=keep_in_fp32_modules,
-                    unexpected_keys=unexpected_keys,
-                    offload_folder=offload_folder,
-                    offload_index=offload_index,
-                    state_dict_index=state_dict_index,
-                    state_dict_folder=state_dict_folder,
-                )
-            else:
-                if assign_to_params_buffers is None:
-                    assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
-
-                error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
+            offload_index, state_dict_index = load_model_dict_into_meta(
+                model,
+                state_dict,
+                device_map=device_map,
+                dtype=dtype,
+                hf_quantizer=hf_quantizer,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+                unexpected_keys=unexpected_keys,
+                offload_folder=offload_folder,
+                offload_index=offload_index,
+                state_dict_index=state_dict_index,
+                state_dict_folder=state_dict_folder,
+            )
 
         if offload_index is not None and len(offload_index) > 0:
             save_offload_index(offload_index, offload_folder)

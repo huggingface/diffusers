@@ -374,7 +374,6 @@ class AccelerateDeviceMapFastTests(unittest.TestCase):
                 tmp_dir,
                 device_map={"": "meta"},
                 torch_dtype=torch.float16,
-                low_cpu_mem_usage=True,
                 use_safetensors=False,  # Required for meta device
             )
 
@@ -878,7 +877,6 @@ class AccelerateDeviceMapFastTests(unittest.TestCase):
                             tmp_dir,
                             device_map={"": device_obj},
                             torch_dtype=torch.float16,
-                            low_cpu_mem_usage=True if str(device_obj) == "meta" else False,
                             use_safetensors=False if str(device_obj) == "meta" else True,
                         )
 
@@ -983,7 +981,6 @@ class AccelerateDeviceMapFastTests(unittest.TestCase):
                             tmp_dir,
                             device_map=device_map,
                             torch_dtype=torch.float16,
-                            low_cpu_mem_usage=True,  # Handle meta devices properly
                             offload_folder=tmp_dir + "_offload",  # Handle disk devices
                         )
 
@@ -1055,7 +1052,6 @@ class AccelerateDeviceMapFastTests(unittest.TestCase):
                             tmp_dir,
                             device_map=device_map,
                             torch_dtype=torch.float16,
-                            low_cpu_mem_usage=True,
                             offload_folder=tmp_dir + "_offload",
                         )
 
@@ -1316,7 +1312,6 @@ class AccelerateDeviceMapGPUTests(unittest.TestCase):
                         tmp_dir,
                         device_map=device_map,
                         torch_dtype=torch.float16,
-                        low_cpu_mem_usage=True,
                         offload_folder=tmp_dir + "_offload",
                     )
 
@@ -1381,7 +1376,6 @@ class AccelerateDeviceMapGPUTests(unittest.TestCase):
                         tmp_dir,
                         device_map=device_map,
                         torch_dtype=torch.float16,
-                        low_cpu_mem_usage=True,
                     )
 
                     # Verify pipeline loaded successfully with hierarchical mapping
@@ -1829,7 +1823,6 @@ class AccelerateDeviceMapMultiGPUTests(unittest.TestCase):
                         tmp_dir,
                         device_map=device_map,
                         torch_dtype=torch.float16,
-                        low_cpu_mem_usage=True,
                         offload_folder=tmp_dir + "_offload",
                     )
 

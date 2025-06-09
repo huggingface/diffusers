@@ -333,17 +333,31 @@ class PipelineDeviceMapper:
                     # Create empty component for size calculation
                     component_dtype = torch_dtype or torch.float32
 
-                    empty_component = _load_empty_model(
-                        library_name=library_name,
-                        class_name=class_name,
-                        importable_classes=self.loading_kwargs.get("importable_classes", {}),
-                        pipelines=self.loading_kwargs.get("pipelines"),
-                        is_pipeline_module=self.loading_kwargs.get("is_pipeline_module", False),
-                        name=name,
-                        torch_dtype=component_dtype,
-                        cached_folder=self.cached_folder,
-                        **self.loading_kwargs
-                    )
+                    # Prepare parameters for _load_empty_model, avoiding conflicts with **loading_kwargs
+                    base_params = {
+                        'library_name': library_name,
+                        'class_name': class_name,
+                        'importable_classes': self.loading_kwargs.get("importable_classes", {}),
+                        'pipelines': self.loading_kwargs.get("pipelines"),  
+                        'is_pipeline_module': self.loading_kwargs.get("is_pipeline_module", False),
+                        'name': name,
+                        'torch_dtype': component_dtype,
+                        'cached_folder': self.cached_folder,
+                    }
+                    
+                    # Only pass additional kwargs that don't conflict with base parameters
+                    conflicting_keys = {'library_name', 'class_name', 'importable_classes', 'pipelines', 
+                                       'is_pipeline_module', 'name', 'torch_dtype', 'cached_folder'}
+                    extra_kwargs = {
+                        k: v for k, v in self.loading_kwargs.items() 
+                        if k not in conflicting_keys
+                    }
+                    
+                    try:
+                        empty_component = _load_empty_model(**base_params, **extra_kwargs)
+                    except Exception as e:
+                        logger.warning(f"Failed to create empty component {name}: {e}")
+                        empty_component = None
 
                     if empty_component is not None:
                         setattr(virtual_model, name, empty_component)
