@@ -441,9 +441,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_frames_block = num_frames // causal_block_size
         base_num_frames_block = base_num_frames // causal_block_size
         if base_num_frames_block < num_frames_block:
-            infer_step_num = len(step_template)
-            gen_block = base_num_frames_block
-            min_ar_step = infer_step_num / gen_block
+            min_ar_step = len(step_template) / base_num_frames_block
             if ar_step < min_ar_step:
                 raise ValueError(f"ar_step should be at least {math.ceil(min_ar_step)} in your setting")
 
