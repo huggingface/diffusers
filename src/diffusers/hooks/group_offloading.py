@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Set, Tuple, Union
-import os
 
-import torch
 import safetensors.torch
+import torch
+
 from ..utils import get_logger, is_accelerate_available
 from .hooks import HookRegistry, ModelHook
 
@@ -165,9 +166,10 @@ class ModuleGroup:
                             tensor_obj.data.record_stream(current_stream)
                 else:
                     # Load directly to the target device (synchronous)
-                    loaded_tensors = safetensors.torch.load_file(
-                        self.safetensors_file_path, device=self.onload_device
+                    onload_device = (
+                        self.onload_device.type if isinstance(self.onload_device, torch.device) else self.onload_device
                     )
+                    loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=onload_device)
                     for key, tensor_obj in self.key_to_tensor.items():
                         tensor_obj.data = loaded_tensors[key]
             return
@@ -265,16 +267,12 @@ class GroupOffloadingHook(ModelHook):
 
     _is_stateful = False
 
-    def __init__(
-        self,
-        group: ModuleGroup,
-        next_group: Optional[ModuleGroup] = None
-    ) -> None:
+    def __init__(self, group: ModuleGroup, next_group: Optional[ModuleGroup] = None) -> None:
         self.group = group
         self.next_group = next_group
         # map param/buffer name -> file path
-        self.param_to_path: Dict[str,str] = {}
-        self.buffer_to_path: Dict[str,str] = {}
+        self.param_to_path: Dict[str, str] = {}
+        self.buffer_to_path: Dict[str, str] = {}
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         if self.group.offload_leader == module:
@@ -516,7 +514,6 @@ def apply_group_offloading(
             stream = torch.Stream()
         else:
             raise ValueError("Using streams for data transfer requires a CUDA device, or an Intel XPU device.")
-
     if offload_to_disk and offload_path is None:
         raise ValueError("`offload_path` must be set when `offload_to_disk=True`.")
 
