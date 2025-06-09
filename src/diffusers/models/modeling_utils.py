@@ -874,6 +874,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", "auto")
+        if device_map == "auto":
+            logger.info("Using automatic device mapping (device_map='auto') for memory-efficient loading")
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
         offload_state_dict = kwargs.pop("offload_state_dict", None)
@@ -1189,6 +1191,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 "offload_index": offload_index,
             }
             dispatch_model(model, **device_map_kwargs)
+            logger.info(f"Model loaded with device_map: {device_map}")
 
         if hf_quantizer is not None:
             hf_quantizer.postprocess_model(model)

@@ -21,6 +21,9 @@ import torch
 from packaging import version
 
 from .import_utils import is_accelerate_available
+from .logging import get_logger
+
+logger = get_logger(__name__)
 
 
 if is_accelerate_available():
@@ -127,7 +130,7 @@ def validate_device_map(device_map: Optional[Union[str, Dict[str, Union[int, str
                     )
     else:
         raise ValueError(
-            f"`device_map` must be None, a string strategy ('auto', 'balanced', etc.), "
+            f"device_map must be None, a string strategy ('auto', 'balanced', etc.), "
             f"or a dict mapping module names to devices, got {type(device_map)}"
         )
 
@@ -333,13 +336,23 @@ class PipelineDeviceMapper:
                     # Create empty component for size calculation
                     component_dtype = torch_dtype or torch.float32
 
+                    # Determine if this is a pipeline module based on library_name
+                    # Standard libraries (diffusers, transformers, etc.) are never pipeline modules
+                    STANDARD_LIBRARIES = ["diffusers", "transformers", "onnxruntime.training", "flax", "jax"]
+                    is_pipeline_module = False
+                    if library_name not in STANDARD_LIBRARIES and library_name is not None:
+                        # Check if it's a valid pipeline module
+                        pipelines = self.loading_kwargs.get("pipelines")
+                        if pipelines and hasattr(pipelines, library_name):
+                            is_pipeline_module = True
+
                     # Prepare parameters for _load_empty_model, avoiding conflicts with **loading_kwargs
                     base_params = {
                         'library_name': library_name,
                         'class_name': class_name,
                         'importable_classes': self.loading_kwargs.get("importable_classes", {}),
                         'pipelines': self.loading_kwargs.get("pipelines"),  
-                        'is_pipeline_module': self.loading_kwargs.get("is_pipeline_module", False),
+                        'is_pipeline_module': is_pipeline_module,
                         'name': name,
                         'torch_dtype': component_dtype,
                         'cached_folder': self.cached_folder,
@@ -396,6 +409,15 @@ class PipelineDeviceMapper:
 
         # Group assignments by component
         for path, device in unified_map.items():
+            # Handle special case where path is "" (entire model on one device)
+            if path == "":
+                # Assign all components to this device
+                for component_name in self.init_dict.keys():
+                    if component_name not in component_device_maps:
+                        component_device_maps[component_name] = {}
+                    component_device_maps[component_name][""] = device
+                continue
+                
             parts = path.split(".")
             if not parts:
                 continue

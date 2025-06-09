@@ -712,7 +712,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         provider_options = kwargs.pop("provider_options", None)
-        device_map = kwargs.pop("device_map", "auto")
+        device_map = kwargs.pop("device_map", None)
+        # Store original device_map for suggestion logic
+        original_device_map_for_suggestion = device_map
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
         offload_state_dict = kwargs.pop("offload_state_dict", None)
@@ -942,30 +944,38 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # 6. Resolve component-specific device maps for direct device loading
         component_device_maps = {}
+
         if device_map is not None:
-            from ..utils.accelerate_utils import PipelineDeviceMapper
+            # Check if this is a Flax pipeline - Flax models don't support device mapping
+            is_flax_pipeline = any("Flax" in str(value) for value in init_dict.values() if value[1] is not None)
 
-            device_mapper = PipelineDeviceMapper(
-                pipeline_class=pipeline_class,
-                init_dict=init_dict,
-                passed_class_obj=passed_class_obj,
-                cached_folder=cached_folder,
-                # Loading kwargs needed for size calculation in auto strategies
-                importable_classes=ALL_IMPORTABLE_CLASSES,
-                pipelines=pipelines,
-                is_pipeline_module=True,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-            )
+            if is_flax_pipeline:
+                logger.info("Device mapping is not supported for Flax pipelines. All components will use JAX's default device management.")
+                component_device_maps = {}
+            else:
+                from ..utils.accelerate_utils import PipelineDeviceMapper
 
-            component_device_maps = device_mapper.resolve_component_device_maps(
-                device_map=device_map,
-                max_memory=max_memory,
-                torch_dtype=torch_dtype,
-            )
+                device_mapper = PipelineDeviceMapper(
+                    pipeline_class=pipeline_class,
+                    init_dict=init_dict,
+                    passed_class_obj=passed_class_obj,
+                    cached_folder=cached_folder,
+                    # Loading kwargs needed for size calculation in auto strategies
+                    importable_classes=ALL_IMPORTABLE_CLASSES,
+                    pipelines=pipelines,
+                    is_pipeline_module=True,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                )
+
+                component_device_maps = device_mapper.resolve_component_device_maps(
+                    device_map=device_map,
+                    max_memory=max_memory,
+                    torch_dtype=torch_dtype,
+                )
 
         # 7. Load each module in the pipeline
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
@@ -1076,7 +1086,63 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # Log the final device mapping
             if device_map == "auto":
-                logger.info(f"Final device_map: {component_device_maps}")
+                # Format component device maps for concise logging
+                device_summary = []
+                for comp_name, comp_map in component_device_maps.items():
+                    if comp_map:
+                        devices = set(comp_map.values())
+                        if len(devices) == 1:
+                            device_summary.append(f"{comp_name}: {list(devices)[0]}")
+                        else:
+                            device_summary.append(f"{comp_name}: {len(devices)} devices")
+                    else:
+                        device_summary.append(f"{comp_name}: cpu")
+                logger.info(f"Pipeline loaded with device_map: {{{', '.join(device_summary)}}}")
+        
+        # Suggest device mapping if device_map was None
+        # Check if this is a Flax pipeline using pipeline class name
+        is_flax_pipeline = "Flax" in pipeline_class.__name__
+        if original_device_map_for_suggestion is None and not is_flax_pipeline:
+            try:
+                # Check for available accelerator devices
+                available_devices = []
+                if torch.cuda.is_available():
+                    available_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+                elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                    available_devices = [f"xpu:{i}" for i in range(torch.xpu.device_count())]
+                elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                    available_devices = ["mps"]
+
+                # Only suggest if we have multiple devices or potential for CPU offloading
+                if len(available_devices) > 1:
+                    # Analyze loaded components
+                    components_info = {}
+                    for attr_name in ["unet", "vae", "text_encoder", "text_encoder_2", "transformer", "prior"]:
+                        if hasattr(model, attr_name):
+                            component = getattr(model, attr_name)
+                            if component is not None and hasattr(component, "parameters"):
+                                # Get approximate size
+                                param_count = sum(p.numel() for p in component.parameters())
+                                components_info[attr_name] = param_count
+
+                    if components_info:
+                        # Simple strategy: distribute larger models across GPUs
+                        sorted_components = sorted(components_info.items(), key=lambda x: x[1], reverse=True)
+                        device_map_suggestion = {}
+
+                        for i, (comp_name, _) in enumerate(sorted_components):
+                            device_idx = i % len(available_devices)
+                            device_map_suggestion[comp_name] = available_devices[device_idx]
+                        
+                        logger.info("💡 For memory-efficient loading across multiple devices, consider using device mapping:")
+                        logger.info(f"   device_map={device_map_suggestion}")
+                        logger.info(f"   Example: {pipeline_class.__name__}.from_pretrained('{pretrained_model_name_or_path}', device_map={device_map_suggestion})")
+            except Exception as e:
+                # Print error for debugging
+                print(f"Device map suggestion error: {e}")
+                import traceback
+                traceback.print_exc()
+        
         return model
 
     @property
