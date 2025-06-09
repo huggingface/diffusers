@@ -292,7 +292,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
 
 
 @maybe_allow_in_graph
-class FluxAttention(nn.Module, Attention):
+class FluxAttention(Attention):
     _default_processor_cls = FluxAttnProcessor
     _available_processors = [
         FluxAttnProcessor,
@@ -313,10 +313,14 @@ class FluxSingleTransformerBlock(nn.Module):
 
         self.attn = FluxAttention(
             query_dim=dim,
+            out_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             dropout=0.0,
             bias=True,
+            qk_norm="rms_norm",
+            eps=1e-6,
+            pre_only=True,
         )
 
     def forward(

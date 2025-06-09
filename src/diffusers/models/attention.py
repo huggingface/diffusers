@@ -774,7 +774,7 @@ class Attention(nn.Module, AttentionModuleMixin):
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
         # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
         if processor is None:
-            processor = self.default_processor_class()
+            processor = self._default_processor_cls
         self.set_processor(processor)
 
     def forward(
