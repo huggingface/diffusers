@@ -837,12 +837,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 >>> model = AutoModel.from_pretrained(
                 ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map="auto"
                 ... )
+                >>> # Specifying a dictionary as `device_map` also works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0",
+                ...     subfolder="unet",
+                ...     device_map={"": torch.device("cuda")},
+                ... )
                 ```
 
                 Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
-                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map). You can
-                also refer to the [Diffusers-specific
+                map](https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap). You
+                can also refer to the [Diffusers-specific
                 documentation](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#model-sharding)
                 for more concrete examples.
             max_memory (`Dict`, *optional*):
