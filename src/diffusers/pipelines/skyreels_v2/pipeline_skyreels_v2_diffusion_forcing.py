@@ -438,12 +438,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         step_matrix, step_index = [], []
         update_mask, valid_interval = [], []
         num_iterations = len(step_template) + 1
-        num_frames_block = num_frames // causal_block_size
-        base_num_frames_block = base_num_frames // causal_block_size
-        if base_num_frames_block < num_frames_block:
-            min_ar_step = len(step_template) / base_num_frames_block
+        num_blocks = num_frames // causal_block_size
+        base_num_blocks = base_num_frames // causal_block_size
+        if base_num_blocks < num_blocks:
+            min_ar_step = len(step_template) / base_num_blocks
             if ar_step < min_ar_step:
-                raise ValueError(f"ar_step should be at least {math.ceil(min_ar_step)} in your setting")
+                raise ValueError(f"`ar_step` should be at least {math.ceil(min_ar_step)} in your setting")
 
         step_template = torch.cat(
             [
@@ -452,13 +452,13 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 torch.tensor([0], dtype=torch.int64, device=step_template.device),
             ]
         )  # to handle the counter in row works starting from 1
-        pre_row = torch.zeros(num_frames_block, dtype=torch.long)
+        pre_row = torch.zeros(num_blocks, dtype=torch.long)
         if num_pre_ready > 0:
             pre_row[: num_pre_ready // causal_block_size] = num_iterations
 
         while not torch.all(pre_row >= (num_iterations - 1)):
-            new_row = torch.zeros(num_frames_block, dtype=torch.long)
-            for i in range(num_frames_block):
+            new_row = torch.zeros(num_blocks, dtype=torch.long)
+            for i in range(num_blocks):
                 if i == 0 or pre_row[i - 1] >= (
                     num_iterations - 1
                 ):  # the first frame or the last frame is completely denoised
@@ -475,18 +475,18 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pre_row = new_row
 
         # for long video we split into several sequences, base_num_frames is set to the model max length (for training)
-        terminal_flag = base_num_frames_block
+        terminal_flag = base_num_blocks
         if shrink_interval_with_mask:
-            idx_sequence = torch.arange(num_frames_block, dtype=torch.int64)
+            idx_sequence = torch.arange(num_blocks, dtype=torch.int64)
             update_mask = update_mask[0]
             update_mask_idx = idx_sequence[update_mask]
             last_update_idx = update_mask_idx[-1].item()
             terminal_flag = last_update_idx + 1
 
         for curr_mask in update_mask:
-            if terminal_flag < num_frames_block and curr_mask[terminal_flag]:
+            if terminal_flag < num_blocks and curr_mask[terminal_flag]:
                 terminal_flag += 1
-            valid_interval.append((max(terminal_flag - base_num_frames_block, 0), terminal_flag))
+            valid_interval.append((max(terminal_flag - base_num_blocks, 0), terminal_flag))
 
         step_update_mask = torch.stack(update_mask, dim=0)
         step_index = torch.stack(step_index, dim=0)
