@@ -1147,6 +1147,20 @@ class UNet2DConditionModelTests(
         assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
 
 
+class UNet2DConditionModelCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
+
+
+class UNet2DConditionModelLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
+
+
 @slow
 class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     def get_file_format(self, seed, shape):
