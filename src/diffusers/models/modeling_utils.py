@@ -833,7 +833,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 >>> model = AutoModel.from_pretrained(
                 ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map=0
                 ... )
-                >>> # Specify a supported offloading strategy like "auto" also works.
+                >>> # Specifying a supported offloading strategy like "auto" also works.
                 >>> model = AutoModel.from_pretrained(
                 ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map="auto"
                 ... )
