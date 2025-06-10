@@ -83,7 +83,7 @@ def randn_tensor(
     
     mean_norm = torch.mean(latents.norm())
     while(mean_norm >=650):
-        generator = torch.Generator(device==rand_device).manual_seed(random.randint(0, 10000000))
+        generator = torch.Generator(device=rand_device).manual_seed(random.randint(0, 10000000))
         if isinstance(generator, list):
             shape = (1,) + shape[1:]
             latents = [
