@@ -1643,17 +1643,10 @@ class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
 
         self.time_proj = Timesteps(num_channels=factor, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.guidance_proj = Timesteps(num_channels=factor, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.embedder = ChromaApproximator(
-            in_dim=factor * 4,
-            out_dim=out_dim,
-            hidden_dim=hidden_dim,
-            n_layers=n_layers,
-        )
-        self.embedding_dim = embedding_dim
 
         self.register_buffer(
             "mod_proj",
-            get_timestep_embedding(torch.arange(out_dim), 2 * factor, flip_sin_to_cos=True, downscale_freq_shift=0),
+            get_timestep_embedding(torch.arange(out_dim)*1000, 2 * factor, flip_sin_to_cos=True, downscale_freq_shift=0, ),
             persistent=False,
         )
 
@@ -1661,24 +1654,16 @@ class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
         self, timestep: torch.Tensor, guidance: Optional[torch.Tensor], pooled_projections: torch.Tensor
     ) -> torch.Tensor:
         mod_index_length = self.mod_proj.shape[0]
-        timesteps_proj = self.time_proj(timestep) + self.time_proj(pooled_projections)
-        if guidance is not None:
-            guidance_proj = self.guidance_proj(guidance)
-        else:
-            guidance_proj = torch.zeros(
-                (self.embedding_dim, self.guidance_proj.num_channels),
-                dtype=timesteps_proj.dtype,
-                device=timesteps_proj.device,
-            )
+        timesteps_proj = self.time_proj(timestep).to(dtype=timestep.dtype)
+        guidance_proj = self.guidance_proj(torch.tensor([0])).to(dtype=timestep.dtype, device=timestep.device)
 
         mod_proj = self.mod_proj.to(dtype=timesteps_proj.dtype, device=timesteps_proj.device)
         timestep_guidance = (
             torch.cat([timesteps_proj, guidance_proj], dim=1).unsqueeze(1).repeat(1, mod_index_length, 1)
         )
-        input_vec = torch.cat([timestep_guidance, mod_proj], dim=-1)
-        conditioning = self.embedder(input_vec)
+        input_vec = torch.cat([timestep_guidance, mod_proj.unsqueeze(0)], dim=-1)
 
-        return conditioning
+        return input_vec
 
 
 class CogView3CombinedTimestepSizeEmbeddings(nn.Module):

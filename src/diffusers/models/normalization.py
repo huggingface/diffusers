@@ -206,7 +206,7 @@ class AdaLayerNormZeroPruned(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.emb is not None:
             emb = self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)
-        scale_msa, shift_msa, gate_msa, scale_mlp, shift_mlp, gate_mlp = emb.chunk(6, dim=1)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.squeeze(0).chunk(6, dim=0)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
 
@@ -267,7 +267,7 @@ class AdaLayerNormZeroSinglePruned(nn.Module):
         x: torch.Tensor,
         emb: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        scale_msa, shift_msa, gate_msa = emb.chunk(3, dim=1)
+        shift_msa, scale_msa, gate_msa = emb.squeeze(0).chunk(3, dim=0)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa
 
@@ -413,7 +413,7 @@ class AdaLayerNormContinuousPruned(nn.Module):
 
     def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
         # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
-        shift, scale = torch.chunk(emb.to(x.dtype), 2, dim=1)
+        shift, scale = torch.chunk(emb.squeeze(0).to(x.dtype), 2, dim=0)
         x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
 

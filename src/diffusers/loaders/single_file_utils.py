@@ -2137,9 +2137,18 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())
 
+    variant = "chroma" if "distilled_guidance_layer.in_proj.weight" in checkpoint else "flux"
+
     for k in keys:
         if "model.diffusion_model." in k:
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+        if variant == "chroma" and "distilled_guidance_layer." in k:
+            new_key = k
+            if k.startswith("distilled_guidance_layer.norms"):
+                new_key = k.replace(".scale", ".weight")
+            elif k.startswith("distilled_guidance_layer.layer"):
+                new_key = k.replace("in_layer", "linear_1").replace("out_layer", "linear_2")
+            converted_state_dict[new_key] = checkpoint.pop(k)
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "double_blocks." in k))[-1] + 1  # noqa: C401
     num_single_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "single_blocks." in k))[-1] + 1  # noqa: C401
@@ -2153,39 +2162,48 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         new_weight = torch.cat([scale, shift], dim=0)
         return new_weight
 
-    ## time_text_embed.timestep_embedder <-  time_in
-    converted_state_dict["time_text_embed.timestep_embedder.linear_1.weight"] = checkpoint.pop(
-        "time_in.in_layer.weight"
-    )
-    converted_state_dict["time_text_embed.timestep_embedder.linear_1.bias"] = checkpoint.pop("time_in.in_layer.bias")
-    converted_state_dict["time_text_embed.timestep_embedder.linear_2.weight"] = checkpoint.pop(
-        "time_in.out_layer.weight"
-    )
-    converted_state_dict["time_text_embed.timestep_embedder.linear_2.bias"] = checkpoint.pop("time_in.out_layer.bias")
+    if variant == "flux":
+        ## time_text_embed.timestep_embedder <-  time_in
+        converted_state_dict["time_text_embed.timestep_embedder.linear_1.weight"] = checkpoint.pop(
+            "time_in.in_layer.weight"
+        )
+        converted_state_dict["time_text_embed.timestep_embedder.linear_1.bias"] = checkpoint.pop(
+            "time_in.in_layer.bias"
+        )
+        converted_state_dict["time_text_embed.timestep_embedder.linear_2.weight"] = checkpoint.pop(
+            "time_in.out_layer.weight"
+        )
+        converted_state_dict["time_text_embed.timestep_embedder.linear_2.bias"] = checkpoint.pop(
+            "time_in.out_layer.bias"
+        )
 
-    ## time_text_embed.text_embedder <- vector_in
-    converted_state_dict["time_text_embed.text_embedder.linear_1.weight"] = checkpoint.pop("vector_in.in_layer.weight")
-    converted_state_dict["time_text_embed.text_embedder.linear_1.bias"] = checkpoint.pop("vector_in.in_layer.bias")
-    converted_state_dict["time_text_embed.text_embedder.linear_2.weight"] = checkpoint.pop(
-        "vector_in.out_layer.weight"
-    )
-    converted_state_dict["time_text_embed.text_embedder.linear_2.bias"] = checkpoint.pop("vector_in.out_layer.bias")
+        ## time_text_embed.text_embedder <- vector_in
+        converted_state_dict["time_text_embed.text_embedder.linear_1.weight"] = checkpoint.pop(
+            "vector_in.in_layer.weight"
+        )
+        converted_state_dict["time_text_embed.text_embedder.linear_1.bias"] = checkpoint.pop("vector_in.in_layer.bias")
+        converted_state_dict["time_text_embed.text_embedder.linear_2.weight"] = checkpoint.pop(
+            "vector_in.out_layer.weight"
+        )
+        converted_state_dict["time_text_embed.text_embedder.linear_2.bias"] = checkpoint.pop(
+            "vector_in.out_layer.bias"
+        )
 
-    # guidance
-    has_guidance = any("guidance" in k for k in checkpoint)
-    if has_guidance:
-        converted_state_dict["time_text_embed.guidance_embedder.linear_1.weight"] = checkpoint.pop(
-            "guidance_in.in_layer.weight"
-        )
-        converted_state_dict["time_text_embed.guidance_embedder.linear_1.bias"] = checkpoint.pop(
-            "guidance_in.in_layer.bias"
-        )
-        converted_state_dict["time_text_embed.guidance_embedder.linear_2.weight"] = checkpoint.pop(
-            "guidance_in.out_layer.weight"
-        )
-        converted_state_dict["time_text_embed.guidance_embedder.linear_2.bias"] = checkpoint.pop(
-            "guidance_in.out_layer.bias"
-        )
+        # guidance
+        has_guidance = any("guidance" in k for k in checkpoint)
+        if has_guidance:
+            converted_state_dict["time_text_embed.guidance_embedder.linear_1.weight"] = checkpoint.pop(
+                "guidance_in.in_layer.weight"
+            )
+            converted_state_dict["time_text_embed.guidance_embedder.linear_1.bias"] = checkpoint.pop(
+                "guidance_in.in_layer.bias"
+            )
+            converted_state_dict["time_text_embed.guidance_embedder.linear_2.weight"] = checkpoint.pop(
+                "guidance_in.out_layer.weight"
+            )
+            converted_state_dict["time_text_embed.guidance_embedder.linear_2.bias"] = checkpoint.pop(
+                "guidance_in.out_layer.bias"
+            )
 
     # context_embedder
     converted_state_dict["context_embedder.weight"] = checkpoint.pop("txt_in.weight")
@@ -2199,20 +2217,21 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     for i in range(num_layers):
         block_prefix = f"transformer_blocks.{i}."
         # norms.
-        ## norm1
-        converted_state_dict[f"{block_prefix}norm1.linear.weight"] = checkpoint.pop(
-            f"double_blocks.{i}.img_mod.lin.weight"
-        )
-        converted_state_dict[f"{block_prefix}norm1.linear.bias"] = checkpoint.pop(
-            f"double_blocks.{i}.img_mod.lin.bias"
-        )
-        ## norm1_context
-        converted_state_dict[f"{block_prefix}norm1_context.linear.weight"] = checkpoint.pop(
-            f"double_blocks.{i}.txt_mod.lin.weight"
-        )
-        converted_state_dict[f"{block_prefix}norm1_context.linear.bias"] = checkpoint.pop(
-            f"double_blocks.{i}.txt_mod.lin.bias"
-        )
+        if variant == "flux":
+            ## norm1
+            converted_state_dict[f"{block_prefix}norm1.linear.weight"] = checkpoint.pop(
+                f"double_blocks.{i}.img_mod.lin.weight"
+            )
+            converted_state_dict[f"{block_prefix}norm1.linear.bias"] = checkpoint.pop(
+                f"double_blocks.{i}.img_mod.lin.bias"
+            )
+            ## norm1_context
+            converted_state_dict[f"{block_prefix}norm1_context.linear.weight"] = checkpoint.pop(
+                f"double_blocks.{i}.txt_mod.lin.weight"
+            )
+            converted_state_dict[f"{block_prefix}norm1_context.linear.bias"] = checkpoint.pop(
+                f"double_blocks.{i}.txt_mod.lin.bias"
+            )
         # Q, K, V
         sample_q, sample_k, sample_v = torch.chunk(checkpoint.pop(f"double_blocks.{i}.img_attn.qkv.weight"), 3, dim=0)
         context_q, context_k, context_v = torch.chunk(
@@ -2285,13 +2304,15 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     # single transformer blocks
     for i in range(num_single_layers):
         block_prefix = f"single_transformer_blocks.{i}."
-        # norm.linear  <- single_blocks.0.modulation.lin
-        converted_state_dict[f"{block_prefix}norm.linear.weight"] = checkpoint.pop(
-            f"single_blocks.{i}.modulation.lin.weight"
-        )
-        converted_state_dict[f"{block_prefix}norm.linear.bias"] = checkpoint.pop(
-            f"single_blocks.{i}.modulation.lin.bias"
-        )
+
+        if variant == "flux":
+            # norm.linear  <- single_blocks.0.modulation.lin
+            converted_state_dict[f"{block_prefix}norm.linear.weight"] = checkpoint.pop(
+                f"single_blocks.{i}.modulation.lin.weight"
+            )
+            converted_state_dict[f"{block_prefix}norm.linear.bias"] = checkpoint.pop(
+                f"single_blocks.{i}.modulation.lin.bias"
+            )
         # Q, K, V, mlp
         mlp_hidden_dim = int(inner_dim * mlp_ratio)
         split_size = (inner_dim, inner_dim, inner_dim, mlp_hidden_dim)
@@ -2320,12 +2341,14 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     converted_state_dict["proj_out.weight"] = checkpoint.pop("final_layer.linear.weight")
     converted_state_dict["proj_out.bias"] = checkpoint.pop("final_layer.linear.bias")
-    converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(
-        checkpoint.pop("final_layer.adaLN_modulation.1.weight")
-    )
-    converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(
-        checkpoint.pop("final_layer.adaLN_modulation.1.bias")
-    )
+
+    if variant == "flux":
+        converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(
+            checkpoint.pop("final_layer.adaLN_modulation.1.weight")
+        )
+        converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(
+            checkpoint.pop("final_layer.adaLN_modulation.1.bias")
+        )
 
     return converted_state_dict
 

@@ -37,6 +37,7 @@ from ..embeddings import (
     CombinedTimestepGuidanceTextProjEmbeddings,
     CombinedTimestepTextProjChromaEmbeddings,
     CombinedTimestepTextProjEmbeddings,
+    ChromaApproximator,
     FluxPosEmbed,
 )
 from ..modeling_outputs import Transformer2DModelOutput
@@ -308,6 +309,7 @@ class FluxTransformer2DModel(
                 embedding_dim=self.inner_dim,
                 n_layers=approximator_layers,
             )
+            self.distilled_guidance_layer = ChromaApproximator(in_dim=64, out_dim=3072, hidden_dim=5120, n_layers=5)
         else:
             raise ValueError(INVALID_VARIANT_ERRMSG)
 
@@ -518,7 +520,8 @@ class FluxTransformer2DModel(
                 else self.time_text_embed(timestep, guidance, pooled_projections)
             )
         else:
-            pooled_temb = self.time_text_embed(timestep, guidance, pooled_projections)
+            input_vec = self.time_text_embed(timestep, guidance, pooled_projections)
+            pooled_temb = self.distilled_guidance_layer(input_vec)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
@@ -545,10 +548,16 @@ class FluxTransformer2DModel(
 
         for index_block, block in enumerate(self.transformer_blocks):
             if is_chroma:
-                start_idx1 = 3 * len(self.single_transformer_blocks) + 6 * index_block
-                start_idx2 = start_idx1 + 6 * len(self.transformer_blocks)
+                img_offset = 3 * len(self.single_transformer_blocks)
+                txt_offset = img_offset + 6 * len(self.transformer_blocks)
+                img_modulation = img_offset + 6 * index_block
+                text_modulation = txt_offset + 6 * index_block
                 temb = torch.cat(
-                    (pooled_temb[:, start_idx1 : start_idx1 + 6], pooled_temb[:, start_idx2 : start_idx2 + 6]), dim=1
+                    (
+                        pooled_temb[:, img_modulation : img_modulation + 6],
+                        pooled_temb[:, text_modulation : text_modulation + 6],
+                    ),
+                    dim=1,
                 )
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
