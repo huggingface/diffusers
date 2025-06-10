@@ -374,50 +374,6 @@ class AdaGroupNorm(nn.Module):
         return x
 
 
-class AdaLayerNormContinuousPruned(nn.Module):
-    r"""
-    Adaptive normalization layer with a norm layer (layer_norm or rms_norm).
-
-    Args:
-        embedding_dim (`int`): Embedding dimension to use during projection.
-        conditioning_embedding_dim (`int`): Dimension of the input condition.
-        elementwise_affine (`bool`, defaults to `True`):
-            Boolean flag to denote if affine transformation should be applied.
-        eps (`float`, defaults to 1e-5): Epsilon factor.
-        bias (`bias`, defaults to `True`): Boolean flag to denote if bias should be use.
-        norm_type (`str`, defaults to `"layer_norm"`):
-            Normalization layer to use. Values supported: "layer_norm", "rms_norm".
-    """
-
-    def __init__(
-        self,
-        embedding_dim: int,
-        conditioning_embedding_dim: int,
-        # NOTE: It is a bit weird that the norm layer can be configured to have scale and shift parameters
-        # because the output is immediately scaled and shifted by the projected conditioning embeddings.
-        # Note that AdaLayerNorm does not let the norm layer have scale and shift parameters.
-        # However, this is how it was implemented in the original code, and it's rather likely you should
-        # set `elementwise_affine` to False.
-        elementwise_affine=True,
-        eps=1e-5,
-        bias=True,
-        norm_type="layer_norm",
-    ):
-        super().__init__()
-        if norm_type == "layer_norm":
-            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
-        elif norm_type == "rms_norm":
-            self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
-        else:
-            raise ValueError(f"unknown norm_type {norm_type}")
-
-    def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
-        # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
-        shift, scale = torch.chunk(emb.squeeze(0).to(x.dtype), 2, dim=0)
-        x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
-        return x
-
-
 class AdaLayerNormContinuous(nn.Module):
     r"""
     Adaptive normalization layer with a norm layer (layer_norm or rms_norm).

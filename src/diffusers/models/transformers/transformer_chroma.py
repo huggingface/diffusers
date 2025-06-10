@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright 2025 Black Forest Labs, The HuggingFace Team and lodestone-rock. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,22 +33,161 @@ from ..attention_processor import (
     FusedFluxAttnProcessor2_0,
 )
 from ..cache_utils import CacheMixin
-from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
+from ..embeddings import (
+    CombinedTimestepLabelEmbeddings,
+    FluxPosEmbed,
+    PixArtAlphaTextProjection,
+    Timesteps,
+    get_timestep_embedding,
+)
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+from ..normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class ChromaApproximator(nn.Module):
+    def __init__(self, in_dim: int, out_dim: int, hidden_dim: int, n_layers: int = 5):
+        super().__init__()
+        self.in_proj = nn.Linear(in_dim, hidden_dim, bias=True)
+        self.layers = nn.ModuleList(
+            [PixArtAlphaTextProjection(hidden_dim, hidden_dim, act_fn="silu") for _ in range(n_layers)]
+        )
+        self.norms = nn.ModuleList([nn.RMSNorm(hidden_dim) for _ in range(n_layers)])
+        self.out_proj = nn.Linear(hidden_dim, out_dim)
+
+    def forward(self, x):
+        x = self.in_proj(x)
+
+        for layer, norms in zip(self.layers, self.norms):
+            x = x + layer(norms(x))
+
+        return self.out_proj(x)
+
+
+class ChromaTimestepEmbeddings(nn.Module):
+    def __init__(
+        self,
+        num_channels: int,
+        out_dim: int,
+    ):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=num_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.guidance_proj = Timesteps(num_channels=num_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
+
+        self.register_buffer(
+            "mod_proj",
+            get_timestep_embedding(
+                torch.arange(out_dim) * 1000,
+                2 * num_channels,
+                flip_sin_to_cos=True,
+                downscale_freq_shift=0,
+            ),
+            persistent=False,
+        )
+
+    def forward(
+        self, timestep: torch.Tensor, guidance: Optional[torch.Tensor], pooled_projections: torch.Tensor
+    ) -> torch.Tensor:
+        mod_index_length = self.mod_proj.shape[0]
+
+        timesteps_proj = self.time_proj(timestep).to(dtype=timestep.dtype)
+        guidance_proj = self.guidance_proj(torch.tensor([0])).to(dtype=timestep.dtype, device=timestep.device)
+
+        mod_proj = self.mod_proj.to(dtype=timesteps_proj.dtype, device=timesteps_proj.device)
+        timestep_guidance = (
+            torch.cat([timesteps_proj, guidance_proj], dim=1).unsqueeze(1).repeat(1, mod_index_length, 1)
+        )
+        input_vec = torch.cat([timestep_guidance, mod_proj.unsqueeze(0)], dim=-1)
+
+        return input_vec
+
+
+class ChromaAdaLayerNormZeroSinglePruned(nn.Module):
+    r"""
+    Norm layer adaptive layer norm zero (adaLN-Zero).
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+        num_embeddings (`int`): The size of the embeddings dictionary.
+    """
+
+    def __init__(self, embedding_dim: int, norm_type="layer_norm", bias=True):
+        super().__init__()
+
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+        else:
+            raise ValueError(
+                f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm', 'fp32_layer_norm'."
+            )
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        emb: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        shift_msa, scale_msa, gate_msa = emb.squeeze(0).chunk(3, dim=0)
+        x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        return x, gate_msa
+
+
+class ChromaAdaLayerNormZeroPruned(nn.Module):
+    r"""
+    Norm layer adaptive layer norm zero (adaLN-Zero).
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+        num_embeddings (`int`): The size of the embeddings dictionary.
+    """
+
+    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, norm_type="layer_norm", bias=True):
+        super().__init__()
+        if num_embeddings is not None:
+            self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
+        else:
+            self.emb = None
+
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+        elif norm_type == "fp32_layer_norm":
+            self.norm = FP32LayerNorm(embedding_dim, elementwise_affine=False, bias=False)
+        else:
+            raise ValueError(
+                f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm', 'fp32_layer_norm'."
+            )
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        timestep: Optional[torch.Tensor] = None,
+        class_labels: Optional[torch.LongTensor] = None,
+        hidden_dtype: Optional[torch.dtype] = None,
+        emb: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.emb is not None:
+            emb = self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.squeeze(0).chunk(6, dim=0)
+        x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
+
+
 @maybe_allow_in_graph
-class FluxSingleTransformerBlock(nn.Module):
-    def __init__(self, dim: int, num_attention_heads: int, attention_head_dim: int, mlp_ratio: float = 4.0):
+class ChromaSingleTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        mlp_ratio: float = 4.0,
+    ):
         super().__init__()
         self.mlp_hidden_dim = int(dim * mlp_ratio)
+        self.norm = ChromaAdaLayerNormZeroSinglePruned(dim)
 
-        self.norm = AdaLayerNormZeroSingle(dim)
         self.proj_mlp = nn.Linear(dim, self.mlp_hidden_dim)
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
@@ -104,14 +243,19 @@ class FluxSingleTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class FluxTransformerBlock(nn.Module):
+class ChromaTransformerBlock(nn.Module):
     def __init__(
-        self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        qk_norm: str = "rms_norm",
+        eps: float = 1e-6,
     ):
         super().__init__()
 
-        self.norm1 = AdaLayerNormZero(dim)
-        self.norm1_context = AdaLayerNormZero(dim)
+        self.norm1 = ChromaAdaLayerNormZeroPruned(dim)
+        self.norm1_context = ChromaAdaLayerNormZeroPruned(dim)
 
         self.attn = Attention(
             query_dim=dim,
@@ -141,10 +285,11 @@ class FluxTransformerBlock(nn.Module):
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        temb_img, temb_txt = temb[:, :6], temb[:, 6:]
+        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb_img)
 
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
-            encoder_hidden_states, emb=temb
+            encoder_hidden_states, emb=temb_txt
         )
         joint_attention_kwargs = joint_attention_kwargs or {}
         # Attention.
@@ -190,11 +335,55 @@ class FluxTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class FluxTransformer2DModel(
+class ChromaAdaLayerNormContinuous(nn.Module):
+    r"""
+    Adaptive normalization layer with a norm layer (layer_norm or rms_norm).
+
+    Args:
+        embedding_dim (`int`): Embedding dimension to use during projection.
+        conditioning_embedding_dim (`int`): Dimension of the input condition.
+        elementwise_affine (`bool`, defaults to `True`):
+            Boolean flag to denote if affine transformation should be applied.
+        eps (`float`, defaults to 1e-5): Epsilon factor.
+        bias (`bias`, defaults to `True`): Boolean flag to denote if bias should be use.
+        norm_type (`str`, defaults to `"layer_norm"`):
+            Normalization layer to use. Values supported: "layer_norm", "rms_norm".
+    """
+
+    def __init__(
+        self,
+        embedding_dim: int,
+        conditioning_embedding_dim: int,
+        # NOTE: It is a bit weird that the norm layer can be configured to have scale and shift parameters
+        # because the output is immediately scaled and shifted by the projected conditioning embeddings.
+        # Note that AdaLayerNorm does not let the norm layer have scale and shift parameters.
+        # However, this is how it was implemented in the original code, and it's rather likely you should
+        # set `elementwise_affine` to False.
+        elementwise_affine=True,
+        eps=1e-5,
+        bias=True,
+        norm_type="layer_norm",
+    ):
+        super().__init__()
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+        elif norm_type == "rms_norm":
+            self.norm = nn.RMSNorm(embedding_dim, eps, elementwise_affine)
+        else:
+            raise ValueError(f"unknown norm_type {norm_type}")
+
+    def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
+        # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
+        shift, scale = torch.chunk(emb.squeeze(0).to(x.dtype), 2, dim=0)
+        x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
+        return x
+
+
+class ChromaTransformer2DModel(
     ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, FluxTransformer2DLoadersMixin, CacheMixin
 ):
     """
-    The Transformer model introduced in Flux.
+    The Transformer model based on Flux SCHNELL architecture.
 
     Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
 
@@ -225,7 +414,7 @@ class FluxTransformer2DModel(
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
+    _no_split_modules = ["ChromaTransformerBlock", "ChromaSingleTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
 
     @register_to_config
@@ -241,7 +430,11 @@ class FluxTransformer2DModel(
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
-        axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
+        axes_dims_rope: Tuple[int, ...] = (16, 56, 56),
+        variant: str = "flux",
+        approximator_in_factor: int = 16,
+        approximator_hidden_dim: int = 5120,
+        approximator_layers: int = 5,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -249,19 +442,18 @@ class FluxTransformer2DModel(
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
-        text_time_guidance_cls = (
-            CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
+        self.time_text_embed = ChromaTimestepEmbeddings(
+            num_channels=approximator_in_factor, out_dim=3 * num_single_layers + 2 * 6 * num_layers + 2
         )
-        self.time_text_embed = text_time_guidance_cls(
-            embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
+        self.distilled_guidance_layer = ChromaApproximator(
+            in_dim=64, out_dim=3072, hidden_dim=approximator_hidden_dim, n_layers=approximator_layers
         )
-
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = nn.Linear(in_channels, self.inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
             [
-                FluxTransformerBlock(
+                ChromaTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
@@ -272,7 +464,7 @@ class FluxTransformer2DModel(
 
         self.single_transformer_blocks = nn.ModuleList(
             [
-                FluxSingleTransformerBlock(
+                ChromaSingleTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
@@ -281,7 +473,9 @@ class FluxTransformer2DModel(
             ]
         )
 
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
+        self.norm_out = ChromaAdaLayerNormContinuous(
+            self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6
+        )
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
@@ -448,11 +642,9 @@ class FluxTransformer2DModel(
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000
 
-        temb = (
-            self.time_text_embed(timestep, pooled_projections)
-            if guidance is None
-            else self.time_text_embed(timestep, guidance, pooled_projections)
-        )
+        input_vec = self.time_text_embed(timestep, guidance, pooled_projections)
+        pooled_temb = self.distilled_guidance_layer(input_vec)
+
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         if txt_ids.ndim == 3:
@@ -477,6 +669,17 @@ class FluxTransformer2DModel(
             joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
         for index_block, block in enumerate(self.transformer_blocks):
+            img_offset = 3 * len(self.single_transformer_blocks)
+            txt_offset = img_offset + 6 * len(self.transformer_blocks)
+            img_modulation = img_offset + 6 * index_block
+            text_modulation = txt_offset + 6 * index_block
+            temb = torch.cat(
+                (
+                    pooled_temb[:, img_modulation : img_modulation + 6],
+                    pooled_temb[:, text_modulation : text_modulation + 6],
+                ),
+                dim=1,
+            )
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -509,6 +712,8 @@ class FluxTransformer2DModel(
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         for index_block, block in enumerate(self.single_transformer_blocks):
+            start_idx = 3 * index_block
+            temb = pooled_temb[:, start_idx : start_idx + 3]
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -536,6 +741,7 @@ class FluxTransformer2DModel(
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
+        temb = pooled_temb[:, -2:]
         hidden_states = self.norm_out(hidden_states, temb)
         output = self.proj_out(hidden_states)
 
