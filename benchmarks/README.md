@@ -9,7 +9,7 @@ Welcome to Diffusers Benchmarks. These benchmarks are use to obtain latency and 
 
 Instead of full diffusion pipelines, only the forward pass of the respective model classes (such as `FluxTransformer2DModel`) is tested with the real checkpoints (such as `"black-forest-labs/FLUX.1-dev"`). 
 
-The entrypoint to running all the currently available benchmarks is in `run_all.py`. However, one can run the individual benchmarks, too, i.e., `python benchmarking_flux.py`. It should produce a CSV file containing various information about the benchmarks run.
+The entrypoint to running all the currently available benchmarks is in `run_all.py`. However, one can run the individual benchmarks, too, e.g., `python benchmarking_flux.py`. It should produce a CSV file containing various information about the benchmarks run.
 
 The benchmarks are run on a weekly basis and the CI is defined in [benchmark.yml](../.github/workflows/benchmark.yml).
 
