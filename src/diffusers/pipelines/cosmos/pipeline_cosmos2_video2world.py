@@ -650,8 +650,8 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
             unconditioning_latents = conditioning_latents
 
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
-        sigma_conditioning = torch.full((batch_size,), sigma_conditioning, dtype=torch.float32, device=device)
-        sigma_conditioning_t = self.scheduler.precondition_noise(sigma_conditioning)
+        sigma_conditioning = torch.tensor(sigma_conditioning, dtype=torch.float32, device=device)
+        t_conditioning = self.scheduler.precondition_noise(sigma_conditioning)
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -663,13 +663,15 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
                     continue
 
                 self._current_timestep = t
-                timestep = t.view(1, 1, 1, 1, 1).repeat(latents.size(0), 1, latents.size(2), 1, 1)  # [B, 1, T, 1, 1]
+                timestep = t.view(1, 1, 1, 1, 1).expand(
+                    latents.size(0), -1, latents.size(2), -1, -1
+                )  # [B, 1, T, 1, 1]
                 current_sigma = self.scheduler.sigmas[i]
 
                 cond_latent = self.scheduler.scale_model_input(latents, t)
                 cond_latent = cond_indicator * conditioning_latents + (1 - cond_indicator) * cond_latent
                 cond_latent = cond_latent.to(transformer_dtype)
-                cond_timestep = cond_indicator * sigma_conditioning_t + (1 - cond_indicator) * timestep
+                cond_timestep = cond_indicator * t_conditioning + (1 - cond_indicator) * timestep
                 cond_timestep = cond_timestep.to(transformer_dtype)
 
                 noise_pred = self.transformer(
@@ -688,7 +690,7 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
                     uncond_latent = self.scheduler.scale_model_input(latents, t)
                     uncond_latent = uncond_indicator * unconditioning_latents + (1 - uncond_indicator) * uncond_latent
                     uncond_latent = uncond_latent.to(transformer_dtype)
-                    uncond_timestep = uncond_indicator * sigma_conditioning_t + (1 - uncond_indicator) * timestep
+                    uncond_timestep = uncond_indicator * t_conditioning + (1 - uncond_indicator) * timestep
                     uncond_timestep = uncond_timestep.to(transformer_dtype)
 
                     noise_pred_uncond = self.transformer(
