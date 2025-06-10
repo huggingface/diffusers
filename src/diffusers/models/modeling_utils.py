@@ -66,7 +66,6 @@ from .model_loading_utils import (
     _determine_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
-    _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
 )
@@ -93,6 +92,31 @@ class ContextManagers:
 logger = logging.get_logger(__name__)
 
 _REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
+
+
+def _get_load_device_from_device_map(device_map):
+    """
+    Determine the device to load weights directly to, if possible.
+
+    For simple device maps where all components go to the same device,
+    we can load directly to that device to avoid CPU memory usage.
+    """
+    if device_map is None:
+        return "cpu"
+
+    if isinstance(device_map, dict):
+        # Simple case: everything goes to one device
+        if "" in device_map:
+            return device_map[""]
+
+        # Check if all values map to the same device
+        unique_devices = set(device_map.values())
+        if len(unique_devices) == 1:
+            return next(iter(unique_devices))
+
+    # For complex device maps or string strategies, load to CPU first
+    return "cpu"
+
 
 TORCH_INIT_FUNCTIONS = {
     "uniform_": nn.init.uniform_,
@@ -873,9 +897,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
-        device_map = kwargs.pop("device_map", "auto")
-        if device_map == "auto":
-            logger.info("Using automatic device mapping (device_map='auto') for memory-efficient loading")
+        device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
         offload_state_dict = kwargs.pop("offload_state_dict", None)
@@ -902,7 +924,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 "Memory-efficient loading requires `accelerate`. Please install accelerate with: \n```\npip"
                 " install accelerate\n```\n."
             )
-        
+
         if not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
                 "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
@@ -1133,7 +1155,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         state_dict = None
         if not is_sharded:
             # Time to load the checkpoint
-            state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries)
+            # Determine the device to load weights to based on device_map
+            load_device = _get_load_device_from_device_map(device_map)
+            state_dict = load_state_dict(
+                resolved_model_file[0],
+                disable_mmap=disable_mmap,
+                dduf_entries=dduf_entries,
+                map_location=load_device
+            )
             # We only fix it for non sharded checkpoints as we don't need it yet for sharded one.
             model._fix_state_dict_keys_on_load(state_dict)
 
@@ -1191,7 +1220,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 "offload_index": offload_index,
             }
             dispatch_model(model, **device_map_kwargs)
-            logger.info(f"Model loaded with device_map: {device_map}")
+            # Format device map for concise logging
+            if isinstance(device_map, dict):
+                device_summary = ", ".join([f"{k or 'model'}: {v}" for k, v in device_map.items()])
+                logger.info(f"Model loaded with device_map: {{{device_summary}}}")
 
         if hf_quantizer is not None:
             hf_quantizer.postprocess_model(model)
@@ -1352,7 +1384,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         mismatched_keys = []
 
-        assign_to_params_buffers = None
         error_msgs = []
 
         # Deal with offload
@@ -1385,7 +1416,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             resolved_model_file = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
 
         for shard_file in resolved_model_file:
-            state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
+            # Determine the device to load weights to based on device_map
+            load_device = _get_load_device_from_device_map(device_map)
+            state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries, map_location=load_device)
 
             def _find_mismatched_keys(
                 state_dict,
