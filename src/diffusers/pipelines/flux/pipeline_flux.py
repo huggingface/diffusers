@@ -263,8 +263,7 @@ class FluxPipeline(
             )
 
         prompt_embeds = self.text_encoder_2(
-            text_input_ids.to(device),
-            output_hidden_states=False,
+            text_input_ids.to(device), output_hidden_states=False, attention_mask=text_inputs.attention_mask.to(device)
         )[0]
 
         dtype = self.text_encoder_2.dtype
