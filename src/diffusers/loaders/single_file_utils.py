@@ -3320,10 +3320,12 @@ def convert_chroma_transformer_to_diffusers(checkpoint, **kwargs):
     for k in keys:
         if k.startswith("distilled_guidance_layer.norms"):
             converted_state_dict[k.replace(".scale", ".weight")] = checkpoint.pop(k)
-        if k.startswith("distilled_guidance_layer.layer"):
+        elif k.startswith("distilled_guidance_layer.layer"):
             converted_state_dict[k.replace("in_layer", "linear_1").replace("out_layer", "linear_2")] = checkpoint.pop(
                 k
             )
+        elif k.startswith("distilled_guidance_layer"):
+            converted_state_dict[k] = checkpoint.pop(k)
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "double_blocks." in k))[-1] + 1  # noqa: C401
     num_single_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "single_blocks." in k))[-1] + 1  # noqa: C401
