@@ -243,35 +243,6 @@ class AdaLayerNormZeroSingle(nn.Module):
         return x, gate_msa
 
 
-class AdaLayerNormZeroSinglePruned(nn.Module):
-    r"""
-    Norm layer adaptive layer norm zero (adaLN-Zero).
-
-    Parameters:
-        embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the embeddings dictionary.
-    """
-
-    def __init__(self, embedding_dim: int, norm_type="layer_norm", bias=True):
-        super().__init__()
-
-        if norm_type == "layer_norm":
-            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
-        else:
-            raise ValueError(
-                f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm', 'fp32_layer_norm'."
-            )
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        shift_msa, scale_msa, gate_msa = emb.squeeze(0).chunk(3, dim=0)
-        x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
-        return x, gate_msa
-
-
 class LuminaRMSNormZero(nn.Module):
     """
     Norm layer adaptive RMS normalization zero.

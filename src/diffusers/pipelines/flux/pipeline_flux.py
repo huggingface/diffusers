@@ -265,11 +265,6 @@ class FluxPipeline(
         prompt_embeds = self.text_encoder_2(
             text_input_ids.to(device),
             output_hidden_states=False,
-            attention_mask=(
-                self._get_chroma_attn_mask(text_inputs.length, max_sequence_length).to(device)
-                if self.variant == "chroma"
-                else None
-            ),
         )[0]
 
         dtype = self.text_encoder_2.dtype

@@ -89,9 +89,7 @@ class ChromaTimestepEmbeddings(nn.Module):
             persistent=False,
         )
 
-    def forward(
-        self, timestep: torch.Tensor, guidance: Optional[torch.Tensor], pooled_projections: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, timestep: torch.Tensor) -> torch.Tensor:
         mod_index_length = self.mod_proj.shape[0]
 
         timesteps_proj = self.time_proj(timestep).to(dtype=timestep.dtype)
@@ -642,7 +640,7 @@ class ChromaTransformer2DModel(
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000
 
-        input_vec = self.time_text_embed(timestep, guidance, pooled_projections)
+        input_vec = self.time_text_embed(timestep)
         pooled_temb = self.distilled_guidance_layer(input_vec)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
