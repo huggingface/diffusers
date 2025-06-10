@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import OrderedDict
+from ..modular_pipeline_utils import InsertableOrderedDict
 
 # Import all the necessary block classes
 from .denoise import (
     StableDiffusionXLAutoDenoiseStep,
-    StableDiffusionXLDenoiseStep,
-    StableDiffusionXLControlNetDenoiseStep
+    StableDiffusionXLControlNetDenoiseStep,
+    StableDiffusionXLDenoiseLoop,
+    StableDiffusionXLInpaintDenoiseLoop
 )
 from .before_denoise import (
     StableDiffusionXLAutoBeforeDenoiseStep,
@@ -50,56 +51,53 @@ from .decoders import (
 
 # YiYi notes: comment out for now, work on this later
 # block mapping 
-TEXT2IMAGE_BLOCKS = OrderedDict([
+TEXT2IMAGE_BLOCKS = InsertableOrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
-    ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ("input", StableDiffusionXLInputStep),
     ("set_timesteps", StableDiffusionXLSetTimestepsStep),
     ("prepare_latents", StableDiffusionXLPrepareLatentsStep),
     ("prepare_add_cond", StableDiffusionXLPrepareAdditionalConditioningStep),
-    ("denoise", StableDiffusionXLDenoiseStep),
+    ("denoise", StableDiffusionXLDenoiseLoop),
     ("decode", StableDiffusionXLDecodeStep)
 ])
 
-IMAGE2IMAGE_BLOCKS = OrderedDict([
+IMAGE2IMAGE_BLOCKS = InsertableOrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
-    ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ("image_encoder", StableDiffusionXLVaeEncoderStep),
     ("input", StableDiffusionXLInputStep),
     ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
     ("prepare_latents", StableDiffusionXLImg2ImgPrepareLatentsStep),
     ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
-    ("denoise", StableDiffusionXLDenoiseStep),
+    ("denoise", StableDiffusionXLDenoiseLoop),
     ("decode", StableDiffusionXLDecodeStep)
 ])
 
-INPAINT_BLOCKS = OrderedDict([
+INPAINT_BLOCKS = InsertableOrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
-    ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ("image_encoder", StableDiffusionXLInpaintVaeEncoderStep),
     ("input", StableDiffusionXLInputStep),
     ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
     ("prepare_latents", StableDiffusionXLInpaintPrepareLatentsStep),
     ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
-    ("denoise", StableDiffusionXLDenoiseStep),
+    ("denoise", StableDiffusionXLInpaintDenoiseLoop),
     ("decode", StableDiffusionXLInpaintDecodeStep)
 ])
 
-CONTROLNET_BLOCKS = OrderedDict([
+CONTROLNET_BLOCKS = InsertableOrderedDict([
     ("controlnet_input", StableDiffusionXLControlNetInputStep),
     ("denoise", StableDiffusionXLControlNetDenoiseStep),
 ])
 
-CONTROLNET_UNION_BLOCKS = OrderedDict([
+CONTROLNET_UNION_BLOCKS = InsertableOrderedDict([
     ("controlnet_input", StableDiffusionXLControlNetUnionInputStep),
     ("denoise", StableDiffusionXLControlNetDenoiseStep),
 ])
 
-IP_ADAPTER_BLOCKS = OrderedDict([
+IP_ADAPTER_BLOCKS = InsertableOrderedDict([
     ("ip_adapter", StableDiffusionXLIPAdapterStep),
 ])
 
-AUTO_BLOCKS = OrderedDict([
+AUTO_BLOCKS = InsertableOrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
     ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ("image_encoder", StableDiffusionXLAutoVaeEncoderStep),
@@ -108,7 +106,7 @@ AUTO_BLOCKS = OrderedDict([
     ("decode", StableDiffusionXLAutoDecodeStep)
 ])
 
-AUTO_CORE_BLOCKS = OrderedDict([
+AUTO_CORE_BLOCKS = InsertableOrderedDict([
     ("before_denoise", StableDiffusionXLAutoBeforeDenoiseStep),
     ("denoise", StableDiffusionXLAutoDenoiseStep),
 ])

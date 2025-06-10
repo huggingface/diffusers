@@ -19,9 +19,28 @@ from typing import Any, Dict, List, Optional, Tuple, Type, Union, Literal
 
 from ..utils.import_utils import is_torch_available
 from ..configuration_utils import FrozenDict, ConfigMixin
+from collections import OrderedDict
 
 if is_torch_available():
     import torch
+
+
+class InsertableOrderedDict(OrderedDict):
+    def insert(self, key, value, index):
+        items = list(self.items())
+        
+        # Remove key if it already exists to avoid duplicates
+        items = [(k, v) for k, v in items if k != key]
+        
+        # Insert at the specified index
+        items.insert(index, (key, value))
+        
+        # Clear and update self
+        self.clear()
+        self.update(items)
+        
+        # Return self for method chaining
+        return self
 
 
 # YiYi TODO:

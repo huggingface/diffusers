@@ -54,7 +54,7 @@ class StableDiffusionXLDenoiseLoopBeforeDenoiser(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "step within the denoising loop that prepare the latent input for the denoiser"
+        return "step within the denoising loop that prepare the latent input for the denoiser. Used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object, e.g. `StableDiffusionXLDenoiseLoopWrapper`"
 
 
     @property
@@ -89,7 +89,7 @@ class StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "step within the denoising loop that prepare the latent input for the denoiser"
+        return "step within the denoising loop that prepare the latent input for the denoiser (for inpainting workflow only). Used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object, e.g. `StableDiffusionXLDenoiseLoopWrapper`"
 
 
     @property
@@ -165,7 +165,7 @@ class StableDiffusionXLDenoiseLoopDenoiser(PipelineBlock):
     @property
     def description(self) -> str:
         return (
-            "Step within the denoising loop that denoise the latents with guidance"
+            "Step within the denoising loop that denoise the latents with guidance. Used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object, e.g. `StableDiffusionXLDenoiseLoopWrapper`"
         )
 
     @property
@@ -269,7 +269,7 @@ class StableDiffusionXLControlNetDenoiseLoopDenoiser(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "step that iteratively denoise the latents for the text-to-image/image-to-image/inpainting generation process. Using ControlNet to condition the denoising process"
+        return "step within the denoising loop that denoise the latents with guidance (with controlnet). Used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object, e.g. `StableDiffusionXLDenoiseLoopWrapper`"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -458,7 +458,7 @@ class StableDiffusionXLDenoiseLoopAfterDenoiser(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "step that iteratively denoise the latents for the text-to-image/image-to-image/inpainting generation process. Using ControlNet to condition the denoising process"
+        return "step within the denoising loop that update the latents. Used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object, e.g. `StableDiffusionXLDenoiseLoopWrapper`"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -521,7 +521,7 @@ class StableDiffusionXLInpaintDenoiseLoopAfterDenoiser(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "step that iteratively denoise the latents for the text-to-image/image-to-image/inpainting generation process. Using ControlNet to condition the denoising process"
+        return "step within the denoising loop that update the latents (for inpainting workflow only). Used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object, e.g. `StableDiffusionXLDenoiseLoopWrapper`"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -622,7 +622,7 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Step that iteratively denoise the latents for the text-to-image/image-to-image/inpainting generation process"
+            "Pipeline block that iteratively denoise the latents over `timesteps`. The specific steps with each iteration can be customized with `blocks` attributes"
         )
 
     @property
@@ -683,21 +683,52 @@ class StableDiffusionXLDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
     block_classes = [StableDiffusionXLDenoiseLoopBeforeDenoiser, StableDiffusionXLDenoiseLoopDenoiser, StableDiffusionXLDenoiseLoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
 
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. "
+            "Its loop logic is defined in parent class `StableDiffusionXLDenoiseLoopWrapper` "
+            "and at each iteration, it runs blocks defined in `blocks` sequencially, i.e. `StableDiffusionXLDenoiseLoopBeforeDenoiser` and `StableDiffusionXLDenoiseLoopDenoiser`, "
+            "and finally `StableDiffusionXLDenoiseLoopAfterDenoiser` to update the latents."
+        )
+
 # control_cond
 class StableDiffusionXLControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
     block_classes = [StableDiffusionXLDenoiseLoopBeforeDenoiser, StableDiffusionXLControlNetDenoiseLoopDenoiser, StableDiffusionXLDenoiseLoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents with controlnet. "
+            "Its loop logic is defined in parent class `StableDiffusionXLDenoiseLoopWrapper` "
+            "and at each iteration, it runs blocks defined in `blocks` sequencially, i.e. `StableDiffusionXLDenoiseLoopBeforeDenoiser` and `StableDiffusionXLControlNetDenoiseLoopDenoiser`, "
+            "and finally `StableDiffusionXLDenoiseLoopAfterDenoiser` to update the latents."
+        )
 
 # mask
 class StableDiffusionXLInpaintDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
     block_classes = [StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser, StableDiffusionXLDenoiseLoopDenoiser, StableDiffusionXLInpaintDenoiseLoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
-
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents(for inpainting task only). "
+            "Its loop logic is defined in parent class `StableDiffusionXLDenoiseLoopWrapper` "
+            "and at each iteration, it runs blocks defined in `blocks` sequencially, i.e. `StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser` and `StableDiffusionXLDenoiseLoopDenoiser`, "
+            "and finally `StableDiffusionXLInpaintDenoiseLoopAfterDenoiser` to update the latents."
+        )
 # control_cond + mask
 class StableDiffusionXLInpaintControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
     block_classes = [StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser, StableDiffusionXLControlNetDenoiseLoopDenoiser, StableDiffusionXLInpaintDenoiseLoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
-
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents(for inpainting task only) with controlnet. "
+            "Its loop logic is defined in parent class `StableDiffusionXLDenoiseLoopWrapper` "
+            "and at each iteration, it runs blocks defined in `blocks` sequencially, i.e. `StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser` and `StableDiffusionXLControlNetDenoiseLoopDenoiser`, "
+            "and finally `StableDiffusionXLInpaintDenoiseLoopAfterDenoiser` to update the latents."
+        )
 
 
 # all task without controlnet
@@ -706,17 +737,44 @@ class StableDiffusionXLDenoiseStep(AutoPipelineBlocks):
     block_names = ["inpaint_denoise", "denoise"]
     block_trigger_inputs = ["mask", None]
 
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. "
+            "This is a auto pipeline block that works for text2img, img2img and inpainting tasks."
+            " - `StableDiffusionXLDenoiseStep` (denoise) is used when no mask is provided."
+            " - `StableDiffusionXLInpaintDenoiseStep` (inpaint_denoise) is used when mask is provided."
+        )
+
 # all task with controlnet
 class StableDiffusionXLControlNetDenoiseStep(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLInpaintControlNetDenoiseLoop, StableDiffusionXLControlNetDenoiseLoop]
     block_names = ["inpaint_controlnet_denoise", "controlnet_denoise"]
     block_trigger_inputs = ["mask", None]
 
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents with controlnet. "
+            "This is a auto pipeline block that works for text2img, img2img and inpainting tasks."
+            " - `StableDiffusionXLControlNetDenoiseStep` (controlnet_denoise) is used when no mask is provided."
+            " - `StableDiffusionXLInpaintControlNetDenoiseStep` (inpaint_controlnet_denoise) is used when mask is provided."
+        )
+
 # all task with or without controlnet
 class StableDiffusionXLAutoDenoiseStep(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLControlNetDenoiseStep, StableDiffusionXLDenoiseStep]
     block_names = ["controlnet_denoise", "denoise"]
     block_trigger_inputs = ["controlnet_cond", None]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. "
+            "This is a auto pipeline block that works for text2img, img2img and inpainting tasks. And can be used with or without controlnet."
+            " - `StableDiffusionXLDenoiseStep` (denoise) is used when no controlnet_cond is provided (work for text2img, img2img and inpainting tasks)."
+            " - `StableDiffusionXLControlNetDenoiseStep` (controlnet_denoise) is used when controlnet_cond is provided (work for text2img, img2img and inpainting tasks)."
+        )
 
 
 
