@@ -101,6 +101,7 @@ def randn_tensor(
     for index in range(latents.shape[0]):
         print(f'noise norm {index} = {latents[index].norm()}')
 
+    print(f'latents.mean() = {latents.mean()}')
     latents = latents - latents.mean()
     for index in range(latents.shape[0]):
         print(f'noise norm {index} = {latents[index].norm()}')
