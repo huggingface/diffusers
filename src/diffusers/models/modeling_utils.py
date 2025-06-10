@@ -1201,9 +1201,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
         # Now that the model is loaded, we can determine the device_map
+        print(f"111111 device_map: {device_map}")
         device_map = _determine_device_map(
             model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
         )
+        print(f"222222 device_map: {device_map}")
         if hf_quantizer is not None:
             hf_quantizer.validate_environment(device_map=device_map)
 
