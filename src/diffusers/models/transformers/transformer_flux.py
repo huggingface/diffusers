@@ -366,6 +366,8 @@ class FluxTransformerBlock(nn.Module):
             cross_attention_dim=None,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
+            qk_norm=qk_norm,
+            eps=eps,
             dropout=0.0,
             bias=True,
             added_kv_proj_dim=dim,
