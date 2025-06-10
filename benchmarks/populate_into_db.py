@@ -9,7 +9,8 @@ import psycopg2.extras
 
 FINAL_CSV_FILENAME = "collated_results.csv"
 # https://github.com/huggingface/transformers/blob/593e29c5e2a9b17baec010e8dc7c1431fed6e841/benchmark/init_db.sql#L27
-TABLE_NAME = "model_measurements"
+BENCHMARKS_TABLE_NAME = "benchmarks"
+MEASUREMENTS_TABLE_NAME = "model_measurements"
 
 if __name__ == "__main__":
     try:
@@ -98,7 +99,7 @@ if __name__ == "__main__":
 
         # Batch-insert all rows
         insert_sql = f"""
-        INSERT INTO {TABLE_NAME} (
+        INSERT INTO {MEASUREMENTS_TABLE_NAME} (
             benchmark_id,
             measurements
         )
