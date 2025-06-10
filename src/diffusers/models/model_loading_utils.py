@@ -304,6 +304,31 @@ def load_model_dict_into_meta(
     return offload_index, state_dict_index
 
 
+def _load_state_dict_into_model(
+    model_to_load, state_dict: OrderedDict, assign_to_params_buffers: bool = False
+) -> List[str]:
+    # Convert old format to new format if needed from a PyTorch state_dict
+    # copy state_dict so _load_from_state_dict can modify it
+    state_dict = state_dict.copy()
+    error_msgs = []
+
+    # PyTorch's `_load_from_state_dict` does not copy parameters in a module's descendants
+    # so we need to apply the function recursively.
+    def load(module: torch.nn.Module, prefix: str = "", assign_to_params_buffers: bool = False):
+        local_metadata = {}
+        local_metadata["assign_to_params_buffers"] = assign_to_params_buffers
+        if assign_to_params_buffers and not is_torch_version(">=", "2.1"):
+            logger.info("You need to have torch>=2.1 in order to load the model with assign_to_params_buffers=True")
+        args = (state_dict, prefix, local_metadata, True, [], [], error_msgs)
+        module._load_from_state_dict(*args)
+
+        for name, child in module._modules.items():
+            if child is not None:
+                load(child, prefix + name + ".", assign_to_params_buffers)
+
+    load(model_to_load, assign_to_params_buffers=assign_to_params_buffers)
+
+    return error_msgs
 
 
 def _fetch_index_file(

@@ -66,6 +66,7 @@ from .model_loading_utils import (
     _determine_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
+    _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
 )
