@@ -605,13 +605,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             image_latents = torch.cat([image_latents], dim=0)
 
         if latents is None:
-            noises = []
-            for index in range(5):
-                tmp_noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-                noises.append(tmp_noise)
-            noises = torch.stack(noises,dim=0)
-            noise = torch.mean(noises, dim=0, keepdim=False)
-
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             latents = self.scheduler.scale_noise(image_latents, timestep, noise)
         else:
             noise = latents.to(device)
