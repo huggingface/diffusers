@@ -22,17 +22,30 @@
 
 # Wan2.1
 
-[Wan2.1](https://files.alicdn.com/tpsservice/5c9de1c74de03972b7aa657e5a54756b.pdf) is a series of large diffusion transformer available in two versions, a high-performance 14B parameter model and a more accessible 1.3B version. Trained on billions of images and videos, it supports tasks like text-to-video (T2V) and image-to-video (I2V) while enabling features such as camera control and stylistic diversity. The Wan-VAE features better image data compression and a feature cache mechanism that encodes and decodes a video in chunks. To maintain continuity, features from previous chunks are cached and reused for processing subsequent chunks. This improves inference efficiency by reducing memory usage. Wan2.1 also uses a multilingual text encoder and the diffusion transformer models space and time relationships and text conditions with each time step to capture more complex video dynamics.
+[Wan-2.1](https://huggingface.co/papers/2503.20314) by the Wan Team.
+
+*This report presents Wan, a comprehensive and open suite of video foundation models designed to push the boundaries of video generation. Built upon the mainstream diffusion transformer paradigm, Wan achieves significant advancements in generative capabilities through a series of innovations, including our novel VAE, scalable pre-training strategies, large-scale data curation, and automated evaluation metrics. These contributions collectively enhance the model's performance and versatility. Specifically, Wan is characterized by four key features: Leading Performance: The 14B model of Wan, trained on a vast dataset comprising billions of images and videos, demonstrates the scaling laws of video generation with respect to both data and model size. It consistently outperforms the existing open-source models as well as state-of-the-art commercial solutions across multiple internal and external benchmarks, demonstrating a clear and significant performance superiority. Comprehensiveness: Wan offers two capable models, i.e., 1.3B and 14B parameters, for efficiency and effectiveness respectively. It also covers multiple downstream applications, including image-to-video, instruction-guided video editing, and personal video generation, encompassing up to eight tasks. Consumer-Grade Efficiency: The 1.3B model demonstrates exceptional resource efficiency, requiring only 8.19 GB VRAM, making it compatible with a wide range of consumer-grade GPUs. Openness: We open-source the entire series of Wan, including source code and all models, with the goal of fostering the growth of the video generation community. This openness seeks to significantly expand the creative possibilities of video production in the industry and provide academia with high-quality video foundation models. All the code and models are available at [this https URL](https://github.com/Wan-Video/Wan2.1).*
 
 You can find all the original Wan2.1 checkpoints under the [Wan-AI](https://huggingface.co/Wan-AI) organization.
+
+The following Wan models are supported in Diffusers:
+- [Wan 2.1 T2V 1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B-Diffusers)
+- [Wan 2.1 T2V 14B](https://huggingface.co/Wan-AI/Wan2.1-T2V-14B-Diffusers)
+- [Wan 2.1 I2V 14B - 480P](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P-Diffusers)
+- [Wan 2.1 I2V 14B - 720P](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-720P-Diffusers)
+- [Wan 2.1 FLF2V 14B - 720P](https://huggingface.co/Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers)
+- [Wan 2.1 VACE 1.3B](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers)
+- [Wan 2.1 VACE 14B](https://huggingface.co/Wan-AI/Wan2.1-VACE-14B-diffusers)
 
 > [!TIP]
 > Click on the Wan2.1 models in the right sidebar for more examples of video generation.
 
+### Text-to-Video Generation
+
 The example below demonstrates how to generate a video from text optimized for memory or inference speed.
 
-<hfoptions id="usage">
-<hfoption id="memory">
+<hfoptions id="T2V usage">
+<hfoption id="T2V memory">
 
 Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
 
@@ -100,7 +113,7 @@ export_to_video(output, "output.mp4", fps=16)
 ```
 
 </hfoption>
-<hfoption id="inference speed">
+<hfoption id="T2V inference speed">
 
 [Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
 
@@ -156,6 +169,81 @@ export_to_video(output, "output.mp4", fps=16)
 
 </hfoption>
 </hfoptions>
+
+### First-Last-Frame-to-Video Generation
+
+The example below demonstrates how to use the image-to-video pipeline to generate a video using a text description, a starting frame, and an ending frame.
+
+<hfoptions id="FLF2V usage">
+<hfoption id="usage">
+
+```python
+import numpy as np
+import torch
+import torchvision.transforms.functional as TF
+from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
+from diffusers.utils import export_to_video, load_image
+from transformers import CLIPVisionModel
+
+
+model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers"
+image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+pipe = WanImageToVideoPipeline.from_pretrained(
+    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
+last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
+
+def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
+    aspect_ratio = image.height / image.width
+    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+    image = image.resize((width, height))
+    return image, height, width
+
+def center_crop_resize(image, height, width):
+    # Calculate resize ratio to match first frame dimensions
+    resize_ratio = max(width / image.width, height / image.height)
+
+    # Resize the image
+    width = round(image.width * resize_ratio)
+    height = round(image.height * resize_ratio)
+    size = [width, height]
+    image = TF.center_crop(image, size)
+
+    return image, height, width
+
+first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
+if last_frame.size != first_frame.size:
+    last_frame, _, _ = center_crop_resize(last_frame, height, width)
+
+prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+
+output = pipe(
+    image=first_frame, last_image=last_frame, prompt=prompt, height=height, width=width, guidance_scale=5.5
+).frames[0]
+export_to_video(output, "output.mp4", fps=16)
+```
+
+</hfoption>
+</hfoptions>
+
+### Any-to-Video Controllable Generation
+
+Wan VACE supports various generation techniques which achieve controllable video generation. Some of the capabilities include:
+- Control to Video (Depth, Pose, Sketch, Flow, Grayscale, Scribble, Layout, Boundary Box, etc.). Recommended library for preprocessing videos to obtain control videos: [huggingface/controlnet_aux]()
+- Image/Video to Video (first frame, last frame, starting clip, ending clip, random clips)
+- Inpainting and Outpainting
+- Subject to Video (faces, object, characters, etc.)
+- Composition to Video (reference anything, animate anything, swap anything, expand anything, move anything, etc.)
+
+The code snippets available in [this](https://github.com/huggingface/diffusers/pull/11582) pull request demonstrate some examples of how videos can be generated with controllability signals.
+
+The general rule of thumb to keep in mind when preparing inputs for the VACE pipeline is that the input images, or frames of a video that you want to use for conditioning, should have a corresponding mask that is black in color. The black mask signifies that the model will not generate new content for that area, and only use those parts for conditioning the generation process. For parts/frames that should be generated by the model, the mask should be white in color.
 
 ## Notes
 
@@ -248,6 +336,18 @@ export_to_video(output, "output.mp4", fps=16)
 ## WanImageToVideoPipeline
 
 [[autodoc]] WanImageToVideoPipeline
+  - all
+  - __call__
+
+## WanVACEPipeline
+
+[[autodoc]] WanVACEPipeline
+  - all
+  - __call__
+
+## WanVideoToVideoPipeline
+
+[[autodoc]] WanVideoToVideoPipeline
   - all
   - __call__
 
