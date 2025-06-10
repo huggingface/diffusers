@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_wan"] = ["WanPipeline"]
     _import_structure["pipeline_wan_i2v"] = ["WanImageToVideoPipeline"]
+    _import_structure["pipeline_wan_vace"] = ["WanVACEPipeline"]
     _import_structure["pipeline_wan_video2video"] = ["WanVideoToVideoPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -35,6 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_wan import WanPipeline
         from .pipeline_wan_i2v import WanImageToVideoPipeline
+        from .pipeline_wan_vace import WanVACEPipeline
         from .pipeline_wan_video2video import WanVideoToVideoPipeline
 
 else:

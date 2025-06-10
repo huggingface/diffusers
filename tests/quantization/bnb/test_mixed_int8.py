@@ -478,6 +478,7 @@ class SlowBnb8bitTests(Base8bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
+        torch.use_deterministic_algorithms(True)
         self.pipeline_8bit.transformer.dequantize()
         output = self.pipeline_8bit(
             prompt=self.prompt,
@@ -492,7 +493,7 @@ class SlowBnb8bitTests(Base8bitTests):
         self.assertTrue(max_diff < 1e-2)
 
         # 8bit models cannot be offloaded to CPU.
-        self.assertTrue(self.pipeline_8bit.transformer.device.type == "cuda")
+        self.assertTrue(self.pipeline_8bit.transformer.device.type == torch_device)
         # calling it again shouldn't be a problem
         _ = self.pipeline_8bit(
             prompt=self.prompt,
@@ -534,7 +535,7 @@ class SlowBnb8bitTests(Base8bitTests):
         ).to(device)
 
         # Check if inference works.
-        _ = pipeline_8bit("table", max_sequence_length=20, num_inference_steps=2)
+        _ = pipeline_8bit(self.prompt, max_sequence_length=20, num_inference_steps=2)
 
         del pipeline_8bit
 
