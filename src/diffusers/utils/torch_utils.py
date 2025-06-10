@@ -81,6 +81,8 @@ def randn_tensor(
     else:
         latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
     
+    print(f'noise shape = {latents.shape}')
+    """
     mean_norm = torch.mean(latents.norm())
     while(mean_norm >=650):
         generator = torch.Generator(device=rand_device).manual_seed(random.randint(0, 10000000))
@@ -94,8 +96,8 @@ def randn_tensor(
         else:
             latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
         mean_norm = torch.mean(latents.norm())
-
-        print(f'noise norm = {latents.norm()}')
+    """
+    print(f'noise norm = {latents.norm()}')
     return latents
 
 
