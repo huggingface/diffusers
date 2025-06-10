@@ -125,7 +125,7 @@ EXAMPLE_INVERT_DOC_STRING = """
         >>> captioner_id = "Salesforce/blip-image-captioning-base"
         >>> processor = BlipProcessor.from_pretrained(captioner_id)
         >>> model = BlipForConditionalGeneration.from_pretrained(
-        ...     captioner_id, torch_dtype=torch.float16
+        ...     captioner_id, torch_dtype=torch.float16, low_cpu_mem_usage=True
         ... )
 
         >>> sd_model_ckpt = "CompVis/stable-diffusion-v1-4"
