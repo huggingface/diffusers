@@ -79,6 +79,19 @@ def randn_tensor(
         latents = torch.cat(latents, dim=0).to(device)
     else:
         latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
+    
+    mean_norm = torch.mean(latents.norm())
+    while(mean_norm >=650):
+        if isinstance(generator, list):
+            shape = (1,) + shape[1:]
+            latents = [
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype, layout=layout)
+                for i in range(batch_size)
+            ]
+            latents = torch.cat(latents, dim=0).to(device)
+        else:
+            latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
+        mean_norm = torch.mean(latents.norm())
 
     print(f'noise norm = {latents.norm()}')
     return latents
