@@ -46,7 +46,7 @@ from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
-from ..models.modeling_utils import ModelMixin
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..quantizers import PipelineQuantizationConfig
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
@@ -718,14 +718,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
         offload_state_dict = kwargs.pop("offload_state_dict", None)
-        # Always use memory-efficient loading (previously low_cpu_mem_usage=True)
-        # Remove old parameter for backward compatibility warning
-        if "low_cpu_mem_usage" in kwargs:
-            logger.warning(
-                "The `low_cpu_mem_usage` parameter is deprecated and has been removed. "
-                "Memory-efficient loading is now always enabled."
-            )
-            kwargs.pop("low_cpu_mem_usage")
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         dduf_file = kwargs.pop("dduf_file", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
@@ -739,20 +732,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
             )
 
-        # Accelerate is now required for memory-efficient loading
-        if not is_accelerate_available():
-            raise NotImplementedError(
-                "Memory-efficient loading requires `accelerate`. Please install it with: \n```\npip install accelerate\n```\n."
-            )
-
-        # Check PyTorch version requirement (now 1.9+ from setup.py)
-        if not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
             )
 
         if quantization_config is not None and not isinstance(quantization_config, PipelineQuantizationConfig):
             raise ValueError("`quantization_config` must be an instance of `PipelineQuantizationConfig`.")
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
 
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
@@ -792,7 +788,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if is_accelerate_version("<", "0.28.0"):
                 raise NotImplementedError("Device placement requires `accelerate` version `0.28.0` or later.")
 
-        # Memory-efficient loading is always enabled with device_map
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+            )
 
         if dduf_file:
             if custom_pipeline:
@@ -1024,6 +1024,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     name=name,
                     from_flax=from_flax,
                     variant=variant,
+                    low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
                     dduf_entries=dduf_entries,

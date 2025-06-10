@@ -17,7 +17,7 @@ from ..models.embeddings import (
     ImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import load_model_dict_into_meta
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     is_accelerate_available,
     is_torch_version,
@@ -36,23 +36,29 @@ class FluxTransformer2DLoadersMixin:
     Load layers into a [`FluxTransformer2DModel`].
     """
 
-    def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict):
-        # Always use memory-efficient loading
-        if not is_accelerate_available():
-            raise ImportError(
-                "Memory-efficient loading requires `accelerate`. Please install it with: \n```\npip install accelerate\n```\n."
-            )
+    def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
 
-        if not is_torch_version(">=", "1.9.0"):
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
             )
-
-        from accelerate import init_empty_weights
 
         updated_state_dict = {}
         image_projection = None
-        init_context = init_empty_weights
+        init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
 
         if "proj.weight" in state_dict:
             # IP-Adapter
@@ -73,34 +79,42 @@ class FluxTransformer2DLoadersMixin:
                 diffusers_name = key.replace("proj", "image_embeds")
                 updated_state_dict[diffusers_name] = value
 
-        # Always use memory-efficient loading
-        device_map = {"": self.device}
-        load_model_dict_into_meta(image_projection, updated_state_dict, device_map=device_map, dtype=self.dtype)
+        if not low_cpu_mem_usage:
+            image_projection.load_state_dict(updated_state_dict, strict=True)
+        else:
+            device_map = {"": self.device}
+            load_model_dict_into_meta(image_projection, updated_state_dict, device_map=device_map, dtype=self.dtype)
 
         return image_projection
 
-    def _convert_ip_adapter_attn_to_diffusers(self, state_dicts):
+    def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
         from ..models.attention_processor import (
             FluxIPAdapterJointAttnProcessor2_0,
         )
 
-        # Always use memory-efficient loading
-        if not is_accelerate_available():
-            raise ImportError(
-                "Memory-efficient loading requires `accelerate`. Please install it with: \n```\npip install accelerate\n```\n."
-            )
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
 
-        if not is_torch_version(">=", "1.9.0"):
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
             )
-
-        from accelerate import init_empty_weights
 
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 0
-        init_context = init_empty_weights
+        init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
         for name in self.attn_processors.keys():
             if name.startswith("single_transformer_blocks"):
                 attn_processor_class = self.attn_processors[name].__class__
@@ -135,28 +149,30 @@ class FluxTransformer2DLoadersMixin:
                     value_dict.update({f"to_k_ip.{i}.bias": state_dict["ip_adapter"][f"{key_id}.to_k_ip.bias"]})
                     value_dict.update({f"to_v_ip.{i}.bias": state_dict["ip_adapter"][f"{key_id}.to_v_ip.bias"]})
 
-                # Always use memory-efficient loading
-                device_map = {"": self.device}
-                dtype = self.dtype
-                load_model_dict_into_meta(attn_procs[name], value_dict, device_map=device_map, dtype=dtype)
+                if not low_cpu_mem_usage:
+                    attn_procs[name].load_state_dict(value_dict)
+                else:
+                    device_map = {"": self.device}
+                    dtype = self.dtype
+                    load_model_dict_into_meta(attn_procs[name], value_dict, device_map=device_map, dtype=dtype)
 
                 key_id += 1
 
         return attn_procs
 
-    def _load_ip_adapter_weights(self, state_dicts):
+    def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
         if not isinstance(state_dicts, list):
             state_dicts = [state_dicts]
 
         self.encoder_hid_proj = None
 
-        attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dicts)
+        attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
         self.set_attn_processor(attn_procs)
 
         image_projection_layers = []
         for state_dict in state_dicts:
             image_projection_layer = self._convert_ip_adapter_image_proj_to_diffusers(
-                state_dict["image_proj"]
+                state_dict["image_proj"], low_cpu_mem_usage=low_cpu_mem_usage
             )
             image_projection_layers.append(image_projection_layer)
 

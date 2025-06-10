@@ -337,6 +337,7 @@ class ModelUtilsTest(unittest.TestCase):
                 subfolder="unet",
                 cache_dir=tmpdirname,
                 in_channels=9,
+                low_cpu_mem_usage=False,
                 ignore_mismatched_sizes=True,
             )
 
@@ -745,14 +746,14 @@ class ModelTesterMixin:
             with tempfile.TemporaryDirectory() as tmpdirname:
                 model.to(dtype)
                 model.save_pretrained(tmpdirname, safe_serialization=False)
-                new_model = self.model_class.from_pretrained(tmpdirname, torch_dtype=dtype)
+                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=True, torch_dtype=dtype)
                 assert new_model.dtype == dtype
                 if (
                     hasattr(self.model_class, "_keep_in_fp32_modules")
                     and self.model_class._keep_in_fp32_modules is None
                 ):
                     new_model = self.model_class.from_pretrained(
-                        tmpdirname, torch_dtype=dtype
+                        tmpdirname, low_cpu_mem_usage=False, torch_dtype=dtype
                     )
                     assert new_model.dtype == dtype
 

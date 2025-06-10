@@ -159,6 +159,9 @@ class PeftAdapterMixin:
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
             hotswap : (`bool`, *optional*)
                 Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
                 in-place. This means that, instead of loading an additional adapter, this will take the existing
@@ -198,12 +201,12 @@ class PeftAdapterMixin:
         adapter_name = kwargs.pop("adapter_name", None)
         network_alphas = kwargs.pop("network_alphas", None)
         _pipeline = kwargs.pop("_pipeline", None)
-        # Always use memory-efficient loading - enforce version requirements
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
         allow_pickle = False
-        
-        if is_peft_version("<=", "0.13.0"):
+
+        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
             raise ValueError(
-                "Memory-efficient loading requires `peft` > 0.13.0. Please update it with `pip install -U peft`."
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
         user_agent = {
@@ -302,7 +305,7 @@ class PeftAdapterMixin:
 
             peft_kwargs = {}
             if is_peft_version(">=", "0.13.1"):
-                peft_kwargs["low_cpu_mem_usage"] = True
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
             if hotswap or (self._prepare_lora_hotswap_kwargs is not None):
                 if is_peft_version(">", "0.14.0"):

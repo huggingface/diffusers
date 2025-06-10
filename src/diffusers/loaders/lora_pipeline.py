@@ -53,15 +53,15 @@ from .lora_conversion_utils import (
 )
 
 
-# Always use memory-efficient loading - enforce version requirements
-if not is_torch_version(">=", "1.9.0"):
-    raise ImportError("Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version.")
-if not is_peft_available():
-    raise ImportError("Memory-efficient loading requires PEFT. Please install with `pip install peft`.")
-if not is_peft_version(">=", "0.13.1"):
-    raise ImportError("Memory-efficient loading requires PEFT >= 0.13.1. Please update with `pip install -U peft`.")
-if is_transformers_available() and not is_transformers_version(">", "4.45.2"):
-    raise ImportError("Memory-efficient loading requires transformers > 4.45.2. Please update with `pip install -U transformers`.")
+_LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
+if is_torch_version(">=", "1.9.0"):
+    if (
+        is_peft_available()
+        and is_peft_version(">=", "0.13.1")
+        and is_transformers_available()
+        and is_transformers_version(">", "4.45.2")
+    ):
+        _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
 
 
 logger = logging.get_logger(__name__)
@@ -154,6 +154,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
             hotswap (`bool`, *optional*):
                 Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
                 in-place. This means that, instead of loading an additional adapter, this will take the existing
@@ -183,7 +186,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -206,6 +209,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
         self.load_lora_into_text_encoder(
@@ -217,6 +221,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -343,6 +348,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         unet,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -386,6 +392,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             network_alphas=network_alphas,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -399,6 +406,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -437,6 +445,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -612,7 +621,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -643,6 +652,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             unet=self.unet,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
         self.load_lora_into_text_encoder(
@@ -653,6 +663,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
         self.load_lora_into_text_encoder(
@@ -663,6 +674,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -791,6 +803,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         unet,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -834,6 +847,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             network_alphas=network_alphas,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -848,6 +862,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -886,6 +901,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -1165,7 +1181,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -1187,6 +1203,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
         self.load_lora_into_text_encoder(
@@ -1197,6 +1214,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
         self.load_lora_into_text_encoder(
@@ -1207,12 +1225,13 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
     @classmethod
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, hotswap: bool = False
+        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1245,6 +1264,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -1259,6 +1279,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -1297,6 +1318,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -1571,7 +1593,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -1593,6 +1615,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -1632,6 +1655,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -1933,7 +1957,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -1996,6 +2020,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             transformer=transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -2014,6 +2039,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -2025,6 +2051,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         transformer,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -2062,6 +2089,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             network_alphas=network_alphas,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -2130,6 +2158,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -2168,6 +2197,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -2592,6 +2622,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         transformer,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -2629,6 +2660,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             network_alphas=network_alphas,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -2643,6 +2675,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
         hotswap: bool = False,
     ):
         """
@@ -2681,6 +2714,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             text_encoder_name=cls.text_encoder_name,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -2876,7 +2910,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -2898,6 +2932,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -2937,6 +2972,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -3191,7 +3227,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -3213,6 +3249,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -3252,6 +3289,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -3511,7 +3549,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -3533,6 +3571,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -3572,6 +3611,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -3828,7 +3868,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -3850,6 +3890,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -3889,6 +3930,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -4148,7 +4190,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -4170,6 +4212,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -4209,6 +4252,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -4469,7 +4513,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -4491,6 +4535,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -4530,6 +4575,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -4836,7 +4882,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -4862,6 +4908,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -4901,6 +4948,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -5157,7 +5205,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -5179,6 +5227,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -5218,6 +5267,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -5477,7 +5527,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = True  # Always use memory-efficient loading
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -5499,6 +5549,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 
@@ -5538,6 +5589,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
 

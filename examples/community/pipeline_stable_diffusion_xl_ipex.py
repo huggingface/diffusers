@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # SDXL-Turbo, a distilled version of SDXL 1.0, trained for real-time synthesis
         >>> pipe = StableDiffusionXLPipelineIpex.from_pretrained(
-        ...     "stabilityai/sdxl-turbo", use_safetensors=True
+        ...     "stabilityai/sdxl-turbo", low_cpu_mem_usage=True, use_safetensors=True
         ... )
 
         >>> num_inference_steps = 1

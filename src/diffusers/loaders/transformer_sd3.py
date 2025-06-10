@@ -16,7 +16,7 @@ from typing import Dict
 
 from ..models.attention_processor import SD3IPAdapterJointAttnProcessor2_0
 from ..models.embeddings import IPAdapterTimeImageProjection
-from ..models.modeling_utils import load_model_dict_into_meta
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import is_accelerate_available, is_torch_version, logging
 
 
@@ -26,19 +26,27 @@ logger = logging.get_logger(__name__)
 class SD3Transformer2DLoadersMixin:
     """Load IP-Adapters and LoRA layers into a `[SD3Transformer2DModel]`."""
 
-    def _convert_ip_adapter_attn_to_diffusers(self, state_dict: Dict) -> Dict:
-        # Always use memory-efficient loading
-        if not is_accelerate_available():
-            raise ImportError(
-                "Memory-efficient loading requires `accelerate`. Please install it with: \n```\npip install accelerate\n```\n."
-            )
+    def _convert_ip_adapter_attn_to_diffusers(
+        self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT
+    ) -> Dict:
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
 
-        if not is_torch_version(">=", "1.9.0"):
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
             )
-
-        from accelerate import init_empty_weights
 
         # IP-Adapter cross attention parameters
         hidden_size = self.config.attention_head_dim * self.config.num_attention_heads
@@ -54,8 +62,9 @@ class SD3Transformer2DLoadersMixin:
 
         # Create IP-Adapter attention processor & load state_dict
         attn_procs = {}
+        init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
         for idx, name in enumerate(self.attn_processors.keys()):
-            with init_empty_weights():
+            with init_context():
                 attn_procs[name] = SD3IPAdapterJointAttnProcessor2_0(
                     hidden_size=hidden_size,
                     ip_hidden_states_dim=ip_hidden_states_dim,
@@ -63,27 +72,39 @@ class SD3Transformer2DLoadersMixin:
                     timesteps_emb_dim=timesteps_emb_dim,
                 )
 
-            # Always use memory-efficient loading
-            device_map = {"": self.device}
-            load_model_dict_into_meta(
-                attn_procs[name], layer_state_dict[idx], device_map=device_map, dtype=self.dtype
-            )
+            if not low_cpu_mem_usage:
+                attn_procs[name].load_state_dict(layer_state_dict[idx], strict=True)
+            else:
+                device_map = {"": self.device}
+                load_model_dict_into_meta(
+                    attn_procs[name], layer_state_dict[idx], device_map=device_map, dtype=self.dtype
+                )
 
         return attn_procs
 
-    def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict: Dict) -> IPAdapterTimeImageProjection:
-        # Always use memory-efficient loading
-        if not is_accelerate_available():
-            raise ImportError(
-                "Memory-efficient loading requires `accelerate`. Please install it with: \n```\npip install accelerate\n```\n."
-            )
+    def _convert_ip_adapter_image_proj_to_diffusers(
+        self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT
+    ) -> IPAdapterTimeImageProjection:
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
 
-        if not is_torch_version(">=", "1.9.0"):
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
             )
 
-        from accelerate import init_empty_weights
+        init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
 
         # Convert to diffusers
         updated_state_dict = {}
@@ -111,7 +132,7 @@ class SD3Transformer2DLoadersMixin:
         timestep_in_dim = updated_state_dict["time_embedding.linear_1.weight"].shape[1]
 
         # Image projection
-        with init_empty_weights():
+        with init_context():
             image_proj = IPAdapterTimeImageProjection(
                 embed_dim=embed_dim,
                 output_dim=output_dim,
@@ -121,22 +142,29 @@ class SD3Transformer2DLoadersMixin:
                 timestep_in_dim=timestep_in_dim,
             )
 
-        # Always use memory-efficient loading
-        device_map = {"": self.device}
-        load_model_dict_into_meta(image_proj, updated_state_dict, device_map=device_map, dtype=self.dtype)
+        if not low_cpu_mem_usage:
+            image_proj.load_state_dict(updated_state_dict, strict=True)
+        else:
+            device_map = {"": self.device}
+            load_model_dict_into_meta(image_proj, updated_state_dict, device_map=device_map, dtype=self.dtype)
 
         return image_proj
 
-    def _load_ip_adapter_weights(self, state_dict: Dict) -> None:
+    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT) -> None:
         """Sets IP-Adapter attention processors, image projection, and loads state_dict.
 
         Args:
             state_dict (`Dict`):
                 State dict with keys "ip_adapter", which contains parameters for attention processors, and
                 "image_proj", which contains parameters for image projection net.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
         """
 
-        attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dict["ip_adapter"])
+        attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dict["ip_adapter"], low_cpu_mem_usage)
         self.set_attn_processor(attn_procs)
 
-        self.image_proj = self._convert_ip_adapter_image_proj_to_diffusers(state_dict["image_proj"])
+        self.image_proj = self._convert_ip_adapter_image_proj_to_diffusers(state_dict["image_proj"], low_cpu_mem_usage)

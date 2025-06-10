@@ -370,6 +370,11 @@ class AutoPipelineForText2Image(ConfigMixin):
                 If `True`, temporarily offloads the CPU state dict to the hard drive to avoid running out of CPU RAM if
                 the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to `True`
                 when there is some disk offload.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
@@ -660,6 +665,11 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 If `True`, temporarily offloads the CPU state dict to the hard drive to avoid running out of CPU RAM if
                 the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to `True`
                 when there is some disk offload.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
@@ -965,6 +975,11 @@ class AutoPipelineForInpainting(ConfigMixin):
                 If `True`, temporarily offloads the CPU state dict to the hard drive to avoid running out of CPU RAM if
                 the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to `True`
                 when there is some disk offload.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors

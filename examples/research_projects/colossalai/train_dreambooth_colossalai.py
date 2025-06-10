@@ -449,7 +449,7 @@ def main(args):
     logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}", ranks=[0])
     with ColoInitContext(device=get_current_device()):
         unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, low_cpu_mem_usage=False
         )
 
     vae.requires_grad_(False)

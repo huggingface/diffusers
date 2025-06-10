@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
-from ..models.modeling_utils import load_state_dict
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_detailed_type,
@@ -108,6 +108,11 @@ class IPAdapterMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
         """
 
         # handle the list inputs for multiple IP Adapters
@@ -137,18 +142,22 @@ class IPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        # Always use memory-efficient loading - enforce requirements
-        if not is_accelerate_available():
-            raise ImportError(
-                "Memory-efficient loading requires `accelerate`. Please install it with: \n```\npip install accelerate\n```\n."
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
             )
 
-        if not is_torch_version(">=", "1.9.0"):
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
             )
-        
-        low_cpu_mem_usage = True
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -231,7 +240,7 @@ class IPAdapterMixin:
 
         # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet._load_ip_adapter_weights(state_dicts)
+        unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
         extra_loras = unet._load_ip_adapter_loras(state_dicts)
         if extra_loras != {}:
@@ -405,6 +414,11 @@ class FluxIPAdapterMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
         """
 
         # handle the list inputs for multiple IP Adapters
@@ -434,18 +448,22 @@ class FluxIPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        # Always use memory-efficient loading - enforce requirements
-        if not is_accelerate_available():
-            raise ImportError(
-                "Memory-efficient loading requires `accelerate`. Please install it with: \n```\npip install accelerate\n```\n."
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
             )
 
-        if not is_torch_version(">=", "1.9.0"):
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
             )
-        
-        low_cpu_mem_usage = True
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -535,7 +553,7 @@ class FluxIPAdapterMixin:
                 self.register_modules(feature_extractor=feature_extractor)
 
         # load ip-adapter into transformer
-        self.transformer._load_ip_adapter_weights(state_dicts)
+        self.transformer._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
     def set_ip_adapter_scale(self, scale: Union[float, List[float], List[List[float]]]):
         """
@@ -702,6 +720,11 @@ class SD3IPAdapterMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
         """
         # Load the main state dict first
         cache_dir = kwargs.pop("cache_dir", None)
@@ -710,18 +733,22 @@ class SD3IPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        # Always use memory-efficient loading - enforce requirements
-        if not is_accelerate_available():
-            raise ImportError(
-                "Memory-efficient loading requires `accelerate`. Please install it with: \n```\npip install accelerate\n```\n."
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
             )
 
-        if not is_torch_version(">=", "1.9.0"):
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Memory-efficient loading requires PyTorch >= 1.9.0. Please update your PyTorch version."
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
             )
-        
-        low_cpu_mem_usage = True
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -792,7 +819,7 @@ class SD3IPAdapterMixin:
                 )
 
         # Load IP-Adapter into transformer
-        self.transformer._load_ip_adapter_weights(state_dict)
+        self.transformer._load_ip_adapter_weights(state_dict, low_cpu_mem_usage=low_cpu_mem_usage)
 
     def set_ip_adapter_scale(self, scale: float) -> None:
         """

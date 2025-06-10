@@ -334,11 +334,71 @@ class PeftLoraLoaderMixinTests:
                 not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
 
+    @require_peft_version_greater("0.13.1")
+    def test_low_cpu_mem_usage_with_injection(self):
+        """Tests if we can inject LoRA state dict with low_cpu_mem_usage."""
+        for scheduler_cls in self.scheduler_classes:
+            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
+
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                inject_adapter_in_model(text_lora_config, pipe.text_encoder, low_cpu_mem_usage=True)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder."
+                )
+                self.assertTrue(
+                    "meta" in {p.device.type for p in pipe.text_encoder.parameters()},
+                    "The LoRA params should be on 'meta' device.",
+                )
+
+                te_state_dict = initialize_dummy_state_dict(get_peft_model_state_dict(pipe.text_encoder))
+                set_peft_model_state_dict(pipe.text_encoder, te_state_dict, low_cpu_mem_usage=True)
+                self.assertTrue(
+                    "meta" not in {p.device.type for p in pipe.text_encoder.parameters()},
+                    "No param should be on 'meta' device.",
+                )
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            inject_adapter_in_model(denoiser_lora_config, denoiser, low_cpu_mem_usage=True)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+            self.assertTrue(
+                "meta" in {p.device.type for p in denoiser.parameters()}, "The LoRA params should be on 'meta' device."
+            )
+
+            denoiser_state_dict = initialize_dummy_state_dict(get_peft_model_state_dict(denoiser))
+            set_peft_model_state_dict(denoiser, denoiser_state_dict, low_cpu_mem_usage=True)
+            self.assertTrue(
+                "meta" not in {p.device.type for p in denoiser.parameters()}, "No param should be on 'meta' device."
+            )
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    inject_adapter_in_model(text_lora_config, pipe.text_encoder_2, low_cpu_mem_usage=True)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
+                    self.assertTrue(
+                        "meta" in {p.device.type for p in pipe.text_encoder_2.parameters()},
+                        "The LoRA params should be on 'meta' device.",
+                    )
+
+                    te2_state_dict = initialize_dummy_state_dict(get_peft_model_state_dict(pipe.text_encoder_2))
+                    set_peft_model_state_dict(pipe.text_encoder_2, te2_state_dict, low_cpu_mem_usage=True)
+                    self.assertTrue(
+                        "meta" not in {p.device.type for p in pipe.text_encoder_2.parameters()},
+                        "No param should be on 'meta' device.",
+                    )
+
+            _, _, inputs = self.get_dummy_inputs()
+            output_lora = pipe(**inputs)[0]
+            self.assertTrue(output_lora.shape == self.output_shape)
 
     @require_peft_version_greater("0.13.1")
     @require_transformers_version_greater("4.45.2")
-    def test_lora_loading(self):
-        """Tests if we can load LoRA state dict."""
+    def test_low_cpu_mem_usage_with_loading(self):
+        """Tests if we can load LoRA state dict with low_cpu_mem_usage."""
 
         for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -363,7 +423,7 @@ class PeftLoraLoaderMixinTests:
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
                 pipe.unload_lora_weights()
-                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"), low_cpu_mem_usage=False)
 
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
@@ -374,6 +434,20 @@ class PeftLoraLoaderMixinTests:
                     "Loading from saved checkpoints should give same results.",
                 )
 
+                # Now, check for `low_cpu_mem_usage.`
+                pipe.unload_lora_weights()
+                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"), low_cpu_mem_usage=True)
+
+                for module_name, module in modules_to_save.items():
+                    self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
+
+                images_lora_from_pretrained_low_cpu = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertTrue(
+                    np.allclose(
+                        images_lora_from_pretrained_low_cpu, images_lora_from_pretrained, atol=1e-3, rtol=1e-3
+                    ),
+                    "Loading from saved checkpoints with `low_cpu_mem_usage` should give same results.",
+                )
 
     def test_simple_inference_with_text_lora_and_scale(self):
         """

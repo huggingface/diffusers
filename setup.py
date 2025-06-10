@@ -136,7 +136,7 @@ _deps = [
     "requests",
     "tensorboard",
     "tiktoken>=0.7.0",
-    "torch>=1.9",
+    "torch>=1.4",
     "torchvision",
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
@@ -263,8 +263,6 @@ install_requires = [
     deps["requests"],
     deps["safetensors"],
     deps["Pillow"],
-    deps["accelerate"],
-    deps["peft"],
 ]
 
 version_range_max = max(sys.version_info[1], 10) + 1

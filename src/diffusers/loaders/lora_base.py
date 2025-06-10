@@ -315,24 +315,25 @@ def _load_lora_into_text_encoder(
     text_encoder_name="text_encoder",
     adapter_name=None,
     _pipeline=None,
+    low_cpu_mem_usage=False,
     hotswap: bool = False,
 ):
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
 
-    # Always use memory-efficient loading - enforce version requirements
     peft_kwargs = {}
-    if not is_peft_version(">=", "0.13.1"):
-        raise ValueError(
-            "Memory-efficient loading requires `peft` >= 0.13.1. Please update it with `pip install -U peft`."
-        )
-    if not is_transformers_version(">", "4.45.2"):
-        # Note from sayakpaul: It's not in `transformers` stable yet.
-        # https://github.com/huggingface/transformers/pull/33725/
-        raise ValueError(
-            "Memory-efficient loading requires `transformers` > 4.45.2. Please update it with `pip install -U transformers`."
-        )
-    peft_kwargs["low_cpu_mem_usage"] = True
+    if low_cpu_mem_usage:
+        if not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+        if not is_transformers_version(">", "4.45.2"):
+            # Note from sayakpaul: It's not in `transformers` stable yet.
+            # https://github.com/huggingface/transformers/pull/33725/
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `transformers` version. Please update it with `pip install -U transformers`."
+            )
+        peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
     from peft import LoraConfig
 
