@@ -360,7 +360,6 @@ class FluxTransformerBlock(nn.Module):
         self.norm1 = AdaLayerNormZero(dim)
         self.norm1_context = AdaLayerNormZero(dim)
 
-        # Use specialized FluxAttention instead of generic Attention
         self.attn = FluxAttention(
             query_dim=dim,
             cross_attention_dim=None,
