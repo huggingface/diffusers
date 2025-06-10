@@ -93,7 +93,7 @@ def randn_tensor(
             latents = torch.randn(shape, device=rand_device, dtype=dtype, layout=layout).to(device)
         mean_norm = torch.mean(latents.norm())
 
-    print(f'noise norm = {latents.norm()}')
+        print(f'noise norm = {latents.norm()}')
     return latents
 
 
