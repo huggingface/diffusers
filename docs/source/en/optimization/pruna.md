@@ -20,6 +20,8 @@ Pruna provides a comprehensive suite of cutting-edge optimization algorithms, ea
 
 Explore the full range of optimization methods in [the Pruna documentation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html#configure-algorithms).
 
+## Installation
+
 You can install Pruna using the following command:
 
 ```bash
