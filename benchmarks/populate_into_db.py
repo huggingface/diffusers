@@ -1,6 +1,6 @@
-import datetime
+import argparse
 import os
-import uuid
+import sys
 
 import pandas as pd
 import psycopg2
@@ -12,7 +12,45 @@ FINAL_CSV_FILENAME = "collated_results.csv"
 BENCHMARKS_TABLE_NAME = "benchmarks"
 MEASUREMENTS_TABLE_NAME = "model_measurements"
 
+
+def _init_benchmark(conn, branch, commit_id, commit_msg):
+    metadata = {}
+    repository = "huggingface/diffusers"
+    with conn.cursor() as cur:
+        cur.execute(
+            f"INSERT INTO {BENCHMARKS_TABLE_NAME} (repository, branch, commit_id, commit_message, metadata) VALUES (%s, %s, %s, %s, %s) RETURNING benchmark_id",
+            (repository, branch, commit_id, commit_msg, metadata),
+        )
+        benchmark_id = cur.fetchone()[0]
+        print(f"Initialised benchmark #{benchmark_id}")
+        return benchmark_id
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "branch",
+        type=str,
+        help="The branch name on which the benchmarking is performed.",
+    )
+
+    parser.add_argument(
+        "commit_id",
+        type=str,
+        help="The commit hash on which the benchmarking is performed.",
+    )
+
+    parser.add_argument(
+        "commit_msg",
+        type=str,
+        help="The commit message associated with the commit, truncated to 70 characters.",
+    )
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == "__main__":
+    args = parse_args()
     try:
         conn = psycopg2.connect(
             host=os.getenv("PGHOST"),
@@ -21,8 +59,17 @@ if __name__ == "__main__":
             password=os.getenv("PGPASSWORD"),
         )
         print("DB connection established successfully.")
-    except Exception:
-        raise
+    except Exception as e:
+        print(f"Problem during DB init: {e}")
+        sys.exit(1)
+
+    benchmark_id = _init_benchmark(
+        conn=conn,
+        branch=args.branch,
+        commit_id=args.commit_id,
+        commit_msg=args.commit_msg,
+    )
+
     cur = conn.cursor()
 
     df = pd.read_csv(FINAL_CSV_FILENAME)
@@ -57,7 +104,6 @@ if __name__ == "__main__":
 
     try:
         rows_to_insert = []
-        id_for_benchmark = str(uuid.uuid4()) + "_" + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         for _, row in df.iterrows():
             scenario = _cast_value(row.get("scenario"), "text")
             model_cls = _cast_value(row.get("model_cls"), "text")
@@ -76,13 +122,7 @@ if __name__ == "__main__":
             else:
                 github_sha = None
 
-            if github_sha:
-                benchmark_id = f"{model_cls}-{scenario}-{github_sha}"
-            else:
-                benchmark_id = f"{model_cls}-{scenario}-{id_for_benchmark}"
-
             measurements = {
-                "repository": "huggingface/diffusers",
                 "scenario": scenario,
                 "model_cls": model_cls,
                 "num_params_B": num_params_B,

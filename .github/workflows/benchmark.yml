@@ -65,13 +65,17 @@ jobs:
           path: benchmarks/${{ env.BASE_PATH }}
       
       # TODO: enable this once the connection problem has been resolved.
-      # - name: Update benchmarking results to DB
-      #   env:
-      #     PGDATABASE: metrics
-      #     PGHOST: ${{ secrets.DIFFUSERS_BENCHMARKS_PGHOST }}
-      #     PGUSER: transformers_benchmarks
-      #     PGPASSWORD: ${{ secrets.DIFFUSERS_BENCHMARKS_PGPASSWORD }}
-      #   run: cd benchmarks && python populate_into_db.py
+      - name: Update benchmarking results to DB
+        env:
+          PGDATABASE: metrics
+          PGHOST: ${{ secrets.DIFFUSERS_BENCHMARKS_PGHOST }}
+          PGUSER: transformers_benchmarks
+          PGPASSWORD: ${{ secrets.DIFFUSERS_BENCHMARKS_PGPASSWORD }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          commit_id=$GITHUB_SHA
+          commit_msg=$(git show -s --format=%s "$commit_id" | cut -c1-70)
+          cd benchmarks && python populate_into_db.py "$BRANCH_NAME" "$commit_id" "$commit_msg"
 
       - name: Report success status
         if: ${{ success() }}
