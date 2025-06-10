@@ -40,7 +40,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
@@ -242,7 +242,11 @@ def preprocess_mask(mask, batch_size: int = 1):
 
 
 class StableDiffusionDiffEditPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
+    DeprecatedPipelineMixin,
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
 ):
     r"""
     <Tip warning={true}>
@@ -281,6 +285,8 @@ class StableDiffusionDiffEditPipeline(
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+
+    _last_supported_version = "0.33.1"
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor", "inverse_scheduler"]
