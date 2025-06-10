@@ -24,7 +24,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import empty_device_cache, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionSafetyChecker
 
 
@@ -296,12 +296,14 @@ def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_s
 
 
 class TextToVideoZeroPipeline(
+    DeprecatedPipelineMixin,
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionLoraLoaderMixin,
     FromSingleFileMixin,
 ):
+    _last_supported_version = "0.33.1"
     r"""
     Pipeline for zero-shot text-to-video generation using Stable Diffusion.
 

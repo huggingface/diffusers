@@ -355,9 +355,7 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
     return custom_diffusion_attn_procs
 
 
-class UNet2DConditionModelTests(
-    ModelTesterMixin, TorchCompileTesterMixin, LoraHotSwappingForModelTesterMixin, UNetTesterMixin, unittest.TestCase
-):
+class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
     # We override the items here because the unet under consideration is small.
@@ -1145,6 +1143,20 @@ class UNet2DConditionModelTests(
 
         warning_message = str(warning.warnings[0].message)
         assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
+
+
+class UNet2DConditionModelCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
+
+
+class UNet2DConditionModelLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
 
 
 @slow
