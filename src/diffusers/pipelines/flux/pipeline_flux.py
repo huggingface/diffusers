@@ -248,7 +248,7 @@ class FluxPipeline(
             padding="max_length",
             max_length=max_sequence_length,
             truncation=True,
-            return_length=(self.variant == "chroma"),
+            return_length=True,
             return_overflowing_tokens=False,
             return_tensors="pt",
         )
@@ -262,6 +262,7 @@ class FluxPipeline(
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
+        text_inputs.attention_mask[:, : text_inputs.length + 1] = 1.0
         prompt_embeds = self.text_encoder_2(
             text_input_ids.to(device), output_hidden_states=False, attention_mask=text_inputs.attention_mask.to(device)
         )[0]
