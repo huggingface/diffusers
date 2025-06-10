@@ -428,10 +428,7 @@ class ChromaTransformer2DModel(
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 4096,
-        pooled_projection_dim: int = 768,
-        guidance_embeds: bool = False,
         axes_dims_rope: Tuple[int, ...] = (16, 56, 56),
-        variant: str = "flux",
         approximator_in_factor: int = 16,
         approximator_hidden_dim: int = 5120,
         approximator_layers: int = 5,
@@ -446,7 +443,10 @@ class ChromaTransformer2DModel(
             num_channels=approximator_in_factor, out_dim=3 * num_single_layers + 2 * 6 * num_layers + 2
         )
         self.distilled_guidance_layer = ChromaApproximator(
-            in_dim=64, out_dim=3072, hidden_dim=approximator_hidden_dim, n_layers=approximator_layers
+            in_dim=in_channels,
+            out_dim=self.inner_dim,
+            hidden_dim=approximator_hidden_dim,
+            n_layers=approximator_layers,
         )
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = nn.Linear(in_channels, self.inner_dim)
