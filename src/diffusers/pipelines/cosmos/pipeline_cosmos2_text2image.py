@@ -190,9 +190,13 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
         self.sigma_max = 80.0
         self.sigma_min = 0.002
         self.sigma_data = 1.0
+        self.final_sigmas_type = "sigma_min"
         if self.scheduler is not None:
             self.scheduler.register_to_config(
-                sigma_max=self.sigma_max, sigma_min=self.sigma_min, sigma_data=self.sigma_data
+                sigma_max=self.sigma_max,
+                sigma_min=self.sigma_min,
+                sigma_data=self.sigma_data,
+                final_sigmas_type=self.final_sigmas_type,
             )
 
     # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline._get_t5_prompt_embeds
@@ -541,6 +545,10 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
         # 4. Prepare timesteps
         sigmas = torch.linspace(0, 1, num_inference_steps, dtype=torch.float64)
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, device=device, sigmas=sigmas)
+        if self.scheduler.config.final_sigmas_type == "sigma_min":
+            # Replace the last sigma (which is zero) with the minimum sigma value
+            timesteps[-1] = timesteps[-2]
+            self.scheduler.sigmas[-1] = self.scheduler.sigmas[-2]
 
         # 5. Prepare latent variables
         transformer_dtype = self.transformer.dtype
