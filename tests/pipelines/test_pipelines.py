@@ -1105,6 +1105,21 @@ class CustomPipelineTests(unittest.TestCase):
 
         assert images.shape == (1, 64, 64, 3)
 
+    def test_remote_custom_pipe_with_dot_in_name(self):
+        # make sure that trust remote code has to be passed
+        with self.assertRaises(ValueError):
+            pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name")
+
+        pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name", trust_remote_code=True)
+
+        assert pipeline.__class__.__name__ == "CustomPipeline"
+
+        pipeline = pipeline.to(torch_device)
+        images, output_str = pipeline(num_inference_steps=2, output_type="np")
+
+        assert images[0].shape == (1, 32, 32, 3)
+        assert output_str == "This is a test"
+
     def test_local_custom_pipeline_repo(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
         pipeline = DiffusionPipeline.from_pretrained(
