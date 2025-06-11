@@ -698,11 +698,17 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 of PIL images, a numpy array, or a torch tensor. Currently, the pipeline only supports generating one
                 video at a time.
             mask (`List[PIL.Image.Image]`, *optional*):
-                The input mask defines which video regions to condition on and which to generate. Black areas in the mask indicate conditioning regions, while white areas indicate regions for generation.  The mask should be a list of PIL images, a numpy array, or a torch tensor. Currently supports generating a single video at a time.
+                The input mask defines which video regions to condition on and which to generate. Black areas in the
+                mask indicate conditioning regions, while white areas indicate regions for generation. The mask should
+                be a list of PIL images, a numpy array, or a torch tensor. Currently supports generating a single video
+                at a time.
             reference_images (`List[PIL.Image.Image]`, *optional*):
                 A list of one or more reference images as extra conditioning for the generation. For example, if you
                 are trying to inpaint a video to change the character, you can pass reference images of the new
-                character here. Refer to the Diffusers [examples](https://github.com/huggingface/diffusers/pull/11582) and original [user guide](https://github.com/ali-vilab/VACE/blob/0897c6d055d7d9ea9e191dce763006664d9780f8/UserGuide.md) for a full list of supported tasks and use cases.
+                character here. Refer to the Diffusers [examples](https://github.com/huggingface/diffusers/pull/11582)
+                and original [user
+                guide](https://github.com/ali-vilab/VACE/blob/0897c6d055d7d9ea9e191dce763006664d9780f8/UserGuide.md)
+                for a full list of supported tasks and use cases.
             conditioning_scale (`float`, `List[float]`, `torch.Tensor`, defaults to `1.0`):
                 The conditioning scale to be applied when adding the control conditioning latent stream to the
                 denoising latent stream in each control layer of the model. If a float is provided, it will be applied

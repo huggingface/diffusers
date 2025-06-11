@@ -388,11 +388,10 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, pass `prompt_embeds`
-                instead.
+                The prompt or prompts to guide the image generation. If not defined, pass `prompt_embeds` instead.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to avoid during image generation. If not defined, pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale` < `1`).
+                The prompt or prompts to avoid during image generation. If not defined, pass `negative_prompt_embeds`
+                instead. Ignored when not using guidance (`guidance_scale` < `1`).
             height (`int`, defaults to `480`):
                 The height in pixels of the generated image.
             width (`int`, defaults to `832`):
