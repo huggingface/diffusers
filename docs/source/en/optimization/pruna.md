@@ -95,8 +95,6 @@ The resulting generated image and inference per optimization configuration are s
     <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/flux_smashed_comparison.png">
 </div>
 
-Besides the results shown above, we have also used Pruna to create [FLUX-juiced, the fastest image generation endpoint alive](https://www.pruna.ai/blog/flux-juiced-the-fastest-image-generation-endpoint). We benchmarked our model against, FLUX.1-dev versions provided by different inference frameworks and surpassed them all. Full results of this benchmark can be found in [our blog post](https://huggingface.co/blog/PrunaAI/flux-fastest-image-generation-endpoint) and [our InferBench space](https://huggingface.co/spaces/PrunaAI/InferBench).
-
 As you can see, Pruna is a very simple and easy to use framework that allows you to optimize your models with minimal effort. We already saw that the results look good to the naked eye but the cool thing is that you can also use Pruna to benchmark and evaluate your optimized models.
 
 ## Evaluate and benchmark diffusers models
@@ -157,9 +155,11 @@ smashed_model_results = eval_agent.evaluate(smashed_pipe)
 smashed_pipe.move_to_device("cpu")
 ```
 
+Besides the results we can get from the `EvaluationAgent` above, we have also used a similar approach to create and benchmark [FLUX-juiced, the fastest image generation endpoint alive](https://www.pruna.ai/blog/flux-juiced-the-fastest-image-generation-endpoint). We benchmarked our model against, FLUX.1-dev versions provided by different inference frameworks and surpassed them all. Full results of this benchmark can be found in [our blog post](https://huggingface.co/blog/PrunaAI/flux-fastest-image-generation-endpoint) and [our InferBench space](https://huggingface.co/spaces/PrunaAI/InferBench).
+
 ### Evaluate and benchmark standalone diffusers models
 
-Instead of comparing the optimized model to the base model, you can also evaluate the standalone `diffusers` model. This is useful if you want to evaluate the performance of the model without the optimization. We can do so by using the `PrunaModel` wrapper.
+Instead of comparing the optimized model to the base model, you can also evaluate the standalone `diffusers` model. This is useful if you want to evaluate the performance of the model without the optimization. We can do so by using the `PrunaModel` wrapper and run the `EvaluationAgent` on it.
 
 Let's take a look at an example on how to evaluate and benchmark a standalone `diffusers` model.
 
@@ -168,17 +168,6 @@ import torch
 from diffusers import FluxPipeline
 
 from pruna import PrunaModel
-from pruna.data.pruna_datamodule import PrunaDataModule
-from pruna.evaluation.evaluation_agent import EvaluationAgent
-from pruna.evaluation.metrics import (
-    ThroughputMetric,
-    TorchMetricWrapper,
-    TotalTimeMetric,
-)
-from pruna.evaluation.task import Task
-
-# define the device
-device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
 # load the model
 # Try PrunaAI/Segmind-Vega-smashed or PrunaAI/FLUX.1-dev-smashed with a small GPU memory
@@ -187,26 +176,6 @@ pipe = FluxPipeline.from_pretrained(
     torch_dtype=torch.bfloat16
 ).to("cpu")
 wrapped_pipe = PrunaModel(model=pipe)
-
-# Define the metrics
-metrics = [
-    TotalTimeMetric(n_iterations=20, n_warmup_iterations=5),
-    ThroughputMetric(n_iterations=20, n_warmup_iterations=5),
-    TorchMetricWrapper("clip"),
-]
-
-# Define the datamodule
-datamodule = PrunaDataModule.from_string("LAION256")
-datamodule.limit_datasets(10)
-
-# Define the task and evaluation agent
-task = Task(metrics, datamodule=datamodule, device=device)
-eval_agent = EvaluationAgent(task)
-
-# Evaluate base model and offload it to CPU
-wrapped_pipe.move_to_device(device)
-base_model_results = eval_agent.evaluate(wrapped_pipe)
-wrapped_pipe.move_to_device("cpu")
 ```
 
 Now that you have seen how to optimize and evaluate your models, you can start using Pruna to optimize your own models. Luckily, we have many examples to help you get started.
