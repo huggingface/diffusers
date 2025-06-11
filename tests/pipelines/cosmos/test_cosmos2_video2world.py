@@ -90,17 +90,7 @@ class Cosmos2VideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         )
 
         torch.manual_seed(0)
-        scheduler = EDMEulerScheduler(
-            sigma_min=0.002,
-            sigma_max=80,
-            sigma_data=0.5,
-            sigma_schedule="karras",
-            num_train_timesteps=1000,
-            prediction_type="epsilon",
-            rho=7.0,
-            final_sigmas_type="sigma_min",
-            use_flow_sigmas=True,
-        )
+        scheduler = FlowMatchEulerDiscreteScheduler(use_karras_sigmas=True)
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
