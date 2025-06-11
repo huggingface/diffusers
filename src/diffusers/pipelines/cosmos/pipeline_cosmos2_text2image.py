@@ -546,9 +546,8 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
         sigmas_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         sigmas = torch.linspace(0, 1, num_inference_steps, dtype=sigmas_dtype)
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, device=device, sigmas=sigmas)
-        if self.scheduler.config.final_sigmas_type == "sigma_min":
+        if self.scheduler.config.get("final_sigmas_type", "zero") == "sigma_min":
             # Replace the last sigma (which is zero) with the minimum sigma value
-            timesteps[-1] = timesteps[-2]
             self.scheduler.sigmas[-1] = self.scheduler.sigmas[-2]
 
         # 5. Prepare latent variables

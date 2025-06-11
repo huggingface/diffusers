@@ -22,7 +22,12 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLWan, Cosmos2TextToImagePipeline, CosmosTransformer3DModel, FlowMatchEulerDiscreteScheduler
+from diffusers import (
+    AutoencoderKLWan,
+    Cosmos2TextToImagePipeline,
+    CosmosTransformer3DModel,
+    FlowMatchEulerDiscreteScheduler,
+)
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS

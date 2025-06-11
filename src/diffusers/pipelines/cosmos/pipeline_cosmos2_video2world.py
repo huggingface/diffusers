@@ -633,7 +633,6 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, device=device, sigmas=sigmas)
         if self.scheduler.config.final_sigmas_type == "sigma_min":
             # Replace the last sigma (which is zero) with the minimum sigma value
-            timesteps[-1] = timesteps[-2]
             self.scheduler.sigmas[-1] = self.scheduler.sigmas[-2]
 
         # 5. Prepare latent variables
@@ -687,7 +686,9 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
                 c_in = 1 - current_t
                 c_skip = 1 - current_t
                 c_out = -current_t
-                timestep = current_t.expand(latents.shape[0]).to(transformer_dtype)  # [B, 1, T, 1, 1]
+                timestep = current_t.view(1, 1, 1, 1, 1).expand(
+                    latents.size(0), -1, latents.size(2), -1, -1
+                )  # [B, 1, T, 1, 1]
 
                 cond_latent = latents * c_in
                 cond_latent = cond_indicator * conditioning_latents + (1 - cond_indicator) * cond_latent
