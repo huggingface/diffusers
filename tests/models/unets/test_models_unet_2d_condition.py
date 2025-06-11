@@ -46,6 +46,7 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
+    require_torch_gpu,
     skip_mps,
     slow,
     torch_all_close,
