@@ -416,6 +416,51 @@ text_encoder_2_4bit.dequantize()
 transformer_4bit.dequantize()
 ```
 
+## torch.compile compatibility
+
+<hfoptions id="bnb">
+<hfoption id="8-bit">
+
+You can speed up inference of `bitsandbytes`-quantized models with `torch.compile()`. Make sure you have
+the latest `bitsandbytes` installed - `pip install -U bitsandbytes`. We also recommend installting PyTorch
+nightlies. Follow instructions [here](https://pytorch.org/).
+
+```py
+torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_4bit = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+transformer_4bit.compile(fullgraph=True)
+```
+
+</hfoption>
+<hfoption id="4-bit">
+
+```py
+quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
+transformer_4bit = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+transformer_4bit.compile(fullgraph=True)
+```
+</hfoption>
+</hfoptions>
+
+We benchmarked performance of 4bit Flux with and without compilation and noticed a massive improvement on RTX 4090:
+
+* Without compilation: 32.570 seconds
+* With compilation: 25.809 seconds
+
+Check out the script used for benchmarking [here](https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d).
+
 ## Resources
 
 * [End-to-end notebook showing Flux.1 Dev inference in a free-tier Colab](https://gist.github.com/sayakpaul/c76bd845b48759e11687ac550b99d8b4)
