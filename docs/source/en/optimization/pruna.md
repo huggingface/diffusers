@@ -37,13 +37,13 @@ After that you can easily optimize any diffusers model by defining a simple `Sma
 For diffusers models, we support a broad range of optimization algorithms. The overview of the supported optimization algorithms is shown as follows.
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/diffusers_combinations.png" alt="Overview of the supported optimization algorithms for diffusers models" width="50%">
+    <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/diffusers_combinations.png" alt="Overview of the supported optimization algorithms for diffusers models">
 </div>
 
 Let's take a look at an example on how to optimize [black-forest-labs/FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev) with Pruna.
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/flux_combination.png" alt="Optimization techniques used for FLUX.1-dev showing the combination of factorizer, compiler, and cacher algorithms" width="50%">
+    <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/flux_combination.png" alt="Optimization techniques used for FLUX.1-dev showing the combination of factorizer, compiler, and cacher algorithms">
 </div>
 
 This combination accelerates inference by up to 4.2× and cuts peak GPU memory usage from 34.7 GB to 28.0 GB, all while maintaining virtually the same output quality. If you want to learn more about the optimization techniques used in this example, you can have a look at [the Pruna documentation on optimization](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html).
