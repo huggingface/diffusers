@@ -134,7 +134,7 @@ Note also that we use PEFT library as backend for LoRA training, make sure to ha
 Prodigy is an adaptive optimizer that dynamically adjusts the learning rate learned parameters based on past gradients, allowing for more efficient convergence. 
 By using prodigy we can "eliminate" the need for manual learning rate tuning. read more [here](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers).
 
-to use prodigy, specify
+to use prodigy, first make sure to install the prodigyopt library: `pip install prodigyopt`, and then specify -
 ```bash
 --optimizer="prodigy"
 ```
