@@ -51,7 +51,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_torch_compile_utils import QuantCompileMiscTests
+from ..test_torch_compile_utils import QuantCompileTests
 
 
 def get_some_linear_layer(model):
@@ -862,7 +862,7 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
 
 
 @require_torch_version_greater("2.7.1")
-class Bnb4BitCompileTests(QuantCompileMiscTests):
+class Bnb4BitCompileTests(QuantCompileTests):
     quantization_config = PipelineQuantizationConfig(
         quant_backend="bitsandbytes_8bit",
         quant_kwargs={
