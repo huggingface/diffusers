@@ -187,6 +187,14 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+        self.sigma_max = 80.0
+        self.sigma_min = 0.002
+        self.sigma_data = 1.0
+        if self.scheduler is not None:
+            self.scheduler.register_to_config(
+                sigma_max=self.sigma_max, sigma_min=self.sigma_min, sigma_data=self.sigma_data
+            )
+
     # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
@@ -531,7 +539,8 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
         )
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device)
+        sigmas = torch.linspace(0, 1, num_inference_steps, dtype=torch.float64)
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, device=device, sigmas=sigmas)
 
         # 5. Prepare latent variables
         transformer_dtype = self.transformer.dtype
@@ -563,8 +572,13 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
                 timestep = t.expand(latents.shape[0]).to(transformer_dtype)
                 current_sigma = self.scheduler.sigmas[i]
 
-                latent_model_input = latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                current_t = current_sigma / (current_sigma + 1)
+                c_in = 1 - current_t
+                c_skip = 1 - current_t
+                c_out = -current_t
+                timestep = current_t.expand(latents.shape[0]).to(transformer_dtype)
+
+                latent_model_input = latents * c_in
                 latent_model_input = latent_model_input.to(transformer_dtype)
 
                 noise_pred = self.transformer(
@@ -574,7 +588,7 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
-                noise_pred = self.scheduler.precondition_outputs(latents, noise_pred, current_sigma)
+                noise_pred = (c_skip * latents + c_out * noise_pred.float()).to(transformer_dtype)
 
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond = self.transformer(
@@ -584,12 +598,11 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
                         padding_mask=padding_mask,
                         return_dict=False,
                     )[0]
-                    noise_pred_uncond = self.scheduler.precondition_outputs(latents, noise_pred_uncond, current_sigma)
+                    noise_pred_uncond = (c_skip * latents + c_out * noise_pred_uncond.float()).to(transformer_dtype)
                     noise_pred = noise_pred + self.guidance_scale * (noise_pred - noise_pred_uncond)
 
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, pred_original_sample=noise_pred, return_dict=False
-                )[0]
+                noise_pred = (latents - noise_pred) / current_sigma
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}

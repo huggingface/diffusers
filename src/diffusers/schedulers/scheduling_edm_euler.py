@@ -28,7 +28,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->EDMEuler
+# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->EulerDiscrete
 class EDMEulerSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's `step` function output.
@@ -96,7 +96,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         rho: float = 7.0,
         final_sigmas_type: str = "zero",  # can be "zero" or "sigma_min"
-        use_flow_sigmas: bool = False,
     ):
         if sigma_schedule not in ["karras", "exponential"]:
             raise ValueError(f"Wrong value for provided for `{sigma_schedule=}`.`")
@@ -170,18 +169,24 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         if not isinstance(sigma, torch.Tensor):
             sigma = torch.tensor([sigma])
 
-        if self.config.use_flow_sigmas:
-            c_noise = sigma / (sigma + 1)
-        else:
-            c_noise = 0.25 * torch.log(sigma)
+        c_noise = 0.25 * torch.log(sigma)
 
         return c_noise
 
     def precondition_outputs(self, sample, model_output, sigma):
-        if self.config.use_flow_sigmas:
-            return self._precondition_outputs_flow(sample, model_output, sigma)
+        sigma_data = self.config.sigma_data
+        c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
+
+        if self.config.prediction_type == "epsilon":
+            c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
+        elif self.config.prediction_type == "v_prediction":
+            c_out = -sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
         else:
-            return self._precondition_outputs_edm(sample, model_output, sigma)
+            raise ValueError(f"Prediction type {self.config.prediction_type} is not supported.")
+
+        denoised = c_skip * sample + c_out * model_output
+
+        return denoised
 
     def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
         """
@@ -436,40 +441,8 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         return noisy_samples
 
     def _get_conditioning_c_in(self, sigma):
-        if self.config.use_flow_sigmas:
-            t = sigma / (sigma + 1)
-            c_in = 1.0 - t
-        else:
-            c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
         return c_in
-
-    def _precondition_outputs_flow(self, sample, model_output, sigma):
-        t = sigma / (sigma + 1)
-        c_skip = 1.0 - t
-
-        if self.config.prediction_type == "epsilon":
-            c_out = -t
-        elif self.config.prediction_type == "v_prediction":
-            c_out = t
-        else:
-            raise ValueError(f"Prediction type {self.config.prediction_type} is not supported.")
-
-        denoised = c_skip * sample + c_out * model_output
-        return denoised
-
-    def _precondition_outputs_edm(self, sample, model_output, sigma):
-        sigma_data = self.config.sigma_data
-        c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
-
-        if self.config.prediction_type == "epsilon":
-            c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
-        elif self.config.prediction_type == "v_prediction":
-            c_out = -sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
-        else:
-            raise ValueError(f"Prediction type {self.config.prediction_type} is not supported.")
-
-        denoised = c_skip * sample + c_out * model_output
-        return denoised
 
     def __len__(self):
         return self.config.num_train_timesteps

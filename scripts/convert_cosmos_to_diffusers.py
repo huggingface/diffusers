@@ -16,6 +16,7 @@ from diffusers import (
     CosmosTransformer3DModel,
     CosmosVideoToWorldPipeline,
     EDMEulerScheduler,
+    FlowMatchEulerDiscreteScheduler,
 )
 
 
@@ -429,17 +430,7 @@ def save_pipeline_cosmos_2_0(args, transformer, vae):
     text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.bfloat16)
     tokenizer = T5TokenizerFast.from_pretrained(args.tokenizer_path)
 
-    scheduler = EDMEulerScheduler(
-        sigma_min=0.002,
-        sigma_max=80,
-        sigma_data=1.0,
-        sigma_schedule="karras",
-        num_train_timesteps=1000,
-        prediction_type="epsilon",
-        rho=7.0,
-        final_sigmas_type="sigma_min",
-        use_flow_sigmas=True,
-    )
+    scheduler = FlowMatchEulerDiscreteScheduler(use_karras_sigmas=True)
 
     pipe_cls = Cosmos2TextToImagePipeline if "Text2Image" in args.transformer_type else Cosmos2VideoToWorldPipeline
     pipe = pipe_cls(
