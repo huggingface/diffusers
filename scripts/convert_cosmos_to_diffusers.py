@@ -10,9 +10,11 @@ from transformers import T5EncoderModel, T5TokenizerFast
 from diffusers import (
     AutoencoderKLCosmos,
     AutoencoderKLWan,
-    CosmosTextToImagePipeline,
+    Cosmos2TextToImagePipeline,
+    Cosmos2VideoToWorldPipeline,
     CosmosTextToWorldPipeline,
     CosmosTransformer3DModel,
+    CosmosVideoToWorldPipeline,
     EDMEulerScheduler,
 )
 
@@ -412,7 +414,8 @@ def save_pipeline_cosmos_1_0(args, transformer, vae):
         final_sigmas_type="sigma_min",
     )
 
-    pipe = CosmosTextToWorldPipeline(
+    pipe_cls = CosmosTextToWorldPipeline if "Text2World" in args.transformer_type else CosmosVideoToWorldPipeline
+    pipe = pipe_cls(
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         transformer=transformer,
@@ -438,7 +441,8 @@ def save_pipeline_cosmos_2_0(args, transformer, vae):
         use_flow_sigmas=True,
     )
 
-    pipe = CosmosTextToImagePipeline(
+    pipe_cls = Cosmos2TextToImagePipeline if "Text2Image" in args.transformer_type else Cosmos2VideoToWorldPipeline
+    pipe = pipe_cls(
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         transformer=transformer,

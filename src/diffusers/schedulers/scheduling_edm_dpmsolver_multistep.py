@@ -15,14 +15,35 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver and https://github.com/NVlabs/edm
 
 import math
+from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import BaseOutput
 from ..utils.torch_utils import randn_tensor
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import SchedulerMixin
+
+
+@dataclass
+# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->EDMDPMSolverMultistep
+class EDMDPMSolverMultistepSchedulerOutput(BaseOutput):
+    """
+    Output class for the scheduler's `step` function output.
+
+    Args:
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
+            denoising loop.
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
+            The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
+            `pred_original_sample` can be used to preview progress or for guidance.
+    """
+
+    prev_sample: torch.Tensor
+    pred_original_sample: Optional[torch.Tensor] = None
 
 
 class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
@@ -107,6 +128,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
+        use_flow_sigmas: bool = False,
     ):
         # settings for DPM-Solver
         if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"]:
@@ -185,25 +207,19 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if not isinstance(sigma, torch.Tensor):
             sigma = torch.tensor([sigma])
 
-        c_noise = 0.25 * torch.log(sigma)
+        if self.config.use_flow_sigmas:
+            c_noise = sigma / (sigma + 1)
+        else:
+            c_noise = 0.25 * torch.log(sigma)
 
         return c_noise
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_outputs
     def precondition_outputs(self, sample, model_output, sigma):
-        sigma_data = self.config.sigma_data
-        c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
-
-        if self.config.prediction_type == "epsilon":
-            c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
-        elif self.config.prediction_type == "v_prediction":
-            c_out = -sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
+        if self.config.use_flow_sigmas:
+            return self._precondition_outputs_flow(sample, model_output, sigma)
         else:
-            raise ValueError(f"Prediction type {self.config.prediction_type} is not supported.")
-
-        denoised = c_skip * sample + c_out * model_output
-
-        return denoised
+            return self._precondition_outputs_edm(sample, model_output, sigma)
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.scale_model_input
     def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
@@ -598,7 +614,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+        pred_original_sample: Optional[torch.Tensor] = None,
+    ) -> Union[EDMDPMSolverMultistepSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the multistep DPMSolver.
@@ -613,12 +630,14 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             return_dict (`bool`):
-                Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`.
+                Whether or not to return a
+                [`~schedulers.scheduling_edm_dpmsolver_multistep.EDMDPMSolverMultistepSchedulerOutput`] or a `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_utils.SchedulerOutput`] is returned, otherwise a
-                tuple is returned where the first element is the sample tensor.
+            [`~schedulers.scheduling_edm_dpmsolver_multistep.EDMDPMSolverMultistepSchedulerOutput`] or `tuple`:
+                If return_dict is `True`,
+                [`~schedulers.scheduling_edm_dpmsolver_multistep.EDMDPMSolverMultistepSchedulerOutput`] is returned,
+                otherwise a tuple is returned where the first element is the sample tensor.
 
         """
         if self.num_inference_steps is None:
@@ -639,7 +658,12 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
         )
 
-        model_output = self.convert_model_output(model_output, sample=sample)
+        if pred_original_sample is None:
+            model_output = self.convert_model_output(model_output, sample=sample)
+        else:
+            model_output = pred_original_sample
+            # TODO: thresholding is not handled in this case, but probably not needed either for Cosmos
+
         for i in range(self.config.solver_order - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
@@ -667,7 +691,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample,)
 
-        return SchedulerOutput(prev_sample=prev_sample)
+        return EDMDPMSolverMultistepSchedulerOutput(prev_sample=prev_sample, pred_original_sample=model_output)
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
@@ -705,8 +729,42 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._get_conditioning_c_in
     def _get_conditioning_c_in(self, sigma):
-        c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        if self.config.use_flow_sigmas:
+            t = sigma / (sigma + 1)
+            c_in = 1.0 - t
+        else:
+            c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
         return c_in
+
+    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._precondition_outputs_flow
+    def _precondition_outputs_flow(self, sample, model_output, sigma):
+        t = sigma / (sigma + 1)
+        c_skip = 1.0 - t
+
+        if self.config.prediction_type == "epsilon":
+            c_out = -t
+        elif self.config.prediction_type == "v_prediction":
+            c_out = t
+        else:
+            raise ValueError(f"Prediction type {self.config.prediction_type} is not supported.")
+
+        denoised = c_skip * sample + c_out * model_output
+        return denoised
+
+    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._precondition_outputs_edm
+    def _precondition_outputs_edm(self, sample, model_output, sigma):
+        sigma_data = self.config.sigma_data
+        c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
+
+        if self.config.prediction_type == "epsilon":
+            c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
+        elif self.config.prediction_type == "v_prediction":
+            c_out = -sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
+        else:
+            raise ValueError(f"Prediction type {self.config.prediction_type} is not supported.")
+
+        denoised = c_skip * sample + c_out * model_output
+        return denoised
 
     def __len__(self):
         return self.config.num_train_timesteps
