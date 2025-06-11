@@ -190,8 +190,8 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        # if safety_checker is None:
-        #     safety_checker = CosmosSafetyChecker()
+        if safety_checker is None:
+            safety_checker = CosmosSafetyChecker()
 
         self.register_modules(
             vae=vae,
@@ -573,12 +573,12 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
 
-        # if self.safety_checker is None:
-        #     raise ValueError(
-        #         f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
-        #         "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
-        #         f"Please ensure that you are compliant with the license agreement."
-        #     )
+        if self.safety_checker is None:
+            raise ValueError(
+                f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
+                "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
+                f"Please ensure that you are compliant with the license agreement."
+            )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
