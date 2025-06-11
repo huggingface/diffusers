@@ -986,14 +986,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
             else:
                 device_map = {"": device_map}
-        # {"": device} case.
-        elif isinstance(device_map, dict) and len(device_map) == 1:
-            device_value = list(device_map.values())[0]
-            if isinstance(device_value, str):
-                try:
-                    device_map = {"": torch.device(device_value)}
-                except RuntimeError:
-                    raise ValueError(f"Invalid value ({device_value}) specified in the {device_map=}.")
 
         if device_map is not None:
             if low_cpu_mem_usage is None:
