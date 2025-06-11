@@ -29,6 +29,7 @@ from diffusers import (
     TorchAoConfig,
 )
 from diffusers.models.attention_processor import Attention
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     backend_synchronize,
@@ -43,6 +44,8 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
+
+from ..test_torch_compile_utils import QuantCompileTests
 
 
 enable_full_determinism()
@@ -623,6 +626,34 @@ class TorchAoSerializationTest(unittest.TestCase):
         device = "cpu"
         self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
+
+
+@require_torchao_version_greater_or_equal("0.7.0")
+class TorchAoCompileTest(QuantCompileTests):
+    quantization_config = PipelineQuantizationConfig(
+        quant_mapping={
+            "transformer": TorchAoConfig(quant_type="int8_weight_only"),
+        },
+    )
+
+    def test_torch_compile(self):
+        super()._test_torch_compile(quantization_config=self.quantization_config)
+
+    def test_torch_compile_with_cpu_offload(self):
+        super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
+
+    def test_torch_compile_with_group_offload_leaf(self):
+        from diffusers.utils.logging import set_verbosity_debug
+
+        set_verbosity_debug()
+        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
+
+    @unittest.skip(
+        "Using non-default stream requires ability to pin tensors. AQT does not seem to support this yet in TorchAO."
+    )
+    def test_torch_compile_with_group_offload_leaf_stream(self):
+        # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
+        super()._test_torch_compile_with_group_offload_leaf_stream(quantization_config=self.quantization_config)
 
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
