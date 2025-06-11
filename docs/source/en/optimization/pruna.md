@@ -30,11 +30,11 @@ pip install pruna
 
 Now that you have installed Pruna, you can start to use it to optimize your models. Let's start with optimizing a model.
 
-## Optimizing models
+## Optimize diffusers models
 
-After that you can easily optimize any diffusers model by defining a simple `SmashConfig`, which holds the configuration for the optimization.
+After that you can easily optimize any `diffusers` model by defining a simple `SmashConfig`, which holds the configuration for the optimization.
 
-For diffusers models, we support a broad range of optimization algorithms. The overview of the supported optimization algorithms is shown as follows.
+For `diffusers` models, we support a broad range of optimization algorithms. The overview of the supported optimization algorithms is shown as follows.
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/diffusers_combinations.png" alt="Overview of the supported optimization algorithms for diffusers models">
@@ -89,15 +89,17 @@ smashed_pipe.save_to_hub("<username>/FLUX.1-dev-smashed")
 smashed_pipe = PrunaModel.from_hub("<username>/FLUX.1-dev-smashed")
 ```
 
-The resulting generated image is shown as follows.
+The resulting generated image and inference per optimization configuration are shown as follows.
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/flux_smashed_comparison.png">
 </div>
 
-As you can see, Pruna is a very simple and easy to use framework that allows you to optimize your models with minimal effort. We also saw the results look good to the naked eye but the cool thing is that you can also use Pruna to benchmark and evaluate your optimized models.
+Besides the results shown above, we have also used Pruna to create [FLUX-juiced, the fastest image generation endpoint alive](https://www.pruna.ai/blog/flux-juiced-the-fastest-image-generation-endpoint). We benchmarked our model against, FLUX.1-dev versions provided by different inference frameworks and surpassed them all. Full results of this benchmark can be found in [our blog post](https://huggingface.co/blog/PrunaAI/flux-fastest-image-generation-endpoint) and [our InferBench space](https://huggingface.co/spaces/PrunaAI/InferBench).
 
-## Evaluating and benchmarking optimized models
+As you can see, Pruna is a very simple and easy to use framework that allows you to optimize your models with minimal effort. We already saw that the results look good to the naked eye but the cool thing is that you can also use Pruna to benchmark and evaluate your optimized models.
+
+## Evaluate and benchmark diffusers models
 
 Pruna provides a simple way to evaluate the quality of your optimized models. You can use the `EvaluationAgent` to evaluate the quality of your optimized models. If you want to learn more about the evaluation of optimized models, you can have a look at [the Pruna documentation on evaluation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/evaluate.html).
 
@@ -155,20 +157,68 @@ smashed_model_results = eval_agent.evaluate(smashed_pipe)
 smashed_pipe.move_to_device("cpu")
 ```
 
+### Evaluate and benchmark standalone diffusers models
+
+Instead of comparing the optimized model to the base model, you can also evaluate the standalone `diffusers` model. This is useful if you want to evaluate the performance of the model without the optimization. We can do so by using the `PrunaModel` wrapper.
+
+Let's take a look at an example on how to evaluate and benchmark a standalone `diffusers` model.
+
+```python
+import torch
+from diffusers import FluxPipeline
+
+from pruna import PrunaModel
+from pruna.data.pruna_datamodule import PrunaDataModule
+from pruna.evaluation.evaluation_agent import EvaluationAgent
+from pruna.evaluation.metrics import (
+    ThroughputMetric,
+    TorchMetricWrapper,
+    TotalTimeMetric,
+)
+from pruna.evaluation.task import Task
+
+# define the device
+device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+
+# load the model
+# Try PrunaAI/Segmind-Vega-smashed or PrunaAI/FLUX.1-dev-smashed with a small GPU memory
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16
+).to("cpu")
+wrapped_pipe = PrunaModel(model=pipe)
+
+# Define the metrics
+metrics = [
+    TotalTimeMetric(n_iterations=20, n_warmup_iterations=5),
+    ThroughputMetric(n_iterations=20, n_warmup_iterations=5),
+    TorchMetricWrapper("clip"),
+]
+
+# Define the datamodule
+datamodule = PrunaDataModule.from_string("LAION256")
+datamodule.limit_datasets(10)
+
+# Define the task and evaluation agent
+task = Task(metrics, datamodule=datamodule, device=device)
+eval_agent = EvaluationAgent(task)
+
+# Evaluate base model and offload it to CPU
+wrapped_pipe.move_to_device(device)
+base_model_results = eval_agent.evaluate(wrapped_pipe)
+wrapped_pipe.move_to_device("cpu")
+```
+
 Now that you have seen how to optimize and evaluate your models, you can start using Pruna to optimize your own models. Luckily, we have many examples to help you get started.
 
 ## Supported models
 
-Pruna aims to support a wide range of diffusers models and even supports different modalities, like text, image, audio, video, and Pruna is constantly expanding its support. An overview of some great combinations of models and modalities that have been succesfully optimized can be found on [the Pruna tutorial page](https://docs.pruna.ai/en/stable/docs_pruna/tutorials/index.html). Finally, a good thing is that Pruna also support `transformers` models.
+Pruna aims to support a wide range of `diffusers` models and even supports different modalities, like text, image, audio, video, and Pruna is constantly expanding its support. An overview of some great combinations of models and modalities that have been succesfully optimized can be found on [the Pruna tutorial page](https://docs.pruna.ai/en/stable/docs_pruna/tutorials/index.html). Finally, a good thing is that Pruna also support `transformers` models.
 
 ## Reference
 
-[Pruna](https://github.com/pruna-ai/pruna)
+- [Pruna](https://github.com/pruna-ai/pruna)
+- [Pruna optimization](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html#configure-algorithms)
+- [Pruna evaluation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/evaluate.html)
+- [Pruna tutorials](https://docs.pruna.ai/en/stable/docs_pruna/tutorials/index.html)
 
-[Pruna documentation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/index.html)
-
-[Pruna tutorial page](https://docs.pruna.ai/en/stable/docs_pruna/tutorials/index.html)
-
-[Pruna documentation on optimization](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html#configure-algorithms)
-
-[Pruna documentation on evaluation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/evaluate.html)
