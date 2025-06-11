@@ -1067,10 +1067,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
         loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True, device_map="auto")
-        from torchviz import make_dot
         new_output = loaded_model(**inputs_dict)
-
-        make_dot(new_output.sample, params=dict(loaded_model.named_parameters())).render("unet", format="png")
 
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
