@@ -126,6 +126,7 @@ pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     torch_dtype=torch.bfloat16
 ).to("cpu")
+wrapped_pipe = PrunaModel(model=pipe)
 smashed_pipe = PrunaModel.from_hub("PrunaAI/FLUX.1-dev-smashed")
 
 # Define the metrics
@@ -144,7 +145,6 @@ task = Task(metrics, datamodule=datamodule, device=device)
 eval_agent = EvaluationAgent(task)
 
 # Evaluate base model and offload it to CPU
-wrapped_pipe = PrunaModel(model=pipe)
 wrapped_pipe.move_to_device(device)
 base_model_results = eval_agent.evaluate(wrapped_pipe)
 wrapped_pipe.move_to_device("cpu")
@@ -155,11 +155,11 @@ smashed_model_results = eval_agent.evaluate(smashed_pipe)
 smashed_pipe.move_to_device("cpu")
 ```
 
-Now that you have seen how to optimize and evaluate your models, you can start to use Pruna to optimize your own models. Luckily, we have a lot of examples for you to get started.
+Now that you have seen how to optimize and evaluate your models, you can start using Pruna to optimize your own models. Luckily, we have many examples to help you get started.
 
 ## Supported models
 
-Pruna aims to support a wide range of diffusers models and even supports different modalities, like text, image, audio, video, and Pruna are constantly expanding its support. An overview of some great combinations of models and modalities that have been succesfully optimized can be found on [the Pruna tutorial page](https://docs.pruna.ai/en/stable/docs_pruna/tutorials/index.html). Finally, a good thing is that Pruna also support `transformers` models.
+Pruna aims to support a wide range of diffusers models and even supports different modalities, like text, image, audio, video, and Pruna is constantly expanding its support. An overview of some great combinations of models and modalities that have been succesfully optimized can be found on [the Pruna tutorial page](https://docs.pruna.ai/en/stable/docs_pruna/tutorials/index.html). Finally, a good thing is that Pruna also support `transformers` models.
 
 ## Reference
 
