@@ -359,7 +359,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         self.norm_out = AuraFlowPreFinalBlock(self.inner_dim, self.inner_dim)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=False)
 
-        # https://arxiv.org/abs/2309.16588
+        # https://huggingface.co/papers/2309.16588
         # prevents artifacts in the attention maps
         self.register_tokens = nn.Parameter(torch.randn(1, 8, self.inner_dim) * 0.02)
 

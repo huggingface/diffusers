@@ -39,7 +39,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    nightly,
+    require_torch_accelerator,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -408,17 +414,17 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class MusicLDMPipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)

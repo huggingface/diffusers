@@ -233,7 +233,7 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
+@pytest.mark.big_accelerator
 class StableDiffusion3PipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Pipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"

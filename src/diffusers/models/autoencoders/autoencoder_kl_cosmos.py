@@ -902,8 +902,8 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
             model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
             diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
             / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
-            Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper. Not applicable in Cosmos,
-            but we default to 1.0 for consistency.
+            Synthesis with Latent Diffusion Models](https://huggingface.co/papers/2112.10752) paper. Not applicable in
+            Cosmos, but we default to 1.0 for consistency.
         spatial_compression_ratio (`int`, defaults to `8`):
             The spatial compression ratio to apply in the VAE. The number of downsample blocks is determined using
             this.

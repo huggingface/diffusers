@@ -22,7 +22,7 @@ from ..resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
 class FlaxCrossAttnDownBlock2D(nn.Module):
     r"""
     Cross Attention 2D Downsizing block - original architecture from Unet transformers:
-    https://arxiv.org/abs/2103.06104
+    https://huggingface.co/papers/2103.06104
 
     Parameters:
         in_channels (:obj:`int`):
@@ -38,7 +38,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
         add_downsample (:obj:`bool`, *optional*, defaults to `True`):
             Whether to add downsampling layer before each final output
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
-            enable memory efficient attention https://arxiv.org/abs/2112.05682
+            enable memory efficient attention https://huggingface.co/papers/2112.05682
         split_head_dim (`bool`, *optional*, defaults to `False`):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
@@ -169,7 +169,7 @@ class FlaxDownBlock2D(nn.Module):
 class FlaxCrossAttnUpBlock2D(nn.Module):
     r"""
     Cross Attention 2D Upsampling block - original architecture from Unet transformers:
-    https://arxiv.org/abs/2103.06104
+    https://huggingface.co/papers/2103.06104
 
     Parameters:
         in_channels (:obj:`int`):
@@ -185,7 +185,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
         add_upsample (:obj:`bool`, *optional*, defaults to `True`):
             Whether to add upsampling layer before each final output
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
-            enable memory efficient attention https://arxiv.org/abs/2112.05682
+            enable memory efficient attention https://huggingface.co/papers/2112.05682
         split_head_dim (`bool`, *optional*, defaults to `False`):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
@@ -324,7 +324,8 @@ class FlaxUpBlock2D(nn.Module):
 
 class FlaxUNetMidBlock2DCrossAttn(nn.Module):
     r"""
-    Cross Attention 2D Mid-level block - original architecture from Unet transformers: https://arxiv.org/abs/2103.06104
+    Cross Attention 2D Mid-level block - original architecture from Unet transformers:
+    https://huggingface.co/papers/2103.06104
 
     Parameters:
         in_channels (:obj:`int`):
@@ -336,7 +337,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
         num_attention_heads (:obj:`int`, *optional*, defaults to 1):
             Number of attention heads of each spatial transformer block
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
-            enable memory efficient attention https://arxiv.org/abs/2112.05682
+            enable memory efficient attention https://huggingface.co/papers/2112.05682
         split_head_dim (`bool`, *optional*, defaults to `False`):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.

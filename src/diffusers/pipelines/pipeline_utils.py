@@ -139,6 +139,43 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
+class DeprecatedPipelineMixin:
+    """
+    A mixin that can be used to mark a pipeline as deprecated.
+
+    Pipelines inheriting from this mixin will raise a warning when instantiated, indicating that they are deprecated
+    and won't receive updates past the specified version. Tests will be skipped for pipelines that inherit from this
+    mixin.
+
+    Example usage:
+    ```python
+    class MyDeprecatedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
+        _last_supported_version = "0.20.0"
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+    ```
+    """
+
+    # Override this in the inheriting class to specify the last version that will support this pipeline
+    _last_supported_version = None
+
+    def __init__(self, *args, **kwargs):
+        # Get the class name for the warning message
+        class_name = self.__class__.__name__
+
+        # Get the last supported version or use the current version if not specified
+        version_info = getattr(self.__class__, "_last_supported_version", __version__)
+
+        # Raise a warning that this pipeline is deprecated
+        logger.warning(
+            f"The {class_name} has been deprecated and will not receive bug fixes or feature updates after Diffusers version {version_info}. "
+        )
+
+        # Call the parent class's __init__ method
+        super().__init__(*args, **kwargs)
+
+
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for all pipelines.
@@ -573,12 +610,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
-            torch_dtype (`str` or `torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
-                dtype is automatically derived from the model's weights. To load submodels with different dtype pass a
-                `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`). Set the default dtype for
-                unspecified components with `default` (for example `{'transformer': torch.bfloat16, 'default':
-                torch.float16}`). If a component is not specified and no default is set, `torch.float32` is used.
+            torch_dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype. To load submodels with
+                different dtype pass a `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`).
+                Set the default dtype for unspecified components with `default` (for example `{'transformer':
+                torch.bfloat16, 'default': torch.float16}`). If a component is not specified and no default is set,
+                `torch.float32` is used.
             custom_pipeline (`str`, *optional*):
 
                 <Tip warning={true}>
@@ -1665,6 +1702,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 signature_types[k] = (v.annotation,)
             elif get_origin(v.annotation) == Union:
                 signature_types[k] = get_args(v.annotation)
+            elif get_origin(v.annotation) in [List, Dict, list, dict]:
+                signature_types[k] = (v.annotation,)
             else:
                 logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")
         return signature_types
@@ -2027,7 +2066,7 @@ class StableDiffusionMixin:
         self.vae.disable_tiling()
 
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+        r"""Enables the FreeU mechanism as in https://huggingface.co/papers/2309.11497.
 
         The suffixes after the scaling factors represent the stages where they are being applied.
 

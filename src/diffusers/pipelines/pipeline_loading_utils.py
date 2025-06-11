@@ -92,7 +92,7 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
-def is_safetensors_compatible(filenames, passed_components=None, folder_names=None) -> bool:
+def is_safetensors_compatible(filenames, passed_components=None, folder_names=None, variant=None) -> bool:
     """
     Checking for safetensors compatibility:
     - The model is safetensors compatible only if there is a safetensors file for each model component present in
@@ -103,6 +103,31 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     - For models from the transformers library, the filename changes from "pytorch_model" to "model", and the ".bin"
       extension is replaced with ".safetensors"
     """
+    weight_names = [
+        WEIGHTS_NAME,
+        SAFETENSORS_WEIGHTS_NAME,
+        FLAX_WEIGHTS_NAME,
+        ONNX_WEIGHTS_NAME,
+        ONNX_EXTERNAL_WEIGHTS_NAME,
+    ]
+
+    if is_transformers_available():
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+
+    # model_pytorch, diffusion_model_pytorch, ...
+    weight_prefixes = [w.split(".")[0] for w in weight_names]
+    # .bin, .safetensors, ...
+    weight_suffixs = [w.split(".")[-1] for w in weight_names]
+    # -00001-of-00002
+    transformers_index_format = r"\d{5}-of-\d{5}"
+    # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetensors`
+    variant_file_re = re.compile(
+        rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
+    )
+    non_variant_file_re = re.compile(
+        rf"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
+    )
+
     passed_components = passed_components or []
     if folder_names:
         filenames = {f for f in filenames if os.path.split(f)[0] in folder_names}
@@ -121,15 +146,29 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
         components[component].append(component_filename)
 
     # If there are no component folders check the main directory for safetensors files
+    filtered_filenames = set()
     if not components:
-        return any(".safetensors" in filename for filename in filenames)
+        if variant is not None:
+            filtered_filenames = filter_with_regex(filenames, variant_file_re)
+
+        # If no variant filenames exist check if non-variant files are available
+        if not filtered_filenames:
+            filtered_filenames = filter_with_regex(filenames, non_variant_file_re)
+        return any(".safetensors" in filename for filename in filtered_filenames)
 
     # iterate over all files of a component
     # check if safetensor files exist for that component
-    # if variant is provided check if the variant of the safetensors exists
     for component, component_filenames in components.items():
         matches = []
-        for component_filename in component_filenames:
+        filtered_component_filenames = set()
+        # if variant is provided check if the variant of the safetensors exists
+        if variant is not None:
+            filtered_component_filenames = filter_with_regex(component_filenames, variant_file_re)
+
+        # if variant safetensor files do not exist check for non-variants
+        if not filtered_component_filenames:
+            filtered_component_filenames = filter_with_regex(component_filenames, non_variant_file_re)
+        for component_filename in filtered_component_filenames:
             filename, extension = os.path.splitext(component_filename)
 
             match_exists = extension == ".safetensors"
@@ -157,6 +196,10 @@ def filter_model_files(filenames):
     allowed_extensions = [wn.split(".")[-1] for wn in weight_names]
 
     return [f for f in filenames if any(f.endswith(extension) for extension in allowed_extensions)]
+
+
+def filter_with_regex(filenames, pattern_re):
+    return {f for f in filenames if pattern_re.match(f.split("/")[-1]) is not None}
 
 
 def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[List[os.PathLike], str]:
@@ -206,9 +249,6 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
         # ignore patterns uses glob style patterns e.g *.safetensors but we're only
         # interested in the extension name
         return {f for f in filenames if not any(f.endswith(pat.lstrip("*.")) for pat in ignore_patterns)}
-
-    def filter_with_regex(filenames, pattern_re):
-        return {f for f in filenames if pattern_re.match(f.split("/")[-1]) is not None}
 
     # Group files by component
     components = {}
@@ -335,14 +375,14 @@ def get_class_obj_and_candidates(
     library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
 ):
     """Simple helper method to retrieve class object of module as well as potential parent class objects"""
-    component_folder = os.path.join(cache_dir, component_name)
+    component_folder = os.path.join(cache_dir, component_name) if component_name and cache_dir else None
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
 
         class_obj = getattr(pipeline_module, class_name)
         class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
-    elif os.path.isfile(os.path.join(component_folder, library_name + ".py")):
+    elif component_folder and os.path.isfile(os.path.join(component_folder, library_name + ".py")):
         # load custom component
         class_obj = get_class_from_dynamic_module(
             component_folder, module_file=library_name + ".py", class_name=class_name
@@ -997,7 +1037,7 @@ def _get_ignore_patterns(
         use_safetensors
         and not allow_pickle
         and not is_safetensors_compatible(
-            model_filenames, passed_components=passed_components, folder_names=model_folder_names
+            model_filenames, passed_components=passed_components, folder_names=model_folder_names, variant=variant
         )
     ):
         raise EnvironmentError(
@@ -1008,7 +1048,7 @@ def _get_ignore_patterns(
         ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
 
     elif use_safetensors and is_safetensors_compatible(
-        model_filenames, passed_components=passed_components, folder_names=model_folder_names
+        model_filenames, passed_components=passed_components, folder_names=model_folder_names, variant=variant
     ):
         ignore_patterns = ["*.bin", "*.msgpack"]
 

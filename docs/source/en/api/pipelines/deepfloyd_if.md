@@ -347,7 +347,7 @@ pipe.to("cuda")
 image = pipe(image=image, prompt="<prompt>", strength=0.3).images
 ```
 
-You can also use [`torch.compile`](../../optimization/torch2.0). Note that we have not exhaustively tested `torch.compile`
+You can also use [`torch.compile`](../../optimization/fp16#torchcompile). Note that we have not exhaustively tested `torch.compile`
 with IF and it might not give expected results.
 
 ```py

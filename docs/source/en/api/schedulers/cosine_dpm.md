@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # CosineDPMSolverMultistepScheduler
 
 The [`CosineDPMSolverMultistepScheduler`] is a variant of [`DPMSolverMultistepScheduler`] with cosine schedule, proposed by Nichol and Dhariwal (2021).
-It is being used in the [Stable Audio Open](https://arxiv.org/abs/2407.14358) paper and the [Stability-AI/stable-audio-tool](https://github.com/Stability-AI/stable-audio-tool) codebase.
+It is being used in the [Stable Audio Open](https://huggingface.co/papers/2407.14358) paper and the [Stability-AI/stable-audio-tool](https://github.com/Stability-AI/stable-audio-tools) codebase.
 
 This scheduler was contributed by [Yoach Lacombe](https://huggingface.co/ylacombe).
 

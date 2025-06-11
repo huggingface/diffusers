@@ -17,8 +17,6 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - local: tutorials/fast_diffusion
-    title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
@@ -94,8 +92,6 @@
     title: API Reference
   title: Hybrid Inference
 - sections:
-  - local: using-diffusers/cogvideox
-    title: CogVideoX
   - local: using-diffusers/consisid
     title: ConsisID
   - local: using-diffusers/sdxl
@@ -180,10 +176,10 @@
 - sections:
   - local: optimization/fp16
     title: Accelerate inference
+  - local: optimization/cache
+    title: Caching
   - local: optimization/memory
     title: Reduce memory usage
-  - local: optimization/torch2.0
-    title: PyTorch 2.0
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome
@@ -210,7 +206,7 @@
     - local: optimization/mps
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
-      title: Habana Gaudi
+      title: Intel Gaudi
     - local: optimization/neuron
       title: AWS Neuron
     title: Optimized hardware
@@ -457,6 +453,8 @@
       title: Flux
     - local: api/pipelines/control_flux_inpaint
       title: FluxControlInpaint
+    - local: api/pipelines/framepack
+      title: Framepack
     - local: api/pipelines/hidream
       title: HiDream-I1
     - local: api/pipelines/hunyuandit
@@ -573,6 +571,8 @@
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
+    - local: api/pipelines/visualcloze
+      title: VisualCloze
     - local: api/pipelines/wan
       title: Wan
     - local: api/pipelines/wuerstchen

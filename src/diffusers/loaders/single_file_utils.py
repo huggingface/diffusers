@@ -126,6 +126,7 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "wan": ["model.diffusion_model.head.modulation", "head.modulation"],
     "wan_vae": "decoder.middle.0.residual.0.gamma",
+    "hidream": "double_stream_blocks.0.block.adaLN_modulation.1.bias",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -178,6 +179,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
     "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
     "ltx-video-0.9.5": {"pretrained_model_name_or_path": "Lightricks/LTX-Video-0.9.5"},
+    "ltx-video-0.9.7": {"pretrained_model_name_or_path": "Lightricks/LTX-Video-0.9.7-dev"},
     "autoencoder-dc-f128c512": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f128c512-mix-1.0-diffusers"},
     "autoencoder-dc-f64c128": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f64c128-mix-1.0-diffusers"},
     "autoencoder-dc-f32c32": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-mix-1.0-diffusers"},
@@ -190,6 +192,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-t2v-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"},
     "wan-t2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-14B-Diffusers"},
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
+    "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -642,7 +645,10 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "flux-schnell"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx-video"]):
-        if checkpoint["vae.encoder.conv_out.conv.weight"].shape[1] == 2048:
+        has_vae = "vae.encoder.conv_in.conv.bias" in checkpoint
+        if any(key.endswith("transformer_blocks.47.scale_shift_table") for key in checkpoint):
+            model_type = "ltx-video-0.9.7"
+        elif has_vae and checkpoint["vae.encoder.conv_out.conv.weight"].shape[1] == 2048:
             model_type = "ltx-video-0.9.5"
         elif "vae.decoder.last_time_embedder.timestep_embedder.linear_1.weight" in checkpoint:
             model_type = "ltx-video-0.9.1"
@@ -701,6 +707,8 @@ def infer_diffusers_model_type(checkpoint):
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
         model_type = "wan-t2v-14B"
+    elif CHECKPOINT_KEY_NAMES["hidream"] in checkpoint:
+        model_type = "hidream"
     else:
         model_type = "v1"
 
@@ -3293,3 +3301,12 @@ def convert_wan_vae_to_diffusers(checkpoint, **kwargs):
             converted_state_dict[key] = value
 
     return converted_state_dict
+
+
+def convert_hidream_transformer_to_diffusers(checkpoint, **kwargs):
+    keys = list(checkpoint.keys())
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    return checkpoint

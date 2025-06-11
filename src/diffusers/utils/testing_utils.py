@@ -300,9 +300,7 @@ def require_torch_gpu(test_case):
 
 def require_torch_cuda_compatibility(expected_compute_capability):
     def decorator(test_case):
-        if not torch.cuda.is_available():
-            return unittest.skip(test_case)
-        else:
+        if torch.cuda.is_available():
             current_compute_capability = get_torch_cuda_device_capability()
             return unittest.skipUnless(
                 float(current_compute_capability) == float(expected_compute_capability),
@@ -635,10 +633,10 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
     return arry
 
 
-def load_pt(url: str, map_location: str):
+def load_pt(url: str, map_location: Optional[str] = None, weights_only: Optional[bool] = True):
     response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
-    arry = torch.load(BytesIO(response.content), map_location=map_location)
+    arry = torch.load(BytesIO(response.content), map_location=map_location, weights_only=weights_only)
     return arry
 
 
@@ -1212,8 +1210,8 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 
     # Some device agnostic functions return values. Need to guard against 'None' instead at
     # user level
-    if fn is None:
-        return None
+    if not callable(fn):
+        return fn
 
     return fn(*args, **kwargs)
 

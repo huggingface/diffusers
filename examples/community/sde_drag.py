@@ -25,7 +25,7 @@ from diffusers.optimization import get_scheduler
 
 class SdeDragPipeline(DiffusionPipeline):
     r"""
-    Pipeline for image drag-and-drop editing using stochastic differential equations: https://arxiv.org/abs/2311.01410.
+    Pipeline for image drag-and-drop editing using stochastic differential equations: https://huggingface.co/papers/2311.01410.
     Please refer to the [official repository](https://github.com/ML-GSAI/SDE-Drag) for more information.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the

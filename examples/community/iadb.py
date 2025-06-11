@@ -12,7 +12,7 @@ class IADBScheduler(SchedulerMixin, ConfigMixin):
     """
     IADBScheduler is a scheduler for the Iterative α-(de)Blending denoising method. It is simple and minimalist.
 
-    For more details, see the original paper: https://arxiv.org/abs/2305.03486 and the blog post: https://ggx-research.github.io/publication/2023/05/10/publication-iadb.html
+    For more details, see the original paper: https://huggingface.co/papers/2305.03486 and the blog post: https://ggx-research.github.io/publication/2023/05/10/publication-iadb.html
     """
 
     def step(

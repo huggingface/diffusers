@@ -31,7 +31,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class PAGMixin:
-    r"""Mixin class for [Pertubed Attention Guidance](https://arxiv.org/abs/2403.17377v1)."""
+    r"""Mixin class for [Pertubed Attention Guidance](https://huggingface.co/papers/2403.17377v1)."""
 
     def _set_pag_attn_processor(self, pag_applied_layers, do_classifier_free_guidance):
         r"""

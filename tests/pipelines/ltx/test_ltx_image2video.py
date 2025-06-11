@@ -109,7 +109,7 @@ class LTXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        image = torch.randn((1, 3, 32, 32), generator=generator, device=device)
+        image = torch.rand((1, 3, 32, 32), generator=generator, device=device)
 
         inputs = {
             "image": image,
@@ -142,7 +142,7 @@ class LTXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertEqual(generated_video.shape, (9, 3, 32, 32))
         expected_video = torch.randn(9, 3, 32, 32)
-        max_diff = np.abs(generated_video - expected_video).max()
+        max_diff = torch.amax(torch.abs(generated_video - expected_video))
         self.assertLessEqual(max_diff, 1e10)
 
     def test_callback_inputs(self):
