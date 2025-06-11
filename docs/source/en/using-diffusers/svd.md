@@ -63,7 +63,7 @@ export_to_video(frames, "generated.mp4", fps=7)
 
 ## torch.compile
 
-You can gain a 20-25% speedup at the expense of slightly increased memory by [compiling](../optimization/torch2.0#torchcompile) the UNet.
+You can gain a 20-25% speedup at the expense of slightly increased memory by [compiling](../optimization/fp16#torchcompile) the UNet.
 
 ```diff
 - pipe.enable_model_cpu_offload()

@@ -52,8 +52,8 @@ class FlaxEulerDiscreteSchedulerOutput(FlaxSchedulerOutput):
 
 class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
-    Euler scheduler (Algorithm 2) from Karras et al. (2022) https://arxiv.org/abs/2206.00364. . Based on the original
-    k-diffusion implementation by Katherine Crowson:
+    Euler scheduler (Algorithm 2) from Karras et al. (2022) https://huggingface.co/papers/2206.00364. . Based on the
+    original k-diffusion implementation by Katherine Crowson:
     https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L51
 
 

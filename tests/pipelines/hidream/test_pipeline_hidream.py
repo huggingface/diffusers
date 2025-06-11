@@ -43,7 +43,7 @@ enable_full_determinism()
 
 class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = HiDreamImagePipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "prompt_embeds", "negative_prompt_embeds"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS

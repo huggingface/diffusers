@@ -53,7 +53,12 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import (
+    LoraHotSwappingForModelTesterMixin,
+    ModelTesterMixin,
+    TorchCompileTesterMixin,
+    UNetTesterMixin,
+)
 
 
 if is_peft_available():
@@ -1138,6 +1143,20 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         warning_message = str(warning.warnings[0].message)
         assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
+
+
+class UNet2DConditionModelCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
+
+
+class UNet2DConditionModelLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
 
 
 @slow

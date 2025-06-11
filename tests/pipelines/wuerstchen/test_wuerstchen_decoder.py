@@ -187,6 +187,6 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_float16_inference(self):
         super().test_float16_inference()
 
-    @unittest.skip("Test not supoorted.")
+    @unittest.skip("Test not supported.")
     def test_encode_prompt_works_in_isolation(self):
         super().test_encode_prompt_works_in_isolation()

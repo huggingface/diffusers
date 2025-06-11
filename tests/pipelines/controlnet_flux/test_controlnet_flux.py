@@ -35,7 +35,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     nightly,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     torch_device,
 )
 from diffusers.utils.torch_utils import randn_tensor
@@ -210,8 +210,8 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
 
 
 @nightly
-@require_big_gpu_with_torch_cuda
-@pytest.mark.big_gpu_with_torch_cuda
+@require_big_accelerator
+@pytest.mark.big_accelerator
 class FluxControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxControlNetPipeline
 

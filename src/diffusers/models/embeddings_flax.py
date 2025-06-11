@@ -89,7 +89,7 @@ class FlaxTimestepEmbedding(nn.Module):
 
 class FlaxTimesteps(nn.Module):
     r"""
-    Wrapper Module for sinusoidal Time step Embeddings as described in https://arxiv.org/abs/2006.11239
+    Wrapper Module for sinusoidal Time step Embeddings as described in https://huggingface.co/papers/2006.11239
 
     Args:
         dim (`int`, *optional*, defaults to `32`):

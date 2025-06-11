@@ -32,7 +32,14 @@ from diffusers import (
     StableAudioProjectionModel,
 )
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    Expectations,
+    backend_empty_cache,
+    enable_full_determinism,
+    nightly,
+    require_torch_accelerator,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -419,17 +426,17 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class StableAudioPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
@@ -459,9 +466,15 @@ class StableAudioPipelineIntegrationTests(unittest.TestCase):
         # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
         audio_slice = audio[0, 447590:447600]
         # fmt: off
-        expected_slice = np.array(
-            [-0.0278,  0.1096,  0.1877,  0.3178,  0.5329,  0.6990,  0.6972,  0.6186, 0.5608,  0.5060]
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array([-0.0285, 0.1083, 0.1863, 0.3165, 0.5312, 0.6971, 0.6958, 0.6177, 0.5598, 0.5048]),
+                ("cuda", 7): np.array([-0.0278, 0.1096, 0.1877, 0.3178, 0.5329, 0.6990, 0.6972, 0.6186, 0.5608, 0.5060]),
+                ("cuda", 8): np.array([-0.0285, 0.1082, 0.1862, 0.3163, 0.5306, 0.6964, 0.6953, 0.6172, 0.5593, 0.5044]),
+            }
         )
-         # fmt: one
+        # fmt: on
+
+        expected_slice = expected_slices.get_expectation()
         max_diff = np.abs(expected_slice - audio_slice.detach().cpu().numpy()).max()
         assert max_diff < 1.5e-3

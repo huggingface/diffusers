@@ -744,6 +744,17 @@ class DiagonalGaussianDistribution(object):
         return self.mean
 
 
+class IdentityDistribution(object):
+    def __init__(self, parameters: torch.Tensor):
+        self.parameters = parameters
+
+    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+        return self.parameters
+
+    def mode(self) -> torch.Tensor:
+        return self.parameters
+
+
 class EncoderTiny(nn.Module):
     r"""
     The `EncoderTiny` layer is a simpler version of the `Encoder` layer.

@@ -205,7 +205,7 @@ class BnB4BitBasicTests(Base4bitTests):
 
     def test_original_dtype(self):
         r"""
-        A simple test to check if the model succesfully stores the original dtype
+        A simple test to check if the model successfully stores the original dtype
         """
         self.assertTrue("_pre_quantization_dtype" in self.model_4bit.config)
         self.assertFalse("_pre_quantization_dtype" in self.model_fp16.config)
@@ -389,7 +389,7 @@ class BnB4BitBasicTests(Base4bitTests):
 class BnB4BitTrainingTests(Base4bitTests):
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -476,6 +476,7 @@ class SlowBnb4BitTests(Base4bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
+        torch.use_deterministic_algorithms(True)
         self.pipeline_4bit.transformer.dequantize()
         output = self.pipeline_4bit(
             prompt=self.prompt,
@@ -526,7 +527,7 @@ class SlowBnb4BitTests(Base4bitTests):
         reason="Test will pass after https://github.com/huggingface/accelerate/pull/3223 is in a release.",
         strict=True,
     )
-    def test_pipeline_device_placement_works_with_nf4(self):
+    def test_pipeline_cuda_placement_works_with_nf4(self):
         transformer_nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -560,7 +561,7 @@ class SlowBnb4BitTests(Base4bitTests):
         ).to(torch_device)
 
         # Check if inference works.
-        _ = pipeline_4bit("table", max_sequence_length=20, num_inference_steps=2)
+        _ = pipeline_4bit(self.prompt, max_sequence_length=20, num_inference_steps=2)
 
         del pipeline_4bit
 
@@ -657,7 +658,7 @@ class SlowBnb4BitTests(Base4bitTests):
 class SlowBnb4BitFluxTests(Base4bitTests):
     def setUp(self) -> None:
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
         model_id = "hf-internal-testing/flux.1-dev-nf4-pkg"
         t5_4bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
@@ -674,7 +675,7 @@ class SlowBnb4BitFluxTests(Base4bitTests):
         del self.pipeline_4bit
 
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_quality(self):
         # keep the resolution and max tokens to a lower number for faster execution.
@@ -722,7 +723,7 @@ class SlowBnb4BitFluxTests(Base4bitTests):
 class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
     def setUp(self) -> None:
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
         self.pipeline_4bit = FluxControlPipeline.from_pretrained("eramth/flux-4bit", torch_dtype=torch.float16)
         self.pipeline_4bit.enable_model_cpu_offload()
@@ -731,7 +732,7 @@ class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
         del self.pipeline_4bit
 
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_lora_loading(self):
         self.pipeline_4bit.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")

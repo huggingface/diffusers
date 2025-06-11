@@ -205,7 +205,7 @@ class StableDiffusionDiffEditPipelineFastTests(
         # set all optional components to None and update pipeline config accordingly
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
-        pipe.register_modules(**{optional_component: None for optional_component in pipe._optional_components})
+        pipe.register_modules(**dict.fromkeys(pipe._optional_components))
 
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]

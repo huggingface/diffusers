@@ -22,6 +22,7 @@ from parameterized import parameterized
 from diffusers import AsymmetricAutoencoderKL
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -134,18 +135,32 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.0336, 0.3011, 0.1764, 0.0087, -0.3401, 0.3645, -0.1247, 0.1205],
-                [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
+                Expectations(
+                    {
+                        ("xpu", 3): torch.tensor([-0.0343, 0.2873, 0.1680, -0.0140, -0.3459, 0.3522, -0.1336, 0.1075]),
+                        ("cuda", 7): torch.tensor([-0.0336, 0.3011, 0.1764, 0.0087, -0.3401, 0.3645, -0.1247, 0.1205]),
+                        ("mps", None): torch.tensor(
+                            [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824]
+                        ),
+                    }
+                ),
             ],
             [
                 47,
-                [0.4400, 0.0543, 0.2873, 0.2946, 0.0553, 0.0839, -0.1585, 0.2529],
-                [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089],
+                Expectations(
+                    {
+                        ("xpu", 3): torch.tensor([0.4400, 0.0543, 0.2873, 0.2946, 0.0553, 0.0839, -0.1585, 0.2529]),
+                        ("cuda", 7): torch.tensor([0.4400, 0.0543, 0.2873, 0.2946, 0.0553, 0.0839, -0.1585, 0.2529]),
+                        ("mps", None): torch.tensor(
+                            [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089]
+                        ),
+                    }
+                ),
             ],
             # fmt: on
         ]
     )
-    def test_stable_diffusion(self, seed, expected_slice, expected_slice_mps):
+    def test_stable_diffusion(self, seed, expected_slices):
         model = self.get_sd_vae_model()
         image = self.get_sd_image(seed)
         generator = self.get_generator(seed)
@@ -156,9 +171,9 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
+        expected_slice = expected_slices.get_expectation()
+        assert torch_all_close(output_slice, expected_slice, atol=5e-3)
 
     @parameterized.expand(
         [

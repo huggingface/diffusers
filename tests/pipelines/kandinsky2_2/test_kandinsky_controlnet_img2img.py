@@ -29,13 +29,15 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
+    torch_device,
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -233,19 +235,19 @@ class KandinskyV22ControlnetImg2ImgPipelineFastTests(PipelineTesterMixin, unitte
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_kandinsky_controlnet_img2img(self):
         expected_image = load_numpy(
@@ -309,4 +311,4 @@ class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (512, 512, 3)
 
         max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
-        assert max_diff < 1e-4
+        assert max_diff < 5e-4

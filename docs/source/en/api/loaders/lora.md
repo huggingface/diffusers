@@ -25,7 +25,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`SanaLoraLoaderMixin`] provides similar functions for [Sana](https://huggingface.co/docs/diffusers/main/en/api/pipelines/sana).
 - [`HunyuanVideoLoraLoaderMixin`] provides similar functions for [HunyuanVideo](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hunyuan_video).
 - [`Lumina2LoraLoaderMixin`] provides similar functions for [Lumina2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/lumina2).
+- [`WanLoraLoaderMixin`] provides similar functions for [Wan](https://huggingface.co/docs/diffusers/main/en/api/pipelines/wan).
+- [`CogView4LoraLoaderMixin`] provides similar functions for [CogView4](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogview4).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
+- [`HiDreamImageLoraLoaderMixin`] provides similar functions for [HiDream Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hidream)
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
 <Tip>
@@ -77,10 +80,26 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 [[autodoc]] loaders.lora_pipeline.Lumina2LoraLoaderMixin
 
+## CogView4LoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.CogView4LoraLoaderMixin
+
+## WanLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.WanLoraLoaderMixin
+
 ## AmusedLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.AmusedLoraLoaderMixin
 
+## HiDreamImageLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.HiDreamImageLoraLoaderMixin
+
 ## LoraBaseMixin
 
 [[autodoc]] loaders.lora_base.LoraBaseMixin
+
+## WanLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.WanLoraLoaderMixin

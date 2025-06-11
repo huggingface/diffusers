@@ -17,9 +17,12 @@ import unittest
 import torch
 
 from diffusers import WanTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    torch_device,
+)
 
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
@@ -79,3 +82,10 @@ class WanTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"WanTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class WanTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = WanTransformer3DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return WanTransformer3DTests().prepare_init_args_and_inputs_for_common()

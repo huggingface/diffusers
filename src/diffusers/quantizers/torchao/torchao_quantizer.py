@@ -262,7 +262,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         r"""
-        Each nn.Linear layer that needs to be quantized is processsed here. First, we set the value the weight tensor,
+        Each nn.Linear layer that needs to be quantized is processed here. First, we set the value the weight tensor,
         then we move it to the target device. Finally, we quantize the module.
         """
         module, tensor_name = get_module_from_name(model, param_name)

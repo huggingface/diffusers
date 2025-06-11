@@ -31,13 +31,14 @@ from diffusers import FlowMatchEulerDiscreteScheduler, FluxControlPipeline, Flux
 from diffusers.utils import load_image, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     floats_tensor,
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     require_peft_backend,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -809,10 +810,10 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
 @slow
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 @require_peft_backend
-@require_big_gpu_with_torch_cuda
-@pytest.mark.big_gpu_with_torch_cuda
+@require_big_accelerator
+@pytest.mark.big_accelerator
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace.
 
@@ -827,7 +828,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         super().setUp()
 
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
         self.pipeline = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
 
@@ -836,13 +837,13 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 
         del self.pipeline
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_flux_the_last_ben(self):
         self.pipeline.load_lora_weights("TheLastBen/Jon_Snow_Flux_LoRA", weight_name="jon_snow.safetensors")
         self.pipeline.fuse_lora()
         self.pipeline.unload_lora_weights()
-        # Instead of calling `enable_model_cpu_offload()`, we do a cuda placement here because the CI
+        # Instead of calling `enable_model_cpu_offload()`, we do a accelerator placement here because the CI
         # run supports it. We have about 34GB RAM in the CI runner which kills the test when run with
         # `enable_model_cpu_offload()`. We repeat this for the other tests, too.
         self.pipeline = self.pipeline.to(torch_device)
@@ -956,10 +957,10 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 @require_peft_backend
-@require_big_gpu_with_torch_cuda
-@pytest.mark.big_gpu_with_torch_cuda
+@require_big_accelerator
+@pytest.mark.big_accelerator
 class FluxControlLoRAIntegrationTests(unittest.TestCase):
     num_inference_steps = 10
     seed = 0
@@ -969,17 +970,17 @@ class FluxControlLoRAIntegrationTests(unittest.TestCase):
         super().setUp()
 
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
         self.pipeline = FluxControlPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
-        ).to("cuda")
+        ).to(torch_device)
 
     def tearDown(self):
         super().tearDown()
 
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @parameterized.expand(["black-forest-labs/FLUX.1-Canny-dev-lora", "black-forest-labs/FLUX.1-Depth-dev-lora"])
     def test_lora(self, lora_ckpt_id):

@@ -116,7 +116,7 @@ _deps = [
     "librosa",
     "numpy",
     "parameterized",
-    "peft>=0.6.0",
+    "peft>=0.15.0",
     "protobuf>=3.20.3,<4",
     "pytest",
     "pytest-timeout",

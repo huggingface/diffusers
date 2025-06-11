@@ -34,7 +34,7 @@ from diffusers.utils.testing_utils import (
     is_flaky,
     nightly,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     require_peft_backend,
     require_torch_accelerator,
     torch_device,
@@ -138,8 +138,8 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @nightly
 @require_torch_accelerator
 @require_peft_backend
-@require_big_gpu_with_torch_cuda
-@pytest.mark.big_gpu_with_torch_cuda
+@require_big_accelerator
+@pytest.mark.big_accelerator
 class SD3LoraIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Img2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"

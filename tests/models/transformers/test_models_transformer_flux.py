@@ -22,7 +22,7 @@ from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor
 from diffusers.models.embeddings import ImageProjection
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
@@ -167,3 +167,17 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"FluxTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = FluxTransformer2DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+
+
+class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = FluxTransformer2DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()

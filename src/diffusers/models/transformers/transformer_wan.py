@@ -49,8 +49,10 @@ class WanAttnProcessor2_0:
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
-            encoder_hidden_states_img = encoder_hidden_states[:, :257]
-            encoder_hidden_states = encoder_hidden_states[:, 257:]
+            # 512 is the context length of the text encoder, hardcoded for now
+            image_context_length = encoder_hidden_states.shape[1] - 512
+            encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
+            encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
 
@@ -70,7 +72,8 @@ class WanAttnProcessor2_0:
         if rotary_emb is not None:
 
             def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-                x_rotated = torch.view_as_complex(hidden_states.to(torch.float64).unflatten(3, (-1, 2)))
+                dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
+                x_rotated = torch.view_as_complex(hidden_states.to(dtype).unflatten(3, (-1, 2)))
                 x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4)
                 return x_out.type_as(hidden_states)
 
@@ -108,14 +111,23 @@ class WanAttnProcessor2_0:
 
 
 class WanImageEmbedding(torch.nn.Module):
-    def __init__(self, in_features: int, out_features: int):
+    def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
 
         self.norm1 = FP32LayerNorm(in_features)
         self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
         self.norm2 = FP32LayerNorm(out_features)
+        if pos_embed_seq_len is not None:
+            self.pos_embed = nn.Parameter(torch.zeros(1, pos_embed_seq_len, in_features))
+        else:
+            self.pos_embed = None
 
     def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
+        if self.pos_embed is not None:
+            batch_size, seq_len, embed_dim = encoder_hidden_states_image.shape
+            encoder_hidden_states_image = encoder_hidden_states_image.view(-1, 2 * seq_len, embed_dim)
+            encoder_hidden_states_image = encoder_hidden_states_image + self.pos_embed
+
         hidden_states = self.norm1(encoder_hidden_states_image)
         hidden_states = self.ff(hidden_states)
         hidden_states = self.norm2(hidden_states)
@@ -130,6 +142,7 @@ class WanTimeTextImageEmbedding(nn.Module):
         time_proj_dim: int,
         text_embed_dim: int,
         image_embed_dim: Optional[int] = None,
+        pos_embed_seq_len: Optional[int] = None,
     ):
         super().__init__()
 
@@ -141,7 +154,7 @@ class WanTimeTextImageEmbedding(nn.Module):
 
         self.image_embedder = None
         if image_embed_dim is not None:
-            self.image_embedder = WanImageEmbedding(image_embed_dim, dim)
+            self.image_embedder = WanImageEmbedding(image_embed_dim, dim, pos_embed_seq_len=pos_embed_seq_len)
 
     def forward(
         self,
@@ -178,9 +191,10 @@ class WanRotaryPosEmbed(nn.Module):
         t_dim = attention_head_dim - h_dim - w_dim
 
         freqs = []
+        freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         for dim in [t_dim, h_dim, w_dim]:
             freq = get_1d_rotary_pos_embed(
-                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=torch.float64
+                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=freqs_dtype
             )
             freqs.append(freq)
         self.freqs = torch.cat(freqs, dim=1)
@@ -190,8 +204,8 @@ class WanRotaryPosEmbed(nn.Module):
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
-        self.freqs = self.freqs.to(hidden_states.device)
-        freqs = self.freqs.split_with_sizes(
+        freqs = self.freqs.to(hidden_states.device)
+        freqs = freqs.split_with_sizes(
             [
                 self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
                 self.attention_head_dim // 6,
@@ -350,6 +364,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         image_dim: Optional[int] = None,
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
+        pos_embed_seq_len: Optional[int] = None,
     ) -> None:
         super().__init__()
 
@@ -368,6 +383,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             time_proj_dim=inner_dim * 6,
             text_embed_dim=text_dim,
             image_embed_dim=image_dim,
+            pos_embed_seq_len=pos_embed_seq_len,
         )
 
         # 3. Transformer blocks

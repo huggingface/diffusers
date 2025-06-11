@@ -283,7 +283,7 @@ class OmniGenBlock(nn.Module):
 
 class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
     """
-    The Transformer model introduced in OmniGen (https://arxiv.org/pdf/2409.11340).
+    The Transformer model introduced in OmniGen (https://huggingface.co/papers/2409.11340).
 
     Parameters:
         in_channels (`int`, defaults to `4`):

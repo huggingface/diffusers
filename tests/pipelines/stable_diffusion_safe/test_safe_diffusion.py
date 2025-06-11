@@ -24,7 +24,15 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
-from diffusers.utils.testing_utils import floats_tensor, nightly, require_accelerator, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    Expectations,
+    backend_empty_cache,
+    floats_tensor,
+    nightly,
+    require_accelerator,
+    require_torch_accelerator,
+    torch_device,
+)
 
 
 class SafeDiffusionPipelineFastTests(unittest.TestCase):
@@ -32,13 +40,13 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @property
     def dummy_image(self):
@@ -262,19 +270,19 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_harm_safe_stable_diffusion(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained(
@@ -308,7 +316,14 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = [0.2278, 0.2231, 0.2249, 0.2333, 0.2303, 0.1885, 0.2273, 0.2144, 0.2176]
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): [0.0076, 0.0058, 0.0012, 0, 0.0047, 0.0046, 0, 0, 0],
+                ("cuda", 7): [0.2278, 0.2231, 0.2249, 0.2333, 0.2303, 0.1885, 0.2273, 0.2144, 0.2176],
+                ("cuda", 8): [0.0076, 0.0058, 0.0012, 0, 0.0047, 0.0046, 0, 0, 0],
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
         assert image.shape == (1, 512, 512, 3)
 
@@ -334,6 +349,15 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
         expected_slice = [0.2383, 0.2276, 0.236, 0.2192, 0.2186, 0.2053, 0.1971, 0.1901, 0.1719]
+
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): [0.0443, 0.0439, 0.0381, 0.0336, 0.0408, 0.0345, 0.0405, 0.0338, 0.0293],
+                ("cuda", 7): [0.2383, 0.2276, 0.236, 0.2192, 0.2186, 0.2053, 0.1971, 0.1901, 0.1719],
+                ("cuda", 8): [0.0443, 0.0439, 0.0381, 0.0336, 0.0408, 0.0345, 0.0405, 0.0338, 0.0293],
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
         assert image.shape == (1, 512, 512, 3)
 
@@ -365,8 +389,14 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = [0.3502, 0.3622, 0.3396, 0.3642, 0.3478, 0.3318, 0.35, 0.3348, 0.3297]
-
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): [0.3244, 0.3355, 0.3260, 0.3123, 0.3246, 0.3426, 0.3109, 0.3471, 0.4001],
+                ("cuda", 7): [0.3502, 0.3622, 0.3396, 0.3642, 0.3478, 0.3318, 0.35, 0.3348, 0.3297],
+                ("cuda", 8): [0.3605, 0.3684, 0.3712, 0.3624, 0.3675, 0.3726, 0.3494, 0.3748, 0.4044],
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
         assert image.shape == (1, 512, 512, 3)
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -389,7 +419,16 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = [0.5531, 0.5206, 0.4895, 0.5156, 0.5182, 0.4751, 0.4802, 0.4803, 0.4443]
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): [0.6178, 0.6260, 0.6194, 0.6435, 0.6265, 0.6461, 0.6567, 0.6576, 0.6444],
+                ("cuda", 7): [0.5531, 0.5206, 0.4895, 0.5156, 0.5182, 0.4751, 0.4802, 0.4803, 0.4443],
+                ("cuda", 8): [0.5892, 0.5959, 0.5914, 0.6123, 0.5982, 0.6141, 0.6180, 0.6262, 0.6171],
+            }
+        )
+
+        print(f"image_slice: {image_slice.flatten()}")
+        expected_slice = expected_slices.get_expectation()
 
         assert image.shape == (1, 512, 512, 3)
 
@@ -445,7 +484,14 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.5818, 0.6285, 0.6835, 0.6019, 0.625, 0.6754, 0.6096, 0.6334, 0.6561])
-        assert image.shape == (1, 512, 512, 3)
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array([0.0695, 0.1244, 0.1831, 0.0527, 0.0444, 0.1660, 0.0572, 0.0677, 0.1551]),
+                ("cuda", 7): np.array([0.5818, 0.6285, 0.6835, 0.6019, 0.625, 0.6754, 0.6096, 0.6334, 0.6561]),
+                ("cuda", 8): np.array([0.0695, 0.1244, 0.1831, 0.0527, 0.0444, 0.1660, 0.0572, 0.0677, 0.1551]),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
+        assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

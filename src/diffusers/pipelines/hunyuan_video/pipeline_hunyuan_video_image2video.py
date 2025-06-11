@@ -344,7 +344,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         )
         prompt_embeds = self.text_encoder(
             **expanded_inputs,
-            pixel_value=image_embeds,
+            pixel_values=image_embeds,
             output_hidden_states=True,
         ).hidden_states[-(num_hidden_layers_to_skip + 1)]
         prompt_embeds = prompt_embeds.to(dtype=dtype)
@@ -711,13 +711,13 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             true_cfg_scale (`float`, *optional*, defaults to 1.0):
                 When > 1.0 and a provided `negative_prompt`, enables true classifier-free guidance.
             guidance_scale (`float`, defaults to `1.0`):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality. Note that the only available HunyuanVideo model is
-                CFG-distilled, which means that traditional guidance between unconditional and conditional latent is
-                not applied.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality. Note that the only available
+                HunyuanVideo model is CFG-distilled, which means that traditional guidance between unconditional and
+                conditional latent is not applied.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):

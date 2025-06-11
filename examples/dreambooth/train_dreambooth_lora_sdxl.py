@@ -379,7 +379,7 @@ def parse_args(input_args=None):
         "--do_edm_style_training",
         default=False,
         action="store_true",
-        help="Flag to conduct training using the EDM formulation as introduced in https://arxiv.org/abs/2206.00364.",
+        help="Flag to conduct training using the EDM formulation as introduced in https://huggingface.co/papers/2206.00364.",
     )
     parser.add_argument(
         "--with_prior_preservation",
@@ -520,7 +520,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://huggingface.co/papers/2303.09556.",
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
@@ -659,12 +659,15 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--use_dora",
         action="store_true",
         default=False,
         help=(
-            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://huggingface.co/papers/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -852,7 +855,7 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.Resize(size, interpolation=interpolation),
                 transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -1199,10 +1202,11 @@ def main(args):
             text_encoder_one.gradient_checkpointing_enable()
             text_encoder_two.gradient_checkpointing_enable()
 
-    def get_lora_config(rank, use_dora, target_modules):
+    def get_lora_config(rank, dropout, use_dora, target_modules):
         base_config = {
             "r": rank,
             "lora_alpha": rank,
+            "lora_dropout": dropout,
             "init_lora_weights": "gaussian",
             "target_modules": target_modules,
         }
@@ -1218,14 +1222,24 @@ def main(args):
 
     # now we will add new LoRA weights to the attention layers
     unet_target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
-    unet_lora_config = get_lora_config(rank=args.rank, use_dora=args.use_dora, target_modules=unet_target_modules)
+    unet_lora_config = get_lora_config(
+        rank=args.rank,
+        dropout=args.lora_dropout,
+        use_dora=args.use_dora,
+        target_modules=unet_target_modules,
+    )
     unet.add_adapter(unet_lora_config)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
         text_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
-        text_lora_config = get_lora_config(rank=args.rank, use_dora=args.use_dora, target_modules=text_target_modules)
+        text_lora_config = get_lora_config(
+            rank=args.rank,
+            dropout=args.lora_dropout,
+            use_dora=args.use_dora,
+            target_modules=text_target_modules,
+        )
         text_encoder_one.add_adapter(text_lora_config)
         text_encoder_two.add_adapter(text_lora_config)
 
@@ -1523,17 +1537,22 @@ def main(args):
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
     # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
+        )
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
@@ -1550,7 +1569,14 @@ def main(args):
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
+    if args.max_train_steps is None:
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+        if num_training_steps_for_scheduler != args.max_train_steps:
+            logger.warning(
+                f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
+                f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
+                f"This inconsistency may result in the learning rate scheduler not functioning properly."
+            )
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
@@ -1687,7 +1713,7 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
                 # For EDM-style training, we first obtain the sigmas based on the continuous timesteps.
                 # We then precondition the final model inputs based on these sigmas instead of the timesteps.
-                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                # Follow: Section 5 of https://huggingface.co/papers/2206.00364.
                 if args.do_edm_style_training:
                     sigmas = get_sigmas(timesteps, len(noisy_model_input.shape), noisy_model_input.dtype)
                     if "EDM" in scheduler_type:
@@ -1747,7 +1773,7 @@ def main(args):
                 if args.do_edm_style_training:
                     # Similar to the input preconditioning, the model predictions are also preconditioned
                     # on noised model inputs (before preconditioning) and the sigmas.
-                    # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                    # Follow: Section 5 of https://huggingface.co/papers/2206.00364.
                     if "EDM" in scheduler_type:
                         model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
                     else:
@@ -1805,7 +1831,7 @@ def main(args):
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Compute loss-weights as per Section 3.4 of https://huggingface.co/papers/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)

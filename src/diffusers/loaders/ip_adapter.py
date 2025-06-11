@@ -526,7 +526,7 @@ class FluxIPAdapterMixin:
                                 low_cpu_mem_usage=low_cpu_mem_usage,
                                 cache_dir=cache_dir,
                                 local_files_only=local_files_only,
-                                dtype=image_encoder_dtype,
+                                torch_dtype=image_encoder_dtype,
                             )
                             .to(self.device)
                             .eval()

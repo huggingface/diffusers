@@ -219,7 +219,7 @@ def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
         kwargs (`dict`, *args*):
             Additional arguments to pass to the method.
 
-            - **adapter_name**: For example, in case of PEFT, some keys will be pre-pended
+            - **adapter_name**: For example, in case of PEFT, some keys will be prepended
                 with the adapter name, therefore needs a special handling. By default PEFT also takes care of that in
                 `get_peft_model_state_dict` method:
                 https://github.com/huggingface/peft/blob/ba0477f2985b1ba311b83459d29895c809404e99/src/peft/utils/save_and_load.py#L92
@@ -290,7 +290,7 @@ def convert_state_dict_to_kohya(state_dict, original_type=None, **kwargs):
         kwargs (`dict`, *args*):
             Additional arguments to pass to the method.
 
-            - **adapter_name**: For example, in case of PEFT, some keys will be pre-pended
+            - **adapter_name**: For example, in case of PEFT, some keys will be prepended
                 with the adapter name, therefore needs a special handling. By default PEFT also takes care of that in
                 `get_peft_model_state_dict` method:
                 https://github.com/huggingface/peft/blob/ba0477f2985b1ba311b83459d29895c809404e99/src/peft/utils/save_and_load.py#L92

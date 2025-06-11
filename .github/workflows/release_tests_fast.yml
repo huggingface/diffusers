@@ -316,7 +316,7 @@ jobs:
       group: aws-g4dn-2xlarge
 
     container:
-      image: diffusers/diffusers-pytorch-compile-cuda
+      image: diffusers/diffusers-pytorch-cuda
       options: --gpus 0 --shm-size "16gb" --ipc host
 
     steps:
@@ -335,7 +335,7 @@ jobs:
     - name: Environment
       run: |
         python utils/print_env.py
-    - name: Run example tests on GPU
+    - name: Run torch compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         RUN_COMPILE: yes

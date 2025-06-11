@@ -160,3 +160,90 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("TODO: revisit failing as it requires a very high threshold to pass")
     def test_inference_batch_single_identical(self):
         pass
+
+
+class WanFLFToVideoPipelineFastTests(WanImageToVideoPipelineFastTests):
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        vae = AutoencoderKLWan(
+            base_dim=3,
+            z_dim=16,
+            dim_mult=[1, 1, 1, 1],
+            num_res_blocks=1,
+            temperal_downsample=[False, True, True],
+        )
+
+        torch.manual_seed(0)
+        # TODO: impl FlowDPMSolverMultistepScheduler
+        scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        torch.manual_seed(0)
+        transformer = WanTransformer3DModel(
+            patch_size=(1, 2, 2),
+            num_attention_heads=2,
+            attention_head_dim=12,
+            in_channels=36,
+            out_channels=16,
+            text_dim=32,
+            freq_dim=256,
+            ffn_dim=32,
+            num_layers=2,
+            cross_attn_norm=True,
+            qk_norm="rms_norm_across_heads",
+            rope_max_seq_len=32,
+            image_dim=4,
+            pos_embed_seq_len=2 * (4 * 4 + 1),
+        )
+
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=4,
+            projection_dim=4,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            image_size=4,
+            intermediate_size=16,
+            patch_size=1,
+        )
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+
+        torch.manual_seed(0)
+        image_processor = CLIPImageProcessor(crop_size=4, size=4)
+
+        components = {
+            "transformer": transformer,
+            "vae": vae,
+            "scheduler": scheduler,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "image_encoder": image_encoder,
+            "image_processor": image_processor,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        image_height = 16
+        image_width = 16
+        image = Image.new("RGB", (image_width, image_height))
+        last_image = Image.new("RGB", (image_width, image_height))
+        inputs = {
+            "image": image,
+            "last_image": last_image,
+            "prompt": "dance monkey",
+            "negative_prompt": "negative",
+            "height": image_height,
+            "width": image_width,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "num_frames": 9,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+        }
+        return inputs
