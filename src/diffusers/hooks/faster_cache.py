@@ -146,7 +146,7 @@ class FasterCacheConfig:
     alpha_low_frequency: float = 1.1
     alpha_high_frequency: float = 1.1
 
-    # n as described in CFG-Cache explanation in the paper - dependant on the model
+    # n as described in CFG-Cache explanation in the paper - dependent on the model
     unconditional_batch_skip_range: int = 5
     unconditional_batch_timestep_skip_range: Tuple[int, int] = (-1, 641)
 

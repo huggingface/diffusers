@@ -635,10 +635,10 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
     return arry
 
 
-def load_pt(url: str, map_location: str):
+def load_pt(url: str, map_location: Optional[str] = None, weights_only: Optional[bool] = True):
     response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
-    arry = torch.load(BytesIO(response.content), map_location=map_location)
+    arry = torch.load(BytesIO(response.content), map_location=map_location, weights_only=weights_only)
     return arry
 
 

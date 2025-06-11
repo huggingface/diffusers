@@ -58,6 +58,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "CogView4Transformer2DModel": lambda model_cls, weights: weights,
     "HiDreamImageTransformer2DModel": lambda model_cls, weights: weights,
     "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
+    "WanVACETransformer3DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -251,7 +252,7 @@ class PeftAdapterMixin:
 
             rank = {}
             for key, val in state_dict.items():
-                # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
+                # Cannot figure out rank from lora layers that don't have at least 2 dimensions.
                 # Bias layers in LoRA only have a single dimension
                 if "lora_B" in key and val.ndim > 1:
                     # Check out https://github.com/huggingface/peft/pull/2419 for the `^` symbol.
