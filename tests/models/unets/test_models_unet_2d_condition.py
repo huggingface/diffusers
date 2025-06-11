@@ -46,7 +46,6 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
-    require_torch_gpu,
     skip_mps,
     slow,
     torch_all_close,
@@ -978,13 +977,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
-    @require_torch_gpu
     @parameterized.expand(
         [
             ("hf-internal-testing/unet2d-sharded-dummy", None),
             ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
         ]
     )
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_from_hub(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained(repo_id, variant=variant)
@@ -994,13 +993,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
     @parameterized.expand(
         [
             ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
             ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
         ]
     )
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_from_hub_subfolder(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained(repo_id, subfolder="unet", variant=variant)
