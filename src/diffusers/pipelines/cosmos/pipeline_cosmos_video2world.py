@@ -174,7 +174,8 @@ def retrieve_latents(
 
 class CosmosVideoToWorldPipeline(DiffusionPipeline):
     r"""
-    Pipeline for image-to-video and video-to-video generation using [Cosmos](https://github.com/NVIDIA/Cosmos).
+    Pipeline for image-to-world and video-to-world generation using [Cosmos
+    Predict-1](https://github.com/nvidia-cosmos/cosmos-predict1).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).

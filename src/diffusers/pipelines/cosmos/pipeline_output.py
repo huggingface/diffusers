@@ -29,7 +29,7 @@ class CosmosPipelineOutput(BaseOutput):
 @dataclass
 class CosmosImagePipelineOutput(BaseOutput):
     """
-    Output class for CogView3 pipelines.
+    Output class for Cosmos any-to-image pipelines.
 
     Args:
         images (`List[PIL.Image.Image]` or `np.ndarray`)

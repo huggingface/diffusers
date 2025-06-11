@@ -21,7 +21,7 @@ from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLWan, CosmosTransformer3DModel
-from ...schedulers import EDMEulerScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_cosmos_guardrail_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -134,7 +134,7 @@ def retrieve_timesteps(
 
 class Cosmos2TextToImagePipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using [Cosmos](https://github.com/NVIDIA/Cosmos).
+    Pipeline for text-to-image generation using [Cosmos Predict2](https://github.com/nvidia-cosmos/cosmos-predict2).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -149,7 +149,7 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
         transformer ([`CosmosTransformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
-        scheduler ([`EDMEulerScheduler`]):
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
@@ -166,7 +166,7 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
         tokenizer: T5TokenizerFast,
         transformer: CosmosTransformer3DModel,
         vae: AutoencoderKLWan,
-        scheduler: EDMEulerScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         safety_checker: CosmosSafetyChecker = None,
     ):
         super().__init__()
@@ -543,7 +543,8 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
         )
 
         # 4. Prepare timesteps
-        sigmas = torch.linspace(0, 1, num_inference_steps, dtype=torch.float64)
+        sigmas_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
+        sigmas = torch.linspace(0, 1, num_inference_steps, dtype=sigmas_dtype)
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, device=device, sigmas=sigmas)
         if self.scheduler.config.final_sigmas_type == "sigma_min":
             # Replace the last sigma (which is zero) with the minimum sigma value
@@ -577,14 +578,13 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
                     continue
 
                 self._current_timestep = t
-                timestep = t.expand(latents.shape[0]).to(transformer_dtype)
                 current_sigma = self.scheduler.sigmas[i]
 
                 current_t = current_sigma / (current_sigma + 1)
                 c_in = 1 - current_t
                 c_skip = 1 - current_t
                 c_out = -current_t
-                timestep = current_t.expand(latents.shape[0]).to(transformer_dtype)
+                timestep = current_t.expand(latents.shape[0]).to(transformer_dtype)  # [B, 1, T, 1, 1]
 
                 latent_model_input = latents * c_in
                 latent_model_input = latent_model_input.to(transformer_dtype)

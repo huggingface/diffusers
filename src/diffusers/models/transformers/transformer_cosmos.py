@@ -568,6 +568,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.unflatten(2, (p_h, p_w, p_t, -1))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
+        # NOTE: The permutation order here is not the inverse operation of what happens when patching as usually expected.
+        # It might be a source of confusion to the reader, but this is correct
         hidden_states = hidden_states.permute(0, 7, 1, 6, 2, 4, 3, 5)
         hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
 

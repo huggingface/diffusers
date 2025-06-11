@@ -131,7 +131,7 @@ def retrieve_timesteps(
 
 class CosmosTextToWorldPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-video generation using [Cosmos](https://github.com/NVIDIA/Cosmos).
+    Pipeline for text-to-world generation using [Cosmos Predict1](https://github.com/nvidia-cosmos/cosmos-predict1).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
