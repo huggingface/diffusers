@@ -312,9 +312,7 @@ def require_torch_gpu(test_case):
 
 def require_torch_cuda_compatibility(expected_compute_capability):
     def decorator(test_case):
-        if not torch.cuda.is_available():
-            return unittest.skip(test_case)
-        else:
+        if torch.cuda.is_available():
             current_compute_capability = get_torch_cuda_device_capability()
             return unittest.skipUnless(
                 float(current_compute_capability) == float(expected_compute_capability),
