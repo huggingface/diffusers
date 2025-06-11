@@ -23,7 +23,7 @@ from diffusers.utils.testing_utils import backend_empty_cache, require_torch_gpu
 
 @require_torch_gpu
 @slow
-class QuantCompileMiscTests(unittest.TestCase):
+class QuantCompileTests(unittest.TestCase):
     quantization_config = None
 
     def setUp(self):
