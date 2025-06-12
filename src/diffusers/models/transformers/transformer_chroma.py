@@ -290,7 +290,6 @@ class ChromaTransformer2DModel(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
-                    variant=variant,
                 )
                 for _ in range(num_layers)
             ]
@@ -302,7 +301,6 @@ class ChromaTransformer2DModel(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
-                    variant=variant,
                 )
                 for _ in range(num_single_layers)
             ]
