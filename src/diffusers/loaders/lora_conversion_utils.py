@@ -1725,10 +1725,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                         )
 
         for img_ours, img_theirs in [
-            (
-                "ff.net.0.proj",
-                "img_emb.proj.1"
-            ),
+            ("ff.net.0.proj", "img_emb.proj.1"),
             ("ff.net.2", "img_emb.proj.3"),
         ]:
             original_key = f"{img_theirs}.{lora_down_key}.weight"
