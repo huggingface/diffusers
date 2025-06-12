@@ -308,7 +308,7 @@ class ChromaPipeline(
         if prompt_embeds is None:
 
             prompt_embeds = self._get_t5_prompt_embeds(
-                prompt=prompt_2,
+                prompt=prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
@@ -377,7 +377,6 @@ class ChromaPipeline(
         height,
         width,
         negative_prompt=None,
-        negative_prompt_2=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
