@@ -506,6 +506,10 @@ class ChromaPipeline(
         return self._joint_attention_kwargs
 
     @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+    
+    @property
     def num_timesteps(self):
         return self._num_timesteps
 
@@ -660,7 +664,6 @@ class ChromaPipeline(
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        do_cfg = guidance_scale > 1
         (
             prompt_embeds,
             text_ids,
@@ -672,7 +675,7 @@ class ChromaPipeline(
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,
         )
-        if do_cfg:
+        if self.do_classifier_free_guidance:
             (
                 negative_prompt_embeds,
                 negative_text_ids,
@@ -772,7 +775,7 @@ class ChromaPipeline(
                     return_dict=False,
                 )[0]
 
-                if do_cfg:
+                if self.do_classifier_free_guidance:
                     if negative_image_embeds is not None:
                         self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
                     neg_noise_pred = self.transformer(
