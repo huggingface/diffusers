@@ -543,8 +543,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         onload_device: torch.device,
         offload_device: torch.device = torch.device("cpu"),
         offload_type: str = "block_level",
-        offload_to_disk: bool = False,
-        offload_path: Optional[str] = None,
+        offload_to_disk_path: Optional[str] = None,
         num_blocks_per_group: Optional[int] = None,
         non_blocking: bool = False,
         use_stream: bool = False,
@@ -599,8 +598,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             use_stream=use_stream,
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
-            offload_to_disk=offload_to_disk,
-            offload_path=offload_path,
+            offload_to_disk_path=offload_to_disk_path,
         )
 
     def save_pretrained(
