@@ -167,7 +167,7 @@ class ChromaTransformerTests(ModelTesterMixin, unittest.TestCase):
 
 
 class ChromaTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = FluxTransformer2DModel
+    model_class = ChromaTransformer2DModel
 
     def prepare_init_args_and_inputs_for_common(self):
         return ChromaTransformerTests().prepare_init_args_and_inputs_for_common()

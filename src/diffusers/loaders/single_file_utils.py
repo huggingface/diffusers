@@ -3311,6 +3311,7 @@ def convert_hidream_transformer_to_diffusers(checkpoint, **kwargs):
 
     return checkpoint
 
+
 def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())
@@ -3321,7 +3322,9 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "double_blocks." in k))[-1] + 1  # noqa: C401
     num_single_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "single_blocks." in k))[-1] + 1  # noqa: C401
-    num_guidance_layers = list(set(int(k.split(".", 3)[2]) for k in checkpoint if "distilled_guidance_layer.layers." in k))[-1] + 1  # noqa: C401
+    num_guidance_layers = (
+        list({int(k.split(".", 3)[2]) for k in checkpoint if "distilled_guidance_layer.layers." in k})[-1] + 1
+    )  # noqa: C401
     mlp_ratio = 4.0
     inner_dim = 3072
 
@@ -3334,17 +3337,17 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     # guidance
     converted_state_dict["distilled_guidance_layer.in_proj.bias"] = checkpoint.pop(
-            "distilled_guidance_layer.in_proj.bias"
-        )
+        "distilled_guidance_layer.in_proj.bias"
+    )
     converted_state_dict["distilled_guidance_layer.in_proj.weight"] = checkpoint.pop(
-            "distilled_guidance_layer.in_proj.weight"
-        )
+        "distilled_guidance_layer.in_proj.weight"
+    )
     converted_state_dict["distilled_guidance_layer.out_proj.bias"] = checkpoint.pop(
-            "distilled_guidance_layer.out_proj.bias"
-        )
+        "distilled_guidance_layer.out_proj.bias"
+    )
     converted_state_dict["distilled_guidance_layer.out_proj.weight"] = checkpoint.pop(
-            "distilled_guidance_layer.out_proj.weight"
-        )
+        "distilled_guidance_layer.out_proj.weight"
+    )
     for i in range(num_guidance_layers):
         block_prefix = f"distilled_guidance_layer.layers.{i}."
         converted_state_dict[f"{block_prefix}linear_1.bias"] = checkpoint.pop(

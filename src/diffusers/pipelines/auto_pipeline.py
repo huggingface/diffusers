@@ -144,7 +144,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-controlnet", FluxControlNetPipeline),
         ("lumina", LuminaPipeline),
         ("lumina2", Lumina2Pipeline),
-        ("chroma", ChromaPipeline)
+        ("chroma", ChromaPipeline),
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
         ("cogview4-control", CogView4ControlPipeline),

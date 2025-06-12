@@ -35,15 +35,15 @@ from ..attention_processor import (
 from ..cache_utils import CacheMixin
 from ..embeddings import (
     FluxPosEmbed,
-    Timesteps,
     PixArtAlphaTextProjection,
+    Timesteps,
     get_timestep_embedding,
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import (
-    FP32LayerNorm,
     CombinedTimestepLabelEmbeddings,
+    FP32LayerNorm,
     RMSNorm,
 )
 
@@ -173,7 +173,9 @@ class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
 
         self.register_buffer(
             "mod_proj",
-            get_timestep_embedding(torch.arange(out_dim)*1000, 2 * factor, flip_sin_to_cos=True, downscale_freq_shift=0),
+            get_timestep_embedding(
+                torch.arange(out_dim) * 1000, 2 * factor, flip_sin_to_cos=True, downscale_freq_shift=0
+            ),
             persistent=False,
         )
 
@@ -208,6 +210,7 @@ class ChromaApproximator(nn.Module):
             x = x + layer(norms(x))
 
         return self.out_proj(x)
+
 
 @maybe_allow_in_graph
 class ChromaSingleTransformerBlock(nn.Module):
@@ -457,7 +460,9 @@ class ChromaTransformer2DModel(
             ]
         )
 
-        self.norm_out = ChromaAdaLayerNormContinuousPruned(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
+        self.norm_out = ChromaAdaLayerNormContinuousPruned(
+            self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6
+        )
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False

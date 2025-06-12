@@ -1,25 +1,17 @@
-import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
-from huggingface_hub import hf_hub_download
-from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
-    FasterCacheConfig,
-    FlowMatchEulerDiscreteScheduler,
     ChromaPipeline,
     ChromaTransformer2DModel,
+    FasterCacheConfig,
+    FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
-    nightly,
-    numpy_cosine_similarity_distance,
-    require_big_accelerator,
-    slow,
     torch_device,
 )
 
@@ -96,7 +88,6 @@ class ChromaPipelineFastTests(
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "tokenizer_2": tokenizer_2,
             "transformer": transformer,
             "vae": vae,
             "image_encoder": None,
@@ -191,4 +182,3 @@ class ChromaPipelineFastTests(
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
-

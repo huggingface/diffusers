@@ -65,6 +65,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
@@ -225,7 +226,7 @@ class ChromaPipeline(
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        
+
         prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
             output_hidden_states=False,
@@ -233,10 +234,8 @@ class ChromaPipeline(
         )[0]
 
         max_len = min(text_inputs.attention_mask.sum() + 1, max_sequence_length)
-        prompt_embeds = prompt_embeds[
-            :, :max_len
-        ]
-        
+        prompt_embeds = prompt_embeds[:, :max_len]
+
         dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
@@ -286,7 +285,6 @@ class ChromaPipeline(
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
         if prompt_embeds is None:
-
             prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_images_per_prompt=num_images_per_prompt,
@@ -467,7 +465,6 @@ class ChromaPipeline(
         """
         self.vae.disable_tiling()
 
-
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_latents
     def prepare_latents(
         self,
@@ -515,7 +512,7 @@ class ChromaPipeline(
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1
-    
+
     @property
     def num_timesteps(self):
         return self._num_timesteps
@@ -694,7 +691,7 @@ class ChromaPipeline(
                 max_sequence_length=max_sequence_length,
                 lora_scale=lora_scale,
             )
-        
+
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
         latents, latent_image_ids = self.prepare_latents(

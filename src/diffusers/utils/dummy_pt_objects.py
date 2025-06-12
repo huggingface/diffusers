@@ -324,6 +324,7 @@ class CacheMixin(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
 
+
 class ChromaTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
