@@ -3333,20 +3333,20 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         return new_weight
 
     # guidance
-    converted_state_dict["time_text_embed.embedder.in_proj.bias"] = checkpoint.pop(
+    converted_state_dict["distilled_guidance_layer.in_proj.bias"] = checkpoint.pop(
             "distilled_guidance_layer.in_proj.bias"
         )
-    converted_state_dict["time_text_embed.embedder.in_proj.weight"] = checkpoint.pop(
+    converted_state_dict["distilled_guidance_layer.in_proj.weight"] = checkpoint.pop(
             "distilled_guidance_layer.in_proj.weight"
         )
-    converted_state_dict["time_text_embed.embedder.out_proj.bias"] = checkpoint.pop(
+    converted_state_dict["distilled_guidance_layer.out_proj.bias"] = checkpoint.pop(
             "distilled_guidance_layer.out_proj.bias"
         )
-    converted_state_dict["time_text_embed.embedder.out_proj.weight"] = checkpoint.pop(
+    converted_state_dict["distilled_guidance_layer.out_proj.weight"] = checkpoint.pop(
             "distilled_guidance_layer.out_proj.weight"
         )
     for i in range(num_guidance_layers):
-        block_prefix = f"time_text_embed.embedder.layers.{i}."
+        block_prefix = f"distilled_guidance_layer.layers.{i}."
         converted_state_dict[f"{block_prefix}linear_1.bias"] = checkpoint.pop(
             f"distilled_guidance_layer.layers.{i}.in_layer.bias"
         )
@@ -3359,7 +3359,7 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         converted_state_dict[f"{block_prefix}linear_2.weight"] = checkpoint.pop(
             f"distilled_guidance_layer.layers.{i}.out_layer.weight"
         )
-        converted_state_dict[f"time_text_embed.embedder.norms.{i}.weight"] = checkpoint.pop(
+        converted_state_dict[f"distilled_guidance_layer.norms.{i}.weight"] = checkpoint.pop(
             f"distilled_guidance_layer.norms.{i}.scale"
         )
 
