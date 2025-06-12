@@ -78,9 +78,7 @@ def create_flux_ip_adapter_state_dict(model):
     return ip_state_dict
 
 
-class FluxTransformerTests(
-    ModelTesterMixin, TorchCompileTesterMixin, LoraHotSwappingForModelTesterMixin, unittest.TestCase
-):
+class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = FluxTransformer2DModel
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
@@ -169,3 +167,17 @@ class FluxTransformerTests(
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"FluxTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = FluxTransformer2DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+
+
+class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = FluxTransformer2DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
