@@ -19,8 +19,6 @@ import numpy as np
 import torch
 from transformers import (
     CLIPImageProcessor,
-    CLIPTextModel,
-    CLIPTokenizer,
     CLIPVisionModelWithProjection,
     T5EncoderModel,
     T5TokenizerFast,
@@ -168,7 +166,7 @@ class ChromaPipeline(
             [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"
     _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
@@ -198,9 +196,6 @@ class ChromaPipeline(
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
-        self.tokenizer_max_length = (
-            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
-        )
         self.default_sample_size = 128
 
     def _get_chroma_attn_mask(self, length: torch.Tensor, max_sequence_length: int) -> torch.Tensor:
@@ -225,9 +220,9 @@ class ChromaPipeline(
         batch_size = len(prompt)
 
         if isinstance(self, TextualInversionLoaderMixin):
-            prompt = self.maybe_convert_prompt(prompt, self.tokenizer_2)
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
-        text_inputs = self.tokenizer_2(
+        text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
             max_length=max_sequence_length,
@@ -237,16 +232,9 @@ class ChromaPipeline(
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        untruncated_ids = self.tokenizer_2(prompt, padding="longest", return_tensors="pt").input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer_2.batch_decode(untruncated_ids[:, self.tokenizer_max_length - 1 : -1])
-            logger.warning(
-                "The following part of your input was truncated because `max_sequence_length` is set to "
-                f" {max_sequence_length} tokens: {removed_text}"
-            )
-
-        prompt_embeds = self.text_encoder_2(
+        prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
             output_hidden_states=False,
             attention_mask=(
@@ -254,7 +242,7 @@ class ChromaPipeline(
             ),
         )[0]
 
-        dtype = self.text_encoder_2.dtype
+        dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
