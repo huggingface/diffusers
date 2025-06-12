@@ -81,7 +81,15 @@ smashed_pipe = smash(pipe, smash_config)
 
 # run the model
 smashed_pipe("a knitted purple prune").images[0]
+```
 
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/flux_smashed_comparison.png">
+</div>
+
+After optimization, we can share and load the optimized model using the Hugging Face Hub.
+
+```python
 # save the model
 smashed_pipe.save_to_hub("<username>/FLUX.1-dev-smashed")
 
@@ -89,19 +97,16 @@ smashed_pipe.save_to_hub("<username>/FLUX.1-dev-smashed")
 smashed_pipe = PrunaModel.from_hub("<username>/FLUX.1-dev-smashed")
 ```
 
-
-<div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/flux_smashed_comparison.png">
-</div>
-
-
 ## Evaluate and benchmark Diffusers models
 
 Pruna provides the [EvaluationAgent](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/evaluate.html) to evaluate the quality of your optimized models.
 
-Define the metrics, such as total time and throughput, and the dataset to evaluate on. Then pass them to `Task` to create a task and pass it to the `EvaluationAgent`.
+We can metrics we care about, such as total time and throughput, and the dataset to evaluate on. We can define a model and pass it to the `EvaluationAgent`.
 
-Call `evaluate` on the pipeline to execute the task passed to the `EvaluationAgent`.
+<hfoptions id="eval">
+<hfoption id="optimized model">
+
+We can load and evaluate an optimized model by using the `EvaluationAgent` and pass it to the `Task`.
 
 ```python
 import torch
@@ -122,11 +127,6 @@ device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is
 
 # load the model
 # Try PrunaAI/Segmind-Vega-smashed or PrunaAI/FLUX.1-dev-smashed with a small GPU memory
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16
-).to("cpu")
-wrapped_pipe = PrunaModel(model=pipe)
 smashed_pipe = PrunaModel.from_hub("PrunaAI/FLUX.1-dev-smashed")
 
 # Define the metrics
@@ -144,25 +144,16 @@ datamodule.limit_datasets(10)
 task = Task(metrics, datamodule=datamodule, device=device)
 eval_agent = EvaluationAgent(task)
 
-# Evaluate base model and offload it to CPU
-wrapped_pipe.move_to_device(device)
-base_model_results = eval_agent.evaluate(wrapped_pipe)
-wrapped_pipe.move_to_device("cpu")
-
 # Evaluate smashed model and offload it to CPU
 smashed_pipe.move_to_device(device)
-smashed_model_results = eval_agent.evaluate(smashed_pipe)
+smashed_pipe_results = eval_agent.evaluate(smashed_pipe)
 smashed_pipe.move_to_device("cpu")
 ```
 
-> [!TIP]
-> For more details about benchmarking Flux, check out the [Announcing FLUX-Juiced: The Fastest Image Generation Endpoint (2.6 times faster)!](https://huggingface.co/blog/PrunaAI/flux-fastest-image-generation-endpoint) blog post and the [InferBench](https://huggingface.co/spaces/PrunaAI/InferBench) Space.
-
-### Evaluate and benchmark standalone diffusers models
+</hfoption>
+<hfoption id="standalone model">
 
 Instead of comparing the optimized model to the base model, you can also evaluate the standalone `diffusers` model. This is useful if you want to evaluate the performance of the model without the optimization. We can do so by using the `PrunaModel` wrapper and run the `EvaluationAgent` on it.
-
-Let's take a look at an example on how to evaluate and benchmark a standalone `diffusers` model.
 
 ```python
 import torch
@@ -179,8 +170,13 @@ pipe = FluxPipeline.from_pretrained(
 wrapped_pipe = PrunaModel(model=pipe)
 ```
 
+</hfoption>
+</hfoptions>
+
 Now that you have seen how to optimize and evaluate your models, you can start using Pruna to optimize your own models. Luckily, we have many examples to help you get started.
 
+> [!TIP]
+> For more details about benchmarking Flux, check out the [Announcing FLUX-Juiced: The Fastest Image Generation Endpoint (2.6 times faster)!](https://huggingface.co/blog/PrunaAI/flux-fastest-image-generation-endpoint) blog post and the [InferBench](https://huggingface.co/spaces/PrunaAI/InferBench) Space.
 
 ## Reference
 
