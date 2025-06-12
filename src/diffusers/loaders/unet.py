@@ -408,6 +408,7 @@ class UNet2DConditionLoadersMixin:
             tuple:
                 A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
         """
+
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
     def save_attn_procs(
