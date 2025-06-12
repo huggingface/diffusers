@@ -418,15 +418,10 @@ transformer_4bit.dequantize()
 
 ## torch.compile
 
+Speed up inference with `torch.compile`. Make sure you have the latest `bitsandbytes` installed and we also recommend installing [PyTorch nightly](https://pytorch.org/get-started/locally/).
+
 <hfoptions id="bnb">
 <hfoption id="8-bit">
-
-Speed up inference with `torch.compile`. Make sure you have
-the latest `bitsandbytes` installed and we also recommend installing [PyTorch nightly](https://pytorch.org/get-started/locally/).
-
-```py
-pip install -U bitsandbytes
-
 ```py
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
@@ -456,7 +451,7 @@ transformer_4bit.compile(fullgraph=True)
 </hfoption>
 </hfoptions>
 
-On a RTX 4090 with compilation, 4-bit Flux generation completed in 25.809 seconds versus 32.570 seconds without.
+On an RTX 4090 with compilation, 4-bit Flux generation completed in 25.809 seconds versus 32.570 seconds without.
 
 Check out the [benchmarking script](https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d) for more details.
 
