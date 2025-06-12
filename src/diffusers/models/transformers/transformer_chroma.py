@@ -34,9 +34,7 @@ from ..attention_processor import (
 )
 from ..cache_utils import CacheMixin
 from ..embeddings import (
-    CombinedTimestepGuidanceTextProjEmbeddings,
     CombinedTimestepTextProjChromaEmbeddings,
-    CombinedTimestepTextProjEmbeddings,
     ChromaApproximator,
     FluxPosEmbed,
 )
@@ -236,8 +234,6 @@ class ChromaTransformer2DModel(
         joint_attention_dim (`int`, defaults to `4096`):
             The number of dimensions to use for the joint attention (embedding/channel dimension of
             `encoder_hidden_states`).
-        guidance_embeds (`bool`, defaults to `False`):
-            Whether to use guidance embeddings for guidance-distilled variant of the model.
         axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions to use for the rotary positional embeddings.
     """
@@ -257,7 +253,6 @@ class ChromaTransformer2DModel(
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 4096,
-        guidance_embeds: bool = False,
         axes_dims_rope: Tuple[int, ...] = (16, 56, 56),
         approximator_in_factor: int = 16,
         approximator_hidden_dim: int = 5120,
