@@ -1,1 +1,1 @@
- src/diffusers/quantizers/finegrained_fp8/finegrained_fp8_quantizer.pyfrom .finegrained_fp8_quantizer import FinegrainedFP8Quantizer
+from .finegrained_fp8_quantizer import FinegrainedFP8Quantizer
