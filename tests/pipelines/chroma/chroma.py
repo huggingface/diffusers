@@ -67,31 +67,13 @@ class ChromaPipelineFastTests(
             attention_head_dim=16,
             num_attention_heads=2,
             joint_attention_dim=32,
-            pooled_projection_dim=32,
             axes_dims_rope=[4, 4, 8],
         )
-        clip_text_encoder_config = CLIPTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=32,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
-            pad_token_id=1,
-            vocab_size=1000,
-            hidden_act="gelu",
-            projection_dim=32,
-        )
 
         torch.manual_seed(0)
-        text_encoder = CLIPTextModel(clip_text_encoder_config)
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
 
-        torch.manual_seed(0)
-        text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
         vae = AutoencoderKL(
@@ -113,7 +95,6 @@ class ChromaPipelineFastTests(
         return {
             "scheduler": scheduler,
             "text_encoder": text_encoder,
-            "text_encoder_2": text_encoder_2,
             "tokenizer": tokenizer,
             "tokenizer_2": tokenizer_2,
             "transformer": transformer,
@@ -130,6 +111,7 @@ class ChromaPipelineFastTests(
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "negative_prompt": "bad, ugly",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
@@ -140,14 +122,14 @@ class ChromaPipelineFastTests(
         }
         return inputs
 
-    def test_flux_different_prompts(self):
+    def test_chroma_different_prompts(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
         inputs = self.get_dummy_inputs(torch_device)
         output_same_prompt = pipe(**inputs).images[0]
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt_2"] = "a different prompt"
+        inputs["prompt"] = "a different prompt"
         output_different_prompts = pipe(**inputs).images[0]
 
         max_diff = np.abs(output_same_prompt - output_different_prompts).max()
@@ -196,7 +178,7 @@ class ChromaPipelineFastTests(
             "Original outputs should match when fused QKV projections are disabled."
         )
 
-    def test_flux_image_output_shape(self):
+    def test_chroma_image_output_shape(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
 
@@ -210,13 +192,3 @@ class ChromaPipelineFastTests(
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
 
-    def test_flux_true_cfg(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs.pop("generator")
-
-        no_true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
-        inputs["negative_prompt"] = "bad quality"
-        inputs["true_cfg_scale"] = 2.0
-        true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
-        assert not np.allclose(no_true_cfg_out, true_cfg_out)
