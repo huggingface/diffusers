@@ -1,8 +1,7 @@
 # Pruna
 
-[Pruna](https://github.com/pruna-ai/pruna) is a powerful model optimization framework that helps you unlock maximum performance from your AI models. With Pruna, you can dramatically accelerate inference speeds, reduce memory usage, and optimize model efficiency, all while maintaining a similar output quality.
+[Pruna](https://github.com/PrunaAI/pruna) is a model optimization framework that offers various optimization methods - quantization, pruning, caching, compilation - for accelerating inference and reducing memory usage. A general overview of the optimization methods are shown below.
 
-Pruna provides a comprehensive suite of cutting-edge optimization algorithms, each carefully designed to address specific performance bottlenecks. From quantization and pruning to advanced caching and compilation techniques, Pruna gives you the tools to fine-tune your models for optimal performance. A general overview of the optimization methods supported by Pruna is shown as follows.
 
 | Technique    | Description                                                                                   | Speed | Memory | Quality |
 |--------------|-----------------------------------------------------------------------------------------------|:-----:|:------:|:-------:|
@@ -18,35 +17,36 @@ Pruna provides a comprehensive suite of cutting-edge optimization algorithms, ea
 
 ✅ (improves), ➖ (approx. the same), ❌ (worsens)
 
-Explore the full range of optimization methods in [the Pruna documentation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html#configure-algorithms).
+Explore the full range of optimization methods in the [Pruna documentation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html#configure-algorithms).
 
 ## Installation
 
-You can install Pruna using the following command:
+Install Pruna with the following command.
 
 ```bash
 pip install pruna
 ```
 
-Now that you have installed Pruna, you can start to use it to optimize your models. Let's start with optimizing a model.
 
-## Optimize diffusers models
+## Optimize Diffusers models
 
-After that you can easily optimize any `diffusers` model by defining a simple `SmashConfig`, which holds the configuration for the optimization.
-
-For `diffusers` models, we support a broad range of optimization algorithms. The overview of the supported optimization algorithms is shown as follows.
+A broad range of optimization algorithms are supported for Diffusers models as shown below.
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/diffusers_combinations.png" alt="Overview of the supported optimization algorithms for diffusers models">
 </div>
 
-Let's take a look at an example on how to optimize [black-forest-labs/FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev) with Pruna.
+The example below optimizes [black-forest-labs/FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev)
+with a combination of factorizer, compiler, and cacher algorithms. This combination accelerates inference by up to 4.2x and cuts peak GPU memory usage from 34.7GB to 28.0GB, all while maintaining virtually the same output quality.
+
+> [!TIP]
+> Refer to the [Pruna optimization](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html) docs to learn more about the optimization techniques used in this example.
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/flux_combination.png" alt="Optimization techniques used for FLUX.1-dev showing the combination of factorizer, compiler, and cacher algorithms">
 </div>
 
-This combination accelerates inference by up to 4.2× and cuts peak GPU memory usage from 34.7 GB to 28.0 GB, all while maintaining virtually the same output quality. If you want to learn more about the optimization techniques used in this example, you can have a look at [the Pruna documentation on optimization](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html).
+Start by defining a `SmashConfig` with the optimization algorithms to use. To optimize the model, wrap the pipeline and the `SmashConfig` with `smash` and then use the pipeline as normal for inference.
 
 ```python
 import torch
@@ -89,19 +89,19 @@ smashed_pipe.save_to_hub("<username>/FLUX.1-dev-smashed")
 smashed_pipe = PrunaModel.from_hub("<username>/FLUX.1-dev-smashed")
 ```
 
-The resulting generated image and inference per optimization configuration are shown as follows.
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/PrunaAI/documentation-images/resolve/main/diffusers/flux_smashed_comparison.png">
 </div>
 
-As you can see, Pruna is a very simple and easy to use framework that allows you to optimize your models with minimal effort. We already saw that the results look good to the naked eye but the cool thing is that you can also use Pruna to benchmark and evaluate your optimized models.
 
-## Evaluate and benchmark diffusers models
+## Evaluate and benchmark Diffusers models
 
-Pruna provides a simple way to evaluate the quality of your optimized models. You can use the `EvaluationAgent` to evaluate the quality of your optimized models. If you want to learn more about the evaluation of optimized models, you can have a look at [the Pruna documentation on evaluation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/evaluate.html).
+Pruna provides the [EvaluationAgent](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/evaluate.html) to evaluate the quality of your optimized models.
 
-Let's take a look at an example on how to evaluate the quality of the optimized model.
+Define the metrics, such as total time and throughput, and the dataset to evaluate on. Then pass them to `Task` to create a task and pass it to the `EvaluationAgent`.
+
+Call `evaluate` on the pipeline to execute the task passed to the `EvaluationAgent`.
 
 ```python
 import torch
@@ -155,7 +155,8 @@ smashed_model_results = eval_agent.evaluate(smashed_pipe)
 smashed_pipe.move_to_device("cpu")
 ```
 
-Besides the results we can get from the `EvaluationAgent` above, we have also used a similar approach to create and benchmark [FLUX-juiced, the fastest image generation endpoint alive](https://www.pruna.ai/blog/flux-juiced-the-fastest-image-generation-endpoint). We benchmarked our model against, FLUX.1-dev versions provided by different inference frameworks and surpassed them all. Full results of this benchmark can be found in [our blog post](https://huggingface.co/blog/PrunaAI/flux-fastest-image-generation-endpoint) and [our InferBench space](https://huggingface.co/spaces/PrunaAI/InferBench).
+> [!TIP]
+> For more details about benchmarking Flux, check out the [Announcing FLUX-Juiced: The Fastest Image Generation Endpoint (2.6 times faster)!](https://huggingface.co/blog/PrunaAI/flux-fastest-image-generation-endpoint) blog post and the [InferBench](https://huggingface.co/spaces/PrunaAI/InferBench) Space.
 
 ### Evaluate and benchmark standalone diffusers models
 
@@ -180,9 +181,6 @@ wrapped_pipe = PrunaModel(model=pipe)
 
 Now that you have seen how to optimize and evaluate your models, you can start using Pruna to optimize your own models. Luckily, we have many examples to help you get started.
 
-## Supported models
-
-Pruna aims to support a wide range of `diffusers` models and even supports different modalities, like text, image, audio, video, and Pruna is constantly expanding its support. An overview of some great combinations of models and modalities that have been succesfully optimized can be found on [the Pruna tutorial page](https://docs.pruna.ai/en/stable/docs_pruna/tutorials/index.html). Finally, a good thing is that Pruna also support `transformers` models.
 
 ## Reference
 
