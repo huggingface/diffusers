@@ -60,6 +60,7 @@ if is_torch_available():
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
+    _import_structure["transformers.chroma_transformer_2d"] = ["ChromaTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
     _import_structure["transformers.consisid_transformer_3d"] = ["ConsisIDTransformer3DModel"]
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
@@ -151,6 +152,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
+            ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
             CogView4Transformer2DModel,
