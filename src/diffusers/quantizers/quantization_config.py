@@ -493,7 +493,7 @@ class TorchAoConfig(QuantizationConfigMixin):
         TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
         if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
             is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
-            if is_floating_quant_type and not self._is_cuda_capability_atleast_8_9():
+            if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
                 raise ValueError(
                     f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
                     f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
@@ -645,7 +645,7 @@ class TorchAoConfig(QuantizationConfigMixin):
             QUANTIZATION_TYPES.update(INT8_QUANTIZATION_TYPES)
             QUANTIZATION_TYPES.update(UINTX_QUANTIZATION_DTYPES)
 
-            if cls._is_cuda_capability_atleast_8_9():
+            if cls._is_xpu_or_cuda_capability_atleast_8_9():
                 QUANTIZATION_TYPES.update(FLOATX_QUANTIZATION_TYPES)
 
             return QUANTIZATION_TYPES
@@ -655,14 +655,16 @@ class TorchAoConfig(QuantizationConfigMixin):
             )
 
     @staticmethod
-    def _is_cuda_capability_atleast_8_9() -> bool:
-        if not torch.cuda.is_available():
-            raise RuntimeError("TorchAO requires a CUDA compatible GPU and installation of PyTorch.")
-
-        major, minor = torch.cuda.get_device_capability()
-        if major == 8:
-            return minor >= 9
-        return major >= 9
+    def _is_xpu_or_cuda_capability_atleast_8_9() -> bool:
+        if torch.cuda.is_available():
+            major, minor = torch.cuda.get_device_capability()
+            if major == 8:
+                return minor >= 9
+            return major >= 9
+        elif torch.xpu.is_available():
+            return True
+        else:
+            raise RuntimeError("TorchAO requires a CUDA compatible GPU or Intel XPU and installation of PyTorch.")
 
     def get_apply_tensor_subclass(self):
         TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
