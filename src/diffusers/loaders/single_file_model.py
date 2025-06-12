@@ -101,7 +101,7 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "ChromaTransformer2DModel": {
         "checkpoint_mapping_fn": convert_chroma_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
-    }
+    },
     "LTXVideoTransformer3DModel": {
         "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
