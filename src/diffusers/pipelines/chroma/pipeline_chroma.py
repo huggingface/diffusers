@@ -609,7 +609,7 @@ class ChromaPipeline(
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.flux.FluxPipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.flux.ChromaPipelineOutput`] instead of a plain tuple.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -842,4 +842,4 @@ class ChromaPipeline(
         if not return_dict:
             return (image,)
 
-        return FluxPipelineOutput(images=image)
+        return ChromaPipelineOutput(images=image)
