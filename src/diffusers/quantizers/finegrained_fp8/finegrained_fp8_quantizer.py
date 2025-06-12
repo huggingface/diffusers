@@ -106,7 +106,7 @@ class FinegrainedFP8Quantizer(DiffusersQuantizer):
 
         if rows % block_size_m != 0 or cols % block_size_n != 0:
             raise ValueError(
-                f"Matrix dimensions ({rows}, {cols}) must be divisible by block sizes ({block_size_m}, {block_size_n} for {param_name})"
+                f"Matrix dimensions ({rows}, {cols}) must be divisible by block sizes ({block_size_m}, {block_size_n}) for {param_name}"
             )
         param_value_orig_shape = param_value.shape
 
