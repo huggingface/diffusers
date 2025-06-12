@@ -416,7 +416,6 @@ class ChromaTransformer2DModel(
         timestep: torch.LongTensor = None,
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
-        guidance: torch.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_block_samples=None,
         controlnet_single_block_samples=None,
@@ -465,10 +464,8 @@ class ChromaTransformer2DModel(
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
-        if guidance is not None:
-            guidance = guidance.to(hidden_states.dtype) * 1000
 
-        input_vec = self.time_text_embed(timestep, guidance)
+        input_vec = self.time_text_embed(timestep)
         pooled_temb = self.distilled_guidance_layer(input_vec)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
