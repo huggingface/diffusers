@@ -114,9 +114,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
             "width": 16,
             "max_sequence_length": 16,
             "output_type": "pt",
-            "overlap_history": 1,
-            "num_frames": 20,
-            "base_num_frames": 10,
+            "overlap_history": 3,
+            "num_frames": 9,
+            "base_num_frames": 5,
         }
         return inputs
 
@@ -132,8 +132,8 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (41, 3, 16, 16))
-        expected_video = torch.randn(41, 3, 16, 16)
+        self.assertEqual(generated_video.shape, (21, 3, 16, 16))
+        expected_video = torch.randn(21, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
