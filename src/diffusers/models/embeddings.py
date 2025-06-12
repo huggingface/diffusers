@@ -1642,17 +1642,10 @@ class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
 
         self.time_proj = Timesteps(num_channels=factor, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.guidance_proj = Timesteps(num_channels=factor, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.embedder = ChromaApproximator(
-            in_dim=factor * 4,
-            out_dim=out_dim,
-            hidden_dim=hidden_dim,
-            n_layers=n_layers,
-        )
-        self.embedding_dim = embedding_dim
 
         self.register_buffer(
             "mod_proj",
-            get_timestep_embedding(torch.arange(344), 2 * factor, flip_sin_to_cos=True, downscale_freq_shift=0),
+            get_timestep_embedding(torch.arange(out_dim)*1000, 2 * factor, flip_sin_to_cos=True, downscale_freq_shift=0),
             persistent=False,
         )
 
