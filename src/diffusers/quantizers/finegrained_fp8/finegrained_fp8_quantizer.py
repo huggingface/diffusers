@@ -106,13 +106,13 @@ class FinegrainedFP8Quantizer(DiffusersQuantizer):
 
         if rows % block_size_m != 0 or cols % block_size_n != 0:
             raise ValueError(
-                f"Matrix dimensions ({rows}, {cols}) must be divisible by block sizes ({block_size_m}, {block_size_n})"
+                f"Matrix dimensions ({rows}, {cols}) must be divisible by block sizes ({block_size_m}, {block_size_n} for {param_name})"
             )
         param_value_orig_shape = param_value.shape
 
         param_value = param_value.reshape(
-            -1, rows // block_size_m, block_size_m, cols // block_size_n, block_size_n
-        ).permute(0, 1, 3, 2, 4)
+            rows // block_size_m, block_size_m, cols // block_size_n, block_size_n
+        ).permute(0, 2, 1, 3)
 
         # Calculate scaling factor for each block
         max_abs = torch.amax(torch.abs(param_value), dim=(-1, -2))
@@ -123,12 +123,12 @@ class FinegrainedFP8Quantizer(DiffusersQuantizer):
         # Quantize the weights
         quantized_param = torch.clamp(param_value * scale, min=fp8_min, max=fp8_max).to(torch.float8_e4m3fn)
 
-        quantized_param = quantized_param.permute(0, 1, 3, 2, 4)
+        quantized_param = quantized_param.permute(0, 2, 1, 3)
         # Reshape back to matrix shape
         quantized_param = quantized_param.reshape(param_value_orig_shape)
 
         # Reshape scale to match the number of blocks
-        scale = scale.reshape(scale_orig_shape).squeeze().reciprocal()
+        scale = scale.reshape(scale_orig_shape).reciprocal()
 
         # Load into the model
         module._parameters[tensor_name] = quantized_param.to(target_device)
