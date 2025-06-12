@@ -1605,10 +1605,17 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     if diff_keys:
         for diff_k in diff_keys:
             param = original_state_dict[diff_k]
+            threshold = 1.6e-2
+            absdiff = param.abs().max() - param.abs().min()
             all_zero = torch.all(param == 0).item()
-            if all_zero:
-                logger.debug(f"Removed {diff_k} key from the state dict as it's all zeros.")
+            all_absdiff_lower_than_threshold = absdiff < threshold
+            if all_zero or all_absdiff_lower_than_threshold:
+                logger.debug(
+                    f"Removed {diff_k} key from the state dict as it's all zeros, or values lower than hardcoded threshold."
+                )
                 original_state_dict.pop(diff_k)
+            else:
+                print(diff_k, absdiff)
 
     # For the `diff_b` keys, we treat them as lora_bias.
     # https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraConfig.lora_bias
@@ -1655,12 +1662,16 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
         # FFN
         for o, c in zip(["ffn.0", "ffn.2"], ["net.0.proj", "net.2"]):
-            converted_state_dict[f"blocks.{i}.ffn.{c}.lora_A.weight"] = original_state_dict.pop(
-                f"blocks.{i}.{o}.{lora_down_key}.weight"
-            )
-            converted_state_dict[f"blocks.{i}.ffn.{c}.lora_B.weight"] = original_state_dict.pop(
-                f"blocks.{i}.{o}.{lora_up_key}.weight"
-            )
+            original_key = f"blocks.{i}.{o}.{lora_down_key}.weight"
+            converted_key = f"blocks.{i}.ffn.{c}.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"blocks.{i}.{o}.{lora_up_key}.weight"
+            converted_key = f"blocks.{i}.ffn.{c}.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
             if f"blocks.{i}.{o}.diff_b" in original_state_dict:
                 converted_state_dict[f"blocks.{i}.ffn.{c}.lora_B.bias"] = original_state_dict.pop(
                     f"blocks.{i}.{o}.diff_b"
@@ -1669,12 +1680,16 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     # Remaining.
     if original_state_dict:
         if any("time_projection" in k for k in original_state_dict):
-            converted_state_dict["condition_embedder.time_proj.lora_A.weight"] = original_state_dict.pop(
-                f"time_projection.1.{lora_down_key}.weight"
-            )
-            converted_state_dict["condition_embedder.time_proj.lora_B.weight"] = original_state_dict.pop(
-                f"time_projection.1.{lora_up_key}.weight"
-            )
+            original_key = f"time_projection.1.{lora_down_key}.weight"
+            converted_key = "condition_embedder.time_proj.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"time_projection.1.{lora_up_key}.weight"
+            converted_key = "condition_embedder.time_proj.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
             if "time_projection.1.diff_b" in original_state_dict:
                 converted_state_dict["condition_embedder.time_proj.lora_B.bias"] = original_state_dict.pop(
                     "time_projection.1.diff_b"
@@ -1708,6 +1723,23 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                         converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_B.bias"] = (
                             original_state_dict.pop(f"{text_time}.{b_n}.diff_b")
                         )
+
+        for img_ours, img_theirs in [
+            (
+                "ff.net.0.proj",
+                "img_emb.proj.1"
+            ),
+            ("ff.net.2", "img_emb.proj.3"),
+        ]:
+            original_key = f"{img_theirs}.{lora_down_key}.weight"
+            converted_key = f"condition_embedder.image_embedder.{img_ours}.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"{img_theirs}.{lora_up_key}.weight"
+            converted_key = f"condition_embedder.image_embedder.{img_ours}.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
 
     if len(original_state_dict) > 0:
         diff = all(".diff" in k for k in original_state_dict)
