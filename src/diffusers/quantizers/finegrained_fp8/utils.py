@@ -38,7 +38,7 @@ def act_quant_kernel(x_ptr, y_ptr, s_ptr, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     x = tl.load(x_ptr + offs).to(tl.float32)
-    s = tl.max(tl.abs(x)) / 448.0
+    s = tl.max(tl.abs(x)) / 448.0 + 1e-6
     y = x / s
     y = y.to(y_ptr.dtype.element_ty)
     tl.store(y_ptr + offs, y)

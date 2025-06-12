@@ -1238,8 +1238,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         }
 
         # Dispatch model with hooks on all devices if necessary
-        print(model.transformer_blocks[0].attn.to_q.weight)
-        print(model.transformer_blocks[0].attn.to_q.weight_scale_inv)
         if device_map is not None:
             device_map_kwargs = {
                 "device_map": device_map,
