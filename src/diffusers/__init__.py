@@ -159,6 +159,7 @@ else:
             "AutoencoderTiny",
             "AutoModel",
             "CacheMixin",
+            "ChromaTransformer2DModel",
             "CogVideoXTransformer3DModel",
             "CogView3PlusTransformer2DModel",
             "CogView4Transformer2DModel",
