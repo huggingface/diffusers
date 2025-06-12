@@ -26,27 +26,7 @@ Original model checkpoints for Chroma can be found [here](https://huggingface.co
 Chroma can use all the same optimizations as Flux.
 
 
-### Inference
-
-```python
-import torch
-from diffusers import ChromaPipeline
-
-pipe = ChromaPipeline.from_pretrained("chroma-diffusers-repo", torch_dtype=torch.bfloat16)
-pipe.enable_model_cpu_offload()
-
-prompt = "A cat holding a sign that says hello world"
-out = pipe(
-    prompt=prompt,
-    guidance_scale=4.0,
-    height=1024,
-    width=1024,
-    num_inference_steps=26,
-).images[0]
-out.save("image.png")
-```
-
-## Single File Loading for the `ChromaTransformer2DModel`
+## Inference (Single File)
 
 The `ChromaTransformer2DModel` supports loading checkpoints in the original format. This is also useful when trying to load finetunes or quantized versions of the models that have been published by the community.
 
