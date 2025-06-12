@@ -231,6 +231,7 @@ class ModuleGroup:
             # The group is now considered offloaded to disk for the rest of the session.
             self._is_offloaded_to_disk = True
 
+            # We do this to free up the RAM which is still holding the up tensor data.
             for tensor_obj in self.tensor_to_key.keys():
                 tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
             return
