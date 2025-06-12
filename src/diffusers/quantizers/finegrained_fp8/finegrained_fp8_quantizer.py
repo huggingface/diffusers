@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ...utils import is_accelerate_available, is_torch_available, logging
+from ...utils import get_module_from_name, is_accelerate_available, is_torch_available, logging
 from ..base import DiffusersQuantizer
-from ...utils import get_module_from_name
 
 
 if is_torch_available():
@@ -12,6 +11,7 @@ logger = logging.get_logger(__name__)
 
 if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
+
 
 class FinegrainedFP8Quantizer(DiffusersQuantizer):
     """

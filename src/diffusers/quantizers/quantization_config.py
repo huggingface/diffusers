@@ -28,7 +28,7 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from packaging import version
 
@@ -723,7 +723,6 @@ class QuantoConfig(QuantizationConfigMixin):
         accepted_weights = ["float8", "int8", "int4", "int2"]
         if self.weights_dtype not in accepted_weights:
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
-
 
 
 @dataclass
