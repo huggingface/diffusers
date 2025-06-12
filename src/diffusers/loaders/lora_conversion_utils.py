@@ -1614,8 +1614,6 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                     f"Removed {diff_k} key from the state dict as it's all zeros, or values lower than hardcoded threshold."
                 )
                 original_state_dict.pop(diff_k)
-            else:
-                print(diff_k, absdiff)
 
     # For the `diff_b` keys, we treat them as lora_bias.
     # https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraConfig.lora_bias
