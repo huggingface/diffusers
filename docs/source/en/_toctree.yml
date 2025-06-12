@@ -182,6 +182,8 @@
     title: Reduce memory usage
   - local: optimization/pruna
     title: Pruna
+  - local: optimization/speed-memory-optims
+    title: Compile and offloading
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome

@@ -17,7 +17,7 @@ Modern diffusion models like [Flux](../api/pipelines/flux) and [Wan](../api/pipe
 This guide will show you how to reduce your memory usage. 
 
 > [!TIP]
-> Keep in mind these techniques may need to be adjusted depending on the model! For example, a transformer-based diffusion model may not benefit equally from these inference speed optimizations as a UNet-based model.
+> Keep in mind these techniques may need to be adjusted depending on the model. For example, a transformer-based diffusion model may not benefit equally from these memory optimizations as a UNet-based model.
 
 ## Multiple GPUs
 
@@ -145,7 +145,7 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 ```
 
 > [!WARNING]
-> [`AutoencoderKLWan`] and [`AsymmetricAutoencoderKL`] don't support slicing.
+> The [`AutoencoderKLWan`] and [`AsymmetricAutoencoderKL`] classes don't support slicing.
 
 ## VAE tiling
 
@@ -219,7 +219,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
 )
-pipline.enable_model_cpu_offload()
+pipeline.enable_model_cpu_offload()
 
 pipeline(
     prompt="An astronaut riding a horse on Mars",
@@ -500,7 +500,7 @@ with torch.inference_mode():
 ## Memory-efficient attention
 
 > [!TIP]
-> Memory-efficient attention optimizes for memory usage *and* [inference speed](./fp16#scaled-dot-product-attention!
+> Memory-efficient attention optimizes for memory usage *and* [inference speed](./fp16#scaled-dot-product-attention)!
 
 The Transformers attention mechanism is memory-intensive, especially for long sequences, so you can try using different and more memory-efficient attention types.
 
