@@ -1658,7 +1658,7 @@ class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
             torch.cat([timesteps_proj, guidance_proj], dim=1).unsqueeze(1).repeat(1, mod_index_length, 1)
         )
         input_vec = torch.cat([timestep_guidance, mod_proj.unsqueeze(0)], dim=-1)
-        return input_vec
+        return input_vec.to(timestep.dtype)
 
 class CogView3CombinedTimestepSizeEmbeddings(nn.Module):
     def __init__(self, embedding_dim: int, condition_dim: int, pooled_projection_dim: int, timesteps_dim: int = 256):
