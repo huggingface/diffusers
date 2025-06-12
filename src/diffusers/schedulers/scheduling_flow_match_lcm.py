@@ -193,7 +193,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         timestep: torch.FloatTensor,
-        noise: Optional[torch.FloatTensor] = None,
+        noise: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
         Forward process in flow-matching
@@ -203,7 +203,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
                 The input sample.
             timestep (`torch.FloatTensor`):
                 The current timestep in the diffusion chain.
-            noise (`torch.FloatTensor`, *optional*):
+            noise (`torch.FloatTensor`):
                 The noise tensor.
 
         Returns:
@@ -234,9 +234,6 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(sample.shape):
             sigma = sigma.unsqueeze(-1)
-
-        if noise is None:
-            noise = torch.randn_like(sample)
 
         sample = sigma * noise + (1.0 - sigma) * sample
 
