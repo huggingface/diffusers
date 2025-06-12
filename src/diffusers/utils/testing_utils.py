@@ -314,6 +314,18 @@ def require_torch_version_greater_equal(torch_version):
     return decorator
 
 
+def require_torch_version_greater(torch_version):
+    """Decorator marking a test that requires torch with a specific version greater."""
+
+    def decorator(test_case):
+        correct_torch_version = is_torch_available() and is_torch_version(">", torch_version)
+        return unittest.skipUnless(
+            correct_torch_version, f"test requires torch with the version greater than {torch_version}"
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
@@ -323,9 +335,7 @@ def require_torch_gpu(test_case):
 
 def require_torch_cuda_compatibility(expected_compute_capability):
     def decorator(test_case):
-        if not torch.cuda.is_available():
-            return unittest.skip(test_case)
-        else:
+        if torch.cuda.is_available():
             current_compute_capability = get_torch_cuda_device_capability()
             return unittest.skipUnless(
                 float(current_compute_capability) == float(expected_compute_capability),
