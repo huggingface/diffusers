@@ -1651,20 +1651,15 @@ class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
         self, timestep: torch.Tensor, guidance: Optional[torch.Tensor]
     ) -> torch.Tensor:
         mod_index_length = self.mod_proj.shape[0]
-        timesteps_proj = self.time_proj(timestep)
-        if guidance is not None:
-            guidance_proj = self.guidance_proj(guidance.repeat(timesteps_proj.shape[0]))
-        else:
-            guidance_proj = torch.zeros(
-                (1, self.guidance_proj.num_channels),
-                dtype=timesteps_proj.dtype,
-                device=timesteps_proj.device,
-            )
-        mod_proj = self.mod_proj.unsqueeze(0).repeat(timesteps_proj.shape[0], 1, 1).to(dtype=timesteps_proj.dtype, device=timesteps_proj.device)
+
+        timesteps_proj = self.time_proj(timestep).to(dtype=timestep.dtype)
+        guidance_proj = self.guidance_proj(torch.tensor([0])).to(dtype=timestep.dtype, device=timestep.device)
+
+        mod_proj = self.mod_proj.to(dtype=timesteps_proj.dtype, device=timesteps_proj.device)
         timestep_guidance = (
-            torch.cat([timesteps_proj, guidance_proj], dim=1).repeat(1, mod_index_length, 1)
+            torch.cat([timesteps_proj, guidance_proj], dim=1).unsqueeze(1).repeat(1, mod_index_length, 1)
         )
-        input_vec = torch.cat([timestep_guidance, mod_proj], dim=-1)
+        input_vec = torch.cat([timestep_guidance, mod_proj.unsqueeze(0)], dim=-1)
         return input_vec.to(dtype=timestep.dtype)
 
 class CogView3CombinedTimestepSizeEmbeddings(nn.Module):
