@@ -1647,9 +1647,7 @@ class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
             persistent=False,
         )
 
-    def forward(
-        self, timestep: torch.Tensor, guidance: Optional[torch.Tensor]
-    ) -> torch.Tensor:
+    def forward(self, timestep: torch.Tensor) -> torch.Tensor:
         mod_index_length = self.mod_proj.shape[0]
 
         timesteps_proj = self.time_proj(timestep).to(dtype=timestep.dtype)
