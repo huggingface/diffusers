@@ -227,7 +227,7 @@ class ChromaPipeline(
         text_input_ids = text_inputs.input_ids
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-        text_inputs.attention_mask[:, : text_inputs.length + 1] = 1.0
+        #text_inputs.attention_mask[:, : text_inputs.length + 1] = 1.0
         
         prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
