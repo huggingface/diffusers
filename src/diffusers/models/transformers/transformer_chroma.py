@@ -40,6 +40,11 @@ from ..embeddings import (
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..normalization import (
+    FP32LayerNorm,
+    CombinedTimestepLabelEmbeddings,
+    RMSNorm,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -145,7 +150,7 @@ class ChromaAdaLayerNormContinuousPruned(nn.Module):
     ):
         super().__init__()
         if norm_type == "layer_norm":
-            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+            self.norm = nn.LayerNorm(embedding_dim, eps, elementwise_affine, bias)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
         else:
