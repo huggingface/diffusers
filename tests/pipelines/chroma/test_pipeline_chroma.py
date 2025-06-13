@@ -4,8 +4,15 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, ChromaPipeline, ChromaTransformer2DModel, FlowMatchEulerDiscreteScheduler
-from diffusers.utils.testing_utils import torch_device
+from diffusers import (
+    AutoencoderKL,
+    ChromaPipeline,
+    ChromaTransformer2DModel,
+    FlowMatchEulerDiscreteScheduler,
+)
+from diffusers.utils.testing_utils import (
+    torch_device,
+)
 
 from ..test_pipelines_common import (
     FluxIPAdapterTesterMixin,
@@ -22,9 +29,6 @@ class ChromaPipelineFastTests(
 ):
     pipeline_class = ChromaPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds"])
-
-    pipeline_class = ChromaPipeline
-    params = frozenset(["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds"])
     batch_params = frozenset(["prompt"])
 
     # there is no xformers processor for Flux
@@ -39,14 +43,13 @@ class ChromaPipelineFastTests(
             in_channels=4,
             num_layers=num_layers,
             num_single_layers=num_single_layers,
-            attention_head_dim=4,
-            num_attention_heads=4,
+            attention_head_dim=16,
+            num_attention_heads=2,
             joint_attention_dim=32,
             axes_dims_rope=[4, 4, 8],
-            approximator_in_factor=1,
             approximator_hidden_dim=32,
-            approximator_out_dim=64,
-            approximator_layers=5,
+            approximator_layers=1,
+            approximator_num_channels=16,
         )
 
         torch.manual_seed(0)

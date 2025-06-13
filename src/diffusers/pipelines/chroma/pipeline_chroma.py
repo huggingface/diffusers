@@ -214,7 +214,7 @@ class ChromaPipeline(
 
         text_inputs = self.tokenizer(
             prompt,
-            padding=True,
+            padding="max_length",
             max_length=max_sequence_length,
             truncation=True,
             return_length=False,
@@ -286,6 +286,11 @@ class ChromaPipeline(
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
+        if prompt is not None:
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
         if prompt_embeds is None:
             prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=prompt,
@@ -295,6 +300,8 @@ class ChromaPipeline(
             )
 
         if negative_prompt_embeds is None:
+            negative_prompt = negative_prompt or ""
+            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
             negative_prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=negative_prompt,
                 num_images_per_prompt=num_images_per_prompt,
