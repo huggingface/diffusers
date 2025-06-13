@@ -1269,7 +1269,7 @@ def main(args):
         if accelerator.is_main_process:
             transformer_lora_layers_to_save = None
             text_encoder_one_lora_layers_to_save = None
-            modules_to_save = []
+            modules_to_save = {}
             for model in models:
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
