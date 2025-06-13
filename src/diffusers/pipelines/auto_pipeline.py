@@ -20,7 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..configuration_utils import ConfigMixin
 from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
-from .aura_flow import AuraFlowPipeline
+from .aura_flow import AuraFlowImg2ImgPipeline, AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
 from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
 from .controlnet import (
@@ -165,6 +165,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGImg2ImgPipeline),
+        ("auraflow", AuraFlowImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
         ("flux", FluxImg2ImgPipeline),
         ("flux-controlnet", FluxControlNetImg2ImgPipeline),
