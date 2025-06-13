@@ -544,7 +544,11 @@ class FluxIPAdapterTesterMixin:
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        image_embed_dim = pipe.transformer.config.pooled_projection_dim or 768
+        image_embed_dim = (
+            pipe.transformer.config.pooled_projection_dim
+            if hasattr(pipe.transformer.config, "pooled_projection_dim")
+            else 768
+        )
 
         # forward pass without ip adapter
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))

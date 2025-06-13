@@ -82,7 +82,7 @@ class ChromaTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = ChromaTransformer2DModel
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
-    model_split_percents = [0.7, 0.6, 0.6]
+    model_split_percents = [0.8, 0.7, 0.7]
 
     # Skip setting testing with default: AttnProcessor
     uses_custom_attn_processor = True
