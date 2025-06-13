@@ -357,10 +357,10 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         network_alphas,
         unet,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
@@ -379,14 +379,14 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -420,10 +420,10 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -446,14 +446,14 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -843,10 +843,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         network_alphas,
         unet,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
@@ -865,14 +865,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -907,10 +907,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -933,14 +933,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -1315,10 +1315,10 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1333,14 +1333,14 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -1369,10 +1369,10 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1395,14 +1395,14 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -1751,10 +1751,10 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1769,14 +1769,14 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -2224,14 +2224,14 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -2314,10 +2314,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -2340,14 +2340,14 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -2823,14 +2823,14 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -2859,10 +2859,10 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -2885,14 +2885,14 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -3136,10 +3136,10 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -3154,14 +3154,14 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3476,10 +3476,10 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -3494,14 +3494,14 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3820,10 +3820,10 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -3838,14 +3838,14 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4162,10 +4162,10 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -4180,14 +4180,14 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4506,10 +4506,10 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -4524,14 +4524,14 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4851,10 +4851,10 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -4869,14 +4869,14 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -5246,10 +5246,10 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -5264,14 +5264,14 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -5588,10 +5588,10 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -5606,14 +5606,14 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -5932,10 +5932,10 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         state_dict,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -5950,14 +5950,14 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(

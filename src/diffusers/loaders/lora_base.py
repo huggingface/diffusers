@@ -327,10 +327,10 @@ def _load_lora_into_text_encoder(
     lora_scale=1.0,
     text_encoder_name="text_encoder",
     adapter_name=None,
-    metadata=None,
     _pipeline=None,
     low_cpu_mem_usage=False,
     hotswap: bool = False,
+    metadata=None,
 ):
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
