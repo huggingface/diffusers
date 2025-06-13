@@ -33,19 +33,10 @@ from ..attention_processor import (
     FusedFluxAttnProcessor2_0,
 )
 from ..cache_utils import CacheMixin
-from ..embeddings import (
-    FluxPosEmbed,
-    PixArtAlphaTextProjection,
-    Timesteps,
-    get_timestep_embedding,
-)
+from ..embeddings import FluxPosEmbed, PixArtAlphaTextProjection, Timesteps, get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import (
-    CombinedTimestepLabelEmbeddings,
-    FP32LayerNorm,
-    RMSNorm,
-)
+from ..normalization import CombinedTimestepLabelEmbeddings, FP32LayerNorm, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
