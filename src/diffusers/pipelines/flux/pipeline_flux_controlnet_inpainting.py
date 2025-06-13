@@ -752,7 +752,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         image: PipelineImageInput = None,
         image_ref_prod: Optional[PipelineImageInput] = None, # original prod image
         ratio_ref_prod: Optional[float] = 0.125, # modified for injecting prod image
-        mask_image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None, # original mask image for inpainting
         mask_image_original: Optional[PipelineImageInput] = None, # modified for injecting original prod images
         prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for injecting original prod images
         masked_image_latents: PipelineImageInput = None,
@@ -1078,7 +1078,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         )
 
         if image_ref_prod is not None:
-            _, _, image_latents_ref, _ = self.prepare_latents(
+            _, noise_ref, image_latents_ref, _ = self.prepare_latents(
                 init_image_ref,
                 latent_timestep,
                 batch_size * num_images_per_prompt,
@@ -1385,13 +1385,13 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         init_latents_proper_ref = image_latents_ref
 
                         init_latents_proper_ref = self.scheduler.scale_noise(
-                            init_latents_proper_ref, torch.tensor([noise_timestep]), noise
+                            init_latents_proper_ref, torch.tensor([noise_timestep]), noise_ref
                         )
 
                         if i < len(timesteps) - 1:
                             noise_timestep = timesteps[i + 1]
                             init_latents_proper_ref = self.scheduler.scale_noise(
-                                init_latents_proper_ref, torch.tensor([noise_timestep]), noise
+                                init_latents_proper_ref, torch.tensor([noise_timestep]), noise_ref
                             )
         
                         latents_1 = init_mask_ref_prod * (ratio_ref_prod * init_latents_proper_ref + (1.0 - ratio_ref_prod) * latents)
