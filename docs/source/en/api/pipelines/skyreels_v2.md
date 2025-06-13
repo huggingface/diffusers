@@ -295,7 +295,7 @@ The code snippets available in [this](https://github.com/huggingface/diffusers/p
 
   </details>
 
-- [`WanTransformer3DModel`] and [`AutoencoderKLWan`] supports loading from single files with [`~loaders.FromSingleFileMixin.from_single_file`].
+- [`SkyReelsV2Transformer3DModel`] and [`AutoencoderKLWan`] supports loading from single files with [`~loaders.FromSingleFileMixin.from_single_file`].
 
   <details>
   <summary>Show example code</summary>
