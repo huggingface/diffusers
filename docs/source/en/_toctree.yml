@@ -313,6 +313,8 @@
         title: Lumina2Transformer2DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/magi_transformer_3d
+        title: MagiTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
       - local: api/models/omnigen_transformer
@@ -367,6 +369,8 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
+      - local: api/models/autoencoder_kl_magi
+        title: AutoencoderKLMagi
       - local: api/models/autoencoderkl_magvit
         title: AutoencoderKLMagvit
       - local: api/models/autoencoderkl_mochi
@@ -487,6 +491,8 @@
       title: Lumina 2.0
     - local: api/pipelines/lumina
       title: Lumina-T2X
+    - local: api/pipelines/magi
+      title: MAGI-1
     - local: api/pipelines/marigold
       title: Marigold
     - local: api/pipelines/mochi

@@ -28,6 +28,7 @@ _import_structure = {
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
+    "magi": [],
     "marigold": [],
     "pag": [],
     "stable_diffusion": [],
@@ -283,6 +284,7 @@ else:
             "MarigoldNormalsPipeline",
         ]
     )
+    _import_structure["magi"] = ["MagiPipeline", "MagiImageToVideoPipeline", "MagiVideoToVideoPipeline"]
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
@@ -655,6 +657,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
         )
+        from .magi import MagiPipeline, MagiImageToVideoPipeline, MagiVideoToVideoPipeline
         from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .omnigen import OmniGenPipeline
