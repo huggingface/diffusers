@@ -247,7 +247,7 @@ def _set_state_dict_into_text_encoder(
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
 
 
-def _collate_lora_metadata(modules_to_save: Dict[str, torch.nn.Module]) -> dict[str, Any]:
+def _collate_lora_metadata(modules_to_save: Dict[str, torch.nn.Module]) -> Dict[str, Any]:
     metadatas = {}
     for module_name, module in modules_to_save.items():
         if module is not None:
