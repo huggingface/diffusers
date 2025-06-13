@@ -737,6 +737,19 @@ class FinegrainedFP8Config(QuantizationConfigMixin):
             The size of the weight blocks for quantization, default is (128, 128).
         modules_to_not_convert (`list`, *optional*):
             A list of module names that should not be converted during quantization.
+        
+        Example:
+        ```python
+        from diffusers import FluxTransformer2DModel, FinegrainedFP8Config
+
+        quantization_config = FinegrainedFP8Config()
+        transformer = FluxTransformer2DModel.from_pretrained(
+            "black-forest-labs/Flux.1-Dev",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            torch_dtype=torch.bfloat16,
+        )
+        ```
     """
 
     def __init__(
@@ -759,7 +772,9 @@ class FinegrainedFP8Config(QuantizationConfigMixin):
         self.activation_scheme = self.activation_scheme.lower()
         if self.activation_scheme not in ["dynamic"]:
             raise ValueError(f"Activation scheme {self.activation_scheme} not supported")
+
         if len(self.weight_block_size) != 2:
             raise ValueError("weight_block_size must be a tuple of two integers")
+
         if self.weight_block_size[0] <= 0 or self.weight_block_size[1] <= 0:
             raise ValueError("weight_block_size must be a tuple of two positive integers")
