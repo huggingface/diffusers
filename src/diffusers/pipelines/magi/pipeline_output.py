@@ -28,7 +28,9 @@ class MagiPipelineOutput(BaseOutput):
 
     Args:
         frames (`torch.Tensor` or `np.ndarray`):
-            List of denoised frames from the diffusion process, as a NumPy array of shape `(batch_size, num_frames, height, width, num_channels)` or a PyTorch tensor of shape `(batch_size, num_channels, num_frames, height, width)`.
+            List of denoised frames from the diffusion process, as a NumPy array of shape `(batch_size, num_frames,
+            height, width, num_channels)` or a PyTorch tensor of shape `(batch_size, num_channels, num_frames, height,
+            width)`.
     """
 
     frames: Union[torch.Tensor, np.ndarray, List[List[np.ndarray]]]

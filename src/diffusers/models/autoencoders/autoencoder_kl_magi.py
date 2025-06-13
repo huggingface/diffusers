@@ -89,6 +89,7 @@ class ManualLayerNorm(nn.Module):
     """
     Manual implementation of LayerNorm for better compatibility.
     """
+
     def __init__(self, normalized_shape, eps=1e-5):
         super().__init__()
         self.normalized_shape = normalized_shape
@@ -105,6 +106,7 @@ class Mlp(nn.Module):
     """
     MLP module used in the transformer architecture.
     """
+
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.0):
         super().__init__()
         out_features = out_features or in_features
@@ -127,11 +129,12 @@ class Attention(nn.Module):
     """
     Multi-head attention module.
     """
+
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.0, proj_drop=0.0):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = qk_scale or head_dim**-0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -157,6 +160,7 @@ class Block(nn.Module):
     """
     Transformer block with attention and MLP.
     """
+
     def __init__(
         self,
         dim,
@@ -195,6 +199,7 @@ class PatchEmbed(nn.Module):
     """
     Image to Patch Embedding for 3D data.
     """
+
     def __init__(self, video_size=224, video_length=16, patch_size=16, patch_length=1, in_chans=3, embed_dim=768):
         super().__init__()
         self.video_size = video_size
@@ -207,17 +212,18 @@ class PatchEmbed(nn.Module):
         self.num_patches = self.grid_length * self.grid_size * self.grid_size
 
         self.proj = nn.Conv3d(
-            in_chans, embed_dim,
+            in_chans,
+            embed_dim,
             kernel_size=(patch_length, patch_size, patch_size),
-            stride=(patch_length, patch_size, patch_size)
+            stride=(patch_length, patch_size, patch_size),
         )
 
     def forward(self, x):
         B, C, T, H, W = x.shape
-        assert H == self.video_size and W == self.video_size, \
+        assert H == self.video_size and W == self.video_size, (
             f"Input image size ({H}*{W}) doesn't match model ({self.video_size}*{self.video_size})."
-        assert T == self.video_length, \
-            f"Input video length ({T}) doesn't match model ({self.video_length})."
+        )
+        assert T == self.video_length, f"Input video length ({T}) doesn't match model ({self.video_length})."
 
         x = self.proj(x).flatten(2).transpose(1, 2)
         return x
@@ -227,6 +233,7 @@ class ViTEncoder(nn.Module):
     """
     Vision Transformer Encoder for MAGI-1 VAE.
     """
+
     def __init__(
         self,
         video_size=256,
@@ -280,20 +287,22 @@ class ViTEncoder(nn.Module):
 
         # Transformer blocks
         dpr = [x.item() for x in torch.linspace(0, 0.0, depth)]  # stochastic depth decay rule
-        self.blocks = nn.ModuleList([
-            Block(
-                dim=embed_dim,
-                num_heads=num_heads,
-                mlp_ratio=mlp_ratio,
-                qkv_bias=qkv_bias,
-                qk_scale=qk_scale,
-                drop=drop_rate,
-                attn_drop=attn_drop_rate,
-                drop_path=dpr[i],
-                norm_layer=norm_layer,
-            )
-            for i in range(depth)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                Block(
+                    dim=embed_dim,
+                    num_heads=num_heads,
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop=drop_rate,
+                    attn_drop=attn_drop_rate,
+                    drop_path=dpr[i],
+                    norm_layer=norm_layer,
+                )
+                for i in range(depth)
+            ]
+        )
 
         self.norm = norm_layer(embed_dim)
 
@@ -359,6 +368,7 @@ class ViTDecoder(nn.Module):
     """
     Vision Transformer Decoder for MAGI-1 VAE.
     """
+
     def __init__(
         self,
         video_size=256,
@@ -406,20 +416,22 @@ class ViTDecoder(nn.Module):
 
         # Transformer blocks
         dpr = [x.item() for x in torch.linspace(0, 0.0, depth)]  # stochastic depth decay rule
-        self.blocks = nn.ModuleList([
-            Block(
-                dim=embed_dim,
-                num_heads=num_heads,
-                mlp_ratio=mlp_ratio,
-                qkv_bias=qkv_bias,
-                qk_scale=qk_scale,
-                drop=drop_rate,
-                attn_drop=attn_drop_rate,
-                drop_path=dpr[i],
-                norm_layer=norm_layer,
-            )
-            for i in range(depth)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                Block(
+                    dim=embed_dim,
+                    num_heads=num_heads,
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop=drop_rate,
+                    attn_drop=attn_drop_rate,
+                    drop_path=dpr[i],
+                    norm_layer=norm_layer,
+                )
+                for i in range(depth)
+            ]
+        )
 
         self.norm = norm_layer(embed_dim)
 
@@ -428,7 +440,7 @@ class ViTDecoder(nn.Module):
             embed_dim,
             in_chans,
             kernel_size=(patch_length, patch_size, patch_size),
-            stride=(patch_length, patch_size, patch_size)
+            stride=(patch_length, patch_size, patch_size),
         )
 
         # Initialize weights
@@ -491,8 +503,8 @@ class AutoencoderKLMagi(ModelMixin, ConfigMixin):
     """
     Variational Autoencoder (VAE) model with KL loss for MAGI-1.
 
-    This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic methods
-    implemented for all models (downloading, saving, loading, etc.)
+    This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
+    methods implemented for all models (downloading, saving, loading, etc.)
 
     Parameters:
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
@@ -511,9 +523,9 @@ class AutoencoderKLMagi(ModelMixin, ConfigMixin):
             The component-wise standard deviation of the trained latent space computed using the first batch of the
             training set. This is used to scale the latent space to have unit variance when training the diffusion
             model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
-            diffusion model. When decoding, the latents are scaled back to the original scale with the formula:
-            `z = 1 / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution
-            Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+            diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
+            / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
+            Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
         temporal_downsample_factor (`Tuple[int]`, *optional*, defaults to (1, 2, 1, 1)):
             Tuple of temporal downsampling factors for each block.
     """

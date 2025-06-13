@@ -44,8 +44,8 @@ class MagiAttention(nn.Module):
     """
     A cross attention layer for MAGI-1.
 
-    This implements the specialized attention mechanism from the MAGI-1 model,
-    including query/key normalization and proper handling of rotary embeddings.
+    This implements the specialized attention mechanism from the MAGI-1 model, including query/key normalization and
+    proper handling of rotary embeddings.
     """
 
     def __init__(
@@ -324,9 +324,10 @@ class LearnableRotaryEmbedding(nn.Module):
     """
     Learnable rotary position embeddings similar to the one used in MAGI-1.
 
-    This implementation is based on MAGI-1's LearnableRotaryEmbeddingCat class,
-    which creates rotary embeddings for 3D data (frames, height, width).
+    This implementation is based on MAGI-1's LearnableRotaryEmbeddingCat class, which creates rotary embeddings for 3D
+    data (frames, height, width).
     """
+
     def __init__(
         self,
         dim: int,
@@ -394,17 +395,17 @@ class LearnableRotaryEmbedding(nn.Module):
 
         # Compute embeddings for each dimension
         # Temporal dimension
-        t_emb = torch.outer(grid[:, 0], freqs[:self.dim//6])
+        t_emb = torch.outer(grid[:, 0], freqs[: self.dim // 6])
         t_sin = torch.sin(t_emb)
         t_cos = torch.cos(t_emb)
 
         # Height dimension
-        h_emb = torch.outer(grid[:, 1], freqs[:self.dim//6])
+        h_emb = torch.outer(grid[:, 1], freqs[: self.dim // 6])
         h_sin = torch.sin(h_emb)
         h_cos = torch.cos(h_emb)
 
         # Width dimension
-        w_emb = torch.outer(grid[:, 2], freqs[:self.dim//6])
+        w_emb = torch.outer(grid[:, 2], freqs[: self.dim // 6])
         w_sin = torch.sin(w_emb)
         w_cos = torch.cos(w_emb)
 
@@ -430,8 +431,8 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin):
     """
     Transformer model for MAGI-1.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods implemented
-    for all models (downloading, saving, loading, etc.)
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods implemented for
+    all models (downloading, saving, loading, etc.)
 
     Parameters:
         sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
@@ -489,12 +490,7 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin):
         self.time_embedding = TimestepEmbedding(time_embed_dim, time_embed_dim)
 
         # Input projection
-        self.input_proj = nn.Conv3d(
-            in_channels,
-            time_embed_dim,
-            kernel_size=patch_size,
-            stride=patch_size
-        )
+        self.input_proj = nn.Conv3d(in_channels, time_embed_dim, kernel_size=patch_size, stride=patch_size)
 
         # Rotary position embeddings
         self.rotary_embedding = LearnableRotaryEmbedding(
@@ -527,11 +523,7 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin):
 
         # Output projection
         self.out_channels = out_channels
-        self.output_proj = nn.Conv3d(
-            time_embed_dim,
-            out_channels,
-            kernel_size=1
-        )
+        self.output_proj = nn.Conv3d(time_embed_dim, out_channels, kernel_size=1)
 
         self.gradient_checkpointing = False
 
@@ -541,10 +533,10 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin):
 
         Args:
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
-                When `"auto"`, input to the attention heads is halved, so attention is computed in two steps.
-                If `"max"`, maximum amount of memory is saved by running only one slice at a time.
-                If a number is provided, uses as many slices as `attention_head_dim // slice_size`. In this case,
-                `attention_head_dim` must be a multiple of `slice_size`.
+                When `"auto"`, input to the attention heads is halved, so attention is computed in two steps. If
+                `"max"`, maximum amount of memory is saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
         """
         logger.warning(
             "Calling `set_attention_slice` is deprecated and will be removed in a future version. Use"
@@ -586,8 +578,8 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin):
 
         Returns:
             `MagiTransformerOutput` or `tuple`:
-                If `return_dict` is `True`, a `MagiTransformerOutput` is returned, otherwise a tuple
-                `(sample,)` is returned where `sample` is the output tensor.
+                If `return_dict` is `True`, a `MagiTransformerOutput` is returned, otherwise a tuple `(sample,)` is
+                returned where `sample` is the output tensor.
         """
         # 1. Input processing
         batch_size, channels, frames, height, width = hidden_states.shape
@@ -612,7 +604,9 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 4. Reshape for transformer blocks
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)  # [B, C, F, H, W] -> [B, F, H, W, C]
-        hidden_states = hidden_states.reshape(batch_size, patched_frames * patched_height * patched_width, -1)  # [B, F*H*W, C]
+        hidden_states = hidden_states.reshape(
+            batch_size, patched_frames * patched_height * patched_width, -1
+        )  # [B, F*H*W, C]
 
         # 5. Add time embeddings if provided
         if time_embeds is not None:

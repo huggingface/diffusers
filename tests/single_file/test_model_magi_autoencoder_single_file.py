@@ -27,9 +27,7 @@ from diffusers.utils.testing_utils import (
 
 class AutoencoderKLMagiSingleFileTests(unittest.TestCase):
     model_class = AutoencoderKLMagi
-    ckpt_path = (
-        "https://huggingface.co/sand-ai/MAGI-1/blob/main/vae/diffusion_pytorch_model.safetensors"
-    )
+    ckpt_path = "https://huggingface.co/sand-ai/MAGI-1/blob/main/vae/diffusion_pytorch_model.safetensors"
     repo_id = "sand-ai/MAGI-1"
 
     @slow

@@ -150,19 +150,33 @@ def convert_vae_state_dict(checkpoint):
             continue
 
         # Attention components
-        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_qkv.weight"] = checkpoint[f"encoder.blocks.{i}.attn.qkv.weight"]
-        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_qkv.bias"] = checkpoint[f"encoder.blocks.{i}.attn.qkv.bias"]
-        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[f"encoder.blocks.{i}.attn.proj.weight"]
-        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_out.0.bias"] = checkpoint[f"encoder.blocks.{i}.attn.proj.bias"]
+        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_qkv.weight"] = checkpoint[
+            f"encoder.blocks.{i}.attn.qkv.weight"
+        ]
+        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_qkv.bias"] = checkpoint[
+            f"encoder.blocks.{i}.attn.qkv.bias"
+        ]
+        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[
+            f"encoder.blocks.{i}.attn.proj.weight"
+        ]
+        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_out.0.bias"] = checkpoint[
+            f"encoder.blocks.{i}.attn.proj.bias"
+        ]
 
         # Normalization
         state_dict[f"encoder.transformer_blocks.{i}.norm2.weight"] = checkpoint[f"encoder.blocks.{i}.norm2.weight"]
         state_dict[f"encoder.transformer_blocks.{i}.norm2.bias"] = checkpoint[f"encoder.blocks.{i}.norm2.bias"]
 
         # MLP components
-        state_dict[f"encoder.transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[f"encoder.blocks.{i}.mlp.fc1.weight"]
-        state_dict[f"encoder.transformer_blocks.{i}.ff.net.0.proj.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc1.bias"]
-        state_dict[f"encoder.transformer_blocks.{i}.ff.net.2.weight"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.weight"]
+        state_dict[f"encoder.transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[
+            f"encoder.blocks.{i}.mlp.fc1.weight"
+        ]
+        state_dict[f"encoder.transformer_blocks.{i}.ff.net.0.proj.bias"] = checkpoint[
+            f"encoder.blocks.{i}.mlp.fc1.bias"
+        ]
+        state_dict[f"encoder.transformer_blocks.{i}.ff.net.2.weight"] = checkpoint[
+            f"encoder.blocks.{i}.mlp.fc2.weight"
+        ]
         state_dict[f"encoder.transformer_blocks.{i}.ff.net.2.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.bias"]
 
     # Encoder norm
@@ -196,19 +210,33 @@ def convert_vae_state_dict(checkpoint):
             continue
 
         # Attention components
-        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_qkv.weight"] = checkpoint[f"decoder.blocks.{i}.attn.qkv.weight"]
-        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_qkv.bias"] = checkpoint[f"decoder.blocks.{i}.attn.qkv.bias"]
-        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[f"decoder.blocks.{i}.attn.proj.weight"]
-        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_out.0.bias"] = checkpoint[f"decoder.blocks.{i}.attn.proj.bias"]
+        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_qkv.weight"] = checkpoint[
+            f"decoder.blocks.{i}.attn.qkv.weight"
+        ]
+        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_qkv.bias"] = checkpoint[
+            f"decoder.blocks.{i}.attn.qkv.bias"
+        ]
+        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[
+            f"decoder.blocks.{i}.attn.proj.weight"
+        ]
+        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_out.0.bias"] = checkpoint[
+            f"decoder.blocks.{i}.attn.proj.bias"
+        ]
 
         # Normalization
         state_dict[f"decoder.transformer_blocks.{i}.norm2.weight"] = checkpoint[f"decoder.blocks.{i}.norm2.weight"]
         state_dict[f"decoder.transformer_blocks.{i}.norm2.bias"] = checkpoint[f"decoder.blocks.{i}.norm2.bias"]
 
         # MLP components
-        state_dict[f"decoder.transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[f"decoder.blocks.{i}.mlp.fc1.weight"]
-        state_dict[f"decoder.transformer_blocks.{i}.ff.net.0.proj.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc1.bias"]
-        state_dict[f"decoder.transformer_blocks.{i}.ff.net.2.weight"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.weight"]
+        state_dict[f"decoder.transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[
+            f"decoder.blocks.{i}.mlp.fc1.weight"
+        ]
+        state_dict[f"decoder.transformer_blocks.{i}.ff.net.0.proj.bias"] = checkpoint[
+            f"decoder.blocks.{i}.mlp.fc1.bias"
+        ]
+        state_dict[f"decoder.transformer_blocks.{i}.ff.net.2.weight"] = checkpoint[
+            f"decoder.blocks.{i}.mlp.fc2.weight"
+        ]
         state_dict[f"decoder.transformer_blocks.{i}.ff.net.2.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.bias"]
 
     # Decoder norm
@@ -390,60 +418,98 @@ def convert_transformer_state_dict(checkpoint):
             continue
 
         # FF norm (AdaLN projection)
-        state_dict[f"transformer_blocks.{i}.ff_norm.weight"] = checkpoint[f"{layer_prefix}.ada_modulate_layer.proj.0.weight"]
-        state_dict[f"transformer_blocks.{i}.ff_norm.bias"] = checkpoint[f"{layer_prefix}.ada_modulate_layer.proj.0.bias"]
+        state_dict[f"transformer_blocks.{i}.ff_norm.weight"] = checkpoint[
+            f"{layer_prefix}.ada_modulate_layer.proj.0.weight"
+        ]
+        state_dict[f"transformer_blocks.{i}.ff_norm.bias"] = checkpoint[
+            f"{layer_prefix}.ada_modulate_layer.proj.0.bias"
+        ]
 
         # Self-attention components
 
         # Query normalization
         if f"{layer_prefix}.self_attention.q_layernorm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.norm_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm.weight"]
-            state_dict[f"transformer_blocks.{i}.attn1.norm_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm.bias"]
+            state_dict[f"transformer_blocks.{i}.attn1.norm_q.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.q_layernorm.weight"
+            ]
+            state_dict[f"transformer_blocks.{i}.attn1.norm_q.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.q_layernorm.bias"
+            ]
 
         # Key normalization
         if f"{layer_prefix}.self_attention.k_layernorm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.norm_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm.weight"]
-            state_dict[f"transformer_blocks.{i}.attn1.norm_k.bias"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm.bias"]
+            state_dict[f"transformer_blocks.{i}.attn1.norm_k.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.k_layernorm.weight"
+            ]
+            state_dict[f"transformer_blocks.{i}.attn1.norm_k.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.k_layernorm.bias"
+            ]
 
         # Cross-attention key normalization
         if f"{layer_prefix}.self_attention.k_layernorm_xattn.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.norm_k_xattn.weight"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"]
-            state_dict[f"transformer_blocks.{i}.attn1.norm_k_xattn.bias"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"]
+            state_dict[f"transformer_blocks.{i}.attn1.norm_k_xattn.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"
+            ]
+            state_dict[f"transformer_blocks.{i}.attn1.norm_k_xattn.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"
+            ]
 
         # Cross-attention query normalization
         if f"{layer_prefix}.self_attention.q_layernorm_xattn.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.norm_q_xattn.weight"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"]
-            state_dict[f"transformer_blocks.{i}.attn1.norm_q_xattn.bias"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"]
+            state_dict[f"transformer_blocks.{i}.attn1.norm_q_xattn.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"
+            ]
+            state_dict[f"transformer_blocks.{i}.attn1.norm_q_xattn.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"
+            ]
 
         # QKV linear projections
         if f"{layer_prefix}.self_attention.linear_qkv.q.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.q.weight"]
+            state_dict[f"transformer_blocks.{i}.attn1.to_q.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.q.weight"
+            ]
 
         if f"{layer_prefix}.self_attention.linear_qkv.k.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.k.weight"]
+            state_dict[f"transformer_blocks.{i}.attn1.to_k.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.k.weight"
+            ]
 
         if f"{layer_prefix}.self_attention.linear_qkv.v.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_v.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.v.weight"]
+            state_dict[f"transformer_blocks.{i}.attn1.to_v.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.v.weight"
+            ]
 
         if f"{layer_prefix}.self_attention.linear_qkv.qx.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_q_xattn.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.qx.weight"]
+            state_dict[f"transformer_blocks.{i}.attn1.to_q_xattn.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
+            ]
 
         # QKV layer norm
         if f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.qkv_norm.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"]
-            state_dict[f"transformer_blocks.{i}.attn1.qkv_norm.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"]
+            state_dict[f"transformer_blocks.{i}.attn1.qkv_norm.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"
+            ]
+            state_dict[f"transformer_blocks.{i}.attn1.qkv_norm.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"
+            ]
 
         # KV cross-attention
         if f"{layer_prefix}.self_attention.linear_kv_xattn.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_kv_xattn.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.weight"]
+            state_dict[f"transformer_blocks.{i}.attn1.to_kv_xattn.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_kv_xattn.weight"
+            ]
 
         # Output projection
         if f"{layer_prefix}.self_attention.linear_proj.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_proj.weight"]
+            state_dict[f"transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_proj.weight"
+            ]
 
         # Self-attention post normalization
         if f"{layer_prefix}.self_attn_post_norm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.norm1.weight"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.weight"]
+            state_dict[f"transformer_blocks.{i}.norm1.weight"] = checkpoint[
+                f"{layer_prefix}.self_attn_post_norm.weight"
+            ]
             state_dict[f"transformer_blocks.{i}.norm1.bias"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.bias"]
 
         # MLP components
@@ -454,7 +520,9 @@ def convert_transformer_state_dict(checkpoint):
 
         # MLP FC1 (projection)
         if f"{layer_prefix}.mlp.linear_fc1.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc1.weight"]
+            state_dict[f"transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[
+                f"{layer_prefix}.mlp.linear_fc1.weight"
+            ]
 
         # MLP FC2 (projection)
         if f"{layer_prefix}.mlp.linear_fc2.weight" in checkpoint:
@@ -644,6 +712,7 @@ def main():
     except Exception as e:
         print(f"Error during conversion: {str(e)}")
         import traceback
+
         traceback.print_exc()
         return 1
 

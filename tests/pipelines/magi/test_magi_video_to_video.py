@@ -134,10 +134,14 @@ class MagiVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         pass
 
-    @unittest.skip("MagiVideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors")
+    @unittest.skip(
+        "MagiVideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors"
+    )
     def test_model_cpu_offload_forward_pass(self):
         pass
 
-    @unittest.skip("MagiVideoToVideoPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors")
+    @unittest.skip(
+        "MagiVideoToVideoPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
+    )
     def test_save_load_float16(self):
         pass
