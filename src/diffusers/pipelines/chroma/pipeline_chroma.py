@@ -182,7 +182,6 @@ class ChromaPipeline(
         transformer: ChromaTransformer2DModel,
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
-        variant: str = "flux",
     ):
         super().__init__()
 
