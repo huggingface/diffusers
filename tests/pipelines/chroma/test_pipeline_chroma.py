@@ -167,3 +167,15 @@ class ChromaPipelineFastTests(
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
+
+    @unittest.skip("Not supported in Chroma.")
+    def test_inference_batch_consistent(self, *args):
+        pass
+
+    @unittest.skip("Not supported in Chroma.")
+    def test_inference_batch_single_identical(self, *args):
+        pass
+
+    @unittest.skip("Not supported in Chroma.")
+    def test_num_images_per_prompt(self):
+        pass
