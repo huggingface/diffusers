@@ -477,21 +477,19 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         rotary_emb = self.rope(hidden_states)
 
         hidden_states = self.patch_embedding(hidden_states)
-        grid_sizes = torch.tensor(hidden_states.shape[2:], dtype=torch.long)
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         if self.config.flag_causal_attention:
-            frame_num, height, width = grid_sizes
-            block_num = frame_num // self.config.num_frame_per_block
+            block_num = post_patch_num_frames // self.config.num_frame_per_block
             range_tensor = torch.arange(block_num, device=hidden_states.device).repeat_interleave(
                 self.config.num_frame_per_block
             )
             causal_mask = range_tensor.unsqueeze(0) <= range_tensor.unsqueeze(1)  # f, f
-            causal_mask = causal_mask.view(frame_num, 1, 1, frame_num, 1, 1)
-            causal_mask = causal_mask.repeat(1, height, width, 1, height, width)
-            causal_mask = causal_mask.reshape(frame_num * height * width, frame_num * height * width)
+            causal_mask = causal_mask.view(post_patch_num_frames, 1, 1, post_patch_num_frames, 1, 1)
+            causal_mask = causal_mask.repeat(1, post_patch_height, post_patch_width, 1, post_patch_height, post_patch_width)
+            causal_mask = causal_mask.reshape(post_patch_num_frames * post_patch_height * post_patch_width,
+                                             post_patch_num_frames * post_patch_height * post_patch_width)
             causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
-
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
             timestep, encoder_hidden_states, encoder_hidden_states_image
@@ -531,8 +529,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             b, f = timestep.shape
             temb = temb.view(b, f, 1, 1, -1)
             timestep_proj = timestep_proj.view(b, f, 1, 1, 6, -1)
-            temb = temb.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1).flatten(1, 3)
-            timestep_proj = timestep_proj.repeat(1, 1, grid_sizes[1], grid_sizes[2], 1, 1).flatten(1, 3)
+            temb = temb.repeat(1, 1, post_patch_height, post_patch_width, 1).flatten(1, 3)
+            timestep_proj = timestep_proj.repeat(1, 1, post_patch_height, post_patch_width, 1, 1).flatten(1, 3)
             timestep_proj = timestep_proj.transpose(1, 2).contiguous()
 
         for i, block in enumerate(self.blocks):
