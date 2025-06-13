@@ -8,7 +8,6 @@ from diffusers import (
     AutoencoderKL,
     ChromaPipeline,
     ChromaTransformer2DModel,
-    FasterCacheConfig,
     FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.utils.testing_utils import (
@@ -16,10 +15,7 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..test_pipelines_common import (
-    FasterCacheTesterMixin,
-    FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
 )
