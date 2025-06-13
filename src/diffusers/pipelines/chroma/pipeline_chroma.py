@@ -226,7 +226,14 @@ class ChromaPipeline(
             return_overflowing_tokens=False,
             return_tensors="pt",
         )
-        text_input_ids = text_inputs.input_ids + self.tokenizer.pad_token_id
+        pad_token_id = self.tokenizer.pad_token_id
+        text_input_ids = torch.cat(
+            [
+                text_inputs.input_ids,
+                torch.full((text_inputs.input_ids.size(0), 1), pad_token_id, dtype=text_inputs.input_ids.dtype),
+            ],
+            dim=1,
+        )
 
         prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
