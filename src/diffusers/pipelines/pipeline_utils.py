@@ -1311,8 +1311,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._offload_device = device
 
         if self.device.type != "cpu":
+            orig_device_type = self.device.type
             self.to("cpu", silence_dtype_warnings=True)
-            empty_device_cache(self.device.type)
+            empty_device_cache(orig_device_type)
 
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
