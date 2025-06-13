@@ -13,11 +13,10 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
@@ -25,203 +24,16 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
+from .transformer_wan import WanAttnProcessor2_0, WanRotaryPosEmbed, WanTimeTextImageEmbedding, WanTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanAttnProcessor2_0:
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        encoder_hidden_states_img = None
-        if attn.add_k_proj is not None:
-            # 512 is the context length of the text encoder, hardcoded for now
-            image_context_length = encoder_hidden_states.shape[1] - 512
-            encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
-            encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-
-        if rotary_emb is not None:
-
-            def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-                dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
-                x_rotated = torch.view_as_complex(hidden_states.to(dtype).unflatten(3, (-1, 2)))
-                x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4)
-                return x_out.type_as(hidden_states)
-
-            query = apply_rotary_emb(query, rotary_emb)
-            key = apply_rotary_emb(key, rotary_emb)
-
-        # I2V task
-        hidden_states_img = None
-        if encoder_hidden_states_img is not None:
-            key_img = attn.add_k_proj(encoder_hidden_states_img)
-            key_img = attn.norm_added_k(key_img)
-            value_img = attn.add_v_proj(encoder_hidden_states_img)
-
-            key_img = key_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-            value_img = value_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-
-            hidden_states_img = F.scaled_dot_product_attention(
-                query, key_img, value_img, attn_mask=None, dropout_p=0.0, is_causal=False
-            )
-            hidden_states_img = hidden_states_img.transpose(1, 2).flatten(2, 3)
-            hidden_states_img = hidden_states_img.type_as(query)
-
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        hidden_states = hidden_states.type_as(query)
-
-        if hidden_states_img is not None:
-            hidden_states = hidden_states + hidden_states_img
-
-        hidden_states = attn.to_out[0](hidden_states)
-        hidden_states = attn.to_out[1](hidden_states)
-        return hidden_states
-
-
-class WanImageEmbedding(torch.nn.Module):
-    def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
-        super().__init__()
-
-        self.norm1 = FP32LayerNorm(in_features)
-        self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
-        self.norm2 = FP32LayerNorm(out_features)
-        if pos_embed_seq_len is not None:
-            self.pos_embed = nn.Parameter(torch.zeros(1, pos_embed_seq_len, in_features))
-        else:
-            self.pos_embed = None
-
-    def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
-        if self.pos_embed is not None:
-            batch_size, seq_len, embed_dim = encoder_hidden_states_image.shape
-            encoder_hidden_states_image = encoder_hidden_states_image.view(-1, 2 * seq_len, embed_dim)
-            encoder_hidden_states_image = encoder_hidden_states_image + self.pos_embed
-
-        hidden_states = self.norm1(encoder_hidden_states_image)
-        hidden_states = self.ff(hidden_states)
-        hidden_states = self.norm2(hidden_states)
-        return hidden_states
-
-
-class WanTimeTextImageEmbedding(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        time_freq_dim: int,
-        time_proj_dim: int,
-        text_embed_dim: int,
-        image_embed_dim: Optional[int] = None,
-        pos_embed_seq_len: Optional[int] = None,
-    ):
-        super().__init__()
-
-        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
-        self.act_fn = nn.SiLU()
-        self.time_proj = nn.Linear(dim, time_proj_dim)
-        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
-
-        self.image_embedder = None
-        if image_embed_dim is not None:
-            self.image_embedder = WanImageEmbedding(image_embed_dim, dim, pos_embed_seq_len=pos_embed_seq_len)
-
-    def forward(
-        self,
-        timestep: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-    ):
-        timestep = self.timesteps_proj(timestep)
-
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
-            timestep = timestep.to(time_embedder_dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
-        timestep_proj = self.time_proj(self.act_fn(temb))
-
-        encoder_hidden_states = self.text_embedder(encoder_hidden_states)
-        if encoder_hidden_states_image is not None:
-            encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
-
-        return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
-
-
-class WanRotaryPosEmbed(nn.Module):
-    def __init__(
-        self, attention_head_dim: int, patch_size: Tuple[int, int, int], max_seq_len: int, theta: float = 10000.0
-    ):
-        super().__init__()
-
-        self.attention_head_dim = attention_head_dim
-        self.patch_size = patch_size
-        self.max_seq_len = max_seq_len
-
-        h_dim = w_dim = 2 * (attention_head_dim // 6)
-        t_dim = attention_head_dim - h_dim - w_dim
-
-        freqs = []
-        freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
-        for dim in [t_dim, h_dim, w_dim]:
-            freq = get_1d_rotary_pos_embed(
-                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=freqs_dtype
-            )
-            freqs.append(freq)
-        self.freqs = torch.cat(freqs, dim=1)
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        p_t, p_h, p_w = self.patch_size
-        ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
-
-        freqs = self.freqs.to(hidden_states.device)
-        freqs = freqs.split_with_sizes(
-            [
-                self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
-                self.attention_head_dim // 6,
-                self.attention_head_dim // 6,
-            ],
-            dim=1,
-        )
-
-        freqs_f = freqs[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_h = freqs[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_w = freqs[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
-        freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
-        return freqs
-
-
-class WanTransformerBlock(nn.Module):
+class WanVACETransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -231,10 +43,17 @@ class WanTransformerBlock(nn.Module):
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
+        apply_input_projection: bool = False,
+        apply_output_projection: bool = False,
     ):
         super().__init__()
 
-        # 1. Self-attention
+        # 1. Input projection
+        self.proj_in = None
+        if apply_input_projection:
+            self.proj_in = nn.Linear(dim, dim)
+
+        # 2. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.attn1 = Attention(
             query_dim=dim,
@@ -249,7 +68,7 @@ class WanTransformerBlock(nn.Module):
             processor=WanAttnProcessor2_0(),
         )
 
-        # 2. Cross-attention
+        # 3. Cross-attention
         self.attn2 = Attention(
             query_dim=dim,
             heads=num_heads,
@@ -266,9 +85,14 @@ class WanTransformerBlock(nn.Module):
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
-        # 3. Feed-forward
+        # 4. Feed-forward
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
         self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+
+        # 5. Output projection
+        self.proj_out = None
+        if apply_output_projection:
+            self.proj_out = nn.Linear(dim, dim)
 
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
@@ -276,34 +100,47 @@ class WanTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
+        control_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
+        if self.proj_in is not None:
+            control_hidden_states = self.proj_in(control_hidden_states)
+            control_hidden_states = control_hidden_states + hidden_states
+
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
             self.scale_shift_table + temb.float()
         ).chunk(6, dim=1)
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        norm_hidden_states = (self.norm1(control_hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(
+            control_hidden_states
+        )
         attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        control_hidden_states = (control_hidden_states.float() + attn_output * gate_msa).type_as(control_hidden_states)
 
         # 2. Cross-attention
-        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
+        norm_hidden_states = self.norm2(control_hidden_states.float()).type_as(control_hidden_states)
         attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
-        hidden_states = hidden_states + attn_output
+        control_hidden_states = control_hidden_states + attn_output
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
+        norm_hidden_states = (self.norm3(control_hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
+            control_hidden_states
         )
         ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+        control_hidden_states = (control_hidden_states.float() + ff_output.float() * c_gate_msa).type_as(
+            control_hidden_states
+        )
 
-        return hidden_states
+        conditioning_states = None
+        if self.proj_out is not None:
+            conditioning_states = self.proj_out(control_hidden_states)
+
+        return conditioning_states, control_hidden_states
 
 
-class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
     A Transformer model for video-like data used in the Wan model.
 
@@ -341,8 +178,8 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     """
 
     _supports_gradient_checkpointing = True
-    _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
-    _no_split_modules = ["WanTransformerBlock"]
+    _skip_layerwise_casting_patterns = ["patch_embedding", "vace_patch_embedding", "condition_embedder", "norm"]
+    _no_split_modules = ["WanTransformerBlock", "WanVACETransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
@@ -365,15 +202,23 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
+        vace_layers: List[int] = [0, 5, 10, 15, 20, 25, 30, 35],
+        vace_in_channels: int = 96,
     ) -> None:
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
 
+        if max(vace_layers) >= num_layers:
+            raise ValueError(f"VACE layers {vace_layers} exceed the number of transformer layers {num_layers}.")
+        if 0 not in vace_layers:
+            raise ValueError("VACE layers must include layer 0.")
+
         # 1. Patch & position embedding
         self.rope = WanRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
+        self.vace_patch_embedding = nn.Conv3d(vace_in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
         # image_embedding_dim=1280 for I2V model
@@ -396,6 +241,23 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             ]
         )
 
+        self.vace_blocks = nn.ModuleList(
+            [
+                WanVACETransformerBlock(
+                    inner_dim,
+                    ffn_dim,
+                    num_attention_heads,
+                    qk_norm,
+                    cross_attn_norm,
+                    eps,
+                    added_kv_proj_dim,
+                    apply_input_projection=i == 0,  # Layer 0 always has input projection and is in vace_layers
+                    apply_output_projection=True,
+                )
+                for i in range(len(vace_layers))
+            ]
+        )
+
         # 4. Output norm & projection
         self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
@@ -409,6 +271,8 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        control_hidden_states: torch.Tensor = None,
+        control_hidden_states_scale: torch.Tensor = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -433,30 +297,74 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         post_patch_height = height // p_h
         post_patch_width = width // p_w
 
+        if control_hidden_states_scale is None:
+            control_hidden_states_scale = control_hidden_states.new_ones(len(self.config.vace_layers))
+        control_hidden_states_scale = torch.unbind(control_hidden_states_scale)
+        if len(control_hidden_states_scale) != len(self.config.vace_layers):
+            raise ValueError(
+                f"Length of `control_hidden_states_scale` {len(control_hidden_states_scale)} should be "
+                f"equal to {len(self.config.vace_layers)}."
+            )
+
+        # 1. Rotary position embedding
         rotary_emb = self.rope(hidden_states)
 
+        # 2. Patch embedding
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
+        control_hidden_states = self.vace_patch_embedding(control_hidden_states)
+        control_hidden_states = control_hidden_states.flatten(2).transpose(1, 2)
+        control_hidden_states_padding = control_hidden_states.new_zeros(
+            batch_size, hidden_states.size(1) - control_hidden_states.size(1), control_hidden_states.size(2)
+        )
+        control_hidden_states = torch.cat([control_hidden_states, control_hidden_states_padding], dim=1)
+
+        # 3. Time embedding
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
             timestep, encoder_hidden_states, encoder_hidden_states_image
         )
         timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
+        # 4. Image embedding
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
 
-        # 4. Transformer blocks
+        # 5. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for block in self.blocks:
+            # Prepare VACE hints
+            control_hidden_states_list = []
+            for i, block in enumerate(self.vace_blocks):
+                conditioning_states, control_hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, encoder_hidden_states, control_hidden_states, timestep_proj, rotary_emb
+                )
+                control_hidden_states_list.append((conditioning_states, control_hidden_states_scale[i]))
+            control_hidden_states_list = control_hidden_states_list[::-1]
+
+            for i, block in enumerate(self.blocks):
                 hidden_states = self._gradient_checkpointing_func(
                     block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
                 )
+                if i in self.config.vace_layers:
+                    control_hint, scale = control_hidden_states_list.pop()
+                    hidden_states = hidden_states + control_hint * scale
         else:
-            for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+            # Prepare VACE hints
+            control_hidden_states_list = []
+            for i, block in enumerate(self.vace_blocks):
+                conditioning_states, control_hidden_states = block(
+                    hidden_states, encoder_hidden_states, control_hidden_states, timestep_proj, rotary_emb
+                )
+                control_hidden_states_list.append((conditioning_states, control_hidden_states_scale[i]))
+            control_hidden_states_list = control_hidden_states_list[::-1]
 
-        # 5. Output norm, projection & unpatchify
+            for i, block in enumerate(self.blocks):
+                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+                if i in self.config.vace_layers:
+                    control_hint, scale = control_hidden_states_list.pop()
+                    hidden_states = hidden_states + control_hint * scale
+
+        # 6. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.

@@ -22,6 +22,7 @@ from itertools import product
 import numpy as np
 import pytest
 import torch
+from parameterized import parameterized
 
 from diffusers import (
     AutoencoderKL,
@@ -33,6 +34,7 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    check_if_dicts_are_equal,
     floats_tensor,
     is_torch_version,
     require_peft_backend,
@@ -69,6 +71,13 @@ def check_if_lora_correctly_set(model) -> bool:
         if isinstance(module, BaseTunerLayer):
             return True
     return False
+
+
+def check_module_lora_metadata(parsed_metadata: dict, lora_metadatas: dict, module_key: str):
+    extracted = {
+        k.removeprefix(f"{module_key}."): v for k, v in parsed_metadata.items() if k.startswith(f"{module_key}.")
+    }
+    check_if_dicts_are_equal(extracted, lora_metadatas[f"{module_key}_lora_adapter_metadata"])
 
 
 def initialize_dummy_state_dict(state_dict):
@@ -118,7 +127,7 @@ class PeftLoraLoaderMixinTests:
     text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
     denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
 
-    def get_dummy_components(self, scheduler_cls=None, use_dora=False):
+    def get_dummy_components(self, scheduler_cls=None, use_dora=False, lora_alpha=None):
         if self.unet_kwargs and self.transformer_kwargs:
             raise ValueError("Both `unet_kwargs` and `transformer_kwargs` cannot be specified.")
         if self.has_two_text_encoders and self.has_three_text_encoders:
@@ -126,6 +135,7 @@ class PeftLoraLoaderMixinTests:
 
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else scheduler_cls
         rank = 4
+        lora_alpha = rank if lora_alpha is None else lora_alpha
 
         torch.manual_seed(0)
         if self.unet_kwargs is not None:
@@ -161,7 +171,7 @@ class PeftLoraLoaderMixinTests:
 
         text_lora_config = LoraConfig(
             r=rank,
-            lora_alpha=rank,
+            lora_alpha=lora_alpha,
             target_modules=self.text_encoder_target_modules,
             init_lora_weights=False,
             use_dora=use_dora,
@@ -169,7 +179,7 @@ class PeftLoraLoaderMixinTests:
 
         denoiser_lora_config = LoraConfig(
             r=rank,
-            lora_alpha=rank,
+            lora_alpha=lora_alpha,
             target_modules=self.denoiser_target_modules,
             init_lora_weights=False,
             use_dora=use_dora,
@@ -245,6 +255,13 @@ class PeftLoraLoaderMixinTests:
             if module is not None:
                 state_dicts[f"{module_name}_lora_layers"] = get_peft_model_state_dict(module)
         return state_dicts
+
+    def _get_lora_adapter_metadata(self, modules_to_save):
+        metadatas = {}
+        for module_name, module in modules_to_save.items():
+            if module is not None:
+                metadatas[f"{module_name}_lora_adapter_metadata"] = module.peft_config["default"].to_dict()
+        return metadatas
 
     def _get_modules_to_save(self, pipe, has_denoiser=False):
         modules_to_save = {}
@@ -1092,7 +1109,7 @@ class PeftLoraLoaderMixinTests:
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
-        multiple adapters and set differnt weights for different blocks (i.e. block lora)
+        multiple adapters and set different weights for different blocks (i.e. block lora)
         """
         for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1636,7 +1653,7 @@ class PeftLoraLoaderMixinTests:
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
             self.assertTrue(pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
 
-            # Fusing should still keep the LoRA layers so outpout should remain the same
+            # Fusing should still keep the LoRA layers so output should remain the same
             outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
@@ -2213,6 +2230,86 @@ class PeftLoraLoaderMixinTests:
 
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
             pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+    @parameterized.expand([4, 8, 16])
+    def test_lora_adapter_metadata_is_loaded_correctly(self, lora_alpha):
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
+            scheduler_cls, lora_alpha=lora_alpha
+        )
+        pipe = self.pipeline_class(**components)
+
+        pipe, _ = self.check_if_adapters_added_correctly(
+            pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            lora_metadatas = self._get_lora_adapter_metadata(modules_to_save)
+            self.pipeline_class.save_lora_weights(save_directory=tmpdir, **lora_state_dicts, **lora_metadatas)
+            pipe.unload_lora_weights()
+
+            out = pipe.lora_state_dict(tmpdir, return_lora_metadata=True)
+            if len(out) == 3:
+                _, _, parsed_metadata = out
+            elif len(out) == 2:
+                _, parsed_metadata = out
+
+            denoiser_key = (
+                f"{self.pipeline_class.transformer_name}"
+                if self.transformer_kwargs is not None
+                else f"{self.pipeline_class.unet_name}"
+            )
+            self.assertTrue(any(k.startswith(f"{denoiser_key}.") for k in parsed_metadata))
+            check_module_lora_metadata(
+                parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=denoiser_key
+            )
+
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                text_encoder_key = self.pipeline_class.text_encoder_name
+                self.assertTrue(any(k.startswith(f"{text_encoder_key}.") for k in parsed_metadata))
+                check_module_lora_metadata(
+                    parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=text_encoder_key
+                )
+
+            if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                text_encoder_2_key = "text_encoder_2"
+                self.assertTrue(any(k.startswith(f"{text_encoder_2_key}.") for k in parsed_metadata))
+                check_module_lora_metadata(
+                    parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=text_encoder_2_key
+                )
+
+    @parameterized.expand([4, 8, 16])
+    def test_lora_adapter_metadata_save_load_inference(self, lora_alpha):
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
+            scheduler_cls, lora_alpha=lora_alpha
+        )
+        pipe = self.pipeline_class(**components).to(torch_device)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(output_no_lora.shape == self.output_shape)
+
+        pipe, _ = self.check_if_adapters_added_correctly(
+            pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            lora_metadatas = self._get_lora_adapter_metadata(modules_to_save)
+            self.pipeline_class.save_lora_weights(save_directory=tmpdir, **lora_state_dicts, **lora_metadatas)
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(tmpdir)
+
+            output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            self.assertTrue(
+                np.allclose(output_lora, output_lora_pretrained, atol=1e-3, rtol=1e-3), "Lora outputs should match."
+            )
 
     def test_inference_load_delete_load_adapters(self):
         "Tests if `load_lora_weights()` -> `delete_adapters()` -> `load_lora_weights()` works."

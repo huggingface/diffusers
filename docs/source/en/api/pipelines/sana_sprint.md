@@ -113,7 +113,7 @@ image = pipe(
     height=832, 
     width=480
 ).images[0]
-image[0].save("output.png")
+image.save("output.png")
 ```
 
 ## SanaSprintPipeline

@@ -355,9 +355,7 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
     return custom_diffusion_attn_procs
 
 
-class UNet2DConditionModelTests(
-    ModelTesterMixin, TorchCompileTesterMixin, LoraHotSwappingForModelTesterMixin, UNetTesterMixin, unittest.TestCase
-):
+class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
     # We override the items here because the unet under consideration is small.
@@ -980,13 +978,13 @@ class UNet2DConditionModelTests(
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
-    @require_torch_gpu
     @parameterized.expand(
         [
             ("hf-internal-testing/unet2d-sharded-dummy", None),
             ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
         ]
     )
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_from_hub(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained(repo_id, variant=variant)
@@ -996,13 +994,13 @@ class UNet2DConditionModelTests(
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
     @parameterized.expand(
         [
             ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
             ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
         ]
     )
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_from_hub_subfolder(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained(repo_id, subfolder="unet", variant=variant)
@@ -1086,6 +1084,42 @@ class UNet2DConditionModelTests(
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
+    @parameterized.expand(
+        [
+            (-1, "You can't pass device_map as a negative int"),
+            ("foo", "When passing device_map as a string, the value needs to be a device name"),
+        ]
+    )
+    def test_wrong_device_map_raises_error(self, device_map, msg_substring):
+        with self.assertRaises(ValueError) as err_ctx:
+            _ = self.model_class.from_pretrained(
+                "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=device_map
+            )
+
+        assert msg_substring in str(err_ctx.exception)
+
+    @parameterized.expand([0, "cuda", torch.device("cuda"), torch.device("cuda:0")])
+    @require_torch_gpu
+    def test_passing_non_dict_device_map_works(self, device_map):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(
+            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=device_map
+        )
+        output = loaded_model(**inputs_dict)
+        assert output.sample.shape == (4, 4, 16, 16)
+
+    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
+    @require_torch_gpu
+    def test_passing_dict_device_map_works(self, name, device_map):
+        # There are other valid dict-based `device_map` values too. It's best to refer to
+        # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(
+            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map={name: device_map}
+        )
+        output = loaded_model(**inputs_dict)
+        assert output.sample.shape == (4, 4, 16, 16)
+
     @require_peft_backend
     def test_load_attn_procs_raise_warning(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1145,6 +1179,20 @@ class UNet2DConditionModelTests(
 
         warning_message = str(warning.warnings[0].message)
         assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
+
+
+class UNet2DConditionModelCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
+
+
+class UNet2DConditionModelLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
 
 
 @slow
