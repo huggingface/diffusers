@@ -247,9 +247,11 @@ class ChromaPipeline(
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
+        negative_prompt: Union[str, List[str]] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 512,
         lora_scale: Optional[float] = None,
     ):
@@ -258,6 +260,9 @@ class ChromaPipeline(
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt not to guide the image generation. If not defined, one has to pass `negative_prompt_embeds`
+                instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
             device: (`torch.device`):
                 torch device
             num_images_per_prompt (`int`):
@@ -289,6 +294,14 @@ class ChromaPipeline(
                 device=device,
             )
 
+        if negative_prompt_embeds is None:
+            negative_prompt_embeds = self._get_t5_prompt_embeds(
+                prompt=negative_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                device=device,
+            )
+
         if self.text_encoder is not None:
             if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
@@ -296,8 +309,9 @@ class ChromaPipeline(
 
         dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
         text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
+        negative_text_ids = torch.zeros(negative_prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
-        return prompt_embeds, text_ids
+        return prompt_embeds, text_ids, negative_prompt_embeds, negative_text_ids
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
@@ -665,26 +679,18 @@ class ChromaPipeline(
         (
             prompt_embeds,
             text_ids,
+            negative_prompt_embeds,
+            negative_text_ids,
         ) = self.encode_prompt(
             prompt=prompt,
+            negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,
         )
-        if self.do_classifier_free_guidance:
-            (
-                negative_prompt_embeds,
-                negative_text_ids,
-            ) = self.encode_prompt(
-                prompt=negative_prompt,
-                prompt_embeds=negative_prompt_embeds,
-                device=device,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                lora_scale=lora_scale,
-            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4

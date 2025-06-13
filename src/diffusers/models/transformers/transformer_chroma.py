@@ -165,7 +165,7 @@ class ChromaAdaLayerNormContinuousPruned(nn.Module):
 
 
 class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
-    def __init__(self, factor: int, hidden_dim: int, out_dim: int, n_layers: int, embedding_dim: int):
+    def __init__(self, factor: int, out_dim: int):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=factor, flip_sin_to_cos=True, downscale_freq_shift=0)
@@ -418,6 +418,7 @@ class ChromaTransformer2DModel(
         axes_dims_rope: Tuple[int, ...] = (16, 56, 56),
         approximator_in_factor: int = 16,
         approximator_hidden_dim: int = 5120,
+        approximator_out_dim: int = 3072,
         approximator_layers: int = 5,
     ):
         super().__init__()
@@ -428,12 +429,14 @@ class ChromaTransformer2DModel(
 
         self.time_text_embed = CombinedTimestepTextProjChromaEmbeddings(
             factor=approximator_in_factor,
-            hidden_dim=approximator_hidden_dim,
             out_dim=3 * num_single_layers + 2 * 6 * num_layers + 2,
-            embedding_dim=self.inner_dim,
+        )
+        self.distilled_guidance_layer = ChromaApproximator(
+            in_dim=in_channels,
+            out_dim=approximator_out_dim,
+            hidden_dim=approximator_hidden_dim,
             n_layers=approximator_layers,
         )
-        self.distilled_guidance_layer = ChromaApproximator(in_dim=64, out_dim=3072, hidden_dim=5120, n_layers=5)
 
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = nn.Linear(in_channels, self.inner_dim)
