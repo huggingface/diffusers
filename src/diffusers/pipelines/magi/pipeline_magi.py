@@ -151,7 +151,7 @@ class MagiPipeline(DiffusionPipeline):
         # Process special tokens if present (following MAGI-1's approach)
         # In diffusers style, we don't need to explicitly handle special tokens as they're part of the tokenizer
         # But we can ensure proper mask handling similar to MAGI-1
-        seq_len = prompt_embeds.shape[1]
+        # Shape of prompt_embeds: [batch_size, seq_len, hidden_size]
 
         # Duplicate text embeddings for each generation per prompt
         prompt_embeds = prompt_embeds.repeat_interleave(num_videos_per_prompt, dim=0)
@@ -375,58 +375,7 @@ class MagiPipeline(DiffusionPipeline):
         # Default: use scheduler's default timesteps
         return timesteps
 
-    def denoise_latents(
-        self,
-        latents: torch.Tensor,
-        prompt_embeds: torch.Tensor,
-        timesteps: List[int],
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: int = 1,
-        guidance_scale: float = 7.5,
-    ) -> torch.Tensor:
-        """
-        Denoise the latents using the transformer model.
 
-        Args:
-            latents (`torch.Tensor`): The initial noisy latents.
-            prompt_embeds (`torch.Tensor`): The text embeddings for conditioning.
-            timesteps (`List[int]`): The timesteps for the diffusion process.
-            callback (`Callable`, *optional*): A function that will be called every `callback_steps` steps.
-            callback_steps (`int`, *optional*, defaults to 1): The frequency at which the callback is called.
-            guidance_scale (`float`, *optional*, defaults to 7.5): The scale for classifier-free guidance.
-
-        Returns:
-            `torch.Tensor`: The denoised latents.
-        """
-        do_classifier_free_guidance = guidance_scale > 1.0
-        batch_size = latents.shape[0] // (2 if do_classifier_free_guidance else 1)
-
-        for i, t in enumerate(timesteps):
-            # Expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-            # Predict the noise residual
-            noise_pred = self.transformer(
-                latent_model_input,
-                timesteps=torch.tensor([t], device=latents.device),
-                encoder_hidden_states=prompt_embeds,
-            ).sample
-
-            # Perform guidance
-            if do_classifier_free_guidance:
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-            # Compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
-
-            # Call the callback, if provided
-            if i % callback_steps == 0:
-                if callback is not None:
-                    callback(i, t, latents)
-
-        return latents
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -579,8 +528,8 @@ class MagiPipeline(DiffusionPipeline):
                 # For subsequent chunks, implement proper autoregressive conditioning
                 # In MAGI-1, each chunk conditions the next in an autoregressive manner
                 # We use the previous chunk's output as conditioning for the current chunk
-                prev_chunk_end = chunk_indices[chunk_idx - 1][1]
-                overlap_start = max(0, start_idx - self.vae_scale_factor_temporal)  # Add overlap for conditioning
+                # Calculate overlap for conditioning
+                overlap_frames = min(self.vae_scale_factor_temporal, start_idx)
 
                 # Initialize with noise
                 chunk_latents = randn_tensor(
@@ -593,21 +542,41 @@ class MagiPipeline(DiffusionPipeline):
                 chunk_latents = chunk_latents * self.scheduler.init_noise_sigma
 
                 # Use previous chunk output as conditioning by copying overlapping frames
-                if start_idx > 0 and chunk_idx > 0:
-                    overlap_frames = min(self.vae_scale_factor_temporal, start_idx)
-                    if overlap_frames > 0:
-                        # Copy overlapping frames from previous chunk's output
-                        chunk_latents[:, :, :overlap_frames, :, :] = all_latents[chunk_idx - 1][:, :, -overlap_frames:, :, :]
+                if start_idx > 0 and chunk_idx > 0 and overlap_frames > 0:
+                    # Copy overlapping frames from previous chunk's output
+                    chunk_latents[:, :, :overlap_frames, :, :] = all_latents[chunk_idx - 1][:, :, -overlap_frames:, :, :]
 
-            # Denoise this chunk
-            chunk_latents = self.denoise_latents(
-                chunk_latents,
-                prompt_embeds,
-                timesteps,
-                callback=callback if chunk_idx == 0 else None,  # Only use callback for first chunk
-                callback_steps=callback_steps,
-                guidance_scale=guidance_scale,
-            )
+            # Denoising loop for this chunk
+            with self.progress_bar(total=len(timesteps)) as progress_bar:
+                for i, t in enumerate(timesteps):
+                    # expand the latents if we are doing classifier free guidance
+                    latent_model_input = torch.cat([chunk_latents] * 2) if do_classifier_free_guidance else chunk_latents
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                    # predict the noise residual
+                    noise_pred = self.transformer(
+                        latent_model_input,
+                        timesteps=torch.tensor([t], device=chunk_latents.device),
+                        encoder_hidden_states=prompt_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    ).sample
+
+                    # perform guidance
+                    if do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                    # compute the previous noisy sample x_t -> x_t-1
+                    chunk_latents = self.scheduler.step(noise_pred, t, chunk_latents).prev_sample
+
+                    # call the callback, if provided
+                    if callback is not None and chunk_idx == 0 and i % callback_steps == 0:
+                        callback(i, t, chunk_latents)
+
+                    progress_bar.update()
+
+                    if XLA_AVAILABLE:
+                        xm.mark_step()
 
             all_latents.append(chunk_latents)
 

@@ -78,7 +78,6 @@ def convert_magi_vae_checkpoint(checkpoint_path, vae_config_file=None, dtype=Non
             "block_out_channels": [1024],  # Hidden dimension in transformer blocks
             "layers_per_block": 24,  # 24 transformer blocks in encoder/decoder
             "act_fn": "gelu",
-            "latent_channels": 16,
             "norm_num_groups": 32,
             "scaling_factor": 0.18215,
             "sample_size": 256,  # Typical image size
