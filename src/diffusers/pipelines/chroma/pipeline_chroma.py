@@ -252,6 +252,7 @@ class ChromaPipeline(
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        do_classifier_free_guidance: bool = True,
         max_sequence_length: int = 512,
         lora_scale: Optional[float] = None,
     ):
@@ -298,10 +299,22 @@ class ChromaPipeline(
                 max_sequence_length=max_sequence_length,
                 device=device,
             )
-
-        if negative_prompt_embeds is None:
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+
+            if prompt is not None and type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+
             negative_prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=negative_prompt,
                 num_images_per_prompt=num_images_per_prompt,
@@ -693,6 +706,7 @@ class ChromaPipeline(
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
