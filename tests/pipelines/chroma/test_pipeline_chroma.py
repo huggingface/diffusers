@@ -39,14 +39,13 @@ class ChromaPipelineFastTests(
             in_channels=4,
             num_layers=num_layers,
             num_single_layers=num_single_layers,
-            attention_head_dim=4,
-            num_attention_heads=4,
+            attention_head_dim=16,
+            num_attention_heads=2,
             joint_attention_dim=32,
             axes_dims_rope=[4, 4, 8],
-            approximator_in_factor=1,
-            approximator_hidden_dim=32,
-            approximator_out_dim=64,
-            approximator_layers=5,
+            approximator_num_channels=8,
+            approximator_hidden_dim=16,
+            approximator_layers=1,
         )
 
         torch.manual_seed(0)
