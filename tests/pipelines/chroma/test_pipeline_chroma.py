@@ -165,9 +165,3 @@ class ChromaPipelineFastTests(
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
-
-    @unittest.skip(
-        "Chroma uses Flux encode_prompt but uses CFG. This test is incompatible with the pipeline since the test case does not use a negative prompt embeds"
-    )
-    def test_encode_prompt_works_in_isolation(self):
-        pass

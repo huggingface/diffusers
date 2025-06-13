@@ -409,7 +409,6 @@ class ChromaTransformer2DModel(
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 4096,
-        pooled_projection_dim: int = 768,
         axes_dims_rope: Tuple[int, ...] = (16, 56, 56),
         approximator_num_channels: int = 64,
         approximator_hidden_dim: int = 5120,
