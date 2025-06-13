@@ -299,20 +299,23 @@ class BlipImageProcessor(BaseImageProcessor):
 
     # Follows diffusers.VaeImageProcessor.postprocess
     def postprocess(self, sample: torch.Tensor, output_type: str = "pil"):
-        if output_type not in ["pt", "np", "pil"]:
+        if output_type not in {"pt", "np", "pil"}:
             raise ValueError(
                 f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']"
             )
 
         # Equivalent to diffusers.VaeImageProcessor.denormalize
-        sample = (sample / 2 + 0.5).clamp(0, 1)
+        sample = (sample / 2 + 0.5).clamp_(0, 1)
         if output_type == "pt":
             return sample
 
+        # Only move to CPU and numpy if necessary 
+        if sample.device.type != "cpu":
+            sample = sample.cpu()
         # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
-        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
+        sample = sample.permute(0, 2, 3, 1).contiguous().numpy()
         if output_type == "np":
             return sample
+
         # Output_type must be 'pil'
-        sample = numpy_to_pil(sample)
-        return sample
+        return numpy_to_pil(sample)
