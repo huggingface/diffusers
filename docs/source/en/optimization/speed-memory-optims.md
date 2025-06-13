@@ -12,26 +12,26 @@ specific language governing permissions and limitations under the License.
 
 # Compile and offloading
 
-There are trade-offs associated with optimizing solely for [inference speed](./fp16) or [memory-usage](./memory). For example, [caching](./cache) increases inference speed but requires more memory to store the intermediate outputs from the attention layers.
+When optimizing models, you often face trade-offs between [inference speed](./fp16) and [memory-usage](./memory). For instance, while [caching](./cache) can boost inference speed, it comes at the cost of increased memory consumption since it needs to store intermediate attention layer outputs.
 
-If your hardware is sufficiently powerful, you can choose to focus on one or the other. For a more balanced approach that doesn't sacrifice too much in terms of inference speed and memory-usage, try compiling and offloading a model.
+A more balanced optimization strategy combines [torch.compile](./fp16#torchcompile) with various offloading methods. This approach not only accelerates inference but also helps lower memory-usage.
 
-Refer to the table below for the latency and memory-usage of each combination.
+The table below provides a comparison of optimization strategy combinations and their impact on latency and memory-usage.
 
-| combination | latency | memory usage |
+| combination | latency | memory-usage |
 |---|---|---|
 | quantization, torch.compile |  |  |
 | quantization, torch.compile, model CPU offloading |  |  |
 | quantization, torch.compile, group offloading |  |  |
 
-This guide will show you how to compile and offload a model to improve both inference speed and memory-usage.
+This guide will show you how to compile and offload a model.
 
 ## Quantization and torch.compile
 
 > [!TIP]
 > The quantization backend, such as [bitsandbytes](../quantization/bitsandbytes#torchcompile), must be compatible with torch.compile. Refer to the quantization [overview](https://huggingface.co/docs/transformers/quantization/overview#overview) table to see which backends support torch.compile.
 
-Start by [quantizing](../quantization/overview) a model to reduce the memory required to store it and [compiling](./fp16#torchcompile) it to accelerate inference.
+Start by [quantizing](../quantization/overview) a model to reduce the memory required for storage and [compiling](./fp16#torchcompile) it to accelerate inference.
 
 ```py
 import torch
@@ -52,9 +52,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
-pipeline.transformer = torch.compile(
-    pipeline.transformer, mode="ax-autotune", fullgraph=True
-)
+pipeline.transformer.compile( mode="max-autotune", fullgraph=True)
 pipeline("""
     cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
     highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
@@ -93,9 +91,7 @@ pipeline.enable_model_cpu_offload()
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
-pipeline.transformer = torch.compile(
-    pipeline.transformer, mode="ax-autotune", fullgraph=True
-)
+pipeline.transformer.compile( mode="max-autotune", fullgraph=True)
 pipeline(
     "cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain"
 ).images[0]
@@ -132,13 +128,12 @@ offload_device = torch.device("cpu")
 
 pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True)
 pipeline.vae.enable_group_offload(onload_device=onload_device, offload_type="leaf_level", use_stream=True)
-apply_group_offloading(pipeline.text_encoder, onload_device=onload_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+apply_group_offloading(pipeline.text_encoder, onload_device=onload_device, offload_type="leaf_level", use_stream=True)
+apply_group_offloading(pipeline.text_encoder_2, onload_device=onload_device, offload_type="leaf_level", use_stream=True)
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
-pipeline.transformer = torch.compile(
-    pipeline.transformer, mode="ax-autotune", fullgraph=True
-)
+pipeline.transformer.compile( mode="max-autotune", fullgraph=True)
 pipeline(
     "cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain"
 ).images[0]
