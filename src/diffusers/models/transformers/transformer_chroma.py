@@ -86,7 +86,7 @@ class ChromaAdaLayerNormZeroPruned(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.emb is not None:
             emb = self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.squeeze(0).chunk(6, dim=0)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.flatten(1, 2).chunk(6, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
 
@@ -115,7 +115,7 @@ class ChromaAdaLayerNormZeroSinglePruned(nn.Module):
         x: torch.Tensor,
         emb: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        shift_msa, scale_msa, gate_msa = emb.squeeze(0).chunk(3, dim=0)
+        shift_msa, scale_msa, gate_msa = emb.flatten(1, 2).chunk(3, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa
 
@@ -159,7 +159,7 @@ class ChromaAdaLayerNormContinuousPruned(nn.Module):
 
     def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
         # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
-        shift, scale = torch.chunk(emb.squeeze(0).to(x.dtype), 2, dim=0)
+        shift, scale = torch.chunk(emb.flatten(1, 2).to(x.dtype), 2, dim=1)
         x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
 
@@ -181,15 +181,18 @@ class ChromaCombinedTimestepTextProjEmbeddings(nn.Module):
 
     def forward(self, timestep: torch.Tensor) -> torch.Tensor:
         mod_index_length = self.mod_proj.shape[0]
+        batch_size = timestep.shape[0]
 
         timesteps_proj = self.time_proj(timestep).to(dtype=timestep.dtype)
-        guidance_proj = self.guidance_proj(torch.tensor([0])).to(dtype=timestep.dtype, device=timestep.device)
+        guidance_proj = self.guidance_proj(torch.tensor([0] * batch_size)).to(
+            dtype=timestep.dtype, device=timestep.device
+        )
 
-        mod_proj = self.mod_proj.to(dtype=timesteps_proj.dtype, device=timesteps_proj.device)
+        mod_proj = self.mod_proj.to(dtype=timesteps_proj.dtype, device=timesteps_proj.device).repeat(batch_size, 1, 1)
         timestep_guidance = (
             torch.cat([timesteps_proj, guidance_proj], dim=1).unsqueeze(1).repeat(1, mod_index_length, 1)
         )
-        input_vec = torch.cat([timestep_guidance, mod_proj.unsqueeze(0)], dim=-1)
+        input_vec = torch.cat([timestep_guidance, mod_proj], dim=-1)
         return input_vec.to(timestep.dtype)
 
 

@@ -681,6 +681,10 @@ class ChromaPipeline(
             lora_scale=lora_scale,
         )
         if self.do_classifier_free_guidance:
+            negative_prompt = negative_prompt or ""
+            if isinstance(negative_prompt, str):
+                negative_prompt = [negative_prompt] * batch_size
+
             (
                 negative_prompt_embeds,
                 negative_text_ids,
@@ -705,7 +709,6 @@ class ChromaPipeline(
             generator,
             latents,
         )
-
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = latents.shape[1]
