@@ -1736,6 +1736,46 @@ class ModelTesterMixin:
             f"AutoModel forward pass diff: {max_diff} exceeds threshold {expected_max_diff}",
         )
 
+    @parameterized.expand(
+        [
+            (-1, "You can't pass device_map as a negative int"),
+            ("foo", "When passing device_map as a string, the value needs to be a device name"),
+        ]
+    )
+    def test_wrong_device_map_raises_error(self, device_map, msg_substring):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            with self.assertRaises(ValueError) as err_ctx:
+                _ = self.model_class.from_pretrained(
+                    "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=device_map
+                )
+
+        assert msg_substring in str(err_ctx.exception)
+
+    @parameterized.expand([0, "cuda", torch.device("cuda"), torch.device("cuda:0")])
+    @require_torch_gpu
+    def test_passing_non_dict_device_map_works(self, device_map):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).eval()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+            _ = loaded_model(**inputs_dict)
+
+    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
+    @require_torch_gpu
+    def test_passing_dict_device_map_works(self, name, device_map):
+        # There are other valid dict-based `device_map` values too. It's best to refer to
+        # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).eval()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+            _ = loaded_model(**inputs_dict)
+
 
 @is_staging_test
 class ModelPushToHubTester(unittest.TestCase):
