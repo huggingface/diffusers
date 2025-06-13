@@ -1605,6 +1605,10 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     if diff_keys:
         for diff_k in diff_keys:
             param = original_state_dict[diff_k]
+            # The magnitudes of the .diff-ending weights are very low (most are below 1e-4, some are upto 1e-3,
+            # and 2 of them are about 1.6e-2 [the case with AccVideo lora]). The low magnitudes mostly correspond
+            # to norm layers. Ignoring them is the best option at the moment until a better solution is found. It
+            # is okay to ignore because they do not affect the model output in a significant manner.
             threshold = 1.6e-2
             absdiff = param.abs().max() - param.abs().min()
             all_zero = torch.all(param == 0).item()
