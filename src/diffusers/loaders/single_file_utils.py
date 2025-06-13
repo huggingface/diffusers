@@ -3323,8 +3323,8 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "double_blocks." in k))[-1] + 1  # noqa: C401
     num_single_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "single_blocks." in k))[-1] + 1  # noqa: C401
     num_guidance_layers = (
-        list({int(k.split(".", 3)[2]) for k in checkpoint if "distilled_guidance_layer.layers." in k})[-1] + 1
-    )  # noqa: C401
+        list(set(int(k.split(".", 3)[2]) for k in checkpoint if "distilled_guidance_layer.layers." in k))[-1] + 1  # noqa: C401
+    )
     mlp_ratio = 4.0
     inner_dim = 3072
 

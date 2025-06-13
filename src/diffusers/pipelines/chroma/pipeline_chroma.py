@@ -182,7 +182,6 @@ class ChromaPipeline(
         transformer: ChromaTransformer2DModel,
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
-        variant: str = "flux",
     ):
         super().__init__()
 
@@ -220,23 +219,19 @@ class ChromaPipeline(
 
         text_inputs = self.tokenizer(
             prompt,
-            padding="max_length",
+            padding=False,
             max_length=max_sequence_length,
             truncation=True,
             return_length=False,
             return_overflowing_tokens=False,
             return_tensors="pt",
         )
-        text_input_ids = text_inputs.input_ids
+        text_input_ids = text_inputs.input_ids + self.tokenizer.pad_token_id
 
         prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
             output_hidden_states=False,
-            attention_mask=text_inputs.attention_mask.to(device),
         )[0]
-
-        max_len = min(text_inputs.attention_mask.sum() + 1, max_sequence_length)
-        prompt_embeds = prompt_embeds[:, :max_len]
 
         dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -397,7 +392,6 @@ class ChromaPipeline(
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_latent_image_ids
     @staticmethod
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
         latent_image_ids = torch.zeros(height, width, 3)
@@ -412,7 +406,6 @@ class ChromaPipeline(
 
         return latent_image_ids.to(device=device, dtype=dtype)
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
@@ -421,7 +414,6 @@ class ChromaPipeline(
 
         return latents
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
     @staticmethod
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
