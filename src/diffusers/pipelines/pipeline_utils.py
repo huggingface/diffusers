@@ -2027,6 +2027,40 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 return True
         return False
 
+    def compile(
+        self,
+        compile_regions_for_transformer: bool = True,
+        transformer_module_name: str = "transformer",
+        other_modules_names: List[str] = [],
+        **compile_kwargs,
+    ):
+        transformer = getattr(self, transformer_module_name, None)
+        if transformer is None:
+            raise ValueError(
+                f"{transformer_module_name} not found in the pipeline. Set `transformer_module_name` to the correct module name."
+            )
+
+        if compile_regions_for_transformer:
+            compile_region_classes = getattr(transformer, "compile_region_classes", None)
+            if compile_region_classes is None:
+                raise ValueError(
+                    f"{transformer_module_name} does not have `compile_region_classes` attribute. Set `compile_regions_for_transformer` to False."
+                )
+
+            for submod in transformer.modules():
+                if isinstance(submod, compile_region_classes):
+                    submod.compile(**compile_kwargs)
+        else:
+            transformer.compile(**compile_kwargs)
+
+        for module_name in other_modules_names:
+            module = getattr(self, module_name, None)
+            if module is None:
+                raise ValueError(
+                    f"{module_name} not found in the pipeline. Set `other_modules_names` to the correct module names."
+                )
+            module.compile(**compile_kwargs)
+
 
 class StableDiffusionMixin:
     r"""

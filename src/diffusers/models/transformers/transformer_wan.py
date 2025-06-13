@@ -403,6 +403,8 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         self.gradient_checkpointing = False
 
+        self.compile_region_classes = (WanTransformerBlock,)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
