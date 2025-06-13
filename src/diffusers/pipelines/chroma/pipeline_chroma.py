@@ -220,23 +220,19 @@ class ChromaPipeline(
 
         text_inputs = self.tokenizer(
             prompt,
-            padding="max_length",
+            padding=False,
             max_length=max_sequence_length,
             truncation=True,
             return_length=False,
             return_overflowing_tokens=False,
             return_tensors="pt",
         )
-        text_input_ids = text_inputs.input_ids
+        text_input_ids = text_inputs.input_ids + self.tokenizer.pad_token_id
 
         prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
             output_hidden_states=False,
-            attention_mask=text_inputs.attention_mask.to(device),
         )[0]
-
-        max_len = min(text_inputs.attention_mask.sum() + 1, max_sequence_length)
-        prompt_embeds = prompt_embeds[:, :max_len]
 
         dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
