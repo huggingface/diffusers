@@ -57,7 +57,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import ChromaPipeline
 
-        >>> pipe = ChromaPipeline.from_single_file("chroma-unlocked-v35-detail-calibrated.safetensors", torch_dtype=torch.bfloat16)
+        >>> pipe = ChromaPipeline.from_single_file(
+        ...     "chroma-unlocked-v35-detail-calibrated.safetensors", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> image = pipe(prompt, num_inference_steps=28, guidance_scale=4.0).images[0]
@@ -630,9 +632,9 @@ class ChromaPipeline(
         Examples:
 
         Returns:
-            [`~pipelines.chroma.ChromaPipelineOutput`] or `tuple`: [`~pipelines.chroma.ChromaPipelineOutput`] if `return_dict`
-            is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
-            images.
+            [`~pipelines.chroma.ChromaPipelineOutput`] or `tuple`: [`~pipelines.chroma.ChromaPipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
+            generated images.
         """
 
         height = height or self.default_sample_size * self.vae_scale_factor
