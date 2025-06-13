@@ -448,7 +448,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        flag_df: bool = False,
+        enable_diffusion_forcing: bool = False,
         fps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -517,7 +517,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             fps_emb = self.fps_embedding(fps).float()
             timestep_proj = timestep_proj.to(fps_emb.dtype)
             self.fps_projection.to(fps_emb.dtype)
-            if flag_df:
+            if enable_diffusion_forcing:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, -1)).repeat(
                     timestep.shape[1], 1, 1
                 )
@@ -525,7 +525,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, -1))
             timestep_proj = timestep_proj.to(hidden_states.dtype)
 
-        if flag_df:
+        if enable_diffusion_forcing:
             b, f = timestep.shape
             temb = temb.view(b, f, 1, 1, -1)
             timestep_proj = timestep_proj.view(b, f, 1, 1, 6, -1)
