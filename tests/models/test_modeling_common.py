@@ -1748,9 +1748,7 @@ class ModelTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             model.save_pretrained(tmpdir)
             with self.assertRaises(ValueError) as err_ctx:
-                _ = self.model_class.from_pretrained(
-                    "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=device_map
-                )
+                _ = self.model_class.from_pretrained(tmpdir, device_map=device_map)
 
         assert msg_substring in str(err_ctx.exception)
 
