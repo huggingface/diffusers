@@ -1208,8 +1208,9 @@ class PipelineTesterMixin:
             f"Required optional parameters not present: {remaining_required_optional_parameters}",
         )
 
-    @unittest.skipIf("Chroma" in pipeline_class.__name__, reason="Chroma does not support batching")
     def test_inference_batch_consistent(self, batch_sizes=[2]):
+        if "Chroma" in self.pipeline_class.__name__:
+            self.skipTest("Chroma does not support batching")
         self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
@@ -1261,8 +1262,9 @@ class PipelineTesterMixin:
             output = pipe(**batched_input)
             assert len(output[0]) == batch_size
 
-    @unittest.skipIf("Chroma" in pipeline_class.__name__, reason="Chroma does not support batching")
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
+        if "Chroma" in self.pipeline_class.__name__:
+            self.skipTest("Chroma does not support batching")
         self._test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def _test_inference_batch_single_identical(
@@ -1831,8 +1833,9 @@ class PipelineTesterMixin:
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
-    @unittest.skipIf("Chroma" in pipeline_class.__name__, reason="Chroma does not yet support num_images_per_prompt")
     def test_num_images_per_prompt(self):
+        if "Chroma" in self.pipeline_class.__name__:
+            self.skipTest("Chroma does not yet support num_images_per_prompt")
         sig = inspect.signature(self.pipeline_class.__call__)
 
         if "num_images_per_prompt" not in sig.parameters:
