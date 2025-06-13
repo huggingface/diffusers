@@ -272,7 +272,7 @@ class AuraFlowPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class CLIPImageProjection(metaclass=DummyObject):
+class ChromaPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -287,7 +287,7 @@ class CLIPImageProjection(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class ChromaPipeline(metaclass=DummyObject):
+class CLIPImageProjection(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
