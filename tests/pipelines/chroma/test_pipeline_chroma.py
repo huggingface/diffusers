@@ -8,6 +8,7 @@ from diffusers import AutoencoderKL, ChromaPipeline, ChromaTransformer2DModel, F
 from diffusers.utils.testing_utils import torch_device
 
 from ..test_pipelines_common import (
+    FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
