@@ -164,17 +164,17 @@ class ChromaAdaLayerNormContinuousPruned(nn.Module):
         return x
 
 
-class CombinedTimestepTextProjChromaEmbeddings(nn.Module):
-    def __init__(self, factor: int, hidden_dim: int, out_dim: int, n_layers: int, embedding_dim: int):
+class ChromaCombinedTimestepTextProjEmbeddings(nn.Module):
+    def __init__(self, num_channels: int, out_dim: int):
         super().__init__()
 
-        self.time_proj = Timesteps(num_channels=factor, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.guidance_proj = Timesteps(num_channels=factor, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.time_proj = Timesteps(num_channels=num_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.guidance_proj = Timesteps(num_channels=num_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
 
         self.register_buffer(
             "mod_proj",
             get_timestep_embedding(
-                torch.arange(out_dim) * 1000, 2 * factor, flip_sin_to_cos=True, downscale_freq_shift=0
+                torch.arange(out_dim) * 1000, 2 * num_channels, flip_sin_to_cos=True, downscale_freq_shift=0
             ),
             persistent=False,
         )
@@ -426,14 +426,16 @@ class ChromaTransformer2DModel(
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
-        self.time_text_embed = CombinedTimestepTextProjChromaEmbeddings(
-            factor=approximator_in_factor,
-            hidden_dim=approximator_hidden_dim,
+        self.time_text_embed = ChromaCombinedTimestepTextProjEmbeddings(
+            num_channels=approximator_in_factor,
             out_dim=3 * num_single_layers + 2 * 6 * num_layers + 2,
-            embedding_dim=self.inner_dim,
+        )
+        self.distilled_guidance_layer = ChromaApproximator(
+            in_dim=64,
+            out_dim=self.inner_dim,
+            hidden_dim=approximator_hidden_dim,
             n_layers=approximator_layers,
         )
-        self.distilled_guidance_layer = ChromaApproximator(in_dim=64, out_dim=3072, hidden_dim=5120, n_layers=5)
 
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = nn.Linear(in_channels, self.inner_dim)
