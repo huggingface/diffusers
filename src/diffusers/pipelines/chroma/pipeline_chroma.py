@@ -299,6 +299,8 @@ class ChromaPipeline(
                 max_sequence_length=max_sequence_length,
                 device=device,
             )
+
+        negative_text_ids = None
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
@@ -321,6 +323,7 @@ class ChromaPipeline(
                 max_sequence_length=max_sequence_length,
                 device=device,
             )
+            negative_text_ids = torch.zeros(negative_prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
         if self.text_encoder is not None:
             if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
@@ -329,7 +332,6 @@ class ChromaPipeline(
 
         dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
         text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
-        negative_text_ids = torch.zeros(negative_prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
         return prompt_embeds, text_ids, negative_prompt_embeds, negative_text_ids
 
