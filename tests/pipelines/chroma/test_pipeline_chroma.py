@@ -4,15 +4,8 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import (
-    AutoencoderKL,
-    ChromaPipeline,
-    ChromaTransformer2DModel,
-    FlowMatchEulerDiscreteScheduler,
-)
-from diffusers.utils.testing_utils import (
-    torch_device,
-)
+from diffusers import AutoencoderKL, ChromaPipeline, ChromaTransformer2DModel, FlowMatchEulerDiscreteScheduler
+from diffusers.utils.testing_utils import torch_device
 
 from ..test_pipelines_common import (
     FluxIPAdapterTesterMixin,

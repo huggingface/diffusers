@@ -25,6 +25,7 @@ Original model checkpoints for Chroma can be found [here](https://huggingface.co
 
 Chroma can use all the same optimizations as Flux.
 
+</Tip>
 
 ## Inference (Single File)
 
