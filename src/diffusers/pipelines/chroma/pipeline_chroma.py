@@ -675,6 +675,13 @@ class ChromaPipeline(
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
+            if negative_prompt is not None and isinstance(negative_prompt, str):
+                negative_prompt = [negative_prompt] * batch_size
+            elif negative_prompt is not None and isinstance(negative_prompt, list):
+                if len(negative_prompt) == 1:
+                    negative_prompt = [negative_prompt] * batch_size
+                else:
+                    raise ValueError("prompt and negative_prompt are lists of unequal size")
         else:
             batch_size = prompt_embeds.shape[0]
 

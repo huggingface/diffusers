@@ -57,7 +57,9 @@ def create_flux_ip_adapter_state_dict(model):
 
     image_projection = ImageProjection(
         cross_attention_dim=model.config["joint_attention_dim"],
-        image_embed_dim=model.config["pooled_projection_dim"],
+        image_embed_dim=(
+            model.config["pooled_projection_dim"] if "pooled_projection_dim" in model.config.keys() else 768
+        ),
         num_image_text_embeds=4,
     )
 
