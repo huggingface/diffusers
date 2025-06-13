@@ -12,19 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
-from transformers import UMT5EncoderModel, AutoTokenizer
+from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...models import AutoencoderKLMagi, MagiTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     logging,
-    replace_example_docstring,
     randn_tensor,
+    replace_example_docstring,
 )
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline

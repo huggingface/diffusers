@@ -19,19 +19,17 @@
 import argparse
 import json
 import os
-from pathlib import Path
 
 import torch
-from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from safetensors.torch import load_file
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from diffusers import (
     AutoencoderKLMagi,
+    FlowMatchEulerDiscreteScheduler,
     MagiPipeline,
     MagiTransformer3DModel,
-    FlowMatchEulerDiscreteScheduler,
 )
 
 
@@ -583,13 +581,13 @@ def main():
     else:
         dtype = torch.float32
 
-    print(f"Starting MAGI-1 conversion to diffusers format...")
+    print("Starting MAGI-1 conversion to diffusers format...")
     print(f"Output will be saved to: {args.output_path}")
     print(f"Using dtype: {args.dtype}")
 
     try:
         # Convert the VAE
-        print(f"Converting VAE checkpoint...")
+        print("Converting VAE checkpoint...")
         if args.vae_checkpoint_path:
             vae_path = args.vae_checkpoint_path
         else:
@@ -599,10 +597,10 @@ def main():
 
         print(f"VAE checkpoint path: {vae_path}")
         vae = convert_magi_vae_checkpoint(vae_path, dtype=dtype)
-        print(f"VAE conversion complete.")
+        print("VAE conversion complete.")
 
         # Convert the transformer
-        print(f"Converting transformer checkpoint...")
+        print("Converting transformer checkpoint...")
         if args.transformer_checkpoint_path:
             transformer_path = args.transformer_checkpoint_path
         else:
@@ -610,7 +608,7 @@ def main():
 
         print(f"Transformer checkpoint path: {transformer_path}")
         transformer = convert_magi_transformer_checkpoint(transformer_path, dtype=dtype)
-        print(f"Transformer conversion complete.")
+        print("Transformer conversion complete.")
 
         # Load the text encoder and tokenizer
         print(f"Loading text encoder and tokenizer from {args.t5_model_name}...")
@@ -619,15 +617,15 @@ def main():
 
         if dtype is not None:
             text_encoder = text_encoder.to(dtype=dtype)
-        print(f"Text encoder and tokenizer loaded successfully.")
+        print("Text encoder and tokenizer loaded successfully.")
 
         # Create the scheduler
-        print(f"Creating scheduler...")
+        print("Creating scheduler...")
         scheduler = FlowMatchEulerDiscreteScheduler()
-        print(f"Scheduler created successfully.")
+        print("Scheduler created successfully.")
 
         # Create the pipeline
-        print(f"Creating MAGI pipeline...")
+        print("Creating MAGI pipeline...")
         pipeline = MagiPipeline(
             vae=vae,
             text_encoder=text_encoder,
@@ -635,12 +633,12 @@ def main():
             transformer=transformer,
             scheduler=scheduler,
         )
-        print(f"MAGI pipeline created successfully.")
+        print("MAGI pipeline created successfully.")
 
         # Save the pipeline
         print(f"Saving pipeline to {args.output_path}...")
         pipeline.save_pretrained(args.output_path)
-        print(f"Pipeline saved successfully.")
+        print("Pipeline saved successfully.")
 
         print(f"Conversion complete! MAGI-1 pipeline saved to {args.output_path}")
 

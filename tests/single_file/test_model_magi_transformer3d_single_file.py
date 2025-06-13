@@ -16,7 +16,6 @@
 import unittest
 
 import torch
-from huggingface_hub import hf_hub_download
 
 from diffusers import MagiTransformer3DModel
 from diffusers.utils.testing_utils import (

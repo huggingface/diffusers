@@ -652,12 +652,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
+        from .magi import MagiImageToVideoPipeline, MagiPipeline, MagiVideoToVideoPipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
         )
-        from .magi import MagiPipeline, MagiImageToVideoPipeline, MagiVideoToVideoPipeline
         from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .omnigen import OmniGenPipeline

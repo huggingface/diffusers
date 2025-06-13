@@ -12,22 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
-from transformers import UMT5EncoderModel, AutoTokenizer
+from transformers import AutoTokenizer, UMT5EncoderModel
 
-from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLMagi, MagiTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     is_torch_xla_available,
     logging,
-    replace_example_docstring,
     randn_tensor,
+    replace_example_docstring,
 )
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -35,7 +31,6 @@ from .pipeline_output import MagiPipelineOutput
 
 
 if is_torch_xla_available():
-    import torch_xla.core.xla_model as xm
 
     XLA_AVAILABLE = True
 else:

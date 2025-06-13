@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import unittest
 
 import numpy as np
@@ -20,19 +19,17 @@ import PIL
 import torch
 from transformers import AutoTokenizer, CLIPVisionModel, T5EncoderModel
 
-from diffusers import AutoencoderKLMagi, FlowMatchEulerDiscreteScheduler, MagiImageToVideoPipeline, MagiTransformer3DModel
+from diffusers import (
+    AutoencoderKLMagi,
+    FlowMatchEulerDiscreteScheduler,
+    MagiImageToVideoPipeline,
+    MagiTransformer3DModel,
+)
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
-    load_image,
-    load_numpy,
-    nightly,
-    require_torch_accelerator,
-    torch_device,
 )
 
 from ..pipeline_params import (
-    IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,

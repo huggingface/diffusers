@@ -16,7 +16,6 @@
 import unittest
 
 import torch
-from huggingface_hub import hf_hub_download
 
 from diffusers import AutoencoderKLMagi
 from diffusers.utils.testing_utils import (
