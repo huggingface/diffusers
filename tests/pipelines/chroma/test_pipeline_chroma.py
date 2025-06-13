@@ -28,26 +28,15 @@ from ..test_pipelines_common import (
 class ChromaPipelineFastTests(
     unittest.TestCase,
     PipelineTesterMixin,
-    FluxIPAdapterTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
-    FasterCacheTesterMixin,
 ):
     pipeline_class = ChromaPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
+    params = frozenset(["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds"])
     batch_params = frozenset(["prompt"])
 
     # there is no xformers processor for Flux
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
-
-    faster_cache_config = FasterCacheConfig(
-        spatial_attention_block_skip_range=2,
-        spatial_attention_timestep_skip_range=(-1, 901),
-        unconditional_batch_skip_range=2,
-        attention_weight_callback=lambda _: 0.5,
-        is_guidance_distilled=True,
-    )
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -57,7 +46,7 @@ class ChromaPipelineFastTests(
             num_layers=num_layers,
             num_single_layers=num_single_layers,
             attention_head_dim=16,
-            num_attention_heads=2,
+            num_attention_heads=192,
             joint_attention_dim=32,
             axes_dims_rope=[4, 4, 8],
         )
