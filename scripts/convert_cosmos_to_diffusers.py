@@ -422,6 +422,7 @@ def save_pipeline_cosmos_1_0(args, transformer, vae):
         transformer=transformer,
         vae=vae,
         scheduler=scheduler,
+        safety_checker=lambda *args, **kwargs: None,
     )
     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
@@ -439,6 +440,7 @@ def save_pipeline_cosmos_2_0(args, transformer, vae):
         transformer=transformer,
         vae=vae,
         scheduler=scheduler,
+        safety_checker=lambda *args, **kwargs: None,
     )
     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
