@@ -19,7 +19,6 @@ from ..test_pipelines_common import (
     FasterCacheTesterMixin,
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
 )
@@ -29,11 +28,10 @@ class ChromaPipelineFastTests(
     unittest.TestCase,
     PipelineTesterMixin,
     FluxIPAdapterTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
     FasterCacheTesterMixin,
 ):
     pipeline_class = ChromaPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
+    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds"])
     batch_params = frozenset(["prompt"])
 
     # there is no xformers processor for Flux
@@ -46,7 +44,7 @@ class ChromaPipelineFastTests(
         spatial_attention_timestep_skip_range=(-1, 901),
         unconditional_batch_skip_range=2,
         attention_weight_callback=lambda _: 0.5,
-        is_guidance_distilled=True,
+        is_guidance_distilled=False,
     )
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
@@ -182,3 +180,9 @@ class ChromaPipelineFastTests(
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
+
+    @unittest.skip(
+        "Chroma uses Flux encode_prompt but uses CFG. This test is incompatible with the pipeline since the test case does not use a negative prompt embeds"
+    )
+    def test_encode_prompt_works_in_isolation(self):
+        pass

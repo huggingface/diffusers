@@ -219,25 +219,23 @@ class ChromaPipeline(
 
         text_inputs = self.tokenizer(
             prompt,
-            padding=False,
+            padding=True,
             max_length=max_sequence_length,
             truncation=True,
             return_length=False,
             return_overflowing_tokens=False,
             return_tensors="pt",
         )
-        pad_token_id = self.tokenizer.pad_token_id
-        text_input_ids = torch.cat(
-            [
-                text_inputs.input_ids,
-                torch.full((text_inputs.input_ids.size(0), 1), pad_token_id, dtype=text_inputs.input_ids.dtype),
-            ],
-            dim=1,
-        )
+        text_input_ids = text_inputs.input_ids
+        attention_mask = text_inputs.attention_mask.clone()
+
+        # Chroma requires the attention mask to include one padding token
+        seq_lengths = attention_mask.sum(dim=1)
+        mask_indices = torch.arange(attention_mask.size(1)).unsqueeze(0).expand(batch_size, -1)
+        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).long()
 
         prompt_embeds = self.text_encoder(
-            text_input_ids.to(device),
-            output_hidden_states=False,
+            text_input_ids.to(device), output_hidden_states=False, attention_mask=attention_mask.to(device)
         )[0]
 
         dtype = self.text_encoder.dtype
