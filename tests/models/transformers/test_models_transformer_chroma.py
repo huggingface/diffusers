@@ -125,7 +125,7 @@ class ChromaTransformerTests(ModelTesterMixin, unittest.TestCase):
             "num_layers": 1,
             "num_single_layers": 1,
             "attention_head_dim": 16,
-            "num_attention_heads": 2,
+            "num_attention_heads": 192,
             "joint_attention_dim": 32,
             "axes_dims_rope": [4, 4, 8],
         }
