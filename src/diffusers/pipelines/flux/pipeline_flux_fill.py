@@ -219,7 +219,7 @@ class FluxFillPipeline(
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
             transformer=transformer,
-            scheduler=scheduler
+            scheduler=scheduler,
             ip_adapter=ip_adapter,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
