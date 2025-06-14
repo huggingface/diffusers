@@ -148,6 +148,7 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
+    _import_structure["chroma"] = ["ChromaPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -536,6 +537,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
+        from .chroma import ChromaPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
