@@ -286,6 +286,8 @@ class FluxTransformer2DModel(
 
         self.gradient_checkpointing = False
 
+        self.compile_region_classes = (FluxTransformerBlock, FluxSingleTransformerBlock)
+
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
