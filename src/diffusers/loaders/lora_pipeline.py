@@ -5071,7 +5071,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         """
         super().unfuse_lora(components=components, **kwargs)
 
-# Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin with WanTransformer3DModel->SkyReelsV2Transformer3DModel
+
 class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     r"""
     Load LoRA layers into [`SkyReelsV2Transformer3DModel`].
@@ -5291,7 +5291,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->WanTransformer3DModel
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->SkyReelsV2Transformer3DModel
     def load_lora_into_transformer(
         cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
     ):

@@ -245,7 +245,7 @@ The code snippets available in [this](https://github.com/huggingface/diffusers/p
 
 ## Notes
 
-- SkyReels-V2 supports LoRAs with [`~loaders.WanLoraLoaderMixin.load_lora_weights`].
+- SkyReels-V2 supports LoRAs with [`~loaders.SkyReelsV2LoraLoaderMixin.load_lora_weights`].
 
   <details>
   <summary>Show example code</summary>
