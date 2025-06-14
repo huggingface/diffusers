@@ -30,8 +30,7 @@
   - local: using-diffusers/push_to_hub
     title: Push files to the Hub
   title: Load pipelines and adapters
-- isExpanded: false
-  sections:
+- sections:
   - local: tutorials/using_peft_for_inference
     title: LoRA
   - local: using-diffusers/ip_adapter
@@ -45,6 +44,7 @@
   - local: using-diffusers/textual_inversion_inference
     title: Textual inversion
   title: Adapters
+  isExpanded: false
 - sections:
   - local: using-diffusers/unconditional_image_generation
     title: Unconditional image generation
