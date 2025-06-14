@@ -27,19 +27,19 @@ Learn how to quantize models in the [Quantization](../quantization/overview) gui
 
 ## BitsAndBytesConfig
 
-[[autodoc]] BitsAndBytesConfig
+[[autodoc]] quantizers.quantization_config.BitsAndBytesConfig
 
 ## GGUFQuantizationConfig
 
-[[autodoc]] GGUFQuantizationConfig
+[[autodoc]] quantizers.quantization_config.GGUFQuantizationConfig
 
 ## QuantoConfig
 
-[[autodoc]] QuantoConfig
+[[autodoc]] quantizers.quantization_config.QuantoConfig
 
 ## TorchAoConfig
 
-[[autodoc]] TorchAoConfig
+[[autodoc]] quantizers.quantization_config.TorchAoConfig
 
 ## DiffusersQuantizer
 
