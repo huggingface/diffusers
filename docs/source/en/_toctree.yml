@@ -180,6 +180,8 @@
     title: Caching
   - local: optimization/memory
     title: Reduce memory usage
+  - local: optimization/pruna
+    title: Pruna
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome
