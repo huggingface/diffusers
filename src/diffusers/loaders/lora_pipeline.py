@@ -5635,7 +5635,14 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->SkyReelsV2Transformer3DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -5655,6 +5662,9 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
                 weights.
             hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+            metadata (`dict`):
+                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
+                from the state dict.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -5667,6 +5677,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -5682,9 +5693,10 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the transformer.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -5701,14 +5713,21 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata:
+                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
-        if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata is not None:
+            lora_adapter_metadata.update(
+                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+            )
 
         # Save the model
         cls.write_lora_layers(
@@ -5718,6 +5737,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
