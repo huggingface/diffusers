@@ -127,6 +127,7 @@ class SkyReelsV2AttnProcessor2_0:
         self._flag_ar_attention = True
 
 
+# Copied from diffusers.models.transformers.transformer_wan.WanImageEmbedding with WanImageEmbedding -> SkyReelsV2ImageEmbedding
 class SkyReelsV2ImageEmbedding(torch.nn.Module):
     def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
