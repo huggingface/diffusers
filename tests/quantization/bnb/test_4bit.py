@@ -881,4 +881,4 @@ class Bnb4BitCompileTests(QuantCompileTests):
         super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
 
     def test_torch_compile_with_group_offload(self):
-        super()._test_torch_compile_with_group_offload(quantization_config=self.quantization_config)
+        super()._test_torch_compile_with_group_offload_leaf_stream(quantization_config=self.quantization_config)
