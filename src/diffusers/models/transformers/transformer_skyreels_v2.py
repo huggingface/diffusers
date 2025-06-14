@@ -505,17 +505,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
 
-        # 4. Transformer blocks
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for i, block in enumerate(self.blocks):
-                hidden_states = self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    timestep_proj,
-                    rotary_emb,
-                    causal_mask if self.config.flag_causal_attention else None,
-                )
         if self.config.inject_sample_info:
             fps = torch.tensor(fps, dtype=torch.long, device=hidden_states.device)
 
@@ -538,14 +527,27 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             timestep_proj = timestep_proj.repeat(1, 1, post_patch_height, post_patch_width, 1, 1).flatten(1, 3)
             timestep_proj = timestep_proj.transpose(1, 2).contiguous()
 
-        for i, block in enumerate(self.blocks):
-            hidden_states = block(
-                hidden_states,
-                encoder_hidden_states,
-                timestep_proj,
-                rotary_emb,
-                causal_mask if self.config.flag_causal_attention else None,
-            )
+        # 4. Transformer blocks
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            for block in self.blocks:
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    causal_mask if self.config.flag_causal_attention else None,
+                )
+
+        else:
+            for block in self.blocks:
+                hidden_states = block(
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    causal_mask if self.config.flag_causal_attention else None,
+                )
 
         if temb.dim() == 2:
             shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
