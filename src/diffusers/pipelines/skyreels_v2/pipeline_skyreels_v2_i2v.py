@@ -22,7 +22,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...loaders import WanLoraLoaderMixin
+from ...loaders import SkyReelsV2LoraLoaderMixin
 from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import FlowMatchUniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
@@ -125,7 +125,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
+class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixin):
     r"""
     Pipeline for Image-to-Video (i2v) generation using SkyReels-V2.
 

@@ -20,7 +20,7 @@ import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...loaders import WanLoraLoaderMixin
+from ...loaders import SkyReelsV2LoraLoaderMixin
 from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import FlowMatchUniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
@@ -105,7 +105,7 @@ def prompt_clean(text):
     return text
 
 
-class SkyReelsV2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
+class SkyReelsV2Pipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixin):
     r"""
     Pipeline for Text-to-Video (t2v) generation using SkyReels-V2.
 

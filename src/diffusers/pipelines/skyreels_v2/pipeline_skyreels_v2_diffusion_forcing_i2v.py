@@ -28,7 +28,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...loaders import WanLoraLoaderMixin
+from ...loaders import SkyReelsV2LoraLoaderMixin
 from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import FlowMatchUniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
@@ -132,7 +132,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
+class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixin):
     """
     Pipeline for Image-to-Video (i2v) generation using SkyReels-V2 with diffusion forcing.
 

@@ -78,6 +78,7 @@ if is_torch_available():
             "Lumina2LoraLoaderMixin",
             "WanLoraLoaderMixin",
             "HiDreamImageLoraLoaderMixin",
+            "SkyReelsV2LoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -120,6 +121,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
                 WanLoraLoaderMixin,
+                SkyReelsV2LoraLoaderMixin,
             )
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin
