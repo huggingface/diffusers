@@ -486,9 +486,13 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             )
             causal_mask = range_tensor.unsqueeze(0) <= range_tensor.unsqueeze(1)  # f, f
             causal_mask = causal_mask.view(post_patch_num_frames, 1, 1, post_patch_num_frames, 1, 1)
-            causal_mask = causal_mask.repeat(1, post_patch_height, post_patch_width, 1, post_patch_height, post_patch_width)
-            causal_mask = causal_mask.reshape(post_patch_num_frames * post_patch_height * post_patch_width,
-                                             post_patch_num_frames * post_patch_height * post_patch_width)
+            causal_mask = causal_mask.repeat(
+                1, post_patch_height, post_patch_width, 1, post_patch_height, post_patch_width
+            )
+            causal_mask = causal_mask.reshape(
+                post_patch_num_frames * post_patch_height * post_patch_width,
+                post_patch_num_frames * post_patch_height * post_patch_width,
+            )
             causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
 
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
