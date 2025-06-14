@@ -1214,13 +1214,63 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             gray3_array = gray3_array * dilated_mask3_image_bool
             mask4_array = np.where(mask3_array>0,mask3_array,gray3_array)
 
+            # gradent 5
+            dilated_mask4_image = apply_dilate_to_mask_image(mask4_array,iterations = iterations)
+            mask4_array_bool = np.array(mask4_array,dtype=bool)
+            dilated_mask4_image_bool = np.array(dilated_mask4_image, dtype=bool)
+            gray4_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 40
+            gray4_array = gray4_array * (~mask4_array_bool)
+            gray4_array = gray4_array * dilated_mask4_image_bool
+            mask5_array = np.where(mask4_array>0,mask4_array,gray4_array)
+
+            # gradent 6
+            dilated_mask5_image = apply_dilate_to_mask_image(mask5_array,iterations = iterations)
+            mask5_array_bool = np.array(mask5_array,dtype=bool)
+            dilated_mask5_image_bool = np.array(dilated_mask5_image, dtype=bool)
+            gray5_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 30
+            gray5_array = gray5_array * (~mask5_array_bool)
+            gray5_array = gray5_array * dilated_mask5_image_bool
+            mask6_array = np.where(mask5_array>0,mask5_array,gray5_array)
+
+            # gradent 7
+            dilated_mask6_image = apply_dilate_to_mask_image(mask6_array,iterations = iterations)
+            mask6_array_bool = np.array(mask6_array,dtype=bool)
+            dilated_mask6_image_bool = np.array(dilated_mask6_image, dtype=bool)
+            gray6_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 20
+            gray6_array = gray6_array * (~mask6_array_bool)
+            gray6_array = gray6_array * dilated_mask6_image_bool
+            mask7_array = np.where(mask6_array>0,mask6_array,gray6_array)
+
+            # gradent 8
+            dilated_mask7_image = apply_dilate_to_mask_image(mask7_array,iterations = iterations)
+            mask7_array_bool = np.array(mask7_array,dtype=bool)
+            dilated_mask7_image_bool = np.array(dilated_mask7_image, dtype=bool)
+            gray7_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 10
+            gray7_array = gray7_array * (~mask7_array_bool)
+            gray7_array = gray7_array * dilated_mask7_image_bool
+            mask8_array = np.where(mask7_array>0,mask7_array,gray7_array)
+
+            # gradent 9
+            dilated_mask8_image = apply_dilate_to_mask_image(mask8_array,iterations = iterations)
+            mask8_array_bool = np.array(mask8_array,dtype=bool)
+            dilated_mask8_image_bool = np.array(dilated_mask8_image, dtype=bool)
+            gray8_array = np.ones((64, 64, mask_array.shape[-1]), dtype=np.uint8) * 5
+            gray8_array = gray8_array * (~mask8_array_bool)
+            gray8_array = gray8_array * dilated_mask8_image_bool
+            mask9_array = np.where(mask8_array>0,mask8_array,gray8_array)
+
             # rescale to 1.0, 0.8, 0.6, 0.4, 0.2, 0.0
             final_mask_array = np.zeros_like(mask_array)
-            final_mask_array = np.where(mask4_array==255, 1.0, final_mask_array)
-            final_mask_array = np.where(mask4_array==200, 0.8, final_mask_array)
-            final_mask_array = np.where(mask4_array==150, 0.6, final_mask_array)
-            final_mask_array = np.where(mask4_array==100, 0.4, final_mask_array)
-            final_mask_array = np.where(mask4_array==50, 0.2, final_mask_array)
+            final_mask_array = np.where(mask9_array==255, 1.0, final_mask_array)
+            final_mask_array = np.where(mask9_array==200, 0.9, final_mask_array)
+            final_mask_array = np.where(mask9_array==150, 0.8, final_mask_array)
+            final_mask_array = np.where(mask9_array==100, 0.7, final_mask_array)
+            final_mask_array = np.where(mask9_array==50, 0.6, final_mask_array)
+            final_mask_array = np.where(mask9_array==40, 0.5, final_mask_array)
+            final_mask_array = np.where(mask9_array==30, 0.4, final_mask_array)
+            final_mask_array = np.where(mask9_array==20, 0.3, final_mask_array)
+            final_mask_array = np.where(mask9_array==10, 0.2, final_mask_array)
+            final_mask_array = np.where(mask9_array==5, 0.1, final_mask_array)
 
             return final_mask_array
 
