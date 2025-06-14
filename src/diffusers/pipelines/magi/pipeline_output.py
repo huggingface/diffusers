@@ -22,7 +22,7 @@ from ...utils import BaseOutput
 
 
 @dataclass
-class MagiPipelineOutput(BaseOutput):
+class Magi1PipelineOutput(BaseOutput):
     """
     Output class for MAGI-1 pipeline.
 
