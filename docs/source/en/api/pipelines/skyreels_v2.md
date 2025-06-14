@@ -50,16 +50,13 @@ The example below demonstrates how to generate a video from text optimized for m
 
 Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
 
-The SkyReels-V2 text-to-video model below requires ~13GB of VRAM.
-
 ```py
 # pip install ftfy
 import torch
 import numpy as np
 from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
-from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.hooks.group_offloading import apply_group_offloading
-from diffusers.utils import export_to_video, load_image
+from diffusers.utils import export_to_video
 from transformers import UMT5EncoderModel
 
 text_encoder = UMT5EncoderModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
@@ -124,7 +121,7 @@ import torch
 import numpy as np
 from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
-from diffusers.utils import export_to_video, load_image
+from diffusers.utils import export_to_video
 from transformers import UMT5EncoderModel
 
 text_encoder = UMT5EncoderModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
