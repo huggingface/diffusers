@@ -6162,6 +6162,123 @@ class PAGIdentitySanaLinearAttnProcessor2_0:
 
         return hidden_states
 
+class PAGFluxAttnProcessor_2_0(AttnProcessor2_0):
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        # Save input for residual connection later
+        original_residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        B, C, H, W = hidden_states.shape
+        hidden_states = hidden_states.view(B, C, H * W).transpose(1, 2)
+        hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
+
+        def apply_attn(path):
+            B_local = path.shape[0]
+            if attn.group_norm is not None:
+                path = attn.group_norm(path.transpose(1, 2)).transpose(1, 2)
+            query = attn.to_q(path)
+            key = attn.to_k(path)
+            value = attn.to_v(path)
+
+            head_dim = query.shape[-1] // attn.heads
+            query = query.view(B_local, -1, attn.heads, head_dim).transpose(1, 2)
+            key = key.view(B_local, -1, attn.heads, head_dim).transpose(1, 2)
+            value = value.view(B_local, -1, attn.heads, head_dim).transpose(1, 2)
+
+            attn_output = F.scaled_dot_product_attention(
+                query, key, value, dropout_p=0.0, is_causal=False
+            )
+            attn_output = attn_output.transpose(1, 2).reshape(B_local, -1, attn.heads * head_dim)
+            attn_output = attn.to_out[0](attn_output)
+            attn_output = attn.to_out[1](attn_output)
+            return attn_output
+
+        hidden_states_org = apply_attn(hidden_states_org)
+
+        # Perturbed path (identity attention)
+        if attn.group_norm is not None:
+            hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
+        hidden_states_ptb = attn.to_v(hidden_states_ptb)
+        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
+        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
+
+        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb], dim=0)
+        hidden_states = hidden_states.transpose(1, 2).view(2 * B, C, H, W)
+
+        if attn.residual_connection:
+            # Expand residual to match batch size
+            residual = original_residual.expand_as(hidden_states)
+            hidden_states = hidden_states + residual
+
+        return hidden_states / attn.rescale_output_factor
+
+
+class PAGCFGFluxAttnProcessor_2_0(PAGFluxAttnProcessor_2_0):
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        original_residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        B, C, H, W = hidden_states.shape
+        hidden_states = hidden_states.view(B, C, H * W).transpose(1, 2)
+        uncond, cond, ptb = hidden_states.chunk(3)
+
+        def apply_attn(path):
+            B_local = path.shape[0]
+            if attn.group_norm is not None:
+                path = attn.group_norm(path.transpose(1, 2)).transpose(1, 2)
+            query = attn.to_q(path)
+            key = attn.to_k(path)
+            value = attn.to_v(path)
+
+            head_dim = query.shape[-1] // attn.heads
+            query = query.view(B_local, -1, attn.heads, head_dim).transpose(1, 2)
+            key = key.view(B_local, -1, attn.heads, head_dim).transpose(1, 2)
+            value = value.view(B_local, -1, attn.heads, head_dim).transpose(1, 2)
+
+            attn_output = F.scaled_dot_product_attention(
+                query, key, value, dropout_p=0.0, is_causal=False
+            )
+            attn_output = attn_output.transpose(1, 2).reshape(B_local, -1, attn.heads * head_dim)
+            attn_output = attn.to_out[0](attn_output)
+            attn_output = attn.to_out[1](attn_output)
+            return attn_output
+
+        uncond_out = apply_attn(uncond)
+        cond_out = apply_attn(cond)
+
+        if attn.group_norm is not None:
+            ptb = attn.group_norm(ptb.transpose(1, 2)).transpose(1, 2)
+        ptb = attn.to_v(ptb)
+        ptb = attn.to_out[0](ptb)
+        ptb = attn.to_out[1](ptb)
+
+        hidden_states = torch.cat([uncond_out, cond_out, ptb], dim=0)
+        hidden_states = hidden_states.transpose(1, 2).view(3 * B, C, H, W)
+
+        if attn.residual_connection:
+            residual = original_residual.expand_as(hidden_states)
+            hidden_states = hidden_states + residual
+
+        return hidden_states / attn.rescale_output_factor
+
 
 ADDED_KV_ATTENTION_PROCESSORS = (
     AttnAddedKVProcessor,
