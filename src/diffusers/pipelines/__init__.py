@@ -148,6 +148,7 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
+    _import_structure["chroma"] = ["ChromaPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -157,7 +158,12 @@ else:
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
-    _import_structure["cosmos"] = ["CosmosTextToWorldPipeline", "CosmosVideoToWorldPipeline"]
+    _import_structure["cosmos"] = [
+        "Cosmos2TextToImagePipeline",
+        "CosmosTextToWorldPipeline",
+        "CosmosVideoToWorldPipeline",
+        "Cosmos2VideoToWorldPipeline",
+    ]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -538,6 +544,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
+        from .chroma import ChromaPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
@@ -566,7 +573,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
         )
-        from .cosmos import CosmosTextToWorldPipeline, CosmosVideoToWorldPipeline
+        from .cosmos import (
+            Cosmos2TextToImagePipeline,
+            Cosmos2VideoToWorldPipeline,
+            CosmosTextToWorldPipeline,
+            CosmosVideoToWorldPipeline,
+        )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
