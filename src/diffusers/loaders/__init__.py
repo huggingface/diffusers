@@ -118,10 +118,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 Mochi1LoraLoaderMixin,
                 SanaLoraLoaderMixin,
                 SD3LoraLoaderMixin,
+                SkyReelsV2LoraLoaderMixin,
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
                 WanLoraLoaderMixin,
-                SkyReelsV2LoraLoaderMixin,
             )
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin
