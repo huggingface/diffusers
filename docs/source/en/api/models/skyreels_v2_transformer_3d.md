@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # SkyReelsV2Transformer3DModel
 
-A Diffusion Transformer model for 3D video-like data was introduced in [SkyReels-V2](https://github.com/Skywork-AI/SkyReels-V2) by the Skywork AI.
+A Diffusion Transformer model for 3D video-like data was introduced in [SkyReels-V2](https://github.com/SkyworkAI/SkyReels-V2) by the Skywork AI.
 
 The model can be loaded with the following code snippet.
 
