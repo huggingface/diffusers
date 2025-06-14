@@ -1,4 +1,4 @@
-# Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Sand AI Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -326,7 +326,7 @@ class Magi1AttentionBlock(nn.Module):
 
 class Magi1MidBlock(nn.Module):
     """
-    Middle block for WanVAE encoder and decoder.
+    Middle block for Magi1VAE encoder and decoder.
 
     Args:
         dim (int): Number of input/output channels.
@@ -472,7 +472,7 @@ class Magi1Encoder3d(nn.Module):
 
 class Magi1UpBlock(nn.Module):
     """
-    A block that handles upsampling for the WanVAE decoder.
+    A block that handles upsampling for the Magi1VAE decoder.
 
     Args:
         in_dim (int): Input dimension
@@ -659,7 +659,7 @@ class Magi1Decoder3d(nn.Module):
 class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
-    Introduced in [Wan 2.1].
+    Introduced in [Magi1](https://arxiv.org/abs/2505.13211).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
