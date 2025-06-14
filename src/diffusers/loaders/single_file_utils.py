@@ -2145,6 +2145,12 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         if "model.diffusion_model." in k:
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
 
+    original_flux = any(k.startswith("double_blocks.") for k in checkpoint) or any(
+        k.startswith("single_blocks.") for k in checkpoint
+    )
+    if not original_flux:
+        return checkpoint
+
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "double_blocks." in k))[-1] + 1  # noqa: C401
     num_single_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "single_blocks." in k))[-1] + 1  # noqa: C401
     mlp_ratio = 4.0
