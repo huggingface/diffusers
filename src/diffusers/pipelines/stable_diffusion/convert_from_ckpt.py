@@ -53,6 +53,7 @@ from ...schedulers import (
 )
 from ...utils import is_accelerate_available, logging
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from ...utils.torch_utils import get_device
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
 from ..pipeline_utils import DiffusionPipeline
@@ -1272,7 +1273,7 @@ def download_from_original_stable_diffusion_ckpt(
             checkpoint = safe_load(checkpoint_path_or_dict, device="cpu")
         else:
             if device is None:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
+                device = get_device()
                 checkpoint = torch.load(checkpoint_path_or_dict, map_location=device)
             else:
                 checkpoint = torch.load(checkpoint_path_or_dict, map_location=device)
@@ -1842,7 +1843,7 @@ def download_controlnet_from_original_ckpt(
                 checkpoint[key] = f.get_tensor(key)
     else:
         if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = get_device()
             checkpoint = torch.load(checkpoint_path, map_location=device)
         else:
             checkpoint = torch.load(checkpoint_path, map_location=device)
