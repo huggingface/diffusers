@@ -439,9 +439,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         if inject_sample_info:
             self.fps_embedding = nn.Embedding(2, inner_dim)
-            self.fps_projection = nn.Sequential(
-                nn.Linear(inner_dim, inner_dim), nn.SiLU(), nn.Linear(inner_dim, inner_dim * 6)
-            )
+            self.fps_projection = FeedForward(inner_dim, inner_dim * 6, mult=1, activation_fn="silu")
 
     def forward(
         self,
