@@ -27,6 +27,8 @@ from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
+from ..normalization import FP32LayerNorm
+from ..embeddings import apply_rotary_emb
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -281,45 +283,57 @@ class Magi1ResidualBlock(nn.Module):
 
 class Magi1AttentionBlock(nn.Module):
     r"""
-    Causal self-attention with a single head.
 
     Args:
-        dim (int): The number of channels in the input tensor.
     """
 
-    def __init__(self, dim):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0.0, proj_drop=0.0, ln_in_attn=False, use_rope=False):
         super().__init__()
-        self.dim = dim
-
+        self.use_rope = use_rope
+        self.num_heads = num_heads
         # layers
-        self.norm = Magi1RMS_norm(dim)
-        self.to_qkv = nn.Conv2d(dim, dim * 3, 1)
-        self.proj = nn.Conv2d(dim, dim, 1)
+        self.to_qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop_rate = attn_drop
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+        if ln_in_attn:
+            # TODO: ManualLayerNorm at original repo?
+            self.qkv_norm = FP32LayerNorm(dim // num_heads, elementwise_affine=False)
+        else:
+            self.qkv_norm = nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, feat_shape=None):
         identity = x
         batch_size, channels, time, height, width = x.size()
 
-        x = x.permute(0, 2, 1, 3, 4).reshape(batch_size * time, channels, height, width)
-        x = self.norm(x)
+        x = x.permute(0, 2, 3, 4, 1).reshape(batch_size, time * height * width, channels)
 
         # compute query, key, value
         qkv = self.to_qkv(x)
-        qkv = qkv.reshape(batch_size * time, 1, channels * 3, -1)
-        qkv = qkv.permute(0, 1, 3, 2).contiguous()
-        q, k, v = qkv.chunk(3, dim=-1)
+        qkv = qkv.reshape(batch_size, time * height * width, 3, self.num_heads, channels // self.num_heads)
+        x = self.qkv_norm(qkv)
+        q, k, v = qkv.chunk(3, dim=2)
 
-        # apply attention
-        x = F.scaled_dot_product_attention(q, k, v)
+        if self.use_rope:
+            rope_emb = cache_rotary_emb(feat_shape=feat_shape,
+                                        dim=channels // self.num_heads,
+                                        device=x.device, dtype=x.dtype)
+            q = q.reshape(batch_size, self.num_heads, time * height * width, channels // self.num_heads)
+            k = k.reshape(batch_size, self.num_heads, time * height * width, channels // self.num_heads)
+            q[:, 1:, :] = apply_rotary_emb(q[:, :, 1:], (cos_emb, sin_emb)).bfloat16()
+            k[:, 1:, :] = apply_rotary_emb(k[:, :, 1:], (cos_emb, sin_emb)).bfloat16()
+            x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop_rate)
+        else:
+            x = flash_attn_qkvpacked_func(qkv=qkv.bfloat16(), dropout_p=self.attn_drop_rate)
 
-        x = x.squeeze(1).permute(0, 2, 1).reshape(batch_size * time, channels, height, width)
+        # the output of sdpa = (batch, num_heads, seq_len, head_dim)
+        x = x.permute(0, 2, 1, 3).reshape(batch_size, time * height * width, channels)
 
         # output projection
         x = self.proj(x)
 
-        # Reshape back: [(b*t), c, h, w] -> [b, c, t, h, w]
-        x = x.view(batch_size, time, channels, height, width)
-        x = x.permute(0, 2, 1, 3, 4)
+        # Reshape back: [b, t*h*w, c] -> [b, c, t, h, w]
+        x = x.permute(0, 2, 1).reshape(batch_size, channels, time, height, width)
 
         return x + identity
 
