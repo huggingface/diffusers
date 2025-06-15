@@ -862,6 +862,7 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
 
 
 @require_torch_version_greater("2.7.1")
+@require_bitsandbytes_version_greater("0.45.5")
 class Bnb4BitCompileTests(QuantCompileTests):
     quantization_config = PipelineQuantizationConfig(
         quant_backend="bitsandbytes_8bit",
