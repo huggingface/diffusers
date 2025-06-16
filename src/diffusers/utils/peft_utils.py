@@ -16,13 +16,17 @@ PEFT utilities: Utilities related to peft library
 """
 
 import collections
+import contextlib
 import importlib
 from typing import Optional
 
 from packaging import version
 
-from .import_utils import is_peft_available, is_torch_available
+from . import logging
+from .import_utils import is_peft_available, is_peft_version, is_torch_available
 
+
+logger = logging.get_logger(__name__)
 
 if is_torch_available():
     import torch
@@ -288,3 +292,112 @@ def check_peft_version(min_version: str) -> None:
             f"The version of PEFT you are using is not compatible, please use a version that is greater"
             f" than {min_version}"
         )
+
+
+def _create_lora_config(
+    state_dict,
+    network_alphas,
+    metadata,
+    rank_pattern_dict,
+    is_unet: bool = True,
+):
+    from peft import LoraConfig
+
+    if metadata is not None:
+        lora_config_kwargs = metadata
+    else:
+        lora_config_kwargs = get_peft_kwargs(
+            rank_pattern_dict, network_alpha_dict=network_alphas, peft_state_dict=state_dict, is_unet=is_unet
+        )
+
+    _maybe_raise_error_for_ambiguity(lora_config_kwargs)
+
+    # Version checks for DoRA and lora_bias
+    if "use_dora" in lora_config_kwargs and lora_config_kwargs["use_dora"]:
+        if is_peft_version("<", "0.9.0"):
+            raise ValueError("DoRA requires PEFT >= 0.9.0. Please upgrade.")
+
+    if "lora_bias" in lora_config_kwargs and lora_config_kwargs["lora_bias"]:
+        if is_peft_version("<=", "0.13.2"):
+            raise ValueError("lora_bias requires PEFT >= 0.14.0. Please upgrade.")
+
+    try:
+        return LoraConfig(**lora_config_kwargs)
+    except TypeError as e:
+        raise TypeError("`LoraConfig` class could not be instantiated.") from e
+
+
+@contextlib.contextmanager
+def _lora_loading_context(_pipeline):
+    from ..loaders.lora_base import _func_optionally_disable_offloading
+
+    if _pipeline is None:
+        yield
+        return
+
+    is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
+    try:
+        yield
+    finally:
+        if is_model_cpu_offload:
+            _pipeline.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            _pipeline.enable_sequential_cpu_offload()
+
+
+def _maybe_warn_if_no_keys_found(state_dict, prefix, model_class_name):
+    if prefix is not None and not state_dict:
+        logger.warning(
+            f"No LoRA keys associated to {model_class_name} found with the {prefix=}. "
+            "This is safe to ignore if LoRA state dict didn't originally have any "
+            f"{model_class_name} related params. You can also try specifying `prefix=None` "
+            "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
+            "https://github.com/huggingface/diffusers/issues/new"
+        )
+
+
+def _maybe_raise_error_for_ambiguity(config):
+    rank_pattern = config["rank_pattern"].copy()
+    target_modules = config["target_modules"]
+
+    for key in list(rank_pattern.keys()):
+        # try to detect ambiguity
+        # `target_modules` can also be a str, in which case this loop would loop
+        # over the chars of the str. The technically correct way to match LoRA keys
+        # in PEFT is to use LoraModel._check_target_module_exists (lora_config, key).
+        # But this cuts it for now.
+        exact_matches = [mod for mod in target_modules if mod == key]
+        substring_matches = [mod for mod in target_modules if key in mod and mod != key]
+
+        if exact_matches and substring_matches:
+            if is_peft_version("<", "0.14.1"):
+                raise ValueError(
+                    "There are ambiguous keys present in this LoRA. To load it, please update your `peft` installation - `pip install -U peft`."
+                )
+
+
+def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
+    warn_msg = ""
+    if incompatible_keys is not None:
+        # Check only for unexpected keys.
+        unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+        if unexpected_keys:
+            lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
+            if lora_unexpected_keys:
+                warn_msg = (
+                    f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
+                    f" {', '.join(lora_unexpected_keys)}. "
+                )
+
+        # Filter missing keys specific to the current adapter.
+        missing_keys = getattr(incompatible_keys, "missing_keys", None)
+        if missing_keys:
+            lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
+            if lora_missing_keys:
+                warn_msg += (
+                    f"Loading adapter weights from state_dict led to missing keys in the model:"
+                    f" {', '.join(lora_missing_keys)}."
+                )
+
+    if warn_msg:
+        logger.warning(warn_msg)
