@@ -243,6 +243,9 @@ class ChromaPipeline(
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
+        attention_mask = attention_mask.repeat(1, num_images_per_prompt)
+        attention_mask = attention_mask.view(batch_size * num_images_per_prompt, seq_len)
+
         return prompt_embeds, attention_mask
 
     def encode_prompt(
