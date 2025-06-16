@@ -748,11 +748,11 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
-        
+
         # Precompute and cache conv counts for encoder and decoder for clear_cache speedup
         self._cached_conv_counts = {
-            'decoder': self._count_conv3d_fast(self.decoder),
-            'encoder': self._count_conv3d_fast(self.encoder)
+            "decoder": self._count_conv3d_fast(self.decoder),
+            "encoder": self._count_conv3d_fast(self.encoder),
         }
 
     def enable_tiling(
@@ -808,11 +808,11 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def clear_cache(self):
         # Use cached conv counts for decoder and encoder to avoid re-iterating modules each call
-        self._conv_num = self._cached_conv_counts['decoder']
+        self._conv_num = self._cached_conv_counts["decoder"]
         self._conv_idx = [0]
         self._feat_map = [None] * self._conv_num
         # cache encode
-        self._enc_conv_num = self._cached_conv_counts['encoder']
+        self._enc_conv_num = self._cached_conv_counts["encoder"]
         self._enc_conv_idx = [0]
         self._enc_feat_map = [None] * self._enc_conv_num
 
