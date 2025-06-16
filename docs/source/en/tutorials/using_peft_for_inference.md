@@ -203,6 +203,46 @@ pipeline("bears, pizza bites").images[0]
 </hfoption>
 </hfoptions>
 
+### Scale scheduling
+
+Dynamically adjusting the LoRA scale during sampling gives you better control over the overall composition and layout because certain steps may benefit more from an increased or reduced scale.
+
+The [character LoRA](https://huggingface.co/alvarobartt/ghibli-characters-flux-lora) in the example below starts with a higher scale that gradually decays over the first 20 steps to establish the character generation. In the later steps, only a scale of 0.2 is applied to avoid adding too much of the LoRA features to other parts of the image the LoRA wasn't trained on.
+
+```py
+import torch
+from diffusers import FluxPipeline
+
+pipeline = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+).to("cuda")
+
+pipelne.load_lora_weights("alvarobartt/ghibli-characters-flux-lora", "lora")
+
+num_inference_steps = 30
+lora_steps = 20
+lora_scales = torch.linspace(1.5, 0.7, lora_steps).tolist()
+lora_scales += [0.2] * (num_inference_steps - lora_steps + 1)
+
+pipeline.set_adapters("lora", lora_scales[0])
+
+def callback(pipeline: FluxPipeline, step: int, timestep: torch.LongTensor, callback_kwargs: dict):
+    pipeline.set_adapters("lora", lora_scales[step + 1])
+    return callback_kwargs
+
+prompt = """
+Ghibli style The Grinch, a mischievous green creature with a sly grin, peeking out from behind a snow-covered tree while plotting his antics, 
+in a quaint snowy village decorated for the holidays, warm light glowing from cozy homes, with playful snowflakes dancing in the air
+"""
+pipeline(
+    prompt=prompt,
+    guidance_scale=3.0,
+    num_inference_steps=num_inference_steps,
+    generator=torch.Generator().manual_seed(42),
+    callback_on_step_end=callback,
+).images[0]
+```
+
 ## Hotswapping
 
 Hotswapping LoRAs is an efficient way to work with multiple LoRAs while avoiding accumulating memory from multiple calls to [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] and in some cases, recompilation, if a model is compiled. This workflow requires a loaded LoRA because the new LoRA weights are swapped in place for the existing loaded LoRA.
