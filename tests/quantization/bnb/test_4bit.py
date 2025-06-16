@@ -45,6 +45,7 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch,
     require_torch_accelerator,
+    require_torch_version_greater,
     require_transformers_version_greater,
     slow,
     torch_device,
@@ -860,7 +861,7 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
         self.test_serialization(quant_type="fp4", double_quant=True, safe_serialization=True)
 
 
-# @require_torch_version_greater("2.7.1")
+@require_torch_version_greater("2.7.1")
 class Bnb4BitCompileTests(QuantCompileTests):
     quantization_config = PipelineQuantizationConfig(
         quant_backend="bitsandbytes_8bit",

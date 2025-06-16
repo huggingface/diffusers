@@ -74,7 +74,6 @@ class QuantCompileTests(unittest.TestCase):
             "onload_device": torch.device("cuda"),
             "offload_device": torch.device("cpu"),
             "offload_type": "leaf_level",
-            "num_blocks_per_group": 1,
             "use_stream": use_stream,
         }
         pipe.transformer.enable_group_offload(**group_offload_kwargs)
