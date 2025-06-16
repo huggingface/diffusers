@@ -258,7 +258,7 @@ class PeftAdapterMixin:
                 }
 
             # create LoraConfig
-            lora_config = _create_lora_config(state_dict, network_alphas, metadata, rank, self.lora_layer_modules)
+            lora_config = _create_lora_config(state_dict, network_alphas, metadata, rank)
 
             # adapter_name
             if adapter_name is None:
