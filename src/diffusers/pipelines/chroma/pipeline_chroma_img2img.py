@@ -50,14 +50,27 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import ChromaPipeline
+        >>> from diffusers import ChromaTransformer2DModel, ChromaImg2ImgPipeline
+        >>> from transformers import AutoModel, Autotokenizer
 
-        >>> pipe = ChromaPipeline.from_single_file(
+        >>> transformer = ChromaTransformer2DModel.from_single_file(
         ...     "chroma-unlocked-v35-detail-calibrated.safetensors", torch_dtype=torch.bfloat16
         ... )
+        >>> text_encoder -= AutoModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2")
+        >>> tokenizer = AutoTokenizer.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="tokenizer_2")
+        >>> pipe = ChromaImg2ImgPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.1-schnell",
+        ...     transformer=transformer,
+        ...     text_encoder=text_encoder,
+        ...     tokenizer=tokenizer,
+        ...     torch_dtype=torch.bfloat16,
+        ... )
         >>> pipe.to("cuda")
+        >>> image = load_image(
+        ...     "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+        ... )
         >>> prompt = "A cat holding a sign that says hello world"
-        >>> image = pipe(prompt, num_inference_steps=28, guidance_scale=4.0).images[0]
+        >>> image = pipe(prompt, image=image, num_inference_steps=28, guidance_scale=4.0, strength=0.85).images[0]
         >>> image.save("chroma.png")
         ```
 """
@@ -75,6 +88,20 @@ def calculate_shift(
     b = base_shift - m * base_seq_len
     mu = image_seq_len * m + b
     return mu
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -137,7 +164,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class ChromaPipeline(
+class ChromaImg2ImgPipeline(
     DiffusionPipeline,
     FluxLoraLoaderMixin,
     FromSingleFileMixin,
@@ -145,7 +172,7 @@ class ChromaPipeline(
     FluxIPAdapterMixin,
 ):
     r"""
-    The Chroma pipeline for text-to-image generation.
+    The Chroma pipeline for image-to-image generation.
 
     Reference: https://huggingface.co/lodestones/Chroma/
 
@@ -243,6 +270,21 @@ class ChromaPipeline(
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         return prompt_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_inpaint.StableDiffusion3InpaintPipeline._encode_vae_image
+    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+
+        image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+
+        return image_latents
 
     def encode_prompt(
         self,
@@ -350,54 +392,68 @@ class ChromaPipeline(
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_ip_adapter_image_embeds
+    # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
-    ):
-        image_embeds = []
-        if ip_adapter_image_embeds is None:
-            if not isinstance(ip_adapter_image, list):
-                ip_adapter_image = [ip_adapter_image]
+        self,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
+        ip_adapter_image_embeds: Optional[torch.Tensor] = None,
+        device: Optional[torch.device] = None,
+        num_images_per_prompt: int = 1,
+        do_classifier_free_guidance: bool = True,
+    ) -> torch.Tensor:
+        """Prepares image embeddings for use in the IP-Adapter.
 
-            if len(ip_adapter_image) != self.transformer.encoder_hid_proj.num_ip_adapters:
-                raise ValueError(
-                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
-                )
+        Either `ip_adapter_image` or `ip_adapter_image_embeds` must be passed.
 
-            for single_ip_adapter_image in ip_adapter_image:
-                single_image_embeds = self.encode_image(single_ip_adapter_image, device, 1)
-                image_embeds.append(single_image_embeds[None, :])
+        Args:
+            ip_adapter_image (`PipelineImageInput`, *optional*):
+                The input image to extract features from for IP-Adapter.
+            ip_adapter_image_embeds (`torch.Tensor`, *optional*):
+                Precomputed image embeddings.
+            device: (`torch.device`, *optional*):
+                Torch device.
+            num_images_per_prompt (`int`, defaults to 1):
+                Number of images that should be generated per prompt.
+            do_classifier_free_guidance (`bool`, defaults to True):
+                Whether to use classifier free guidance or not.
+        """
+        device = device or self._execution_device
+
+        if ip_adapter_image_embeds is not None:
+            if do_classifier_free_guidance:
+                single_negative_image_embeds, single_image_embeds = ip_adapter_image_embeds.chunk(2)
+            else:
+                single_image_embeds = ip_adapter_image_embeds
+        elif ip_adapter_image is not None:
+            single_image_embeds = self.encode_image(ip_adapter_image, device)
+            if do_classifier_free_guidance:
+                single_negative_image_embeds = torch.zeros_like(single_image_embeds)
         else:
-            if not isinstance(ip_adapter_image_embeds, list):
-                ip_adapter_image_embeds = [ip_adapter_image_embeds]
+            raise ValueError("Neither `ip_adapter_image_embeds` or `ip_adapter_image_embeds` were provided.")
 
-            if len(ip_adapter_image_embeds) != self.transformer.encoder_hid_proj.num_ip_adapters:
-                raise ValueError(
-                    f"`ip_adapter_image_embeds` must have same length as the number of IP Adapters. Got {len(ip_adapter_image_embeds)} image embeds and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
-                )
+        image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
 
-            for single_image_embeds in ip_adapter_image_embeds:
-                image_embeds.append(single_image_embeds)
+        if do_classifier_free_guidance:
+            negative_image_embeds = torch.cat([single_negative_image_embeds] * num_images_per_prompt, dim=0)
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
 
-        ip_adapter_image_embeds = []
-        for single_image_embeds in image_embeds:
-            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
-            single_image_embeds = single_image_embeds.to(device=device)
-            ip_adapter_image_embeds.append(single_image_embeds)
-
-        return ip_adapter_image_embeds
+        return image_embeds.to(device=device)
 
     def check_inputs(
         self,
         prompt,
         height,
         width,
+        strength,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
@@ -432,7 +488,7 @@ class ChromaPipeline(
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
     @staticmethod
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
+    def _prepare_latent_image_ids(height, width, device, dtype):
         latent_image_ids = torch.zeros(height, width, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
         latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
@@ -498,9 +554,11 @@ class ChromaPipeline(
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_latents
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
+        image,
+        timestep,
         batch_size,
         num_channels_latents,
         height,
@@ -510,28 +568,41 @@ class ChromaPipeline(
         generator,
         latents=None,
     ):
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (self.vae_scale_factor * 2))
-        width = 2 * (int(width) // (self.vae_scale_factor * 2))
-
-        shape = (batch_size, num_channels_latents, height, width)
-
-        if latents is not None:
-            latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-            return latents.to(device=device, dtype=dtype), latent_image_ids
-
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
-
+        # VAE applies 8x compression on images but we must also account for packing which requires
+        # latent height and width to be divisible by 2.
+        height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        width = 2 * (int(width) // (self.vae_scale_factor * 2))
+        shape = (batch_size, num_channels_latents, height, width)
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype), latent_image_ids
+
+        image = image.to(device=device, dtype=dtype)
+        if image.shape[1] != self.latent_channels:
+            image_latents = self._encode_vae_image(image=image, generator=generator)
+        else:
+            image_latents = image
+        if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
+            # expand init_latents for batch_size
+            additional_image_per_prompt = batch_size // image_latents.shape[0]
+            image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            image_latents = torch.cat([image_latents], dim=0)
+
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = self.scheduler.scale_noise(image_latents, timestep, noise)
+        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
         return latents, latent_image_ids
 
     @property
@@ -564,11 +635,13 @@ class ChromaPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
+        image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 28,
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 3.5,
+        strength: float = 0.8,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -688,7 +761,11 @@ class ChromaPipeline(
         self._current_timestep = None
         self._interrupt = False
 
-        # 2. Define call parameters
+        # 2. Preprocess image
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        init_image = init_image.to(dtype=torch.float32)
+
+        # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -697,10 +774,10 @@ class ChromaPipeline(
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
+
         (
             prompt_embeds,
             text_ids,
@@ -718,19 +795,11 @@ class ChromaPipeline(
             lora_scale=lora_scale,
         )
 
-        # 4. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels // 4
-        latents, latent_image_ids = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-        )
-        # 5. Prepare timesteps
+        if self.do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            text_ids = torch.cat([negative_text_ids, text_ids], dim=0)
+
+        # 4. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
@@ -747,40 +816,47 @@ class ChromaPipeline(
             sigmas=sigmas,
             mu=mu,
         )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        if (ip_adapter_image is not None or ip_adapter_image_embeds is not None) and (
-            negative_ip_adapter_image is None and negative_ip_adapter_image_embeds is None
-        ):
-            negative_ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
-            negative_ip_adapter_image = [negative_ip_adapter_image] * self.transformer.encoder_hid_proj.num_ip_adapters
+        if num_inference_steps < 1:
+            raise ValueError(
+                f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
+                f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
+            )
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        elif (ip_adapter_image is None and ip_adapter_image_embeds is None) and (
-            negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None
-        ):
-            ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
-            ip_adapter_image = [ip_adapter_image] * self.transformer.encoder_hid_proj.num_ip_adapters
+        # 5. Prepare latent variables
+        num_channels_latents = self.transformer.config.in_channels // 4
+        latents, latent_image_ids = self.prepare_latents(
+            init_image,
+            latent_timestep,
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
+        )
 
-        if self.joint_attention_kwargs is None:
-            self._joint_attention_kwargs = {}
-
-        image_embeds = None
-        negative_image_embeds = None
-        if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(
+        # 6. Prepare image embeddings
+        if (ip_adapter_image is not None and self.is_ip_adapter_active) or ip_adapter_image_embeds is not None:
+            ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
                 batch_size * num_images_per_prompt,
+                self.do_classifier_free_guidance,
             )
-        if negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None:
-            negative_image_embeds = self.prepare_ip_adapter_image_embeds(
-                negative_ip_adapter_image,
-                negative_ip_adapter_image_embeds,
-                device,
-                batch_size * num_images_per_prompt,
-            )
+
+            if self.joint_attention_kwargs is None:
+                self._joint_attention_kwargs = {"ip_adapter_image_embeds": ip_adapter_image_embeds}
+            else:
+                self._joint_attention_kwargs.update(ip_adapter_image_embeds=ip_adapter_image_embeds)
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -789,14 +865,16 @@ class ChromaPipeline(
                     continue
 
                 self._current_timestep = t
-                if image_embeds is not None:
-                    self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
+                if ip_adapter_image_embeds is not None:
+                    self._joint_attention_kwargs["ip_adapter_image_embeds"] = ip_adapter_image_embeds
+
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = t.expand(latent_model_input.shape[0])
 
                 noise_pred = self.transformer(
-                    hidden_states=latents,
+                    hidden_states=latent_model_input,
                     timestep=timestep / 1000,
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
@@ -806,18 +884,8 @@ class ChromaPipeline(
                 )[0]
 
                 if self.do_classifier_free_guidance:
-                    if negative_image_embeds is not None:
-                        self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
-                    neg_noise_pred = self.transformer(
-                        hidden_states=latents,
-                        timestep=timestep / 1000,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        txt_ids=negative_text_ids,
-                        img_ids=latent_image_ids,
-                        joint_attention_kwargs=self.joint_attention_kwargs,
-                        return_dict=False,
-                    )[0]
-                    noise_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
