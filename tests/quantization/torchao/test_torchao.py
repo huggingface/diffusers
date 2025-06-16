@@ -640,16 +640,24 @@ class TorchAoCompileTest(QuantCompileTests):
         super()._test_torch_compile(quantization_config=self.quantization_config)
 
     @unittest.skip(
-        "Changing the device of AQT tensor with module._apply (called from doing module.to() in accelerate) does not work."
+        "Changing the device of AQT tensor with module._apply (called from doing module.to() in accelerate) does not work "
+        "when compiling."
     )
     def test_torch_compile_with_cpu_offload(self):
         # RuntimeError: _apply(): Couldn't swap Linear.weight
         super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
 
     @unittest.skip(
-        "Changing the device of AQT tensor with .to() does not work. Needs to be discussed with TorchAO team."
+        "Changing the device of AQT tensor, with `param.data = param.data.to(device)` as done in group offloading implementation "
+        "is unsupported in TorchAO. When compiling, FakeTensor device mismatch causes failure."
     )
     def test_torch_compile_with_group_offload_leaf(self):
+        # If we run group offloading without compilation, we will see:
+        #   RuntimeError: Attempted to set the storage of a tensor on device "cpu" to a storage on different device "cuda:0".  This is no longer allowed; the devices must match.
+        # When running with compilation, the error ends up being different:
+        #   Dynamo failed to run FX node with fake tensors: call_function <built-in function linear>(*(FakeTensor(..., device='cuda:0', size=(s0, 256), dtype=torch.bfloat16), AffineQuantizedTensor(tensor_impl=PlainAQTTensorImpl(data=FakeTensor(..., size=(1536, 256), dtype=torch.int8)... , scale=FakeTensor(..., size=(1536,), dtype=torch.bfloat16)... , zero_point=FakeTensor(..., size=(1536,), dtype=torch.int64)... , _layout=PlainLayout()), block_size=(1, 256), shape=torch.Size([1536, 256]), device=cpu, dtype=torch.bfloat16, requires_grad=False), Parameter(FakeTensor(..., device='cuda:0', size=(1536,), dtype=torch.bfloat16,
+        #   requires_grad=True))), **{}): got RuntimeError('Unhandled FakeTensor Device Propagation for aten.mm.default, found two different devices cuda:0, cpu')
+        # Looks like something that will have to be looked into upstream.
         # for linear layers, weight.tensor_impl shows cuda... but:
         # weight.tensor_impl.{data,scale,zero_point}.device will be cpu
         super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
