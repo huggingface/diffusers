@@ -45,7 +45,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from ..utils.peft_utils import _create_lora_config, _lora_loading_context, _maybe_warn_if_no_keys_found
+from ..utils.peft_utils import _create_lora_config, _maybe_warn_if_no_keys_found
 from ..utils.state_dict_utils import _load_sft_state_dict_metadata
 
 
@@ -391,20 +391,25 @@ def _load_lora_into_text_encoder(
             adapter_name = get_adapter_name(text_encoder)
 
         # <Unsafe code
-        with _lora_loading_context(_pipeline):
-            # inject LoRA layers and load the state dict
-            # in transformers we automatically check whether the adapter name is already in use or not
-            text_encoder.load_adapter(
-                adapter_name=adapter_name,
-                adapter_state_dict=state_dict,
-                peft_config=lora_config,
-                **peft_kwargs,
-            )
+        is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
+        # inject LoRA layers and load the state dict
+        # in transformers we automatically check whether the adapter name is already in use or not
+        text_encoder.load_adapter(
+            adapter_name=adapter_name,
+            adapter_state_dict=state_dict,
+            peft_config=lora_config,
+            **peft_kwargs,
+        )
 
-            # scale LoRA layers with `lora_scale`
-            scale_lora_layers(text_encoder, weight=lora_scale)
+        # scale LoRA layers with `lora_scale`
+        scale_lora_layers(text_encoder, weight=lora_scale)
+        text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
 
-            text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+        # Offload back.
+        if is_model_cpu_offload:
+            _pipeline.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            _pipeline.enable_sequential_cpu_offload()
         # Unsafe code />
 
     _maybe_warn_if_no_keys_found(state_dict, prefix, model_class_name=text_encoder.__class__.__name__)

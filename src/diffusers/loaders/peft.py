@@ -37,7 +37,6 @@ from ..utils import (
 )
 from ..utils.peft_utils import (
     _create_lora_config,
-    _lora_loading_context,
     _maybe_warn_for_unhandled_keys,
     _maybe_warn_if_no_keys_found,
 )
@@ -271,96 +270,99 @@ class PeftAdapterMixin:
             # Now we remove any existing hooks to `_pipeline`.
 
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
-            # otherwise loading LoRA weights will lead to an error. So, we use a context manager here
-            # that takes care of enabling and disabling offloading in the pipeline automatically.
-            with _lora_loading_context(_pipeline):
-                peft_kwargs = {}
-                if is_peft_version(">=", "0.13.1"):
-                    peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+            # otherwise loading LoRA weights will lead to an error.
+            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-                if hotswap or (self._prepare_lora_hotswap_kwargs is not None):
-                    if is_peft_version(">", "0.14.0"):
-                        from peft.utils.hotswap import (
-                            check_hotswap_configs_compatible,
-                            hotswap_adapter_from_state_dict,
-                            prepare_model_for_compiled_hotswap,
-                        )
-                    else:
-                        msg = (
-                            "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
-                            "from source."
-                        )
-                        raise ImportError(msg)
+            if hotswap or (self._prepare_lora_hotswap_kwargs is not None):
+                if is_peft_version(">", "0.14.0"):
+                    from peft.utils.hotswap import (
+                        check_hotswap_configs_compatible,
+                        hotswap_adapter_from_state_dict,
+                        prepare_model_for_compiled_hotswap,
+                    )
+                else:
+                    msg = (
+                        "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
+                        "from source."
+                    )
+                    raise ImportError(msg)
 
+            if hotswap:
+
+                def map_state_dict_for_hotswap(sd):
+                    # For hotswapping, we need the adapter name to be present in the state dict keys
+                    new_sd = {}
+                    for k, v in sd.items():
+                        if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
+                            k = k[: -len(".weight")] + f".{adapter_name}.weight"
+                        elif k.endswith("lora_B.bias"):  # lora_bias=True option
+                            k = k[: -len(".bias")] + f".{adapter_name}.bias"
+                        new_sd[k] = v
+                    return new_sd
+
+            # To handle scenarios where we cannot successfully set state dict. If it's unsuccessful,
+            # we should also delete the `peft_config` associated to the `adapter_name`.
+            try:
                 if hotswap:
+                    state_dict = map_state_dict_for_hotswap(state_dict)
+                    check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
+                    try:
+                        hotswap_adapter_from_state_dict(
+                            model=self,
+                            state_dict=state_dict,
+                            adapter_name=adapter_name,
+                            config=lora_config,
+                        )
+                    except Exception as e:
+                        logger.error(f"Hotswapping {adapter_name} was unsuccessful with the following error: \n{e}")
+                        raise
+                    # the hotswap function raises if there are incompatible keys, so if we reach this point we can set
+                    # it to None
+                    incompatible_keys = None
+                else:
+                    inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+                    incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
-                    def map_state_dict_for_hotswap(sd):
-                        # For hotswapping, we need the adapter name to be present in the state dict keys
-                        new_sd = {}
-                        for k, v in sd.items():
-                            if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
-                                k = k[: -len(".weight")] + f".{adapter_name}.weight"
-                            elif k.endswith("lora_B.bias"):  # lora_bias=True option
-                                k = k[: -len(".bias")] + f".{adapter_name}.bias"
-                            new_sd[k] = v
-                        return new_sd
+                    if self._prepare_lora_hotswap_kwargs is not None:
+                        # For hotswapping of compiled models or adapters with different ranks.
+                        # If the user called enable_lora_hotswap, we need to ensure it is called:
+                        # - after the first adapter was loaded
+                        # - before the model is compiled and the 2nd adapter is being hotswapped in
+                        # Therefore, it needs to be called here
+                        prepare_model_for_compiled_hotswap(
+                            self, config=lora_config, **self._prepare_lora_hotswap_kwargs
+                        )
+                        # We only want to call prepare_model_for_compiled_hotswap once
+                        self._prepare_lora_hotswap_kwargs = None
 
-                # To handle scenarios where we cannot successfully set state dict. If it's unsuccessful,
-                # we should also delete the `peft_config` associated to the `adapter_name`.
-                try:
-                    if hotswap:
-                        state_dict = map_state_dict_for_hotswap(state_dict)
-                        check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
-                        try:
-                            hotswap_adapter_from_state_dict(
-                                model=self,
-                                state_dict=state_dict,
-                                adapter_name=adapter_name,
-                                config=lora_config,
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f"Hotswapping {adapter_name} was unsuccessful with the following error: \n{e}"
-                            )
-                            raise
-                        # the hotswap function raises if there are incompatible keys, so if we reach this point we can set
-                        # it to None
-                        incompatible_keys = None
-                    else:
-                        inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
-                        incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+                # Set peft config loaded flag to True if module has been successfully injected and incompatible keys retrieved
+                if not self._hf_peft_config_loaded:
+                    self._hf_peft_config_loaded = True
+            except Exception as e:
+                # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
+                if hasattr(self, "peft_config"):
+                    for module in self.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            active_adapters = module.active_adapters
+                            for active_adapter in active_adapters:
+                                if adapter_name in active_adapter:
+                                    module.delete_adapter(adapter_name)
 
-                        if self._prepare_lora_hotswap_kwargs is not None:
-                            # For hotswapping of compiled models or adapters with different ranks.
-                            # If the user called enable_lora_hotswap, we need to ensure it is called:
-                            # - after the first adapter was loaded
-                            # - before the model is compiled and the 2nd adapter is being hotswapped in
-                            # Therefore, it needs to be called here
-                            prepare_model_for_compiled_hotswap(
-                                self, config=lora_config, **self._prepare_lora_hotswap_kwargs
-                            )
-                            # We only want to call prepare_model_for_compiled_hotswap once
-                            self._prepare_lora_hotswap_kwargs = None
-
-                    # Set peft config loaded flag to True if module has been successfully injected and incompatible keys retrieved
-                    if not self._hf_peft_config_loaded:
-                        self._hf_peft_config_loaded = True
-                except Exception as e:
-                    # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
-                    if hasattr(self, "peft_config"):
-                        for module in self.modules():
-                            if isinstance(module, BaseTunerLayer):
-                                active_adapters = module.active_adapters
-                                for active_adapter in active_adapters:
-                                    if adapter_name in active_adapter:
-                                        module.delete_adapter(adapter_name)
-
-                        self.peft_config.pop(adapter_name)
-                    logger.error(f"Loading {adapter_name} was unsuccessful with the following error: \n{e}")
-                    raise
-            # Unsafe code />
+                    self.peft_config.pop(adapter_name)
+                logger.error(f"Loading {adapter_name} was unsuccessful with the following error: \n{e}")
+                raise
 
             _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name)
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
 
         _maybe_warn_if_no_keys_found(state_dict, prefix, model_class_name=self.__class__.__name__)
 
