@@ -639,13 +639,19 @@ class TorchAoCompileTest(QuantCompileTests):
     def test_torch_compile(self):
         super()._test_torch_compile(quantization_config=self.quantization_config)
 
+    @unittest.skip(
+        "Changing the device of AQT tensor with module._apply (called from doing module.to() in accelerate) does not work."
+    )
     def test_torch_compile_with_cpu_offload(self):
+        # RuntimeError: _apply(): Couldn't swap Linear.weight
         super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
 
+    @unittest.skip(
+        "Changing the device of AQT tensor with .to() does not work. Needs to be discussed with TorchAO team."
+    )
     def test_torch_compile_with_group_offload_leaf(self):
-        from diffusers.utils.logging import set_verbosity_debug
-
-        set_verbosity_debug()
+        # for linear layers, weight.tensor_impl shows cuda... but:
+        # weight.tensor_impl.{data,scale,zero_point}.device will be cpu
         super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
 
     @unittest.skip(

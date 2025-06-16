@@ -219,7 +219,6 @@ class GroupOffloadingHook(ModelHook):
         return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
-        breakpoint()
         # If there wasn't an onload_leader assigned, we assume that the submodule that first called its forward
         # method is the onload_leader of the group.
         if self.group.onload_leader is None:
@@ -286,7 +285,6 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         return module
 
     def post_forward(self, module, output):
-        breakpoint()
         # At this point, for the current modules' submodules, we know the execution order of the layers. We can now
         # remove the layer execution tracker hooks and apply prefetching by setting the next_group attribute for each
         # group offloading hook.
@@ -626,9 +624,7 @@ def _apply_group_offloading_leaf_level(
     modules_with_group_offloading = set()
     for name, submodule in module.named_modules():
         if not isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
-            print("unsupported module", name, type(submodule))
             continue
-        print("applying group offloading to", name, type(submodule))
         group = ModuleGroup(
             modules=[submodule],
             offload_device=offload_device,

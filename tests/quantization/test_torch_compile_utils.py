@@ -76,7 +76,7 @@ class QuantCompileTests(unittest.TestCase):
             "use_stream": False,
         }
         pipe.transformer.enable_group_offload(**group_offload_kwargs)
-        # pipe.transformer.compile()
+        pipe.transformer.compile()
         for name, component in pipe.components.items():
             if name != "transformer" and isinstance(component, torch.nn.Module):
                 if torch.device(component.device).type == "cpu":
