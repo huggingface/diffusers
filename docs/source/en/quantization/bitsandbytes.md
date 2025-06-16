@@ -416,6 +416,45 @@ text_encoder_2_4bit.dequantize()
 transformer_4bit.dequantize()
 ```
 
+## torch.compile
+
+Speed up inference with `torch.compile`. Make sure you have the latest `bitsandbytes` installed and we also recommend installing [PyTorch nightly](https://pytorch.org/get-started/locally/).
+
+<hfoptions id="bnb">
+<hfoption id="8-bit">
+```py
+torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_4bit = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+transformer_4bit.compile(fullgraph=True)
+```
+
+</hfoption>
+<hfoption id="4-bit">
+
+```py
+quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
+transformer_4bit = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+transformer_4bit.compile(fullgraph=True)
+```
+</hfoption>
+</hfoptions>
+
+On an RTX 4090 with compilation, 4-bit Flux generation completed in 25.809 seconds versus 32.570 seconds without.
+
+Check out the [benchmarking script](https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d) for more details.
+
 ## Resources
 
 * [End-to-end notebook showing Flux.1 Dev inference in a free-tier Colab](https://gist.github.com/sayakpaul/c76bd845b48759e11687ac550b99d8b4)
