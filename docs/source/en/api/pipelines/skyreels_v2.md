@@ -86,83 +86,22 @@ pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     text_encoder=text_encoder,
     torch_dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipe = pipe.to("cuda")
+pipe.transformer.set_ar_attention(causal_block_size=5)
 
-prompt = """
-The camera rushes from far to near in a low-angle shot,
-revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
-for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
-shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
-"""
-negative_prompt = """
-Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
-low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured,
-misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
-"""
+prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 
-output = pipeline(
+output = pipe(
     prompt=prompt,
-    negative_prompt=negative_prompt,
+    num_inference_steps=30,
+    height=544,
+    width=960,
     num_frames=97,
-    guidance_scale=6.0,
+    ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
+    overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos; 17 for long
+    addnoise_condition=20,  # Improves consistency in long video generation
 ).frames[0]
-export_to_video(output, "output.mp4", fps=24)
-```
-
-</hfoption>
-<hfoption id="T2V inference speed">
-
-[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
-
-```py
-# pip install ftfy
-import torch
-import numpy as np
-from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
-from diffusers.hooks.group_offloading import apply_group_offloading
-from diffusers.utils import export_to_video
-from transformers import UMT5EncoderModel
-
-text_encoder = UMT5EncoderModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
-
-pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
-    "Skywork/SkyReels-V2-DF-14B-540P-Diffusers",
-    vae=vae,
-    transformer=transformer,
-    text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
-)
-pipeline.to("cuda")
-
-# torch.compile
-pipeline.transformer.to(memory_format=torch.channels_last)
-pipeline.transformer = torch.compile(
-    pipeline.transformer, mode="max-autotune", fullgraph=True
-)
-
-prompt = """
-The camera rushes from far to near in a low-angle shot,
-revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
-for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
-shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
-"""
-negative_prompt = """
-Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
-low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured,
-misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
-"""
-
-output = pipeline(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    num_frames=97,
-    guidance_scale=6.0,
-).frames[0]
-export_to_video(output, "output.mp4", fps=24)
+export_to_video(output, "T2V.mp4", fps=24, quality=8)
 ```
 
 </hfoption>
@@ -181,14 +120,12 @@ import torch
 import torchvision.transforms.functional as TF
 from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
-from transformers import CLIPVisionModel
 
 
 model_id = "Skywork/SkyReels-V2-DF-14B-720P-Diffusers"
-image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipe = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+    model_id, vae=vae, torch_dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -230,18 +167,6 @@ export_to_video(output, "output.mp4", fps=24)
 </hfoption>
 </hfoptions>
 
-### Any-to-Video Controllable Generation
-
-SkyReels-V2 supports various generation techniques which achieve controllable video generation. Some of the capabilities include:
-- Control to Video (Depth, Pose, Sketch, Flow, Grayscale, Scribble, Layout, Boundary Box, etc.). Recommended library for preprocessing videos to obtain control videos: [huggingface/controlnet_aux]()
-- Image/Video to Video (first frame, last frame, starting clip, ending clip, random clips)
-- Inpainting and Outpainting
-- Subject to Video (faces, object, characters, etc.)
-- Composition to Video (reference anything, animate anything, swap anything, expand anything, move anything, etc.)
-
-The general rule of thumb to keep in mind when preparing inputs for the SkyReels-V2 pipeline is that the input images, or frames of a video that you want to use for conditioning, should have a corresponding mask that is black in color. The black mask signifies that the model will not generate new content for that area, and only use those parts for conditioning the generation process. For parts/frames that should be generated by the model, the mask should be white in color.
-
-The code snippets available in [this](https://github.com/huggingface/diffusers/pull/11582) pull request demonstrate some examples of how videos can be generated with controllability signals.
 
 ## Notes
 
@@ -254,7 +179,6 @@ The code snippets available in [this](https://github.com/huggingface/diffusers/p
   # pip install ftfy
   import torch
   from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
-  from diffusers import FlowMatchUniPCMultistepScheduler
   from diffusers.utils import export_to_video
 
   vae = AutoModel.from_pretrained(
@@ -262,9 +186,6 @@ The code snippets available in [this](https://github.com/huggingface/diffusers/p
   )
   pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
       "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers", vae=vae, torch_dtype=torch.bfloat16
-  )
-  pipeline.scheduler = FlowMatchUniPCMultistepScheduler.from_config(
-      pipeline.scheduler.config, flow_shift=5.0
   )
   pipeline.to("cuda")
 
@@ -292,38 +213,6 @@ The code snippets available in [this](https://github.com/huggingface/diffusers/p
 
   </details>
 
-- [`SkyReelsV2Transformer3DModel`] and [`AutoencoderKLWan`] support loading from single files with [`~loaders.FromSingleFileMixin.from_single_file`].
-
-  <details>
-  <summary>Show example code</summary>
-
-  ```py
-  # pip install ftfy
-  import torch
-  from diffusers import SkyReelsV2DiffusionForcingPipeline, AutoModel
-
-  vae = AutoModel.from_single_file(
-      "https://huggingface.co/Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers/blob/main/split_files/vae/skyreels_v2_vae.safetensors"
-  )
-  transformer = AutoModel.from_single_file(
-      "https://huggingface.co/Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers/blob/main/split_files/diffusion_models/skyreels_v2_df_1.3b_bf16.safetensors",
-      torch_dtype=torch.bfloat16
-  )
-  pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
-      "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers",
-      vae=vae,
-      transformer=transformer,
-      torch_dtype=torch.bfloat16
-  )
-  ```
-
-  </details>
-
-- Set the [`AutoencoderKLWan`] dtype to `torch.float32` for better decoding quality.
-
-- The number of frames per second (fps) or `k` should be calculated by `4 * k + 1`.
-
-- Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos and higher `shift` values (`7.0` to `12.0`) for higher resolution images.
 
 ## SkyReelsV2DiffusionForcingPipeline
 
