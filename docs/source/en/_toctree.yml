@@ -183,7 +183,7 @@
   - local: optimization/pruna
     title: Pruna
   - local: optimization/speed-memory-optims
-    title: Compile and offloading
+    title: Compile and offloading quantized models
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome

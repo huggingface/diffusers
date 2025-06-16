@@ -10,21 +10,30 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Compile and offloading
+# Compile and offloading quantized models
 
 When optimizing models, you often face trade-offs between [inference speed](./fp16) and [memory-usage](./memory). For instance, while [caching](./cache) can boost inference speed, it comes at the cost of increased memory consumption since it needs to store intermediate attention layer outputs.
 
-A more balanced optimization strategy combines [torch.compile](./fp16#torchcompile) with various offloading methods. This approach not only accelerates inference but also helps lower memory-usage.
+A more balanced optimization strategy combines [torch.compile](./fp16#torchcompile) with various [offloading methods](./memory#offloading) on a quantized model. This approach not only accelerates inference but also helps lower memory-usage.
 
-The table below provides a comparison of optimization strategy combinations and their impact on latency and memory-usage.
+For image generation, combining quantization and [model offloading](./memory#model-offloading) can often give the best trade-off between quality, speed, and memory. Group offloading is not as effective because it is usually not possible to *fully* overlap data transfer if the compute kernel finishes faster. This results in some communication overhead between the CPU and GPU.
 
-| combination | latency | memory-usage |
+For video generation, combining quantization and [group-offloading](./memory#group-offloading) tends to be better because video models are more compute-bound. 
+
+The table below provides a comparison of optimization strategy combinations and their impact on latency and memory-usage for Flux.
+
+| combination | latency (s) | memory-usage (GB) |
 |---|---|---|
-| quantization, torch.compile |  |  |
-| quantization, torch.compile, model CPU offloading |  |  |
-| quantization, torch.compile, group offloading |  |  |
+| quantization | 32.602 | 14.9453 |
+| quantization, torch.compile | 25.847 | 14.9448 |
+| quantization, torch.compile, model CPU offloading | 32.312 | 12.2369 |
+| quantization, torch.compile, group offloading | 60.235 | 12.2369 |
+<small>These results are benchmarked on Flux with a RTX 4090. The `transformer` and `text_encoder_2` components are quantized. Refer to the [benchmarking script](https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d) if you're interested in evaluating your own model.</small>
 
-This guide will show you how to compile and offload a model.
+> [!TIP]
+> We recommend installing [PyTorch nightly](https://pytorch.org/get-started/locally/) for better torch.compile support.
+
+This guide will show you how to compile and offload a quantized model.
 
 ## Quantization and torch.compile
 
