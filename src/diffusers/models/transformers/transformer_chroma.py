@@ -250,6 +250,7 @@ class ChromaSingleTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
         residual = hidden_states
@@ -259,6 +260,7 @@ class ChromaSingleTransformerBlock(nn.Module):
         attn_output = self.attn(
             hidden_states=norm_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            attention_mask=attention_mask,
             **joint_attention_kwargs,
         )
 
@@ -312,6 +314,7 @@ class ChromaTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         temb_img, temb_txt = temb[:, :6], temb[:, 6:]
@@ -326,6 +329,7 @@ class ChromaTransformerBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            attention_mask=attention_mask,
             **joint_attention_kwargs,
         )
 
@@ -570,6 +574,7 @@ class ChromaTransformer2DModel(
         timestep: torch.LongTensor = None,
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
+        attention_mask: torch.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_block_samples=None,
         controlnet_single_block_samples=None,
@@ -659,11 +664,7 @@ class ChromaTransformer2DModel(
             )
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    image_rotary_emb,
+                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_mask=attention_mask
                 )
 
             else:
@@ -672,6 +673,7 @@ class ChromaTransformer2DModel(
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
+                    attention_mask=attention_mask,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
 
@@ -704,6 +706,7 @@ class ChromaTransformer2DModel(
                     hidden_states=hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
+                    attention_mask=attention_mask,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
 
