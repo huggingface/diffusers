@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import FluxTransformer2DModel
+from diffusers import ChromaTransformer2DModel
 from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
 from diffusers.models.embeddings import ImageProjection
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
@@ -28,7 +28,7 @@ from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTest
 enable_full_determinism()
 
 
-def create_flux_ip_adapter_state_dict(model):
+def create_chroma_ip_adapter_state_dict(model):
     # "ip_adapter" (cross-attention weights)
     ip_cross_attn_state_dict = {}
     key_id = 0
@@ -57,9 +57,7 @@ def create_flux_ip_adapter_state_dict(model):
 
     image_projection = ImageProjection(
         cross_attention_dim=model.config["joint_attention_dim"],
-        image_embed_dim=(
-            model.config["pooled_projection_dim"] if "pooled_projection_dim" in model.config.keys() else 768
-        ),
+        image_embed_dim=model.config["pooled_projection_dim"],
         num_image_text_embeds=4,
     )
 
@@ -80,11 +78,11 @@ def create_flux_ip_adapter_state_dict(model):
     return ip_state_dict
 
 
-class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = FluxTransformer2DModel
+class ChromaTransformerTests(ModelTesterMixin, unittest.TestCase):
+    model_class = ChromaTransformer2DModel
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
-    model_split_percents = [0.7, 0.6, 0.6]
+    model_split_percents = [0.8, 0.7, 0.7]
 
     # Skip setting testing with default: AttnProcessor
     uses_custom_attn_processor = True
@@ -100,7 +98,6 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(torch_device)
         text_ids = torch.randn((sequence_length, num_image_channels)).to(torch_device)
         image_ids = torch.randn((height * width, num_image_channels)).to(torch_device)
         timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
@@ -110,7 +107,6 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
             "encoder_hidden_states": encoder_hidden_states,
             "img_ids": image_ids,
             "txt_ids": text_ids,
-            "pooled_projections": pooled_prompt_embeds,
             "timestep": timestep,
         }
 
@@ -131,8 +127,10 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
             "attention_head_dim": 16,
             "num_attention_heads": 2,
             "joint_attention_dim": 32,
-            "pooled_projection_dim": 32,
             "axes_dims_rope": [4, 4, 8],
+            "approximator_num_channels": 8,
+            "approximator_hidden_dim": 16,
+            "approximator_layers": 1,
         }
 
         inputs_dict = self.dummy_input
@@ -167,19 +165,19 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
         )
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"FluxTransformer2DModel"}
+        expected_set = {"ChromaTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = FluxTransformer2DModel
+class ChromaTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = ChromaTransformer2DModel
 
     def prepare_init_args_and_inputs_for_common(self):
-        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+        return ChromaTransformerTests().prepare_init_args_and_inputs_for_common()
 
 
-class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
-    model_class = FluxTransformer2DModel
+class ChromaTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = ChromaTransformer2DModel
 
     def prepare_init_args_and_inputs_for_common(self):
-        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+        return ChromaTransformerTests().prepare_init_args_and_inputs_for_common()

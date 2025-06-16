@@ -133,6 +133,29 @@ def numpy_cosine_similarity_distance(a, b):
     return distance
 
 
+def check_if_dicts_are_equal(dict1, dict2):
+    dict1, dict2 = dict1.copy(), dict2.copy()
+
+    for key, value in dict1.items():
+        if isinstance(value, set):
+            dict1[key] = sorted(value)
+    for key, value in dict2.items():
+        if isinstance(value, set):
+            dict2[key] = sorted(value)
+
+    for key in dict1:
+        if key not in dict2:
+            return False
+        if dict1[key] != dict2[key]:
+            return False
+
+    for key in dict2:
+        if key not in dict1:
+            return False
+
+    return True
+
+
 def print_tensor_test(
     tensor,
     limit_to_slices=None,
@@ -286,6 +309,18 @@ def require_torch_version_greater_equal(torch_version):
         correct_torch_version = is_torch_available() and is_torch_version(">=", torch_version)
         return unittest.skipUnless(
             correct_torch_version, f"test requires torch with the version greater than or equal to {torch_version}"
+        )(test_case)
+
+    return decorator
+
+
+def require_torch_version_greater(torch_version):
+    """Decorator marking a test that requires torch with a specific version greater."""
+
+    def decorator(test_case):
+        correct_torch_version = is_torch_available() and is_torch_version(">", torch_version)
+        return unittest.skipUnless(
+            correct_torch_version, f"test requires torch with the version greater than {torch_version}"
         )(test_case)
 
     return decorator

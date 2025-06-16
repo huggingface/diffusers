@@ -46,10 +46,13 @@ from diffusers.utils.testing_utils import (
     require_peft_version_greater,
     require_torch,
     require_torch_accelerator,
+    require_torch_version_greater_equal,
     require_transformers_version_greater,
     slow,
     torch_device,
 )
+
+from ..test_torch_compile_utils import QuantCompileTests
 
 
 def get_some_linear_layer(model):
@@ -821,3 +824,27 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         out_0 = self.model_0(**inputs)[0]
         out_1 = model_1(**inputs)[0]
         self.assertTrue(torch.equal(out_0, out_1))
+
+
+@require_torch_version_greater_equal("2.6.0")
+class Bnb8BitCompileTests(QuantCompileTests):
+    quantization_config = PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_8bit",
+        quant_kwargs={"load_in_8bit": True},
+        components_to_quantize=["transformer", "text_encoder_2"],
+    )
+
+    def test_torch_compile(self):
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        super()._test_torch_compile(quantization_config=self.quantization_config, torch_dtype=torch.float16)
+
+    def test_torch_compile_with_cpu_offload(self):
+        super()._test_torch_compile_with_cpu_offload(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16
+        )
+
+    @pytest.mark.xfail(reason="Test fails because of an offloading problem from Accelerate with confusion in hooks.")
+    def test_torch_compile_with_group_offload(self):
+        super()._test_torch_compile_with_group_offload(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16
+        )
