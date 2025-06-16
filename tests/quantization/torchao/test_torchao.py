@@ -19,6 +19,7 @@ import unittest
 from typing import List
 
 import numpy as np
+from parameterized import parameterized
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
@@ -648,10 +649,17 @@ class TorchAoCompileTest(QuantCompileTests):
         super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
 
     @unittest.skip(
-        "Changing the device of AQT tensor, with `param.data = param.data.to(device)` as done in group offloading implementation "
-        "is unsupported in TorchAO. When compiling, FakeTensor device mismatch causes failure."
+        """
+        For `use_stream=False`:
+            - Changing the device of AQT tensor, with `param.data = param.data.to(device)` as done in group offloading implementation
+            is unsupported in TorchAO. When compiling, FakeTensor device mismatch causes failure.
+        For `use_stream=True`:
+            Using non-default stream requires ability to pin tensors. AQT does not seem to support this yet in TorchAO.
+        """
     )
+    @parameterized.expand([False, True])
     def test_torch_compile_with_group_offload_leaf(self):
+        # For use_stream=False:
         # If we run group offloading without compilation, we will see:
         #   RuntimeError: Attempted to set the storage of a tensor on device "cpu" to a storage on different device "cuda:0".  This is no longer allowed; the devices must match.
         # When running with compilation, the error ends up being different:
@@ -660,14 +668,10 @@ class TorchAoCompileTest(QuantCompileTests):
         # Looks like something that will have to be looked into upstream.
         # for linear layers, weight.tensor_impl shows cuda... but:
         # weight.tensor_impl.{data,scale,zero_point}.device will be cpu
-        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
 
-    @unittest.skip(
-        "Using non-default stream requires ability to pin tensors. AQT does not seem to support this yet in TorchAO."
-    )
-    def test_torch_compile_with_group_offload_leaf_stream(self):
-        # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
-        super()._test_torch_compile_with_group_offload_leaf_stream(quantization_config=self.quantization_config)
+        # For use_stream=True:
+        # # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
+        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
 
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners

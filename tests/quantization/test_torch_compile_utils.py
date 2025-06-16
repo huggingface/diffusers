@@ -64,7 +64,9 @@ class QuantCompileTests(unittest.TestCase):
             # small resolutions to ensure speedy execution.
             pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
 
-    def _test_torch_compile_with_group_offload_leaf(self, quantization_config, torch_dtype=torch.bfloat16):
+    def _test_torch_compile_with_group_offload_leaf(
+        self, quantization_config, torch_dtype=torch.bfloat16, *, use_stream: bool = False
+    ):
         torch._dynamo.config.cache_size_limit = 10000
 
         pipe = self._init_pipeline(quantization_config, torch_dtype)
@@ -73,28 +75,7 @@ class QuantCompileTests(unittest.TestCase):
             "offload_device": torch.device("cpu"),
             "offload_type": "leaf_level",
             "num_blocks_per_group": 1,
-            "use_stream": False,
-        }
-        pipe.transformer.enable_group_offload(**group_offload_kwargs)
-        pipe.transformer.compile()
-        for name, component in pipe.components.items():
-            if name != "transformer" and isinstance(component, torch.nn.Module):
-                if torch.device(component.device).type == "cpu":
-                    component.to("cuda")
-
-        for _ in range(2):
-            # small resolutions to ensure speedy execution.
-            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
-
-    def _test_torch_compile_with_group_offload_leaf_stream(self, quantization_config, torch_dtype=torch.bfloat16):
-        torch._dynamo.config.cache_size_limit = 10000
-
-        pipe = self._init_pipeline(quantization_config, torch_dtype)
-        group_offload_kwargs = {
-            "onload_device": torch.device("cuda"),
-            "offload_device": torch.device("cpu"),
-            "offload_type": "leaf_level",
-            "use_stream": True,
+            "use_stream": use_stream,
         }
         pipe.transformer.enable_group_offload(**group_offload_kwargs)
         pipe.transformer.compile()

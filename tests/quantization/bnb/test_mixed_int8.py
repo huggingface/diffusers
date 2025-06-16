@@ -844,7 +844,7 @@ class Bnb8BitCompileTests(QuantCompileTests):
         )
 
     @pytest.mark.xfail(reason="Test fails because of an offloading problem from Accelerate with confusion in hooks.")
-    def test_torch_compile_with_group_offload(self):
-        super()._test_torch_compile_with_group_offload_leaf_stream(
-            quantization_config=self.quantization_config, torch_dtype=torch.float16
+    def test_torch_compile_with_group_offload_leaf(self):
+        super()._test_torch_compile_with_group_offload_leaf(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16, use_stream=True
         )
