@@ -374,7 +374,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["SkyReelsV2TransformerBlock"]
-    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3", "fps_projection"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
@@ -508,7 +508,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
             fps_emb = self.fps_embedding(fps).float()
             timestep_proj = timestep_proj.to(fps_emb.dtype)
-            self.fps_projection = self.fps_projection.to(fps_emb.dtype)
             if enable_diffusion_forcing:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, -1)).repeat(
                     timestep.shape[1], 1, 1
