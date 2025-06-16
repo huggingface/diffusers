@@ -25,7 +25,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 from .blip_image_processing import BlipImageProcessor
 from .modeling_blip2 import Blip2QFormerModel
 from .modeling_ctx_clip import ContextCLIPTextModel
@@ -81,7 +81,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class BlipDiffusionPipeline(DiffusionPipeline):
+class BlipDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Pipeline for Zero-Shot Subject Driven Generation using Blip Diffusion.
 
@@ -107,6 +107,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             Position of the context token in the text encoder.
     """
 
+    _last_supported_version = "0.33.1"
     model_cpu_offload_seq = "qformer->text_encoder->unet->vae"
 
     def __init__(

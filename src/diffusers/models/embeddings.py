@@ -31,7 +31,7 @@ def get_timestep_embedding(
     downscale_freq_shift: float = 1,
     scale: float = 1,
     max_period: int = 10000,
-):
+) -> torch.Tensor:
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
 
@@ -1149,9 +1149,7 @@ def get_1d_rotary_pos_embed(
 
     theta = theta * ntk_factor
     freqs = (
-        1.0
-        / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype, device=pos.device)[: (dim // 2)] / dim))
-        / linear_factor
+        1.0 / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype, device=pos.device) / dim)) / linear_factor
     )  # [D/2]
     freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
     is_npu = freqs.device.type == "npu"
@@ -1327,7 +1325,7 @@ class Timesteps(nn.Module):
         self.downscale_freq_shift = downscale_freq_shift
         self.scale = scale
 
-    def forward(self, timesteps):
+    def forward(self, timesteps: torch.Tensor) -> torch.Tensor:
         t_emb = get_timestep_embedding(
             timesteps,
             self.num_channels,
