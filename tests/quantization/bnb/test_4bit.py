@@ -30,6 +30,7 @@ from diffusers import (
     FluxTransformer2DModel,
     SD3Transformer2DModel,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_accelerate_version, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -44,10 +45,13 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch,
     require_torch_accelerator,
+    require_torch_version_greater,
     require_transformers_version_greater,
     slow,
     torch_device,
 )
+
+from ..test_torch_compile_utils import QuantCompileTests
 
 
 def get_some_linear_layer(model):
@@ -476,6 +480,7 @@ class SlowBnb4BitTests(Base4bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
+        torch.use_deterministic_algorithms(True)
         self.pipeline_4bit.transformer.dequantize()
         output = self.pipeline_4bit(
             prompt=self.prompt,
@@ -854,3 +859,26 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
 
     def test_fp4_double_safe(self):
         self.test_serialization(quant_type="fp4", double_quant=True, safe_serialization=True)
+
+
+@require_torch_version_greater("2.7.1")
+class Bnb4BitCompileTests(QuantCompileTests):
+    quantization_config = PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_8bit",
+        quant_kwargs={
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": torch.bfloat16,
+        },
+        components_to_quantize=["transformer", "text_encoder_2"],
+    )
+
+    def test_torch_compile(self):
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        super()._test_torch_compile(quantization_config=self.quantization_config)
+
+    def test_torch_compile_with_cpu_offload(self):
+        super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
+
+    def test_torch_compile_with_group_offload(self):
+        super()._test_torch_compile_with_group_offload(quantization_config=self.quantization_config)
