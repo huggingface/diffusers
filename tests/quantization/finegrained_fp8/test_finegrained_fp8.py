@@ -26,8 +26,8 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     FluxPipeline,
     FluxTransformer2DModel,
-    TorchAoConfig,
 )
+
 from diffusers.models.attention_processor import Attention
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -36,7 +36,6 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch,
     require_torch_gpu,
-    require_torchao_version_greater_or_equal,
     slow,
     torch_device,
 )
@@ -52,7 +51,7 @@ if is_torch_available():
     import torch
     import torch.nn as nn
 
-    from ..utils import LoRALayer, get_memory_consumption_stat
+    from tests.quantization.utils import LoRALayer, get_memory_consumption_stat
 
 
 @require_torch
@@ -95,14 +94,23 @@ class FinegrainedFP8Test(unittest.TestCase):
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            device_map=torch_device,
         )
-        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16)
+        text_encoder = CLIPTextModel.from_pretrained(
+            model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16
+        )
         text_encoder_2 = T5EncoderModel.from_pretrained(
             model_id, subfolder="text_encoder_2", torch_dtype=torch.bfloat16
         )
-        tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
-        tokenizer_2 = AutoTokenizer.from_pretrained(model_id, subfolder="tokenizer_2")
-        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.bfloat16)
+        tokenizer = CLIPTokenizer.from_pretrained(
+            model_id, subfolder="tokenizer"
+        )
+        tokenizer_2 = AutoTokenizer.from_pretrained(
+            model_id, subfolder="tokenizer_2"
+        )
+        vae = AutoencoderKL.from_pretrained(
+            model_id, subfolder="vae", torch_dtype=torch.bfloat16
+        )
         scheduler = FlowMatchEulerDiscreteScheduler()
 
         return {
@@ -195,13 +203,18 @@ class FinegrainedFP8Test(unittest.TestCase):
         self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
     def test_quantization(self):
-        expected_slice = [np.array([0.34179688, -0.03613281, 0.01428223, -0.22949219, -0.49609375, 0.4375, -0.1640625, -0.66015625, 0.43164062]), np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])]
+        expected_slice = [
+            np.array([0.46679688, 0.51953125, 0.5546875, 0.421875, 0.44140625, 0.64453125, 0.43359375, 0.453125, 0.5625]), 
+            np.array([0.46679688, 0.51953125, 0.5546875, 0.421875, 0.44140625, 0.64453125, 0.43359375, 0.453125, 0.5625])
+        ]
+    
         for index, model_id in enumerate(["hf-internal-testing/tiny-flux-pipe", "hf-internal-testing/tiny-flux-sharded"]):
             quantization_config = FinegrainedFP8Config(
                 modules_to_not_convert=["x_embedder", "proj_out"], 
                 weight_block_size=(32, 32)
             )
-            self._test_quantization_output(quantization_config, model_id, expected_slice[index])
+            
+            self._test_quantization_output(quantization_config, expected_slice[index], model_id)
 
     def test_dtype(self):
         """
@@ -216,13 +229,18 @@ class FinegrainedFP8Test(unittest.TestCase):
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            device_map=torch_device,
         )
 
+        layer = quantized_model.transformer_blocks[0].ff.net[2]
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
         weight_scale_inv = quantized_model.transformer_blocks[0].ff.net[2].weight_scale_inv
-        self.assertTrue(isinstance(weight, FP8Linear))
+
+        self.assertTrue(isinstance(layer, FP8Linear))
+
         self.assertEqual(weight_scale_inv.dtype, torch.bfloat16)
-        self.assertEqual(weight.weight.dtype, torch.float8_e4m3fn)
+
+        self.assertEqual(weight.dtype, torch.float8_e4m3fn)
 
     def test_device_map_auto(self):
         """
@@ -232,16 +250,16 @@ class FinegrainedFP8Test(unittest.TestCase):
         inputs = self.get_dummy_tensor_inputs(torch_device)
         # requires with different expected slices since models are different due to offload (we don't quantize modules offloaded to cpu/disk)
         expected_slice_auto = np.array(
-            [
-                0.34179688,
-                -0.03613281,
-                0.01428223,
-                -0.22949219,
-                -0.49609375,
+            [ 
+                0.34375,
+                -0.0402832,
+                0.01226807,
+                -0.22851562,
+                -0.49414062,
                 0.4375,
-                -0.1640625,
+                -0.16992188,
                 -0.66015625,
-                0.43164062,
+                0.43164062
             ]
         )
 
@@ -259,6 +277,7 @@ class FinegrainedFP8Test(unittest.TestCase):
 
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice_auto) < 1e-3)
 
 
@@ -269,6 +288,7 @@ class FinegrainedFP8Test(unittest.TestCase):
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            device_map=torch_device,
         )
 
         unquantized_layer = quantized_model_with_not_convert.transformer_blocks[0].ff.net[2]
@@ -284,6 +304,7 @@ class FinegrainedFP8Test(unittest.TestCase):
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            device_map=torch_device,
         )
 
         size_quantized_with_not_convert = self.get_model_size_in_bytes(quantized_model_with_not_convert)
@@ -298,7 +319,8 @@ class FinegrainedFP8Test(unittest.TestCase):
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
-        ).to(torch_device)
+            device_map=torch_device,
+        )
 
         for param in quantized_model.parameters():
             # freeze the model as only adapter layers will be trained
@@ -321,10 +343,10 @@ class FinegrainedFP8Test(unittest.TestCase):
             if isinstance(module, LoRALayer):
                 self.assertTrue(module.adapter[1].weight.grad is not None)
                 self.assertTrue(module.adapter[1].weight.grad.norm().item() > 0)
-
+    
     @nightly
     def test_torch_compile(self):
-        r"""Test that verifies if torch.compile works with torchao quantization."""
+        r"""Test that verifies if torch.compile works with fp8 quantization."""
         for model_id in ["hf-internal-testing/tiny-flux-pipe", "hf-internal-testing/tiny-flux-sharded"]:
             quantization_config = FinegrainedFP8Config(weight_block_size=(32, 32), modules_to_not_convert=["x_embedder", "proj_out"])
             components = self.get_dummy_components(quantization_config, model_id=model_id)
@@ -350,9 +372,14 @@ class FinegrainedFP8Test(unittest.TestCase):
             transformer_quantized = self.get_dummy_components(FinegrainedFP8Config(weight_block_size=(32, 32), modules_to_not_convert=["x_embedder", "proj_out"]), model_id=model_id)["transformer"]
             transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
 
-            for name, module in transformer_quantized.named_modules():
-                if isinstance(module, nn.Linear) and name not in ["x_embedder", "proj_out"]:
-                    self.assertTrue(isinstance(module.weight, FP8Linear))
+            for (name, module_quantized), (name_bf16, module_bf16) in zip(transformer_quantized.named_modules(), transformer_bf16.named_modules()):
+                if isinstance(module_bf16, nn.Linear) and name_bf16.split(".")[-1] not in ["x_embedder", "proj_out"]:
+
+                    self.assertTrue(isinstance(module_quantized, FP8Linear))
+
+                    self.assertEqual(module_quantized.weight.shape, module_bf16.weight.shape)
+
+                    self.assertEqual(name, name_bf16)
 
 
             total_quantized = self.get_model_size_in_bytes(transformer_quantized)
@@ -373,7 +400,9 @@ class FinegrainedFP8Test(unittest.TestCase):
 
         transformer_quantized = self.get_dummy_components(FinegrainedFP8Config(weight_block_size=(32, 32), modules_to_not_convert=["x_embedder", "proj_out"]), model_id=model_id)["transformer"]
         transformer_quantized.to(torch_device)
+
         quantized_model_memory = get_memory_consumption_stat(transformer_quantized, inputs)
+
         self.assertTrue(unquantized_model_memory / quantized_model_memory >= expected_memory_saving_ratio)
 
     def test_exception_of_cpu_in_device_map(self):
@@ -413,6 +442,7 @@ class TorchAoSerializationTest(unittest.TestCase):
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            device_map=torch_device,
         )
         return quantized_model.to(device)
 
@@ -448,6 +478,7 @@ class TorchAoSerializationTest(unittest.TestCase):
         inputs = self.get_dummy_tensor_inputs(torch_device)
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
     def _check_serialization_expected_slice(self, expected_slice, device):
@@ -463,18 +494,34 @@ class TorchAoSerializationTest(unittest.TestCase):
         output = loaded_quantized_model(**inputs)[0]
 
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
     def test_slice_output(self):
-        expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
-        device = "cuda"
+        expected_slice = np.array(
+            [
+                0.34960938, 
+                -0.12109375, 
+                -0.02648926, 
+                -0.25195312, 
+                -0.45898438, 
+                0.49609375, 
+                -0.14453125, 
+                -0.69921875, 
+                0.44921875
+            ]
+        )
+
+        device = torch_device
+
         self._test_original_model_expected_slice(expected_slice)
+
         self._check_serialization_expected_slice(expected_slice, device)
 
 @require_torch
 @require_torch_gpu
 @slow
-@nightly
+
 class SlowTorchAoTests(unittest.TestCase):
     def tearDown(self):
         gc.collect()
@@ -490,6 +537,7 @@ class SlowTorchAoTests(unittest.TestCase):
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
             cache_dir=cache_dir,
+            device_map=torch_device,
         )
         text_encoder = CLIPTextModel.from_pretrained(
             model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16, cache_dir=cache_dir
@@ -497,9 +545,15 @@ class SlowTorchAoTests(unittest.TestCase):
         text_encoder_2 = T5EncoderModel.from_pretrained(
             model_id, subfolder="text_encoder_2", torch_dtype=torch.bfloat16, cache_dir=cache_dir
         )
-        tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer", cache_dir=cache_dir)
-        tokenizer_2 = AutoTokenizer.from_pretrained(model_id, subfolder="tokenizer_2", cache_dir=cache_dir)
-        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.bfloat16, cache_dir=cache_dir)
+        tokenizer = CLIPTokenizer.from_pretrained(
+            model_id, subfolder="tokenizer", cache_dir=cache_dir
+        )
+        tokenizer_2 = AutoTokenizer.from_pretrained(
+            model_id, subfolder="tokenizer_2", cache_dir=cache_dir
+        )
+        vae = AutoencoderKL.from_pretrained(
+            model_id, subfolder="vae", torch_dtype=torch.bfloat16, cache_dir=cache_dir
+        )
         scheduler = FlowMatchEulerDiscreteScheduler()
 
         return {
@@ -536,12 +590,11 @@ class SlowTorchAoTests(unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0].flatten()
         output_slice = np.concatenate((output[:16], output[-16:]))
+
         self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
     def test_quantization(self):
-        # fmt: off
-        expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
-        # fmt: on
+        expected_slice = np.array([0., -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
 
         quantization_config = FinegrainedFP8Config(weight_block_size=(32, 32), modules_to_not_convert=["x_embedder", "proj_out"])
         self._test_quant_output(quantization_config, expected_slice)
@@ -562,7 +615,7 @@ class SlowTorchAoTests(unittest.TestCase):
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
             transformer = FluxTransformer2DModel.from_pretrained(
-                tmp_dir, torch_dtype=torch.bfloat16, use_safetensors=False
+                tmp_dir, torch_dtype=torch.bfloat16, use_safetensors=False, device_map=torch_device
             )
             pipe.transformer = transformer
 
