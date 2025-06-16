@@ -30,6 +30,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import requests_mock
+import safetensors.torch
 import torch
 import torch.nn as nn
 from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
@@ -62,6 +63,7 @@ from diffusers.utils.testing_utils import (
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
     backend_synchronize,
+    check_if_dicts_are_equal,
     get_python_version,
     is_torch_compile,
     numpy_cosine_similarity_distance,
@@ -1057,11 +1059,10 @@ class ModelTesterMixin:
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
 
-    @parameterized.expand([True, False])
+    @parameterized.expand([(4, 4, True), (4, 8, False), (8, 4, False)])
     @torch.no_grad()
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_save_load_lora_adapter(self, use_dora=False):
-        import safetensors
+    def test_save_load_lora_adapter(self, rank, lora_alpha, use_dora=False):
         from peft import LoraConfig
         from peft.utils import get_peft_model_state_dict
 
@@ -1077,8 +1078,8 @@ class ModelTesterMixin:
         output_no_lora = model(**inputs_dict, return_dict=False)[0]
 
         denoiser_lora_config = LoraConfig(
-            r=4,
-            lora_alpha=4,
+            r=rank,
+            lora_alpha=lora_alpha,
             target_modules=["to_q", "to_k", "to_v", "to_out.0"],
             init_lora_weights=False,
             use_dora=use_dora,
@@ -1117,7 +1118,7 @@ class ModelTesterMixin:
         self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
 
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_wrong_adapter_name_raises_error(self):
+    def test_lora_wrong_adapter_name_raises_error(self):
         from peft import LoraConfig
 
         from diffusers.loaders.peft import PeftAdapterMixin
@@ -1144,6 +1145,90 @@ class ModelTesterMixin:
                 model.save_lora_adapter(tmpdir, adapter_name=wrong_name)
 
             self.assertTrue(f"Adapter name {wrong_name} not found in the model." in str(err_context.exception))
+
+    @parameterized.expand([(4, 4, True), (4, 8, False), (8, 4, False)])
+    @torch.no_grad()
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
+    def test_lora_adapter_metadata_is_loaded_correctly(self, rank, lora_alpha, use_dora):
+        from peft import LoraConfig
+
+        from diffusers.loaders.peft import PeftAdapterMixin
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        if not issubclass(model.__class__, PeftAdapterMixin):
+            return
+
+        denoiser_lora_config = LoraConfig(
+            r=rank,
+            lora_alpha=lora_alpha,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=use_dora,
+        )
+        model.add_adapter(denoiser_lora_config)
+        metadata = model.peft_config["default"].to_dict()
+        self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_lora_adapter(tmpdir)
+            model_file = os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
+            self.assertTrue(os.path.isfile(model_file))
+
+            model.unload_lora()
+            self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+            model.load_lora_adapter(tmpdir, prefix=None, use_safetensors=True)
+            parsed_metadata = model.peft_config["default_0"].to_dict()
+            check_if_dicts_are_equal(metadata, parsed_metadata)
+
+    @torch.no_grad()
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
+    def test_lora_adapter_wrong_metadata_raises_error(self):
+        from peft import LoraConfig
+
+        from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
+        from diffusers.loaders.peft import PeftAdapterMixin
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        if not issubclass(model.__class__, PeftAdapterMixin):
+            return
+
+        denoiser_lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        model.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_lora_adapter(tmpdir)
+            model_file = os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
+            self.assertTrue(os.path.isfile(model_file))
+
+            # Perturb the metadata in the state dict.
+            loaded_state_dict = safetensors.torch.load_file(model_file)
+            metadata = {"format": "pt"}
+            lora_adapter_metadata = denoiser_lora_config.to_dict()
+            lora_adapter_metadata.update({"foo": 1, "bar": 2})
+            for key, value in lora_adapter_metadata.items():
+                if isinstance(value, set):
+                    lora_adapter_metadata[key] = list(value)
+            metadata[LORA_ADAPTER_METADATA_KEY] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+            safetensors.torch.save_file(loaded_state_dict, model_file, metadata=metadata)
+
+            model.unload_lora()
+            self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+            with self.assertRaises(TypeError) as err_context:
+                model.load_lora_adapter(tmpdir, prefix=None, use_safetensors=True)
+            self.assertTrue("`LoraConfig` class could not be instantiated" in str(err_context.exception))
 
     @require_torch_accelerator
     def test_cpu_offload(self):
@@ -1744,33 +1829,61 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
 
+@require_torch_gpu
+@require_torch_2
+@is_torch_compile
+@slow
 class TorchCompileTesterMixin:
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
-    @require_torch_gpu
-    @require_torch_2
-    @is_torch_compile
-    @slow
     def test_torch_compile_recompilation_and_graph_break(self):
-        torch._dynamo.reset()
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict).to(torch_device)
         model = torch.compile(model, fullgraph=True)
 
-        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(error_on_recompile=True),
+            torch.no_grad(),
+        ):
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
+    def test_compile_with_group_offloading(self):
+        torch._dynamo.config.cache_size_limit = 10000
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        if not getattr(model, "_supports_group_offloading", True):
+            return
+
+        model.eval()
+        # TODO: Can test for other group offloading kwargs later if needed.
+        group_offload_kwargs = {
+            "onload_device": "cuda",
+            "offload_device": "cpu",
+            "offload_type": "block_level",
+            "num_blocks_per_group": 1,
+            "use_stream": True,
+            "non_blocking": True,
+        }
+        model.enable_group_offload(**group_offload_kwargs)
+        model.compile()
+        with torch.no_grad():
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
@@ -1798,7 +1911,7 @@ class LoraHotSwappingForModelTesterMixin:
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
         # there will be recompilation errors, as torch caches the model when run in the same process.
         super().tearDown()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1915,7 +2028,7 @@ class LoraHotSwappingForModelTesterMixin:
     def test_hotswapping_compiled_model_linear(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
@@ -1925,7 +2038,7 @@ class LoraHotSwappingForModelTesterMixin:
 
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
@@ -1935,7 +2048,7 @@ class LoraHotSwappingForModelTesterMixin:
 
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa

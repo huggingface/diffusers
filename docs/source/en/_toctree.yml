@@ -92,8 +92,6 @@
     title: API Reference
   title: Hybrid Inference
 - sections:
-  - local: using-diffusers/cogvideox
-    title: CogVideoX
   - local: using-diffusers/consisid
     title: ConsisID
   - local: using-diffusers/sdxl
@@ -178,10 +176,10 @@
 - sections:
   - local: optimization/fp16
     title: Accelerate inference
+  - local: optimization/cache
+    title: Caching
   - local: optimization/memory
     title: Reduce memory usage
-  - local: optimization/torch2.0
-    title: PyTorch 2.0
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome
@@ -208,7 +206,7 @@
     - local: optimization/mps
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
-      title: Habana Gaudi
+      title: Intel Gaudi
     - local: optimization/neuron
       title: AWS Neuron
     title: Optimized hardware
@@ -285,6 +283,8 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/chroma_transformer
+        title: ChromaTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
@@ -407,6 +407,8 @@
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
       title: BLIP-Diffusion
+    - local: api/pipelines/chroma
+      title: Chroma
     - local: api/pipelines/cogvideox
       title: CogVideoX
     - local: api/pipelines/cogview3

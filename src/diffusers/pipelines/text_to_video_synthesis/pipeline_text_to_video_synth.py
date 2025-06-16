@@ -33,7 +33,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from . import TextToVideoSDPipelineOutput
 
 
@@ -68,8 +68,13 @@ EXAMPLE_DOC_STRING = """
 
 
 class TextToVideoSDPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
+    DeprecatedPipelineMixin,
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
 ):
+    _last_supported_version = "0.33.1"
     r"""
     Pipeline for text-to-video generation.
 
