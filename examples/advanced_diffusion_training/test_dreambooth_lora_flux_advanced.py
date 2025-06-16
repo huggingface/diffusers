@@ -23,6 +23,7 @@ import safetensors
 
 from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 
+
 sys.path.append("..")
 from test_examples_utils import ExamplesTestsAccelerate, run_command  # noqa: E402
 
