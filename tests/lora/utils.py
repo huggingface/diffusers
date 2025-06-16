@@ -1794,7 +1794,7 @@ class PeftLoraLoaderMixinTests:
         missing_key = [k for k in state_dict if "lora_A" in k][0]
         del state_dict[missing_key]
 
-        logger = logging.get_logger("diffusers.loaders.peft")
+        logger = logging.get_logger("diffusers.utils.peft_utils")
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
             pipe.load_lora_weights(state_dict)
@@ -1829,7 +1829,7 @@ class PeftLoraLoaderMixinTests:
         unexpected_key = [k for k in state_dict if "lora_A" in k][0] + ".diffusers_cat"
         state_dict[unexpected_key] = torch.tensor(1.0, device=torch_device)
 
-        logger = logging.get_logger("diffusers.loaders.peft")
+        logger = logging.get_logger("diffusers.utils.peft_utils")
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
             pipe.load_lora_weights(state_dict)
@@ -1890,7 +1890,7 @@ class PeftLoraLoaderMixinTests:
         original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
-        logger = logging.get_logger("diffusers.loaders.peft")
+        logger = logging.get_logger("diffusers.utils.peft_utils")
         logger.setLevel(logging.WARNING)
 
         with CaptureLogger(logger) as cap_logger:
@@ -1910,7 +1910,7 @@ class PeftLoraLoaderMixinTests:
                 elif lora_module == "text_encoder_2":
                     prefix = "text_encoder_2"
 
-                logger = logging.get_logger("diffusers.loaders.lora_base")
+                logger = logging.get_logger("diffusers.utils.peft_utils")
                 logger.setLevel(logging.WARNING)
 
                 with CaptureLogger(logger) as cap_logger:
@@ -2005,9 +2005,6 @@ class PeftLoraLoaderMixinTests:
                     bias_values[name] = module.bias.data.clone()
 
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
-        logger.setLevel(logging.INFO)
 
         original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
