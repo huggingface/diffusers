@@ -749,6 +749,7 @@ class ChromaImg2ImgPipeline(
             prompt,
             height,
             width,
+            strength,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
