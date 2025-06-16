@@ -19,15 +19,18 @@ import unittest
 import numpy as np
 import pytest
 from huggingface_hub import hf_hub_download
+from PIL import Image
 
 from diffusers import (
     BitsAndBytesConfig,
     DiffusionPipeline,
+    FluxControlPipeline,
     FluxTransformer2DModel,
     SanaTransformer2DModel,
     SD3Transformer2DModel,
     logging,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_accelerate_version
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -39,13 +42,17 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate,
     require_bitsandbytes_version_greater,
+    require_peft_backend,
     require_peft_version_greater,
     require_torch,
     require_torch_accelerator,
+    require_torch_version_greater_equal,
     require_transformers_version_greater,
     slow,
     torch_device,
 )
+
+from ..test_torch_compile_utils import QuantCompileTests
 
 
 def get_some_linear_layer(model):
@@ -478,6 +485,7 @@ class SlowBnb8bitTests(Base8bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
+        torch.use_deterministic_algorithms(True)
         self.pipeline_8bit.transformer.dequantize()
         output = self.pipeline_8bit(
             prompt=self.prompt,
@@ -696,6 +704,50 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         self.assertTrue(max_diff < 1e-3)
 
 
+@require_transformers_version_greater("4.44.0")
+@require_peft_backend
+class SlowBnb4BitFluxControlWithLoraTests(Base8bitTests):
+    def setUp(self) -> None:
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+        self.pipeline_8bit = FluxControlPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev",
+            quantization_config=PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_8bit",
+                quant_kwargs={"load_in_8bit": True},
+                components_to_quantize=["transformer", "text_encoder_2"],
+            ),
+            torch_dtype=torch.float16,
+        )
+        self.pipeline_8bit.enable_model_cpu_offload()
+
+    def tearDown(self):
+        del self.pipeline_8bit
+
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_lora_loading(self):
+        self.pipeline_8bit.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
+
+        output = self.pipeline_8bit(
+            prompt=self.prompt,
+            control_image=Image.new(mode="RGB", size=(256, 256)),
+            height=256,
+            width=256,
+            max_sequence_length=64,
+            output_type="np",
+            num_inference_steps=8,
+            generator=torch.Generator().manual_seed(42),
+        ).images
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.2029, 0.2136, 0.2268, 0.1921, 0.1997, 0.2185, 0.2021, 0.2183, 0.2292])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3, msg=f"{out_slice=} != {expected_slice=}")
+
+
 @slow
 class BaseBnb8bitSerializationTests(Base8bitTests):
     def setUp(self):
@@ -772,3 +824,27 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         out_0 = self.model_0(**inputs)[0]
         out_1 = model_1(**inputs)[0]
         self.assertTrue(torch.equal(out_0, out_1))
+
+
+@require_torch_version_greater_equal("2.6.0")
+class Bnb8BitCompileTests(QuantCompileTests):
+    quantization_config = PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_8bit",
+        quant_kwargs={"load_in_8bit": True},
+        components_to_quantize=["transformer", "text_encoder_2"],
+    )
+
+    def test_torch_compile(self):
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        super()._test_torch_compile(quantization_config=self.quantization_config, torch_dtype=torch.float16)
+
+    def test_torch_compile_with_cpu_offload(self):
+        super()._test_torch_compile_with_cpu_offload(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16
+        )
+
+    @pytest.mark.xfail(reason="Test fails because of an offloading problem from Accelerate with confusion in hooks.")
+    def test_torch_compile_with_group_offload(self):
+        super()._test_torch_compile_with_group_offload(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16
+        )
