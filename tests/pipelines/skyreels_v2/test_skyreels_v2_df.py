@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import unittest
 
 import numpy as np
@@ -27,8 +26,6 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_accelerator,
-    slow,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
