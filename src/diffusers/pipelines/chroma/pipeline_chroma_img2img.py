@@ -802,7 +802,7 @@ class ChromaImg2ImgPipeline(
 
         # 4. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        image_seq_len = latents.shape[1]
+        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.get("base_image_seq_len", 256),
