@@ -554,6 +554,18 @@ class ChromaImg2ImgPipeline(
         """
         self.vae.disable_tiling()
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+        t_start = int(max(num_inference_steps - init_timestep, 0))
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
+
+        return timesteps, num_inference_steps - t_start
+
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
