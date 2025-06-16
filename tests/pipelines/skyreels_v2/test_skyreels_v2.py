@@ -138,23 +138,3 @@ class SkyReelsV2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
-
-
-@slow
-@require_torch_accelerator
-class SkyReelsV2PipelineIntegrationTests(unittest.TestCase):
-    prompt = "A painting of a squirrel eating a burger."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    @unittest.skip("TODO: test needs to be implemented")
-    def test_SkyReelsV2x(self):
-        pass
