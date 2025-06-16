@@ -148,6 +148,7 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
+    _import_structure["chroma"] = ["ChromaPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -157,7 +158,12 @@ else:
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
-    _import_structure["cosmos"] = ["CosmosTextToWorldPipeline", "CosmosVideoToWorldPipeline"]
+    _import_structure["cosmos"] = [
+        "Cosmos2TextToImagePipeline",
+        "CosmosTextToWorldPipeline",
+        "CosmosVideoToWorldPipeline",
+        "Cosmos2VideoToWorldPipeline",
+    ]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -290,7 +296,12 @@ else:
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
-    _import_structure["sana"] = ["SanaPipeline", "SanaSprintPipeline", "SanaControlNetPipeline"]
+    _import_structure["sana"] = [
+        "SanaPipeline",
+        "SanaSprintPipeline",
+        "SanaControlNetPipeline",
+        "SanaSprintImg2ImgPipeline",
+    ]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_audio"] = [
@@ -366,7 +377,7 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
-    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline"]
+    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline", "WanVACEPipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -526,6 +537,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
+        from .chroma import ChromaPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
@@ -554,7 +566,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
         )
-        from .cosmos import CosmosTextToWorldPipeline, CosmosVideoToWorldPipeline
+        from .cosmos import (
+            Cosmos2TextToImagePipeline,
+            Cosmos2VideoToWorldPipeline,
+            CosmosTextToWorldPipeline,
+            CosmosVideoToWorldPipeline,
+        )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
@@ -675,7 +692,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
-        from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintPipeline
+        from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintImg2ImgPipeline, SanaSprintPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
@@ -734,7 +751,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserTextDecoder,
         )
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
-        from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
+        from .wan import WanImageToVideoPipeline, WanPipeline, WanVACEPipeline, WanVideoToVideoPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,

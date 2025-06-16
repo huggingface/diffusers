@@ -192,9 +192,9 @@ def log_validation(
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        free_memory()
-        return image_logs
+    del pipeline
+    free_memory()
+    return image_logs
 
 
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):

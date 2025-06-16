@@ -143,7 +143,8 @@ Now we'll simply specify the name of the dataset and caption column (in this cas
 You can also load a dataset straight from by specifying it's name in `dataset_name`.
 Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loading your own caption dataset.
 
-- **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
+- **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer 
+    - To use Prodigy, please make sure to install the prodigyopt library: `pip install prodigyopt`
 - **pivotal tuning**
 
 ### Example #1: Pivotal tuning
