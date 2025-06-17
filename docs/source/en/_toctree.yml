@@ -180,10 +180,10 @@
     title: Caching
   - local: optimization/memory
     title: Reduce memory usage
-  - local: optimization/pruna
-    title: Pruna
   - local: optimization/speed-memory-optims
     title: Compile and offloading quantized models
+  - local: optimization/pruna
+    title: Pruna
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome
