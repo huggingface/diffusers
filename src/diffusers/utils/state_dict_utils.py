@@ -359,5 +359,8 @@ def _load_sft_state_dict_metadata(model_file: str):
         metadata = f.metadata() or {}
 
     metadata.pop("format", None)
-    raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
-    return json.loads(raw) if raw else None
+    if metadata:
+        raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
+        return json.loads(raw) if raw else None
+    else:
+        return None

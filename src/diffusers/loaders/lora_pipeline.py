@@ -2031,18 +2031,36 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if is_kohya:
             state_dict = _convert_kohya_flux_lora_to_diffusers(state_dict)
             # Kohya already takes care of scaling the LoRA parameters with alpha.
-            return (state_dict, None) if return_alphas else state_dict
+            return cls._prepare_outputs(
+                state_dict,
+                metadata=metadata,
+                alphas=None,
+                return_alphas=return_alphas,
+                return_metadata=return_lora_metadata,
+            )
 
         is_xlabs = any("processor" in k for k in state_dict)
         if is_xlabs:
             state_dict = _convert_xlabs_flux_lora_to_diffusers(state_dict)
             # xlabs doesn't use `alpha`.
-            return (state_dict, None) if return_alphas else state_dict
+            return cls._prepare_outputs(
+                state_dict,
+                metadata=metadata,
+                alphas=None,
+                return_alphas=return_alphas,
+                return_metadata=return_lora_metadata,
+            )
 
         is_bfl_control = any("query_norm.scale" in k for k in state_dict)
         if is_bfl_control:
             state_dict = _convert_bfl_flux_control_lora_to_diffusers(state_dict)
-            return (state_dict, None) if return_alphas else state_dict
+            return cls._prepare_outputs(
+                state_dict,
+                metadata=metadata,
+                alphas=None,
+                return_alphas=return_alphas,
+                return_metadata=return_lora_metadata,
+            )
 
         # For state dicts like
         # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA
@@ -2061,12 +2079,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     )
 
         if return_alphas or return_lora_metadata:
-            outputs = [state_dict]
-            if return_alphas:
-                outputs.append(network_alphas)
-            if return_lora_metadata:
-                outputs.append(metadata)
-            return tuple(outputs)
+            return cls._prepare_outputs(
+                state_dict,
+                metadata=metadata,
+                alphas=network_alphas,
+                return_alphas=return_alphas,
+                return_metadata=return_lora_metadata,
+            )
         else:
             return state_dict
 
@@ -2784,6 +2803,15 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             return _get_weight_shape(submodule.weight)
 
         raise ValueError("Either `base_module` or `base_weight_param_name` must be provided.")
+
+    @staticmethod
+    def _prepare_outputs(state_dict, metadata, alphas=None, return_alphas=False, return_metadata=False):
+        outputs = [state_dict]
+        if return_alphas:
+            outputs.append(alphas)
+        if return_metadata:
+            outputs.append(metadata)
+        return tuple(outputs) if (return_alphas or return_metadata) else state_dict
 
 
 # The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
