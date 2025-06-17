@@ -29,7 +29,11 @@ There are two ways to use [`~quantizers.PipelineQuantizationConfig`] depending o
 Initialize [`~quantizers.PipelineQuantizationConfig`] with the following parameters.
 
 - `quant_backend` specifies which quantization backend to use. Currently supported backends include: `bitsandbytes_4bit`, `bitsandbytes_8bit`, `gguf`, `quanto`, and `torchao`.
-- `quant_kwargs` specifies the quantization arguments to use. These arguments are different for each backend. Refer to the [Quantization API](../api/quantization) docs to view the arguments for each backend.
+- `quant_kwargs` specifies the quantization arguments to use.
+
+> [!TIP]
+> These `quant_kwargs` arguments are different for each backend. Refer to the [Quantization API](../api/quantization) docs to view the arguments for each backend.
+
 - `components_to_quantize` specifies which components of the pipeline to quantize. Typically, you should quantize the most compute intensive components like the transformer. The text encoder is another component to consider quantizing if a pipeline has more than one such as [`FluxPipeline`]. The example below quantizes the T5 text encoder in [`FluxPipeline`] while keeping the CLIP model intact.
 
 The example below loads the bitsandbytes backend with the following arguments from [`~quantizers.quantization_config.BitsAndBytesConfig`], `load_in_4bit`, `bnb_4bit_quant_type`, and `bnb_4bit_compute_dtype`.
