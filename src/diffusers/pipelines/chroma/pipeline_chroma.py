@@ -256,6 +256,8 @@ class ChromaPipeline(
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         do_classifier_free_guidance: bool = True,
         max_sequence_length: int = 512,
         lora_scale: Optional[float] = None,
@@ -296,7 +298,6 @@ class ChromaPipeline(
         else:
             batch_size = prompt_embeds.shape[0]
 
-        prompt_attention_mask = None
         if prompt_embeds is None:
             prompt_embeds, prompt_attention_mask = self._get_t5_prompt_embeds(
                 prompt=prompt,
@@ -308,7 +309,6 @@ class ChromaPipeline(
         dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
         text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
         negative_text_ids = None
-        negative_prompt_attention_mask = None
 
         if do_classifier_free_guidance:
             if negative_prompt_embeds is None:
@@ -551,19 +551,20 @@ class ChromaPipeline(
     def _prepare_attention_mask(
         self, batch_size, sequence_length, prompt_attention_mask, negative_prompt_attention_mask=None
     ):
-        device = prompt_attention_mask.device
-
-        # Extend the prompt attention mask to account for image tokens in the final sequence
-        attention_mask = torch.cat(
-            [prompt_attention_mask, torch.ones(batch_size, sequence_length, device=device)], dim=1
-        )
+        attention_mask = None
+        if prompt_attention_mask is not None:
+            # Extend the prompt attention mask to account for image tokens in the final sequence
+            attention_mask = torch.cat(
+                [prompt_attention_mask, torch.ones(batch_size, sequence_length, device=prompt_attention_mask.device)],
+                dim=1,
+            )
 
         negative_attention_mask = None
         if negative_prompt_attention_mask is not None:
             negative_attention_mask = torch.cat(
                 [
                     negative_prompt_attention_mask,
-                    torch.ones(batch_size, sequence_length, device=device),
+                    torch.ones(batch_size, sequence_length, device=negative_prompt_attention_mask.device),
                 ],
                 dim=1,
             )
@@ -614,6 +615,8 @@ class ChromaPipeline(
         negative_ip_adapter_image: Optional[PipelineImageInput] = None,
         negative_ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -749,6 +752,8 @@ class ChromaPipeline(
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
@@ -848,7 +853,7 @@ class ChromaPipeline(
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
-                    attention_mask=attention_mask.to(latents.dtype),
+                    attention_mask=attention_mask.to(latents.dtype) if attention_mask is not None else None,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -862,7 +867,9 @@ class ChromaPipeline(
                         encoder_hidden_states=negative_prompt_embeds,
                         txt_ids=negative_text_ids,
                         img_ids=latent_image_ids,
-                        attention_mask=negative_attention_mask.to(latents.dtype),
+                        attention_mask=negative_attention_mask.to(latents.dtype)
+                        if negative_attention_mask is not None
+                        else None,
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
