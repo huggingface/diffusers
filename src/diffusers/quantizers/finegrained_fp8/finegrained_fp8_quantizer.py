@@ -152,7 +152,7 @@ class FinegrainedFP8Quantizer(DiffusersQuantizer):
                 return False
             else:
                 if tensor_name == "weight_scale_inv":
-                    raise ValueError("Expect unquantized weights but got a quantized weight_scale")
+                    raise ValueError("Expected unquantized weights but got a quantized weight_scale")
                 return True
         return False
 
