@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> ckpt_path = "https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors"
         >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
-        >>> text_encoder -= AutoModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2")
+        >>> text_encoder = AutoModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2")
         >>> tokenizer = AutoTokenizer.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="tokenizer_2")
         >>> pipe = ChromaImg2ImgPipeline.from_pretrained(
         ...     "black-forest-labs/FLUX.1-schnell",
@@ -69,7 +69,8 @@ EXAMPLE_DOC_STRING = """
         ...     "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
         ... )
         >>> prompt = "a scenic fastasy landscape with a river and mountains in the background, vibrant colors, detailed, high resolution"
-        >>> image = pipe(prompt, image=image, num_inference_steps=35, guidance_scale=5.0, strength=0.9).images[0]
+        >>> negative_prompt = "low quality, ugly, unfinished, out of focus, deformed, disfigure, blurry, smudged, restricted palette, flat colors"
+        >>> image = pipe(prompt, image=image, negative_prompt=negative_prompt).images[0]
         >>> image.save("chroma-img2img.png")
         ```
 """
@@ -724,19 +725,25 @@ class ChromaImg2ImgPipeline(
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 35):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             sigmas (`List[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 3.5):
+            guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            strength (`float, *optional*, defaults to 0.9):
+                Conceptually, indicates how much to transform the reference image. Must be between 0 and 1. image will
+                be used as a starting point, adding more noise to it the larger the strength. The number of denoising
+                steps depends on the amount of noise initially added. When strength is 1, added noise will be maximum
+                and the denoising process will run for the full number of iterations specified in num_inference_steps.
+                A value of 1, therefore, essentially ignores image.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
