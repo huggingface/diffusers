@@ -148,7 +148,7 @@ class FinegrainedFP8Quantizer(DiffusersQuantizer):
         if isinstance(module, FP8Linear):
             if self.pre_quantized or tensor_name == "bias":
                 if tensor_name == "weight" and param_value.dtype != torch.float8_e4m3fn:
-                    raise ValueError("Expect quantized weights but got an unquantized weight")
+                    raise ValueError("Expected quantized weights but got an unquantized weight")
                 return False
             else:
                 if tensor_name == "weight_scale_inv":
