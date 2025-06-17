@@ -262,6 +262,7 @@ class ChromaImg2ImgPipeline(
 
         dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+        attention_mask = attention_mask.to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -269,7 +270,10 @@ class ChromaImg2ImgPipeline(
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        return prompt_embeds
+        attention_mask = attention_mask.repeat(1, num_images_per_prompt)
+        attention_mask = attention_mask.view(batch_size * num_images_per_prompt, seq_len)
+
+        return prompt_embeds, attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_inpaint.StableDiffusion3InpaintPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
