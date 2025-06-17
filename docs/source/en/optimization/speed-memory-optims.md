@@ -14,38 +14,40 @@ specific language governing permissions and limitations under the License.
 
 When optimizing models, you often face trade-offs between [inference speed](./fp16) and [memory-usage](./memory). For instance, while [caching](./cache) can boost inference speed, it comes at the cost of increased memory consumption since it needs to store intermediate attention layer outputs.
 
-A more balanced optimization strategy combines [torch.compile](./fp16#torchcompile) with various [offloading methods](./memory#offloading) on a quantized model. This approach not only accelerates inference but also helps lower memory-usage.
+A more balanced optimization strategy combines quantizing a model, [torch.compile](./fp16#torchcompile) and various [offloading methods](./memory#offloading). This approach not only accelerates inference but also helps lower memory-usage.
 
 For image generation, combining quantization and [model offloading](./memory#model-offloading) can often give the best trade-off between quality, speed, and memory. Group offloading is not as effective because it is usually not possible to *fully* overlap data transfer if the compute kernel finishes faster. This results in some communication overhead between the CPU and GPU.
 
 For video generation, combining quantization and [group-offloading](./memory#group-offloading) tends to be better because video models are more compute-bound. 
 
-The table below provides a comparison of optimization strategy combinations and their impact on latency and memory-usage for Flux.
+The table below provides a comparison of optimization strategy combinations and their impact on latency and memory-usage for Flux and Wan.
 
 | combination | latency (s) | memory-usage (GB) |
 |---|---|---|
-| quantization | 32.602 | 14.9453 |
-| quantization, torch.compile | 25.847 | 14.9448 |
-| quantization, torch.compile, model CPU offloading | 32.312 | 12.2369 |
-| quantization, torch.compile, group offloading | 60.235 | 12.2369 |
-<small>These results are benchmarked on Flux with a RTX 4090. The `transformer` and `text_encoder_2` components are quantized. Refer to the [benchmarking script](https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d) if you're interested in evaluating your own model.</small>
+| quantization (Flux)  | 32.602 | 14.9453 |
+| quantization, torch.compile (Flux)  | 25.847 | 14.9448 |
+| quantization, torch.compile, model CPU offloading (Flux) | 32.312 | 12.2369 |
+| quantization, torch.compile, group offloading (Wan) |  |  |
+<small>These results are benchmarked on Flux and Wan with a RTX 4090. The `transformer` and `text_encoder` components are quantized. Refer to the <a href="https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d" benchmarking script</a> if you're interested in evaluating your own model.</small>
 
-> [!TIP]
-> We recommend installing [PyTorch nightly](https://pytorch.org/get-started/locally/) for better torch.compile support.
+This guide will show you how to compile and offload a quantized model with [bitsandbytes](../quantization/bitsandbytes#torchcompile). Make sure you are using [PyTorch nightly](https://pytorch.org/get-started/locally/) and the latest version of bitsandbytes.
 
-This guide will show you how to compile and offload a quantized model.
+```bash
+pip install -U bitsandbytes
+```
 
 ## Quantization and torch.compile
 
-> [!TIP]
-> The quantization backend, such as [bitsandbytes](../quantization/bitsandbytes#torchcompile), must be compatible with torch.compile. Refer to the quantization [overview](https://huggingface.co/docs/transformers/quantization/overview#overview) table to see which backends support torch.compile.
-
 Start by [quantizing](../quantization/overview) a model to reduce the memory required for storage and [compiling](./fp16#torchcompile) it to accelerate inference.
+
+Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) cache size to allow recompiling up to a limit in case some guards fail.
 
 ```py
 import torch
 from diffusers import DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
+
+torch._dynamo.config.cache_size_limit = 1000
 
 # quantize
 pipeline_quant_config = PipelineQuantizationConfig(
@@ -73,6 +75,8 @@ pipeline("""
 
 In addition to quantization and torch.compile, try offloading if you need to reduce memory-usage further. Offloading moves various layers or model components from the CPU to the GPU as needed for computations.
 
+Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) cache size to allow recompiling up to a limit in case some guards fail.
+
 <hfoptions id="offloading">
 <hfoption id="model CPU offloading">
 
@@ -82,6 +86,8 @@ In addition to quantization and torch.compile, try offloading if you need to red
 import torch
 from diffusers import DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
+
+torch._dynamo.config.cache_size_limit = 1000
 
 # quantize
 pipeline_quant_config = PipelineQuantizationConfig(
@@ -114,19 +120,28 @@ pipeline(
 By overlapping computation and data transfer, it is faster than model CPU offloading while also saving memory. 
 
 ```py
+# pip install ftfy
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import AutoModel, DiffusionPipeline
 from diffusers.hooks import apply_group_offloading
+from diffusers.utils import export_to_video
 from diffusers.quantizers import PipelineQuantizationConfig
+from transformers import UMT5EncoderModel
+
+torch._dynamo.config.cache_size_limit = 1000
 
 # quantize
 pipeline_quant_config = PipelineQuantizationConfig(
     quant_backend="bitsandbytes_4bit",
     quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
-    components_to_quantize=["transformer", "text_encoder_2"],
+    components_to_quantize=["transformer", "text_encoder"],
+)
+
+text_encoder = UMT5EncoderModel.from_pretrained(
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16
 )
 pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     quantization_config=pipeline_quant_config,
     torch_dtype=torch.bfloat16,
 ).to("cuda")
@@ -135,17 +150,49 @@ pipeline = DiffusionPipeline.from_pretrained(
 onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
 
-pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True)
-pipeline.vae.enable_group_offload(onload_device=onload_device, offload_type="leaf_level", use_stream=True)
-apply_group_offloading(pipeline.text_encoder, onload_device=onload_device, offload_type="leaf_level", use_stream=True)
-apply_group_offloading(pipeline.text_encoder_2, onload_device=onload_device, offload_type="leaf_level", use_stream=True)
+pipeline.transformer.enable_group_offload(
+    onload_device=onload_device,
+    offload_device=offload_device,
+    offload_type="block_level",
+    num_blocks_per_group=4
+)
+pipeline.vae.enable_group_offload(
+    onload_device=onload_device,
+    offload_device=offload_device,
+    offload_type="block_level",
+    num_blocks_per_group=4
+)
+apply_group_offloading(
+    pipeline.text_encoder,
+    onload_device=onload_device,
+    offload_type="block_level",
+    num_blocks_per_group=2
+)
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
 pipeline.transformer.compile( mode="max-autotune", fullgraph=True)
-pipeline(
-    "cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain"
-).images[0]
+
+prompt = """
+The camera rushes from far to near in a low-angle shot, 
+revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
+for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
+"""
+negative_prompt = """
+Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, 
+low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, 
+misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
+"""
+
+output = pipeline(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_frames=81,
+    guidance_scale=5.0,
+).frames[0]
+export_to_video(output, "output.mp4", fps=16)
 ```
 
 </hfoption>
