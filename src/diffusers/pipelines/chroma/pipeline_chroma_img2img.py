@@ -904,13 +904,12 @@ class ChromaImg2ImgPipeline(
             dtype=latents.dtype,
             attention_mask=prompt_attention_mask,
         )
-        if self.do_classifier_free_guidance and negative_prompt_attention_mask is not None:
-            negative_attention_mask = self._prepare_attention_mask(
-                batch_size=latents.shape[0],
-                sequence_length=image_seq_len,
-                dtype=latents.dtype,
-                attention_mask=negative_prompt_attention_mask,
-            )
+        negative_attention_mask = self._prepare_attention_mask(
+            batch_size=latents.shape[0],
+            sequence_length=image_seq_len,
+            dtype=latents.dtype,
+            attention_mask=negative_prompt_attention_mask,
+        )
 
         # 6. Prepare image embeddings
         if (ip_adapter_image is not None or ip_adapter_image_embeds is not None) and (
