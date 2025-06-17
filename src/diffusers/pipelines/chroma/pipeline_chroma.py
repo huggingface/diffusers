@@ -549,34 +549,22 @@ class ChromaPipeline(
         return latents, latent_image_ids
 
     def _prepare_attention_mask(
-        self, batch_size, sequence_length, dtype, prompt_attention_mask=None, negative_prompt_attention_mask=None
+        self,
+        batch_size,
+        sequence_length,
+        dtype,
+        attention_mask=None,
     ):
-        attention_mask = None
-        if prompt_attention_mask is not None:
-            # Extend the prompt attention mask to account for image tokens in the final sequence
-            attention_mask = torch.cat(
-                [prompt_attention_mask, torch.ones(batch_size, sequence_length, device=prompt_attention_mask.device)],
-                dim=1,
-            )
-            attention_mask = attention_mask.to(dtype)
-            attention_mask = attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
+        if attention_mask is None:
+            return attention_mask
 
-        negative_attention_mask = None
-        if negative_prompt_attention_mask is not None:
-            negative_attention_mask = torch.cat(
-                [
-                    negative_prompt_attention_mask,
-                    torch.ones(batch_size, sequence_length, device=negative_prompt_attention_mask.device),
-                ],
-                dim=1,
-            )
-            negative_attention_mask = negative_attention_mask.to(dtype)
-            negative_attention_mask = (
-                negative_attention_mask[:, None, None, :] * negative_attention_mask[:, None, :, None]
-            )
-            print(attention_mask.shape)
-            attention_mask = torch.cat([negative_attention_mask, attention_mask], dim=0)
-            print(attention_mask.shape)
+        # Extend the prompt attention mask to account for image tokens in the final sequence
+        attention_mask = torch.cat(
+            [attention_mask, torch.ones(batch_size, sequence_length, device=attention_mask.device)],
+            dim=1,
+        )
+        attention_mask = attention_mask.to(dtype)
+        attention_mask = attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
 
         return attention_mask
 
@@ -801,8 +789,13 @@ class ChromaPipeline(
             batch_size=latents.shape[0],
             sequence_length=image_seq_len,
             dtype=latents.dtype,
-            prompt_attention_mask=prompt_attention_mask,
-            negative_prompt_attention_mask=negative_prompt_attention_mask,
+            attention_mask=prompt_attention_mask,
+        )
+        negative_attention_mask = self._prepare_attention_mask(
+            batch_size=latents.shape[0],
+            sequence_length=image_seq_len,
+            dtype=latents.dtype,
+            attention_mask=negative_prompt_attention_mask,
         )
 
         timesteps, num_inference_steps = retrieve_timesteps(
