@@ -559,6 +559,7 @@ class ChromaPipeline(
                 dim=1,
             )
             attention_mask = attention_mask.to(dtype)
+            attention_mask = attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
 
         negative_attention_mask = None
         if negative_prompt_attention_mask is not None:
@@ -570,7 +571,10 @@ class ChromaPipeline(
                 dim=1,
             )
             negative_attention_mask = negative_attention_mask.to(dtype)
-            attention_mask = torch.cat([attention_mask, negative_attention_mask], dim=0)
+            negative_attention_mask = negative_attention_mask[:, None, None, :] * negative_attention_mask[:, None, :, None]
+            print(attention_mask.shape)
+            attention_mask = torch.cat([negative_attention_mask, attention_mask], dim=0)
+            print(attention_mask.shape)
 
         return attention_mask
 
