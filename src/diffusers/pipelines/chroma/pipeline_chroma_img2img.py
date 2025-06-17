@@ -53,9 +53,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import ChromaTransformer2DModel, ChromaImg2ImgPipeline
         >>> from transformers import AutoModel, Autotokenizer
 
-        >>> transformer = ChromaTransformer2DModel.from_single_file(
-        ...     "chroma-unlocked-v35-detail-calibrated.safetensors", torch_dtype=torch.bfloat16
-        ... )
+        >>> ckpt_path = "https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors"
+        >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
         >>> text_encoder -= AutoModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2")
         >>> tokenizer = AutoTokenizer.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="tokenizer_2")
         >>> pipe = ChromaImg2ImgPipeline.from_pretrained(
@@ -65,13 +64,13 @@ EXAMPLE_DOC_STRING = """
         ...     tokenizer=tokenizer,
         ...     torch_dtype=torch.bfloat16,
         ... )
-        >>> pipe.to("cuda")
+        >>> pipe.enable_model_cpu_offload()
         >>> image = load_image(
         ...     "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
         ... )
-        >>> prompt = "A cat holding a sign that says hello world"
-        >>> image = pipe(prompt, image=image, num_inference_steps=28, guidance_scale=4.0, strength=0.85).images[0]
-        >>> image.save("chroma.png")
+        >>> prompt = "a scenic fastasy landscape with a river and mountains in the background, vibrant colors, detailed, high resolution"
+        >>> image = pipe(prompt, image=image, num_inference_steps=35, guidance_scale=5.0, strength=0.9).images[0]
+        >>> image.save("chroma-img2img.png")
         ```
 """
 
@@ -688,10 +687,10 @@ class ChromaImg2ImgPipeline(
         image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_inference_steps: int = 28,
+        num_inference_steps: int = 35,
         sigmas: Optional[List[float]] = None,
-        guidance_scale: float = 3.5,
-        strength: float = 0.8,
+        guidance_scale: float = 5.0,
+        strength: float = 0.9,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
