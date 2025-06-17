@@ -180,12 +180,12 @@ lora_alpha == rank: Scaling factor is 1. The LoRA is applied with its learned st
 lora_alpha < rank: Scaling factor < 1. Reduces the LoRA's impact. Useful for subtle changes or to prevent overpowering the base model. (e.g., alpha=8, rank=16)
 lora_alpha > rank: Scaling factor > 1. Amplifies the LoRA's impact. Allows a lower rank LoRA to have a stronger effect. (e.g., alpha=32, rank=16)
 
-[!TIP]
-A common starting point is to set `lora_alpha` equal to `rank`. 
-Some also set `lora_alpha` to be twice the `rank` (e.g., lora_alpha=32 for lora_rank=16) 
-to give the LoRA updates more influence without increasing parameter count. 
-If you find your LoRA is "overcooking" or learning too aggressively, consider setting `lora_alpha` to half of `rank` 
-(e.g., lora_alpha=8 for rank=16). Experimentation is often key to finding the optimal balance for your use case.
+> [!TIP]
+> A common starting point is to set `lora_alpha` equal to `rank`. 
+> Some also set `lora_alpha` to be twice the `rank` (e.g., lora_alpha=32 for lora_rank=16) 
+> to give the LoRA updates more influence without increasing parameter count. 
+> If you find your LoRA is "overcooking" or learning too aggressively, consider setting `lora_alpha` to half of `rank` 
+> (e.g., lora_alpha=8 for rank=16). Experimentation is often key to finding the optimal balance for your use case.
 
 ### Target Modules
 When LoRA was first adapted from language models to diffusion models, it was applied to the cross-attention layers in the Unet that relate the image representations with the prompts that describe them. 
