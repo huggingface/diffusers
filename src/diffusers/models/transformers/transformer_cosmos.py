@@ -100,11 +100,15 @@ class CosmosAdaLayerNorm(nn.Module):
         embedded_timestep = self.linear_2(embedded_timestep)
 
         if temb is not None:
-            embedded_timestep = embedded_timestep + temb[:, : 2 * self.embedding_dim]
+            embedded_timestep = embedded_timestep + temb[..., : 2 * self.embedding_dim]
 
-        shift, scale = embedded_timestep.chunk(2, dim=1)
+        shift, scale = embedded_timestep.chunk(2, dim=-1)
         hidden_states = self.norm(hidden_states)
-        hidden_states = hidden_states * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+
+        if embedded_timestep.ndim == 2:
+            shift, scale = (x.unsqueeze(1) for x in (shift, scale))
+
+        hidden_states = hidden_states * (1 + scale) + shift
         return hidden_states
 
 
@@ -135,9 +139,13 @@ class CosmosAdaLayerNormZero(nn.Module):
         if temb is not None:
             embedded_timestep = embedded_timestep + temb
 
-        shift, scale, gate = embedded_timestep.chunk(3, dim=1)
+        shift, scale, gate = embedded_timestep.chunk(3, dim=-1)
         hidden_states = self.norm(hidden_states)
-        hidden_states = hidden_states * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+
+        if embedded_timestep.ndim == 2:
+            shift, scale, gate = (x.unsqueeze(1) for x in (shift, scale, gate))
+
+        hidden_states = hidden_states * (1 + scale) + shift
         return hidden_states, gate
 
 
@@ -255,19 +263,19 @@ class CosmosTransformerBlock(nn.Module):
         # 1. Self Attention
         norm_hidden_states, gate = self.norm1(hidden_states, embedded_timestep, temb)
         attn_output = self.attn1(norm_hidden_states, image_rotary_emb=image_rotary_emb)
-        hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
+        hidden_states = hidden_states + gate * attn_output
 
         # 2. Cross Attention
         norm_hidden_states, gate = self.norm2(hidden_states, embedded_timestep, temb)
         attn_output = self.attn2(
             norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
         )
-        hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
+        hidden_states = hidden_states + gate * attn_output
 
         # 3. Feed Forward
         norm_hidden_states, gate = self.norm3(hidden_states, embedded_timestep, temb)
         ff_output = self.ff(norm_hidden_states)
-        hidden_states = hidden_states + gate.unsqueeze(1) * ff_output
+        hidden_states = hidden_states + gate * ff_output
 
         return hidden_states
 
@@ -513,7 +521,23 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.flatten(1, 3)  # [B, T, H, W, C] -> [B, THW, C]
 
         # 4. Timestep embeddings
-        temb, embedded_timestep = self.time_embed(hidden_states, timestep)
+        if timestep.ndim == 1:
+            temb, embedded_timestep = self.time_embed(hidden_states, timestep)
+        elif timestep.ndim == 5:
+            assert timestep.shape == (batch_size, 1, num_frames, 1, 1), (
+                f"Expected timestep to have shape [B, 1, T, 1, 1], but got {timestep.shape}"
+            )
+            timestep = timestep.flatten()
+            temb, embedded_timestep = self.time_embed(hidden_states, timestep)
+            # We can do this because num_frames == post_patch_num_frames, as p_t is 1
+            temb, embedded_timestep = (
+                x.view(batch_size, post_patch_num_frames, 1, 1, -1)
+                .expand(-1, -1, post_patch_height, post_patch_width, -1)
+                .flatten(1, 3)
+                for x in (temb, embedded_timestep)
+            )  # [BT, C] -> [B, T, 1, 1, C] -> [B, T, H, W, C] -> [B, THW, C]
+        else:
+            assert False
 
         # 5. Transformer blocks
         for block in self.transformer_blocks:
@@ -544,8 +568,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.unflatten(2, (p_h, p_w, p_t, -1))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
-        # Please just kill me at this point. What even is this permutation order and why is it different from the patching order?
-        # Another few hours of sanity lost to the void.
+        # NOTE: The permutation order here is not the inverse operation of what happens when patching as usually expected.
+        # It might be a source of confusion to the reader, but this is correct
         hidden_states = hidden_states.permute(0, 7, 1, 6, 2, 4, 3, 5)
         hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
