@@ -235,6 +235,7 @@ class ChromaPipeline(
 
         dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+        attention_mask = attention_mask.to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -242,7 +243,10 @@ class ChromaPipeline(
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        return prompt_embeds
+        attention_mask = attention_mask.repeat(1, num_images_per_prompt)
+        attention_mask = attention_mask.view(batch_size * num_images_per_prompt, seq_len)
+
+        return prompt_embeds, attention_mask
 
     def encode_prompt(
         self,
@@ -252,6 +256,8 @@ class ChromaPipeline(
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         do_classifier_free_guidance: bool = True,
         max_sequence_length: int = 512,
         lora_scale: Optional[float] = None,
@@ -293,7 +299,7 @@ class ChromaPipeline(
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds = self._get_t5_prompt_embeds(
+            prompt_embeds, prompt_attention_mask = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -323,12 +329,13 @@ class ChromaPipeline(
                         " the batch size of `prompt`."
                     )
 
-                negative_prompt_embeds = self._get_t5_prompt_embeds(
+                negative_prompt_embeds, negative_prompt_attention_mask = self._get_t5_prompt_embeds(
                     prompt=negative_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     max_sequence_length=max_sequence_length,
                     device=device,
                 )
+
             negative_text_ids = torch.zeros(negative_prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
         if self.text_encoder is not None:
@@ -336,7 +343,14 @@ class ChromaPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
-        return prompt_embeds, text_ids, negative_prompt_embeds, negative_text_ids
+        return (
+            prompt_embeds,
+            text_ids,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_text_ids,
+            negative_prompt_attention_mask,
+        )
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
@@ -534,6 +548,31 @@ class ChromaPipeline(
 
         return latents, latent_image_ids
 
+    def _prepare_attention_mask(
+        self, batch_size, sequence_length, dtype, prompt_attention_mask=None, negative_prompt_attention_mask=None
+    ):
+        attention_mask = None
+        if prompt_attention_mask is not None:
+            # Extend the prompt attention mask to account for image tokens in the final sequence
+            attention_mask = torch.cat(
+                [prompt_attention_mask, torch.ones(batch_size, sequence_length, device=prompt_attention_mask.device)],
+                dim=1,
+            )
+            attention_mask = attention_mask.to(dtype)
+
+        negative_attention_mask = None
+        if negative_prompt_attention_mask is not None:
+            negative_attention_mask = torch.cat(
+                [
+                    negative_prompt_attention_mask,
+                    torch.ones(batch_size, sequence_length, device=negative_prompt_attention_mask.device),
+                ],
+                dim=1,
+            )
+            negative_attention_mask = negative_attention_mask.to(dtype)
+
+        return attention_mask, negative_attention_mask
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -578,6 +617,8 @@ class ChromaPipeline(
         negative_ip_adapter_image: Optional[PipelineImageInput] = None,
         negative_ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -704,13 +745,17 @@ class ChromaPipeline(
         (
             prompt_embeds,
             text_ids,
+            prompt_attention_mask,
             negative_prompt_embeds,
             negative_text_ids,
+            negative_prompt_attention_mask,
         ) = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
@@ -730,6 +775,7 @@ class ChromaPipeline(
             generator,
             latents,
         )
+
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = latents.shape[1]
@@ -740,6 +786,15 @@ class ChromaPipeline(
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
+
+        attention_mask, negative_attention_mask = self._prepare_attention_mask(
+            batch_size=latents.shape[0],
+            sequence_length=image_seq_len,
+            dtype=latents.dtype,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
+        )
+
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
@@ -801,6 +856,7 @@ class ChromaPipeline(
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
+                    attention_mask=attention_mask,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -814,6 +870,7 @@ class ChromaPipeline(
                         encoder_hidden_states=negative_prompt_embeds,
                         txt_ids=negative_text_ids,
                         img_ids=latent_image_ids,
+                        attention_mask=negative_attention_mask,
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
