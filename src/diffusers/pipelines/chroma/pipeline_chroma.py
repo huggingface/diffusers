@@ -64,7 +64,6 @@ EXAMPLE_DOC_STRING = """
         ...     torch_dtype=torch.bfloat16,
         ... )
         >>> pipe.enable_model_cpu_offload()
-        >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> negative_prompt = "low quality, ugly, unfinished, out of focus, deformed, disfigure, blurry, smudged, restricted palette, flat colors"
         >>> image = pipe(prompt, negative_prompt=negative_prompt).images[0]
