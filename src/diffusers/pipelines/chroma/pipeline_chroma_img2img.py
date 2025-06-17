@@ -408,7 +408,6 @@ class ChromaImg2ImgPipeline(
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
     ):
@@ -585,7 +584,6 @@ class ChromaImg2ImgPipeline(
 
         return timesteps, num_inference_steps - t_start
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
         image,
