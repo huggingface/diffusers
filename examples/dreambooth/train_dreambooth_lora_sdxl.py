@@ -1209,7 +1209,7 @@ def main(args):
             text_encoder_one.gradient_checkpointing_enable()
             text_encoder_two.gradient_checkpointing_enable()
 
-    def get_lora_config(rank, dropout, use_dora, target_modules):
+    def get_lora_config(rank, lora_alpha, dropout, use_dora, target_modules):
         base_config = {
             "r": rank,
             "lora_alpha":lora_alpha,
