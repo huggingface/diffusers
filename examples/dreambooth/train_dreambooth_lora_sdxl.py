@@ -1212,7 +1212,7 @@ def main(args):
     def get_lora_config(rank, dropout, use_dora, target_modules):
         base_config = {
             "r": rank,
-            "lora_alpha"=args.lora_alpha,
+            "lora_alpha":lora_alpha,
             "lora_dropout": dropout,
             "init_lora_weights": "gaussian",
             "target_modules": target_modules,
