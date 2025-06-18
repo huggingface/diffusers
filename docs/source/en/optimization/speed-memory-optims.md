@@ -60,7 +60,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
-pipeline.transformer.compile( mode="max-autotune", fullgraph=True)
+pipeline.transformer.compile(mode="max-autotune", fullgraph=True)
 pipeline("""
     cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
     highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
