@@ -492,14 +492,13 @@ class ChromaImg2ImgPipeline(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
-        if prompt_attention_mask is not None and negative_prompt_attention_mask is None:
-            raise ValueError(
-                "Cannot provide `prompt_attention_mask` without also providing `negative_prompt_attention_mask`"
-            )
 
-        if negative_prompt_attention_mask is not None and prompt_attention_mask is None:
+        if prompt_embeds is not None and prompt_attention_mask is None:
+            raise ValueError("Cannot provide `prompt_embeds` without also providing `prompt_attention_mask")
+
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
             raise ValueError(
-                "Cannot provide `negative_prompt_attention_mask` without also providing `prompt_attention_mask`"
+                "Cannot provide `negative_prompt_embeds` without also providing `negative_prompt_attention_mask"
             )
 
         if max_sequence_length is not None and max_sequence_length > 512:

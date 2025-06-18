@@ -417,7 +417,9 @@ class ChromaPipeline(
         width,
         negative_prompt=None,
         prompt_embeds=None,
+        prompt_attention_mask=None,
         negative_prompt_embeds=None,
+        negative_prompt_attention_mask=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
@@ -449,6 +451,14 @@ class ChromaPipeline(
             raise ValueError(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and prompt_attention_mask is None:
+            raise ValueError("Cannot provide `prompt_embeds` without also providing `prompt_attention_mask")
+
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError(
+                "Cannot provide `negative_prompt_embeds` without also providing `negative_prompt_attention_mask"
             )
 
         if max_sequence_length is not None and max_sequence_length > 512:
@@ -722,7 +732,9 @@ class ChromaPipeline(
             width,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
