@@ -1,5 +1,5 @@
 from ..configuration_utils import ConfigMixin
-from .modular_pipeline import SequentialPipelineBlocks, ModularPipelineMixin
+from .modular_pipeline import SequentialPipelineBlocks, ModularPipelineBlocks
 from .modular_pipeline_utils import InputParam, OutputParam
 from ..image_processor import PipelineImageInput
 from pathlib import Path
@@ -202,7 +202,7 @@ class ModularNode(ConfigMixin):
         trust_remote_code: Optional[bool] = None,
         **kwargs,
     ):
-        blocks = ModularPipelineMixin.from_pretrained(pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs)
+        blocks = ModularPipelineBlocks.from_pretrained(pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs)
         return cls(blocks, **kwargs)
 
     def __init__(self, blocks, category=DEFAULT_CATEGORY, label=None, **kwargs):
