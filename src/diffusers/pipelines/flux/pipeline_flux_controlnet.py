@@ -636,6 +636,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         device,
         generator,
         latents=None,
+        ref_prod_injection_steps = 0,
     ):
         # VAE applies 8x compression on images but we must also account for packing which requires
         # latent height and width to be divisible by 2.
@@ -674,12 +675,17 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             )
 
         if image is not None:
-            if latents is None:
-                noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-                latents = self.scheduler.scale_noise(image_latents, timestep, noise)  
+            if ref_prod_injection_steps == 0:
+                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                image_latents = None
+                noise = None
+            else:
+                if latents is None:
+                    noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                    latents = self.scheduler.scale_noise(image_latents, timestep, noise)  
 
-            noise = self._pack_latents(noise, batch_size, num_channels_latents, height, width)
-            image_latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
+                noise = self._pack_latents(noise, batch_size, num_channels_latents, height, width)
+                image_latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
         else:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             image_latents = None
@@ -858,7 +864,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         max_sequence_length: int = 512,
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
         ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
-        
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1083,23 +1088,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             init_image = init_image.to(dtype=torch.float32)
         else:
             init_image = None
-        
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
         # 3. Prepare control image
         num_channels_latents = self.transformer.config.in_channels // 4
@@ -1238,23 +1226,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             device,
             generator,
             latents,
+            ref_prod_injection_steps,
         )
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
         # Prepare mask latents
         if image is not None:
@@ -1279,28 +1252,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 generator,
             )
 
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
         if prod_masks_original is not None:
             mask_conditions_prod = []
             for prod_mask in prod_masks_original:
@@ -1513,20 +1464,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                         latents_2 = (1.0 - init_mask) * latents
 
                         latents = latents_1 + latents_2
-
-                
-
-
-
-
-
-
-
-
-
-
-
-        
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
