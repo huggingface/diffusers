@@ -506,15 +506,13 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if self.config.inject_sample_info:
             fps = torch.tensor(fps, dtype=torch.long, device=hidden_states.device)
 
-            fps_emb = self.fps_embedding(fps).float()
-            timestep_proj = timestep_proj.to(fps_emb.dtype)
+            fps_emb = self.fps_embedding(fps)
             if enable_diffusion_forcing:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, -1)).repeat(
                     timestep.shape[1], 1, 1
                 )
             else:
                 timestep_proj = timestep_proj + self.fps_projection(fps_emb).unflatten(1, (6, -1))
-            timestep_proj = timestep_proj.to(hidden_states.dtype)
 
         if enable_diffusion_forcing:
             b, f = timestep.shape
