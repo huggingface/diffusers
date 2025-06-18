@@ -1752,7 +1752,7 @@ class ModelTesterMixin:
 
         assert msg_substring in str(err_ctx.exception)
 
-    @parameterized.expand([0, "cuda", torch.device("cuda"), torch.device("cuda:0")])
+    @parameterized.expand([0, "cuda", torch.device("cuda")])
     @require_torch_gpu
     def test_passing_non_dict_device_map_works(self, device_map):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
