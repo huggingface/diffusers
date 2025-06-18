@@ -1210,8 +1210,7 @@ def main(args):
                     raise ValueError(f"unexpected save model: {model.__class__}")
         else:
             transformer_ = HiDreamImageTransformer2DModel.from_pretrained(
-                args.pretrained_model_name_or_path,
-                subfolder="transformer"
+                args.pretrained_model_name_or_path, subfolder="transformer"
             )
             transformer_.add_adapter(transformer_lora_config)
 
