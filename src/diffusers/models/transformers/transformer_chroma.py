@@ -258,9 +258,6 @@ class ChromaSingleTransformerBlock(nn.Module):
         mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
         joint_attention_kwargs = joint_attention_kwargs or {}
 
-        if attention_mask is not None:
-            attention_mask = attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
-
         attn_output = self.attn(
             hidden_states=norm_hidden_states,
             image_rotary_emb=image_rotary_emb,
@@ -328,8 +325,6 @@ class ChromaTransformerBlock(nn.Module):
             encoder_hidden_states, emb=temb_txt
         )
         joint_attention_kwargs = joint_attention_kwargs or {}
-        if attention_mask is not None:
-            attention_mask = attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
 
         # Attention.
         attention_outputs = self.attn(
