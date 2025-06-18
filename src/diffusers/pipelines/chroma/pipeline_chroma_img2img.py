@@ -50,7 +50,8 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import ChromaPipeline
+        >>> from diffusers import ChromaTransformer2DModel, ChromaImg2ImgPipeline
+        >>> from transformers import AutoModel, Autotokenizer
 
         >>> ckpt_path = "https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors"
         >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
@@ -64,10 +65,13 @@ EXAMPLE_DOC_STRING = """
         ...     torch_dtype=torch.bfloat16,
         ... )
         >>> pipe.enable_model_cpu_offload()
-        >>> prompt = "A cat holding a sign that says hello world"
+        >>> image = load_image(
+        ...     "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+        ... )
+        >>> prompt = "a scenic fastasy landscape with a river and mountains in the background, vibrant colors, detailed, high resolution"
         >>> negative_prompt = "low quality, ugly, unfinished, out of focus, deformed, disfigure, blurry, smudged, restricted palette, flat colors"
-        >>> image = pipe(prompt, negative_prompt=negative_prompt).images[0]
-        >>> image.save("chroma.png")
+        >>> image = pipe(prompt, image=image, negative_prompt=negative_prompt).images[0]
+        >>> image.save("chroma-img2img.png")
         ```
 """
 
@@ -84,6 +88,20 @@ def calculate_shift(
     b = base_shift - m * base_seq_len
     mu = image_seq_len * m + b
     return mu
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -146,7 +164,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class ChromaPipeline(
+class ChromaImg2ImgPipeline(
     DiffusionPipeline,
     FluxLoraLoaderMixin,
     FromSingleFileMixin,
@@ -154,7 +172,7 @@ class ChromaPipeline(
     FluxIPAdapterMixin,
 ):
     r"""
-    The Chroma pipeline for text-to-image generation.
+    The Chroma pipeline for image-to-image generation.
 
     Reference: https://huggingface.co/lodestones/Chroma/
 
@@ -199,6 +217,8 @@ class ChromaPipeline(
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
+        self.latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
+
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
@@ -256,6 +276,21 @@ class ChromaPipeline(
         attention_mask = attention_mask.view(batch_size * num_images_per_prompt, seq_len)
 
         return prompt_embeds, attention_mask
+
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_inpaint.StableDiffusion3InpaintPipeline._encode_vae_image
+    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+
+        image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+
+        return image_latents
 
     def encode_prompt(
         self,
@@ -373,10 +408,11 @@ class ChromaPipeline(
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
     ):
+        device = device or self._execution_device
+
         image_embeds = []
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -415,14 +451,18 @@ class ChromaPipeline(
         prompt,
         height,
         width,
+        strength,
         negative_prompt=None,
         prompt_embeds=None,
-        prompt_attention_mask=None,
         negative_prompt_embeds=None,
+        prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
@@ -465,7 +505,7 @@ class ChromaPipeline(
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
     @staticmethod
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
+    def _prepare_latent_image_ids(height, width, device, dtype):
         latent_image_ids = torch.zeros(height, width, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
         latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
@@ -531,9 +571,22 @@ class ChromaPipeline(
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_latents
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+        t_start = int(max(num_inference_steps - init_timestep, 0))
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
+
+        return timesteps, num_inference_steps - t_start
+
     def prepare_latents(
         self,
+        image,
+        timestep,
         batch_size,
         num_channels_latents,
         height,
@@ -543,28 +596,41 @@ class ChromaPipeline(
         generator,
         latents=None,
     ):
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (self.vae_scale_factor * 2))
-        width = 2 * (int(width) // (self.vae_scale_factor * 2))
-
-        shape = (batch_size, num_channels_latents, height, width)
-
-        if latents is not None:
-            latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-            return latents.to(device=device, dtype=dtype), latent_image_ids
-
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        # VAE applies 8x compression on images but we must also account for packing which requires
+        # latent height and width to be divisible by 2.
+        height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        width = 2 * (int(width) // (self.vae_scale_factor * 2))
+        shape = (batch_size, num_channels_latents, height, width)
+        latent_image_ids = self._prepare_latent_image_ids(height // 2, width // 2, device, dtype)
+
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype), latent_image_ids
+
+        image = image.to(device=device, dtype=dtype)
+        if image.shape[1] != self.latent_channels:
+            image_latents = self._encode_vae_image(image=image, generator=generator)
+        else:
+            image_latents = image
+        if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
+            # expand init_latents for batch_size
+            additional_image_per_prompt = batch_size // image_latents.shape[0]
+            image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            image_latents = torch.cat([image_latents], dim=0)
+
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = self.scheduler.scale_noise(image_latents, timestep, noise)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
-
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-
         return latents, latent_image_ids
 
     def _prepare_attention_mask(
@@ -616,11 +682,13 @@ class ChromaPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
+        image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 35,
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 5.0,
+        strength: float = 0.9,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -631,7 +699,7 @@ class ChromaPipeline(
         negative_ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -654,19 +722,25 @@ class ChromaPipeline(
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 35):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             sigmas (`List[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 3.5):
+            guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            strength (`float, *optional*, defaults to 0.9):
+                Conceptually, indicates how much to transform the reference image. Must be between 0 and 1. image will
+                be used as a starting point, adding more noise to it the larger the strength. The number of denoising
+                steps depends on the amount of noise initially added. When strength is 1, added noise will be maximum
+                and the denoising process will run for the full number of iterations specified in num_inference_steps.
+                A value of 1, therefore, essentially ignores image.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -738,10 +812,11 @@ class ChromaPipeline(
             prompt,
             height,
             width,
+            strength,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
-            prompt_attention_mask=prompt_attention_mask,
             negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
@@ -752,7 +827,11 @@ class ChromaPipeline(
         self._current_timestep = None
         self._interrupt = False
 
-        # 2. Define call parameters
+        # 2. Preprocess image
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        init_image = init_image.to(dtype=torch.float32)
+
+        # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -761,10 +840,10 @@ class ChromaPipeline(
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
+
         (
             prompt_embeds,
             text_ids,
@@ -786,9 +865,40 @@ class ChromaPipeline(
             lora_scale=lora_scale,
         )
 
-        # 4. Prepare latent variables
+        # 4. Prepare timesteps
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
+        mu = calculate_shift(
+            image_seq_len,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
+        )
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler,
+            num_inference_steps,
+            device,
+            sigmas=sigmas,
+            mu=mu,
+        )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
+
+        if num_inference_steps < 1:
+            raise ValueError(
+                f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
+                f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
+            )
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+
+        # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
         latents, latent_image_ids = self.prepare_latents(
+            init_image,
+            latent_timestep,
             batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
@@ -797,17 +907,6 @@ class ChromaPipeline(
             device,
             generator,
             latents,
-        )
-
-        # 5. Prepare timesteps
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        image_seq_len = latents.shape[1]
-        mu = calculate_shift(
-            image_seq_len,
-            self.scheduler.config.get("base_image_seq_len", 256),
-            self.scheduler.config.get("max_image_seq_len", 4096),
-            self.scheduler.config.get("base_shift", 0.5),
-            self.scheduler.config.get("max_shift", 1.15),
         )
 
         attention_mask = self._prepare_attention_mask(
@@ -823,16 +922,7 @@ class ChromaPipeline(
             attention_mask=negative_prompt_attention_mask,
         )
 
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler,
-            num_inference_steps,
-            device,
-            sigmas=sigmas,
-            mu=mu,
-        )
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-        self._num_timesteps = len(timesteps)
-
+        # 6. Prepare image embeddings
         if (ip_adapter_image is not None or ip_adapter_image_embeds is not None) and (
             negative_ip_adapter_image is None and negative_ip_adapter_image_embeds is None
         ):
@@ -872,11 +962,11 @@ class ChromaPipeline(
                     continue
 
                 self._current_timestep = t
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timestep = t.expand(latents.shape[0])
+
                 if image_embeds is not None:
                     self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
-
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
                 noise_pred = self.transformer(
                     hidden_states=latents,
@@ -892,7 +982,8 @@ class ChromaPipeline(
                 if self.do_classifier_free_guidance:
                     if negative_image_embeds is not None:
                         self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
-                    neg_noise_pred = self.transformer(
+
+                    noise_pred_uncond = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
                         encoder_hidden_states=negative_prompt_embeds,
@@ -902,7 +993,7 @@ class ChromaPipeline(
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
-                    noise_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
