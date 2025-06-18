@@ -11,8 +11,8 @@ from ...utils import (
 
 
 _dummy_objects = {}
-_import_structure = {}
-
+_additional_imports = {}
+_import_structure = {"pipeline_output": ["ChromaPipelineOutput"]}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -22,24 +22,15 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_cosmos2_text2image"] = ["Cosmos2TextToImagePipeline"]
-    _import_structure["pipeline_cosmos2_video2world"] = ["Cosmos2VideoToWorldPipeline"]
-    _import_structure["pipeline_cosmos_text2world"] = ["CosmosTextToWorldPipeline"]
-    _import_structure["pipeline_cosmos_video2world"] = ["CosmosVideoToWorldPipeline"]
-
+    _import_structure["pipeline_chroma"] = ["ChromaPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
-
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *
+        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_cosmos2_text2image import Cosmos2TextToImagePipeline
-        from .pipeline_cosmos2_video2world import Cosmos2VideoToWorldPipeline
-        from .pipeline_cosmos_text2world import CosmosTextToWorldPipeline
-        from .pipeline_cosmos_video2world import CosmosVideoToWorldPipeline
-
+        from .pipeline_chroma import ChromaPipeline
 else:
     import sys
 
@@ -51,4 +42,6 @@ else:
     )
 
     for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)
+    for name, value in _additional_imports.items():
         setattr(sys.modules[__name__], name, value)

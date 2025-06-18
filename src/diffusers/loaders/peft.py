@@ -60,6 +60,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HiDreamImageTransformer2DModel": lambda model_cls, weights: weights,
     "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
     "WanVACETransformer3DModel": lambda model_cls, weights: weights,
+    "ChromaTransformer2DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -186,7 +187,9 @@ class PeftAdapterMixin:
                 Note that hotswapping adapters of the text encoder is not yet supported. There are some further
                 limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
-            metadata: TODO
+            metadata:
+                LoRA adapter metadata. When supplied, the metadata inferred through the state dict isn't used to
+                initialize `LoraConfig`.
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
