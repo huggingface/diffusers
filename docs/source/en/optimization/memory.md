@@ -303,6 +303,9 @@ The `low_cpu_mem_usage` parameter can be set to `True` to reduce CPU memory usag
 
 ## Layerwise casting
 
+> [!TIP]
+> Combine layerwise casting with [group offloading](#group-offloading) for even more memory savings.
+
 Layerwise casting stores weights in a smaller data format (for example, `torch.float8_e4m3fn` and `torch.float8_e5m2`) to use less memory and upcasts those weights to a higher precision like `torch.float16` or `torch.bfloat16` for computation. Certain layers (normalization and modulation related weights) are skipped because storing them in fp8 can degrade generation quality.
 
 > [!WARNING]

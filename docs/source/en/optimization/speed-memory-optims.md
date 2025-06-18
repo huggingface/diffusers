@@ -20,15 +20,14 @@ For image generation, combining quantization and [model offloading](./memory#mod
 
 For video generation, combining quantization and [group-offloading](./memory#group-offloading) tends to be better because video models are more compute-bound. 
 
-The table below provides a comparison of optimization strategy combinations and their impact on latency and memory-usage for Flux and Wan.
+The table below provides a comparison of optimization strategy combinations and their impact on latency and memory-usage for Flux.
 
 | combination | latency (s) | memory-usage (GB) |
 |---|---|---|
-| quantization (Flux)  | 32.602 | 14.9453 |
-| quantization, torch.compile (Flux)  | 25.847 | 14.9448 |
-| quantization, torch.compile, model CPU offloading (Flux) | 32.312 | 12.2369 |
-| quantization, torch.compile, group offloading (Wan) |  |  |
-<small>These results are benchmarked on Flux and Wan with a RTX 4090. The `transformer` and `text_encoder` components are quantized. Refer to the <a href="https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d" benchmarking script</a> if you're interested in evaluating your own model.</small>
+| quantization  | 32.602 | 14.9453 |
+| quantization, torch.compile  | 25.847 | 14.9448 |
+| quantization, torch.compile, model CPU offloading | 32.312 | 12.2369 |
+<small>These results are benchmarked on Flux with a RTX 4090. The `transformer` and `text_encoder` components are quantized. Refer to the <a href="https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d" benchmarking script</a> if you're interested in evaluating your own model.</small>
 
 This guide will show you how to compile and offload a quantized model with [bitsandbytes](../quantization/bitsandbytes#torchcompile). Make sure you are using [PyTorch nightly](https://pytorch.org/get-started/locally/) and the latest version of bitsandbytes.
 
@@ -40,14 +39,14 @@ pip install -U bitsandbytes
 
 Start by [quantizing](../quantization/overview) a model to reduce the memory required for storage and [compiling](./fp16#torchcompile) it to accelerate inference.
 
-Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) cache size to allow recompiling up to a limit in case some guards fail.
+Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `capture_dynamic_output_shape_ops = True` to handle dynamic outputs when compiling bnb models with `fullgraph=True`.
 
 ```py
 import torch
 from diffusers import DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 
-torch._dynamo.config.cache_size_limit = 1000
+torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 # quantize
 pipeline_quant_config = PipelineQuantizationConfig(
@@ -75,7 +74,7 @@ pipeline("""
 
 In addition to quantization and torch.compile, try offloading if you need to reduce memory-usage further. Offloading moves various layers or model components from the CPU to the GPU as needed for computations.
 
-Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) cache size to allow recompiling up to a limit in case some guards fail.
+Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `cache_size_limit` during offloading to avoid excessive recompilation.
 
 <hfoptions id="offloading">
 <hfoption id="model CPU offloading">
@@ -106,7 +105,7 @@ pipeline.enable_model_cpu_offload()
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
-pipeline.transformer.compile( mode="max-autotune", fullgraph=True)
+pipeline.transformer.compile()
 pipeline(
     "cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain"
 ).images[0]
@@ -153,25 +152,28 @@ offload_device = torch.device("cpu")
 pipeline.transformer.enable_group_offload(
     onload_device=onload_device,
     offload_device=offload_device,
-    offload_type="block_level",
-    num_blocks_per_group=4
+    offload_type="leaf_level",
+    use_stream=True,
+    non_blocking=True
 )
 pipeline.vae.enable_group_offload(
     onload_device=onload_device,
     offload_device=offload_device,
-    offload_type="block_level",
-    num_blocks_per_group=4
+    offload_type="leaf_level",
+    use_stream=True,
+    non_blocking=True
 )
 apply_group_offloading(
     pipeline.text_encoder,
     onload_device=onload_device,
-    offload_type="block_level",
-    num_blocks_per_group=2
+    offload_type="leaf_level",
+    use_stream=True,
+    non_blocking=True
 )
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
-pipeline.transformer.compile( mode="max-autotune", fullgraph=True)
+pipeline.transformer.compile()
 
 prompt = """
 The camera rushes from far to near in a low-angle shot, 
