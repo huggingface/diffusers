@@ -1764,11 +1764,12 @@ class ModelTesterMixin:
 
     @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
     @require_torch_gpu
-    def test_passing_dict_device_map_works(self, name, device_map):
+    def test_passing_dict_device_map_works(self, name, device):
         # There are other valid dict-based `device_map` values too. It's best to refer to
         # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).eval()
+        device_map = {name: device}
         with tempfile.TemporaryDirectory() as tmpdir:
             model.save_pretrained(tmpdir)
             loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
