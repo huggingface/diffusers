@@ -751,8 +751,12 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         # Precompute and cache conv counts for encoder and decoder for clear_cache speedup
         self._cached_conv_counts = {
-            "decoder": sum(isinstance(m, WanCausalConv3d) for m in self.decoder.modules()) if self.decoder is not None else 0,
-            "encoder": sum(isinstance(m, WanCausalConv3d) for m in self.encoder.modules()) if self.encoder is not None else 0,
+            "decoder": sum(isinstance(m, WanCausalConv3d) for m in self.decoder.modules())
+            if self.decoder is not None
+            else 0,
+            "encoder": sum(isinstance(m, WanCausalConv3d) for m in self.encoder.modules())
+            if self.encoder is not None
+            else 0,
         }
 
     def enable_tiling(
