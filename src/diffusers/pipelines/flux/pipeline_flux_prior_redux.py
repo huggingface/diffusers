@@ -401,7 +401,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         is_qv: Optional[bool] = False, # thesea modified for quick validation of product shots
-        is_blend: Optional[bool] = False, # thesea modified for quick validation of product shots
+        for_blend_preprocessing: Optional[bool] = False, # thesea modified for quick validation of product shots
         is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         is_inpainting: Optional[bool] = False, # controlnet inpainting
@@ -652,21 +652,22 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         # scale & concatenate image and text embeddings
         if is_qv:
-            if len(prompt_embeds_list) != len(image_embeds_prods):
-                raise ValueError(
-                    f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
-                )
-            
-            prompt_embeds = image_embeds_bg
-            for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
-                prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
-        elif is_blend:
-            if (len(prompt_embeds_list) - 1) != len(image_embeds_prods):
-                raise ValueError(
-                    f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
-                )
-            
-            prompt_embeds = image_embeds_bg
+            if for_blend_preprocessing:
+                if (len(prompt_embeds_list) - 1) != len(image_embeds_prods):
+                    raise ValueError(
+                        f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
+                    )
+                
+                prompt_embeds = image_embeds_bg
+            else:
+                if len(prompt_embeds_list) != len(image_embeds_prods):
+                    raise ValueError(
+                        f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
+                    )
+                
+                prompt_embeds = image_embeds_bg
+                for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
+                    prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
         else:
             prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
         
