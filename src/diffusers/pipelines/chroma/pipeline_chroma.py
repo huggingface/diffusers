@@ -694,6 +694,14 @@ class ChromaPipeline(
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            prompt_attention_mask (torch.Tensor, *optional*):
+                Attention mask for the prompt embeddings. Used to mask out padding tokens in the prompt sequence.
+                Chroma requires a single padding token remain unmasked. Please refer to
+                https://huggingface.co/lodestones/Chroma#tldr-masking-t5-padding-tokens-enhanced-fidelity-and-increased-stability-during-training
+            negative_prompt_attention_mask (torch.Tensor, *optional*):
+                Attention mask for the negative prompt embeddings. Used to mask out padding tokens in the negative
+                prompt sequence. Chroma requires a single padding token remain unmasked. PLease refer to
+                https://huggingface.co/lodestones/Chroma#tldr-masking-t5-padding-tokens-enhanced-fidelity-and-increased-stability-during-training
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
