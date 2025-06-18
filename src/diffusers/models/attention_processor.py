@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import inspect
 import math
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -22,13 +21,13 @@ from torch import nn
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, is_torch_xla_available, logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_version, is_xformers_available
-from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
+from .attention_dispatch import dispatch_attention_fn
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 if is_torch_npu_available():
-    import torch_npu
+    pass
 
 if is_xformers_available():
     import xformers
@@ -39,67 +38,15 @@ else:
 if is_torch_xla_available():
     # flash attention pallas kernel is introduced in the torch_xla 2.3 release.
     if is_torch_xla_version(">", "2.2"):
-        from torch_xla.experimental.custom_kernel import flash_attention
         from torch_xla.runtime import is_spmd
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
 
 
-@maybe_allow_in_graph
-class Attention(nn.Module):
+class AttnProcessor:
     r"""
-    A cross attention layer.
-
-    Parameters:
-        query_dim (`int`):
-            The number of channels in the query.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the encoder_hidden_states. If not given, defaults to `query_dim`.
-        heads (`int`,  *optional*, defaults to 8):
-            The number of heads to use for multi-head attention.
-        kv_heads (`int`,  *optional*, defaults to `None`):
-            The number of key and value heads to use for multi-head attention. Defaults to `heads`. If
-            `kv_heads=heads`, the model will use Multi Head Attention (MHA), if `kv_heads=1` the model will use Multi
-            Query Attention (MQA) otherwise GQA is used.
-        dim_head (`int`,  *optional*, defaults to 64):
-            The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0):
-            The dropout probability to use.
-        bias (`bool`, *optional*, defaults to False):
-            Set to `True` for the query, key, and value linear layers to contain a bias parameter.
-        upcast_attention (`bool`, *optional*, defaults to False):
-            Set to `True` to upcast the attention computation to `float32`.
-        upcast_softmax (`bool`, *optional*, defaults to False):
-            Set to `True` to upcast the softmax computation to `float32`.
-        cross_attention_norm (`str`, *optional*, defaults to `None`):
-            The type of normalization to use for the cross attention. Can be `None`, `layer_norm`, or `group_norm`.
-        cross_attention_norm_num_groups (`int`, *optional*, defaults to 32):
-            The number of groups to use for the group norm in the cross attention.
-        added_kv_proj_dim (`int`, *optional*, defaults to `None`):
-            The number of channels to use for the added key and value projections. If `None`, no projection is used.
-        norm_num_groups (`int`, *optional*, defaults to `None`):
-            The number of groups to use for the group norm in the attention.
-        spatial_norm_dim (`int`, *optional*, defaults to `None`):
-            The number of channels to use for the spatial normalization.
-        out_bias (`bool`, *optional*, defaults to `True`):
-            Set to `True` to use a bias in the output linear layer.
-        scale_qk (`bool`, *optional*, defaults to `True`):
-            Set to `True` to scale the query and key by `1 / sqrt(dim_head)`.
-        only_cross_attention (`bool`, *optional*, defaults to `False`):
-            Set to `True` to only use cross attention and not added_kv_proj_dim. Can only be set to `True` if
-            `added_kv_proj_dim` is not `None`.
-        eps (`float`, *optional*, defaults to 1e-5):
-            An additional value added to the denominator in group normalization that is used for numerical stability.
-        rescale_output_factor (`float`, *optional*, defaults to 1.0):
-            A factor to rescale the output by dividing it with this value.
-        residual_connection (`bool`, *optional*, defaults to `False`):
-            Set to `True` to add the residual connection to the output.
-        _from_deprecated_attn_block (`bool`, *optional*, defaults to `False`):
-            Set to `True` if the attention block is loaded from a deprecated state dict.
-        processor (`AttnProcessor`, *optional*, defaults to `None`):
-            The attention processor to use. If `None`, defaults to `AttnProcessor2_0` if `torch 2.x` is used and
-            `AttnProcessor` otherwise.
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     """
 
     def __init__(
@@ -927,421 +874,7 @@ class SanaMultiscaleLinearAttention(nn.Module):
         return self.processor(self, hidden_states)
 
 
-class MochiAttention(nn.Module):
-    def __init__(
-        self,
-        query_dim: int,
-        added_kv_proj_dim: int,
-        processor: "MochiAttnProcessor2_0",
-        heads: int = 8,
-        dim_head: int = 64,
-        dropout: float = 0.0,
-        bias: bool = False,
-        added_proj_bias: bool = True,
-        out_dim: Optional[int] = None,
-        out_context_dim: Optional[int] = None,
-        out_bias: bool = True,
-        context_pre_only: bool = False,
-        eps: float = 1e-5,
-    ):
-        super().__init__()
-        from .normalization import MochiRMSNorm
-
-        self.inner_dim = out_dim if out_dim is not None else dim_head * heads
-        self.out_dim = out_dim if out_dim is not None else query_dim
-        self.out_context_dim = out_context_dim if out_context_dim else query_dim
-        self.context_pre_only = context_pre_only
-
-        self.heads = out_dim // dim_head if out_dim is not None else heads
-
-        self.norm_q = MochiRMSNorm(dim_head, eps, True)
-        self.norm_k = MochiRMSNorm(dim_head, eps, True)
-        self.norm_added_q = MochiRMSNorm(dim_head, eps, True)
-        self.norm_added_k = MochiRMSNorm(dim_head, eps, True)
-
-        self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
-        self.to_k = nn.Linear(query_dim, self.inner_dim, bias=bias)
-        self.to_v = nn.Linear(query_dim, self.inner_dim, bias=bias)
-
-        self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
-        self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
-        if self.context_pre_only is not None:
-            self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
-
-        self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
-        self.to_out.append(nn.Dropout(dropout))
-
-        if not self.context_pre_only:
-            self.to_add_out = nn.Linear(self.inner_dim, self.out_context_dim, bias=out_bias)
-
-        self.processor = processor
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        **kwargs,
-    ):
-        return self.processor(
-            self,
-            hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            attention_mask=attention_mask,
-            **kwargs,
-        )
-
-
-class MochiAttnProcessor2_0:
-    """Attention processor used in Mochi."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("MochiAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: "MochiAttention",
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        attention_mask: torch.Tensor,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        query = query.unflatten(2, (attn.heads, -1))
-        key = key.unflatten(2, (attn.heads, -1))
-        value = value.unflatten(2, (attn.heads, -1))
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        encoder_query = attn.add_q_proj(encoder_hidden_states)
-        encoder_key = attn.add_k_proj(encoder_hidden_states)
-        encoder_value = attn.add_v_proj(encoder_hidden_states)
-
-        encoder_query = encoder_query.unflatten(2, (attn.heads, -1))
-        encoder_key = encoder_key.unflatten(2, (attn.heads, -1))
-        encoder_value = encoder_value.unflatten(2, (attn.heads, -1))
-
-        if attn.norm_added_q is not None:
-            encoder_query = attn.norm_added_q(encoder_query)
-        if attn.norm_added_k is not None:
-            encoder_key = attn.norm_added_k(encoder_key)
-
-        if image_rotary_emb is not None:
-
-            def apply_rotary_emb(x, freqs_cos, freqs_sin):
-                x_even = x[..., 0::2].float()
-                x_odd = x[..., 1::2].float()
-
-                cos = (x_even * freqs_cos - x_odd * freqs_sin).to(x.dtype)
-                sin = (x_even * freqs_sin + x_odd * freqs_cos).to(x.dtype)
-
-                return torch.stack([cos, sin], dim=-1).flatten(-2)
-
-            query = apply_rotary_emb(query, *image_rotary_emb)
-            key = apply_rotary_emb(key, *image_rotary_emb)
-
-        query, key, value = query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-        encoder_query, encoder_key, encoder_value = (
-            encoder_query.transpose(1, 2),
-            encoder_key.transpose(1, 2),
-            encoder_value.transpose(1, 2),
-        )
-
-        sequence_length = query.size(2)
-        encoder_sequence_length = encoder_query.size(2)
-        total_length = sequence_length + encoder_sequence_length
-
-        batch_size, heads, _, dim = query.shape
-        attn_outputs = []
-        for idx in range(batch_size):
-            mask = attention_mask[idx][None, :]
-            valid_prompt_token_indices = torch.nonzero(mask.flatten(), as_tuple=False).flatten()
-
-            valid_encoder_query = encoder_query[idx : idx + 1, :, valid_prompt_token_indices, :]
-            valid_encoder_key = encoder_key[idx : idx + 1, :, valid_prompt_token_indices, :]
-            valid_encoder_value = encoder_value[idx : idx + 1, :, valid_prompt_token_indices, :]
-
-            valid_query = torch.cat([query[idx : idx + 1], valid_encoder_query], dim=2)
-            valid_key = torch.cat([key[idx : idx + 1], valid_encoder_key], dim=2)
-            valid_value = torch.cat([value[idx : idx + 1], valid_encoder_value], dim=2)
-
-            attn_output = F.scaled_dot_product_attention(
-                valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False
-            )
-            valid_sequence_length = attn_output.size(2)
-            attn_output = F.pad(attn_output, (0, 0, 0, total_length - valid_sequence_length))
-            attn_outputs.append(attn_output)
-
-        hidden_states = torch.cat(attn_outputs, dim=0)
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-
-        hidden_states, encoder_hidden_states = hidden_states.split_with_sizes(
-            (sequence_length, encoder_sequence_length), dim=1
-        )
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if hasattr(attn, "to_add_out"):
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-        return hidden_states, encoder_hidden_states
-
-
-class AttnProcessor:
-    r"""
-    Default processor for performing attention-related computations.
-    """
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
-        residual = hidden_states
-
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        query = attn.head_to_batch_dim(query)
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
-
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class CustomDiffusionAttnProcessor(nn.Module):
-    r"""
-    Processor for implementing attention for the Custom Diffusion method.
-
-    Args:
-        train_kv (`bool`, defaults to `True`):
-            Whether to newly train the key and value matrices corresponding to the text features.
-        train_q_out (`bool`, defaults to `True`):
-            Whether to newly train query matrices corresponding to the latent image features.
-        hidden_size (`int`, *optional*, defaults to `None`):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*, defaults to `None`):
-            The number of channels in the `encoder_hidden_states`.
-        out_bias (`bool`, defaults to `True`):
-            Whether to include the bias parameter in `train_q_out`.
-        dropout (`float`, *optional*, defaults to 0.0):
-            The dropout probability to use.
-    """
-
-    def __init__(
-        self,
-        train_kv: bool = True,
-        train_q_out: bool = True,
-        hidden_size: Optional[int] = None,
-        cross_attention_dim: Optional[int] = None,
-        out_bias: bool = True,
-        dropout: float = 0.0,
-    ):
-        super().__init__()
-        self.train_kv = train_kv
-        self.train_q_out = train_q_out
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-
-        # `_custom_diffusion` id for easy serialization and loading.
-        if self.train_kv:
-            self.to_k_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-            self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        if self.train_q_out:
-            self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size, bias=False)
-            self.to_out_custom_diffusion = nn.ModuleList([])
-            self.to_out_custom_diffusion.append(nn.Linear(hidden_size, hidden_size, bias=out_bias))
-            self.to_out_custom_diffusion.append(nn.Dropout(dropout))
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-        if self.train_q_out:
-            query = self.to_q_custom_diffusion(hidden_states).to(attn.to_q.weight.dtype)
-        else:
-            query = attn.to_q(hidden_states.to(attn.to_q.weight.dtype))
-
-        if encoder_hidden_states is None:
-            crossattn = False
-            encoder_hidden_states = hidden_states
-        else:
-            crossattn = True
-            if attn.norm_cross:
-                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        if self.train_kv:
-            key = self.to_k_custom_diffusion(encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype))
-            value = self.to_v_custom_diffusion(encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype))
-            key = key.to(attn.to_q.weight.dtype)
-            value = value.to(attn.to_q.weight.dtype)
-        else:
-            key = attn.to_k(encoder_hidden_states)
-            value = attn.to_v(encoder_hidden_states)
-
-        if crossattn:
-            detach = torch.ones_like(key)
-            detach[:, :1, :] = detach[:, :1, :] * 0.0
-            key = detach * key + (1 - detach) * key.detach()
-            value = detach * value + (1 - detach) * value.detach()
-
-        query = attn.head_to_batch_dim(query)
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
-
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        if self.train_q_out:
-            # linear proj
-            hidden_states = self.to_out_custom_diffusion[0](hidden_states)
-            # dropout
-            hidden_states = self.to_out_custom_diffusion[1](hidden_states)
-        else:
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
-            # dropout
-            hidden_states = attn.to_out[1](hidden_states)
-
-        return hidden_states
-
-
 class AttnAddedKVProcessor:
-    r"""
-    Processor for performing attention-related computations with extra learnable key and value matrices for the text
-    encoder.
-    """
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
-        residual = hidden_states
-
-        hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-        query = attn.head_to_batch_dim(query)
-
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-        encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
-        encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
-
-        if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states)
-            value = attn.to_v(hidden_states)
-            key = attn.head_to_batch_dim(key)
-            value = attn.head_to_batch_dim(value)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
-        else:
-            key = encoder_hidden_states_key_proj
-            value = encoder_hidden_states_value_proj
-
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
-        hidden_states = hidden_states + residual
-
-        return hidden_states
-
-
-class AttnAddedKVProcessor2_0:
     r"""
     Processor for performing scaled dot-product attention (enabled by default if you're using PyTorch 2.0), with extra
     learnable key and value matrices for the text encoder.
@@ -1349,9 +882,7 @@ class AttnAddedKVProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "AttnAddedKVProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
+            raise ImportError("AttnAddedKVProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -1417,12 +948,12 @@ class AttnAddedKVProcessor2_0:
         return hidden_states
 
 
-class JointAttnProcessor2_0:
+class JointAttnProcessor:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("JointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("JointAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -1503,14 +1034,12 @@ class JointAttnProcessor2_0:
             return hidden_states
 
 
-class PAGJointAttnProcessor2_0:
+class PAGJointAttnProcessor:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "PAGJointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
+            raise ImportError("PAGJointAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -1659,13 +1188,13 @@ class PAGJointAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class PAGCFGJointAttnProcessor2_0:
+class PAGCFGJointAttnProcessor:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "PAGCFGJointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "PAGCFGJointAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -1824,85 +1353,6 @@ class PAGCFGJointAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class FusedJointAttnProcessor2_0:
-    """Attention processor used typically in processing the SD3-like self-attention projections."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.FloatTensor:
-        residual = hidden_states
-
-        input_ndim = hidden_states.ndim
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        context_input_ndim = encoder_hidden_states.ndim
-        if context_input_ndim == 4:
-            batch_size, channel, height, width = encoder_hidden_states.shape
-            encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size = encoder_hidden_states.shape[0]
-
-        # `sample` projections.
-        qkv = attn.to_qkv(hidden_states)
-        split_size = qkv.shape[-1] // 3
-        query, key, value = torch.split(qkv, split_size, dim=-1)
-
-        # `context` projections.
-        encoder_qkv = attn.to_added_qkv(encoder_hidden_states)
-        split_size = encoder_qkv.shape[-1] // 3
-        (
-            encoder_hidden_states_query_proj,
-            encoder_hidden_states_key_proj,
-            encoder_hidden_states_value_proj,
-        ) = torch.split(encoder_qkv, split_size, dim=-1)
-
-        # attention
-        query = torch.cat([query, encoder_hidden_states_query_proj], dim=1)
-        key = torch.cat([key, encoder_hidden_states_key_proj], dim=1)
-        value = torch.cat([value, encoder_hidden_states_value_proj], dim=1)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # Split the attention outputs.
-        hidden_states, encoder_hidden_states = (
-            hidden_states[:, : residual.shape[1]],
-            hidden_states[:, residual.shape[1] :],
-        )
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-        if not attn.context_pre_only:
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-        if context_input_ndim == 4:
-            encoder_hidden_states = encoder_hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        return hidden_states, encoder_hidden_states
-
-
 class XFormersJointAttnProcessor:
     r"""
     Processor for implementing memory efficient attention using xFormers.
@@ -1988,1575 +1438,16 @@ class XFormersJointAttnProcessor:
             return hidden_states
 
 
-class AllegroAttnProcessor2_0:
-    r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
-    used in the Allegro model. It applies a normalization layer and rotary embedding on the query and key vector.
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "AllegroAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        residual = hidden_states
-
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # Apply RoPE if needed
-        if image_rotary_emb is not None and not attn.is_cross_attention:
-            from .embeddings import apply_rotary_emb_allegro
-
-            query = apply_rotary_emb_allegro(query, image_rotary_emb[0], image_rotary_emb[1])
-            key = apply_rotary_emb_allegro(key, image_rotary_emb[0], image_rotary_emb[1])
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class AuraFlowAttnProcessor2_0:
-    """Attention processor used typically in processing Aura Flow."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
-            raise ImportError(
-                "AuraFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
-            )
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        *args,
-        **kwargs,
-    ) -> torch.FloatTensor:
-        batch_size = hidden_states.shape[0]
-
-        # `sample` projections.
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        # `context` projections.
-        if encoder_hidden_states is not None:
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-        # Reshape.
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim)
-        key = key.view(batch_size, -1, attn.heads, head_dim)
-        value = value.view(batch_size, -1, attn.heads, head_dim)
-
-        # Apply QK norm.
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # Concatenate the projections.
-        if encoder_hidden_states is not None:
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            )
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(batch_size, -1, attn.heads, head_dim)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            )
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_q(encoder_hidden_states_key_proj)
-
-            query = torch.cat([encoder_hidden_states_query_proj, query], dim=1)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
-
-        query = query.transpose(1, 2)
-        key = key.transpose(1, 2)
-        value = value.transpose(1, 2)
-
-        # Attention.
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, dropout_p=0.0, scale=attn.scale, is_causal=False
-        )
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # Split the attention outputs.
-        if encoder_hidden_states is not None:
-            hidden_states, encoder_hidden_states = (
-                hidden_states[:, encoder_hidden_states.shape[1] :],
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-            )
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-        if encoder_hidden_states is not None:
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-        if encoder_hidden_states is not None:
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
-
-
-class FusedAuraFlowAttnProcessor2_0:
-    """Attention processor used typically in processing Aura Flow with fused projections."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
-            raise ImportError(
-                "FusedAuraFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
-            )
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        *args,
-        **kwargs,
-    ) -> torch.FloatTensor:
-        batch_size = hidden_states.shape[0]
-
-        # `sample` projections.
-        qkv = attn.to_qkv(hidden_states)
-        split_size = qkv.shape[-1] // 3
-        query, key, value = torch.split(qkv, split_size, dim=-1)
-
-        # `context` projections.
-        if encoder_hidden_states is not None:
-            encoder_qkv = attn.to_added_qkv(encoder_hidden_states)
-            split_size = encoder_qkv.shape[-1] // 3
-            (
-                encoder_hidden_states_query_proj,
-                encoder_hidden_states_key_proj,
-                encoder_hidden_states_value_proj,
-            ) = torch.split(encoder_qkv, split_size, dim=-1)
-
-        # Reshape.
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim)
-        key = key.view(batch_size, -1, attn.heads, head_dim)
-        value = value.view(batch_size, -1, attn.heads, head_dim)
-
-        # Apply QK norm.
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # Concatenate the projections.
-        if encoder_hidden_states is not None:
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            )
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(batch_size, -1, attn.heads, head_dim)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            )
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_q(encoder_hidden_states_key_proj)
-
-            query = torch.cat([encoder_hidden_states_query_proj, query], dim=1)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
-
-        query = query.transpose(1, 2)
-        key = key.transpose(1, 2)
-        value = value.transpose(1, 2)
-
-        # Attention.
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, dropout_p=0.0, scale=attn.scale, is_causal=False
-        )
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # Split the attention outputs.
-        if encoder_hidden_states is not None:
-            hidden_states, encoder_hidden_states = (
-                hidden_states[:, encoder_hidden_states.shape[1] :],
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-            )
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-        if encoder_hidden_states is not None:
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-        if encoder_hidden_states is not None:
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
-
-
-class FluxAttnProcessor2_0:
-    """Attention processor used typically in processing the SD3-like self-attention projections."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("FluxAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-
-        # `sample` projections.
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
-        if encoder_hidden_states is not None:
-            # `context` projections.
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            # attention
-            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-        if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
-
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = (
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-                hidden_states[:, encoder_hidden_states.shape[1] :],
-            )
-
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
-            # dropout
-            hidden_states = attn.to_out[1](hidden_states)
-
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
-
-
-class FluxAttnProcessor2_0_NPU:
-    """Attention processor used typically in processing the SD3-like self-attention projections."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "FluxAttnProcessor2_0_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0 and install torch NPU"
-            )
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-
-        # `sample` projections.
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
-        if encoder_hidden_states is not None:
-            # `context` projections.
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            # attention
-            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-        if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
-
-        if query.dtype in (torch.float16, torch.bfloat16):
-            hidden_states = torch_npu.npu_fusion_attention(
-                query,
-                key,
-                value,
-                attn.heads,
-                input_layout="BNSD",
-                pse=None,
-                scale=1.0 / math.sqrt(query.shape[-1]),
-                pre_tockens=65536,
-                next_tockens=65536,
-                keep_prob=1.0,
-                sync=False,
-                inner_precise=0,
-            )[0]
-        else:
-            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = (
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-                hidden_states[:, encoder_hidden_states.shape[1] :],
-            )
-
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
-            # dropout
-            hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
-
-
-class FusedFluxAttnProcessor2_0:
-    """Attention processor used typically in processing the SD3-like self-attention projections."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "FusedFluxAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-
-        # `sample` projections.
-        qkv = attn.to_qkv(hidden_states)
-        split_size = qkv.shape[-1] // 3
-        query, key, value = torch.split(qkv, split_size, dim=-1)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
-        # `context` projections.
-        if encoder_hidden_states is not None:
-            encoder_qkv = attn.to_added_qkv(encoder_hidden_states)
-            split_size = encoder_qkv.shape[-1] // 3
-            (
-                encoder_hidden_states_query_proj,
-                encoder_hidden_states_key_proj,
-                encoder_hidden_states_value_proj,
-            ) = torch.split(encoder_qkv, split_size, dim=-1)
-
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            # attention
-            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-        if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
-
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = (
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-                hidden_states[:, encoder_hidden_states.shape[1] :],
-            )
-
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
-            # dropout
-            hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
-
-
-class FusedFluxAttnProcessor2_0_NPU:
-    """Attention processor used typically in processing the SD3-like self-attention projections."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "FluxAttnProcessor2_0_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0, and install torch NPU"
-            )
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-
-        # `sample` projections.
-        qkv = attn.to_qkv(hidden_states)
-        split_size = qkv.shape[-1] // 3
-        query, key, value = torch.split(qkv, split_size, dim=-1)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
-        # `context` projections.
-        if encoder_hidden_states is not None:
-            encoder_qkv = attn.to_added_qkv(encoder_hidden_states)
-            split_size = encoder_qkv.shape[-1] // 3
-            (
-                encoder_hidden_states_query_proj,
-                encoder_hidden_states_key_proj,
-                encoder_hidden_states_value_proj,
-            ) = torch.split(encoder_qkv, split_size, dim=-1)
-
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            # attention
-            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-        if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
-
-        if query.dtype in (torch.float16, torch.bfloat16):
-            hidden_states = torch_npu.npu_fusion_attention(
-                query,
-                key,
-                value,
-                attn.heads,
-                input_layout="BNSD",
-                pse=None,
-                scale=1.0 / math.sqrt(query.shape[-1]),
-                pre_tockens=65536,
-                next_tockens=65536,
-                keep_prob=1.0,
-                sync=False,
-                inner_precise=0,
-            )[0]
-        else:
-            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = (
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-                hidden_states[:, encoder_hidden_states.shape[1] :],
-            )
-
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
-            # dropout
-            hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
-
-
-class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
-    """Flux Attention processor for IP-Adapter."""
-
-    def __init__(
-        self, hidden_size: int, cross_attention_dim: int, num_tokens=(4,), scale=1.0, device=None, dtype=None
-    ):
-        super().__init__()
-
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-
-        if not isinstance(num_tokens, (tuple, list)):
-            num_tokens = [num_tokens]
-
-        if not isinstance(scale, list):
-            scale = [scale] * len(num_tokens)
-        if len(scale) != len(num_tokens):
-            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
-        self.scale = scale
-
-        self.to_k_ip = nn.ModuleList(
-            [
-                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
-                for _ in range(len(num_tokens))
-            ]
-        )
-        self.to_v_ip = nn.ModuleList(
-            [
-                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
-                for _ in range(len(num_tokens))
-            ]
-        )
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        ip_hidden_states: Optional[List[torch.Tensor]] = None,
-        ip_adapter_masks: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-
-        # `sample` projections.
-        hidden_states_query_proj = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        hidden_states_query_proj = hidden_states_query_proj.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            hidden_states_query_proj = attn.norm_q(hidden_states_query_proj)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
-        if encoder_hidden_states is not None:
-            # `context` projections.
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            # attention
-            query = torch.cat([encoder_hidden_states_query_proj, hidden_states_query_proj], dim=2)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-        if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
-
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = (
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-                hidden_states[:, encoder_hidden_states.shape[1] :],
-            )
-
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
-            # dropout
-            hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-            # IP-adapter
-            ip_query = hidden_states_query_proj
-            ip_attn_output = torch.zeros_like(hidden_states)
-
-            for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
-                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
-            ):
-                ip_key = to_k_ip(current_ip_hidden_states)
-                ip_value = to_v_ip(current_ip_hidden_states)
-
-                ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                # the output of sdp = (batch, num_heads, seq_len, head_dim)
-                # TODO: add support for attn.scale when we move to Torch 2.1
-                current_ip_hidden_states = F.scaled_dot_product_attention(
-                    ip_query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
-                )
-                current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
-                    batch_size, -1, attn.heads * head_dim
-                )
-                current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
-                ip_attn_output += scale * current_ip_hidden_states
-
-            return hidden_states, encoder_hidden_states, ip_attn_output
-        else:
-            return hidden_states
-
-
-class CogVideoXAttnProcessor2_0:
-    r"""
-    Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
-    query and key vectors, but does not include spatial normalization.
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("CogVideoXAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        text_seq_length = encoder_hidden_states.size(1)
-
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # Apply RoPE if needed
-        if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
-            query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
-            if not attn.is_cross_attention:
-                key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
-
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        encoder_hidden_states, hidden_states = hidden_states.split(
-            [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
-        )
-        return hidden_states, encoder_hidden_states
-
-
-class FusedCogVideoXAttnProcessor2_0:
-    r"""
-    Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
-    query and key vectors, but does not include spatial normalization.
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("CogVideoXAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        text_seq_length = encoder_hidden_states.size(1)
-
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        qkv = attn.to_qkv(hidden_states)
-        split_size = qkv.shape[-1] // 3
-        query, key, value = torch.split(qkv, split_size, dim=-1)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # Apply RoPE if needed
-        if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
-            query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
-            if not attn.is_cross_attention:
-                key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
-
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        encoder_hidden_states, hidden_states = hidden_states.split(
-            [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
-        )
-        return hidden_states, encoder_hidden_states
-
-
-class XFormersAttnAddedKVProcessor:
-    r"""
-    Processor for implementing memory efficient attention using xFormers.
-
-    Args:
-        attention_op (`Callable`, *optional*, defaults to `None`):
-            The base
-            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
-            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
-            operator.
-    """
-
-    def __init__(self, attention_op: Optional[Callable] = None):
-        self.attention_op = attention_op
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        residual = hidden_states
-        hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-        query = attn.head_to_batch_dim(query)
-
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-        encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
-        encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
-
-        if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states)
-            value = attn.to_v(hidden_states)
-            key = attn.head_to_batch_dim(key)
-            value = attn.head_to_batch_dim(value)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
-        else:
-            key = encoder_hidden_states_key_proj
-            value = encoder_hidden_states_value_proj
-
-        hidden_states = xformers.ops.memory_efficient_attention(
-            query, key, value, attn_bias=attention_mask, op=self.attention_op, scale=attn.scale
-        )
-        hidden_states = hidden_states.to(query.dtype)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
-        hidden_states = hidden_states + residual
-
-        return hidden_states
-
-
-class XFormersAttnProcessor:
-    r"""
-    Processor for implementing memory efficient attention using xFormers.
-
-    Args:
-        attention_op (`Callable`, *optional*, defaults to `None`):
-            The base
-            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
-            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
-            operator.
-    """
-
-    def __init__(self, attention_op: Optional[Callable] = None):
-        self.attention_op = attention_op
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
-        residual = hidden_states
-
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, key_tokens, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        attention_mask = attn.prepare_attention_mask(attention_mask, key_tokens, batch_size)
-        if attention_mask is not None:
-            # expand our mask's singleton query_tokens dimension:
-            #   [batch*heads,            1, key_tokens] ->
-            #   [batch*heads, query_tokens, key_tokens]
-            # so that it can be added as a bias onto the attention scores that xformers computes:
-            #   [batch*heads, query_tokens, key_tokens]
-            # we do this explicitly because xformers doesn't broadcast the singleton dimension for us.
-            _, query_tokens, _ = hidden_states.shape
-            attention_mask = attention_mask.expand(-1, query_tokens, -1)
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        query = attn.head_to_batch_dim(query).contiguous()
-        key = attn.head_to_batch_dim(key).contiguous()
-        value = attn.head_to_batch_dim(value).contiguous()
-
-        hidden_states = xformers.ops.memory_efficient_attention(
-            query, key, value, attn_bias=attention_mask, op=self.attention_op, scale=attn.scale
-        )
-        hidden_states = hidden_states.to(query.dtype)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class AttnProcessorNPU:
-    r"""
-    Processor for implementing flash attention using torch_npu. Torch_npu supports only fp16 and bf16 data types. If
-    fp32 is used, F.scaled_dot_product_attention will be used for computation, but the acceleration effect on NPU is
-    not significant.
-
-    """
-
-    def __init__(self):
-        if not is_torch_npu_available():
-            raise ImportError("AttnProcessorNPU requires torch_npu extensions and is supported only on npu devices.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
-        residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-            attention_mask = attention_mask.repeat(1, 1, hidden_states.shape[1], 1)
-            if attention_mask.dtype == torch.bool:
-                attention_mask = torch.logical_not(attention_mask.bool())
-            else:
-                attention_mask = attention_mask.bool()
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        if query.dtype in (torch.float16, torch.bfloat16):
-            hidden_states = torch_npu.npu_fusion_attention(
-                query,
-                key,
-                value,
-                attn.heads,
-                input_layout="BNSD",
-                pse=None,
-                atten_mask=attention_mask,
-                scale=1.0 / math.sqrt(query.shape[-1]),
-                pre_tockens=65536,
-                next_tockens=65536,
-                keep_prob=1.0,
-                sync=False,
-                inner_precise=0,
-            )[0]
-        else:
-            # TODO: add support for attn.scale when we move to Torch 2.1
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class AttnProcessor2_0:
-    r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
-        residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class XLAFlashAttnProcessor2_0:
-    r"""
-    Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
-    """
-
-    def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
-        if is_torch_xla_version("<", "2.3"):
-            raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
-        if is_spmd() and is_torch_xla_version("<", "2.4"):
-            raise ImportError("SPMD support for XLA flash attention needs torch_xla version >= 2.4.")
-        self.partition_spec = partition_spec
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.Tensor:
-        residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        if all(tensor.shape[2] >= 4096 for tensor in [query, key, value]):
-            if attention_mask is not None:
-                attention_mask = attention_mask.view(batch_size, 1, 1, attention_mask.shape[-1])
-                # Convert mask to float and replace 0s with -inf and 1s with 0
-                attention_mask = (
-                    attention_mask.float()
-                    .masked_fill(attention_mask == 0, float("-inf"))
-                    .masked_fill(attention_mask == 1, float(0.0))
-                )
-
-                # Apply attention mask to key
-                key = key + attention_mask
-            query /= math.sqrt(query.shape[3])
-            partition_spec = self.partition_spec if is_spmd() else None
-            hidden_states = flash_attention(query, key, value, causal=False, partition_spec=partition_spec)
-        else:
-            logger.warning(
-                "Unable to use the flash attention pallas kernel API call due to QKV sequence length < 4096."
-            )
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class XLAFluxFlashAttnProcessor2_0:
-    r"""
-    Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
-    """
-
-    def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
-        if is_torch_xla_version("<", "2.3"):
-            raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
-        if is_spmd() and is_torch_xla_version("<", "2.4"):
-            raise ImportError("SPMD support for XLA flash attention needs torch_xla version >= 2.4.")
-        self.partition_spec = partition_spec
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-
-        # `sample` projections.
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
-        if encoder_hidden_states is not None:
-            # `context` projections.
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            # attention
-            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-        if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
-
-        query /= math.sqrt(head_dim)
-        hidden_states = flash_attention(query, key, value, causal=False)
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = (
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-                hidden_states[:, encoder_hidden_states.shape[1] :],
-            )
-
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
-            # dropout
-            hidden_states = attn.to_out[1](hidden_states)
-
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
-
-
-class MochiVaeAttnProcessor2_0:
+class MochiVaeAttnProcessor:
     r"""
     Attention processor used in Mochi VAE.
     """
 
+    _attention_backend = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("AttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -3614,8 +1505,14 @@ class MochiVaeAttnProcessor2_0:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=attn.is_causal
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=attn.is_causal,
+            backend=self._attention_backend,
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -3634,7 +1531,7 @@ class MochiVaeAttnProcessor2_0:
         return hidden_states
 
 
-class StableAudioAttnProcessor2_0:
+class StableAudioAttnProcessor:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the Stable Audio model. It applies rotary embedding on query and key vector, and allows MHA, GQA or MQA.
@@ -3643,7 +1540,7 @@ class StableAudioAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "StableAudioAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "StableAudioAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def apply_partial_rotary_emb(
@@ -3767,105 +1664,7 @@ class StableAudioAttnProcessor2_0:
         return hidden_states
 
 
-class HunyuanAttnProcessor2_0:
-    r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
-    used in the HunyuanDiT model. It applies a s normalization layer and rotary embedding on query and key vector.
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        from .embeddings import apply_rotary_emb
-
-        residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # Apply RoPE if needed
-        if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb)
-            if not attn.is_cross_attention:
-                key = apply_rotary_emb(key, image_rotary_emb)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class FusedHunyuanAttnProcessor2_0:
+class FusedHunyuanAttnProcessor:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0) with fused
     projection layers. This is used in the HunyuanDiT model. It applies a s normalization layer and rotary embedding on
@@ -3875,7 +1674,7 @@ class FusedHunyuanAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "FusedHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "FusedHunyuanAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -3968,7 +1767,7 @@ class FusedHunyuanAttnProcessor2_0:
         return hidden_states
 
 
-class PAGHunyuanAttnProcessor2_0:
+class PAGHunyuanAttnProcessor:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the HunyuanDiT model. It applies a normalization layer and rotary embedding on query and key vector. This
@@ -3978,7 +1777,7 @@ class PAGHunyuanAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "PAGHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "PAGHunyuanAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -4091,7 +1890,7 @@ class PAGHunyuanAttnProcessor2_0:
         return hidden_states
 
 
-class PAGCFGHunyuanAttnProcessor2_0:
+class PAGCFGHunyuanAttnProcessor:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the HunyuanDiT model. It applies a normalization layer and rotary embedding on query and key vector. This
@@ -4101,7 +1900,7 @@ class PAGCFGHunyuanAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "PAGCFGHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "PAGCFGHunyuanAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -4215,7 +2014,7 @@ class PAGCFGHunyuanAttnProcessor2_0:
         return hidden_states
 
 
-class LuminaAttnProcessor2_0:
+class LuminaAttnProcessor:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the LuminaNextDiT model. It applies a s normalization layer and rotary embedding on query and key vector.
@@ -4223,7 +2022,7 @@ class LuminaAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("AttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -4311,7 +2110,7 @@ class LuminaAttnProcessor2_0:
         return hidden_states
 
 
-class FusedAttnProcessor2_0:
+class FusedAttnProcessor:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). It uses
     fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
@@ -4327,7 +2126,7 @@ class FusedAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "FusedAttnProcessor2_0 requires at least PyTorch 2.0, to use it. Please upgrade PyTorch to > 2.0."
+                "FusedAttnProcessor requires at least PyTorch 2.0, to use it. Please upgrade PyTorch to > 2.0."
             )
 
     def __call__(
@@ -4533,7 +2332,7 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
         return hidden_states
 
 
-class CustomDiffusionAttnProcessor2_0(nn.Module):
+class CustomDiffusionAttnProcessor(nn.Module):
     r"""
     Processor for implementing attention for the Custom Diffusion method using PyTorch 2.0’s memory-efficient scaled
     dot-product attention.
@@ -4855,207 +2654,7 @@ class SpatialNorm(nn.Module):
         return new_f
 
 
-class IPAdapterAttnProcessor(nn.Module):
-    r"""
-    Attention processor for Multiple IP-Adapters.
-
-    Args:
-        hidden_size (`int`):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`):
-            The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
-            The context length of the image features.
-        scale (`float` or List[`float`], defaults to 1.0):
-            the weight scale of image prompt.
-    """
-
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
-        super().__init__()
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-
-        if not isinstance(num_tokens, (tuple, list)):
-            num_tokens = [num_tokens]
-        self.num_tokens = num_tokens
-
-        if not isinstance(scale, list):
-            scale = [scale] * len(num_tokens)
-        if len(scale) != len(num_tokens):
-            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
-        self.scale = scale
-
-        self.to_k_ip = nn.ModuleList(
-            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
-        )
-        self.to_v_ip = nn.ModuleList(
-            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
-        )
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        scale: float = 1.0,
-        ip_adapter_masks: Optional[torch.Tensor] = None,
-    ):
-        residual = hidden_states
-
-        # separate ip_hidden_states from encoder_hidden_states
-        if encoder_hidden_states is not None:
-            if isinstance(encoder_hidden_states, tuple):
-                encoder_hidden_states, ip_hidden_states = encoder_hidden_states
-            else:
-                deprecation_message = (
-                    "You have passed a tensor as `encoder_hidden_states`. This is deprecated and will be removed in a future release."
-                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to suppress this warning."
-                )
-                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
-                end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
-                encoder_hidden_states, ip_hidden_states = (
-                    encoder_hidden_states[:, :end_pos, :],
-                    [encoder_hidden_states[:, end_pos:, :]],
-                )
-
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        query = attn.head_to_batch_dim(query)
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
-
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        if ip_adapter_masks is not None:
-            if not isinstance(ip_adapter_masks, List):
-                # for backward compatibility, we accept `ip_adapter_mask` as a tensor of shape [num_ip_adapter, 1, height, width]
-                ip_adapter_masks = list(ip_adapter_masks.unsqueeze(1))
-            if not (len(ip_adapter_masks) == len(self.scale) == len(ip_hidden_states)):
-                raise ValueError(
-                    f"Length of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
-                    f"length of self.scale array ({len(self.scale)}) and number of ip_hidden_states "
-                    f"({len(ip_hidden_states)})"
-                )
-            else:
-                for index, (mask, scale, ip_state) in enumerate(zip(ip_adapter_masks, self.scale, ip_hidden_states)):
-                    if mask is None:
-                        continue
-                    if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
-                        raise ValueError(
-                            "Each element of the ip_adapter_masks array should be a tensor with shape "
-                            "[1, num_images_for_ip_adapter, height, width]."
-                            " Please use `IPAdapterMaskProcessor` to preprocess your mask"
-                        )
-                    if mask.shape[1] != ip_state.shape[1]:
-                        raise ValueError(
-                            f"Number of masks ({mask.shape[1]}) does not match "
-                            f"number of ip images ({ip_state.shape[1]}) at index {index}"
-                        )
-                    if isinstance(scale, list) and not len(scale) == mask.shape[1]:
-                        raise ValueError(
-                            f"Number of masks ({mask.shape[1]}) does not match "
-                            f"number of scales ({len(scale)}) at index {index}"
-                        )
-        else:
-            ip_adapter_masks = [None] * len(self.scale)
-
-        # for ip-adapter
-        for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
-            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
-        ):
-            skip = False
-            if isinstance(scale, list):
-                if all(s == 0 for s in scale):
-                    skip = True
-            elif scale == 0:
-                skip = True
-            if not skip:
-                if mask is not None:
-                    if not isinstance(scale, list):
-                        scale = [scale] * mask.shape[1]
-
-                    current_num_images = mask.shape[1]
-                    for i in range(current_num_images):
-                        ip_key = to_k_ip(current_ip_hidden_states[:, i, :, :])
-                        ip_value = to_v_ip(current_ip_hidden_states[:, i, :, :])
-
-                        ip_key = attn.head_to_batch_dim(ip_key)
-                        ip_value = attn.head_to_batch_dim(ip_value)
-
-                        ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
-                        _current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
-                        _current_ip_hidden_states = attn.batch_to_head_dim(_current_ip_hidden_states)
-
-                        mask_downsample = IPAdapterMaskProcessor.downsample(
-                            mask[:, i, :, :],
-                            batch_size,
-                            _current_ip_hidden_states.shape[1],
-                            _current_ip_hidden_states.shape[2],
-                        )
-
-                        mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
-
-                        hidden_states = hidden_states + scale[i] * (_current_ip_hidden_states * mask_downsample)
-                else:
-                    ip_key = to_k_ip(current_ip_hidden_states)
-                    ip_value = to_v_ip(current_ip_hidden_states)
-
-                    ip_key = attn.head_to_batch_dim(ip_key)
-                    ip_value = attn.head_to_batch_dim(ip_value)
-
-                    ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
-                    current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
-                    current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
-
-                    hidden_states = hidden_states + scale * current_ip_hidden_states
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class IPAdapterAttnProcessor2_0(torch.nn.Module):
+class IPAdapterAttnProcessor(torch.nn.Module):
     r"""
     Attention processor for IP-Adapter for PyTorch 2.0.
 
@@ -5519,7 +3118,7 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
         return hidden_states
 
 
-class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
+class SD3IPAdapterJointAttnProcessor(torch.nn.Module):
     """
     Attention processor for IP-Adapter used typically in processing the SD3-like self-attention projections, with
     additional image-based information and timestep embeddings.
@@ -5690,7 +3289,7 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
             return hidden_states
 
 
-class PAGIdentitySelfAttnProcessor2_0:
+class PAGIdentitySelfAttnProcessor:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     PAG reference: https://huggingface.co/papers/2403.17377
@@ -5789,7 +3388,7 @@ class PAGIdentitySelfAttnProcessor2_0:
         return hidden_states
 
 
-class PAGCFGIdentitySelfAttnProcessor2_0:
+class PAGCFGIdentitySelfAttnProcessor:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     PAG reference: https://huggingface.co/papers/2403.17377
@@ -5892,7 +3491,7 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
         return hidden_states
 
 
-class SanaMultiscaleAttnProcessor2_0:
+class SanaMultiscaleAttnProcessor:
     r"""
     Processor for implementing multiscale quadratic attention.
     """
@@ -5961,7 +3560,7 @@ class LoRAAttnProcessor:
         pass
 
 
-class LoRAAttnProcessor2_0:
+class LoRAAttnProcessor:
     r"""
     Processor for implementing attention with LoRA (enabled by default if you're using PyTorch 2.0).
     """
@@ -5988,18 +3587,7 @@ class LoRAAttnAddedKVProcessor:
         pass
 
 
-class FluxSingleAttnProcessor2_0(FluxAttnProcessor2_0):
-    r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    """
-
-    def __init__(self):
-        deprecation_message = "`FluxSingleAttnProcessor2_0` is deprecated and will be removed in a future version. Please use `FluxAttnProcessor2_0` instead."
-        deprecate("FluxSingleAttnProcessor2_0", "0.32.0", deprecation_message)
-        super().__init__()
-
-
-class SanaLinearAttnProcessor2_0:
+class SanaLinearAttnProcessor:
     r"""
     Processor for implementing scaled dot-product linear attention.
     """
@@ -6051,7 +3639,7 @@ class SanaLinearAttnProcessor2_0:
         return hidden_states
 
 
-class PAGCFGSanaLinearAttnProcessor2_0:
+class PAGCFGSanaLinearAttnProcessor:
     r"""
     Processor for implementing scaled dot-product linear attention.
     """
@@ -6106,7 +3694,7 @@ class PAGCFGSanaLinearAttnProcessor2_0:
         return hidden_states
 
 
-class PAGIdentitySanaLinearAttnProcessor2_0:
+class PAGIdentitySanaLinearAttnProcessor:
     r"""
     Processor for implementing scaled dot-product linear attention.
     """
@@ -6163,73 +3751,358 @@ class PAGIdentitySanaLinearAttnProcessor2_0:
         return hidden_states
 
 
+# Deprecated classes for backward compatibility
+
+
+class AttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = (
+            "`AttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AttnProcessor`"
+        )
+        deprecate("AttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return AttnProcessor(*args, **kwargs)
+
+
+class AttnAddedKVProcessor:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AttnAddedKVAttentionProcessor` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessor`"
+        deprecate("AttnAddedKVAttentionProcessor", "1.0.0", deprecation_message)
+
+        return AttnAddedKVProcessor(*args, **kwargs)
+
+
+class AttnAddedKVProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AttnAddedKVAttentionProcessor` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessor`"
+        deprecate("AttnAddedKVAttentionProcessor", "1.0.0", deprecation_message)
+
+        return AttnAddedKVProcessor(*args, **kwargs)
+
+
+class AllegroAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AllegroAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AllegroAttnProcessor`"
+        deprecate("AllegroAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return AllegroAttnProcessor(*args, **kwargs)
+
+
+class AuraFlowAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`AuraFlowAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AuraFlowAttnProcessor`"
+        deprecate("AuraFlowAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return AuraFlowAttnProcessor(*args, **kwargs)
+
+
+class MochiAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`MochiAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `MochiAttnProcessor`"
+        deprecate("MochiAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        from .transformers.transformer_mochi import MochiAttnProcessor
+
+        return MochiAttnProcessor(*args, **kwargs)
+
+
+class MochiVaeAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`MochiVaeAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `MochiVaeAttnProcessor`"
+        deprecate("MochiVaeAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        from .autoencoders.autoencoder_kl_mochi import MochiVaeAttnProcessor
+
+        return MochiVaeAttnProcessor(*args, **kwargs)
+
+
+class FluxAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`FluxAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FluxAttnProcessor`"
+        deprecate("FluxAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        from .transformers.transformer_flux import FluxAttnProcessor
+
+        return FluxAttnProcessor(*args, **kwargs)
+
+
+class FluxSingleAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    """
+
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`FluxSingleAttnProcessor` is deprecated and will be removed in a future version. Please use `FluxAttnProcessorSDPA` instead."
+        deprecate("FluxSingleAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        from .transformers.transformer_flux import FluxAttnProcessor
+
+        return FluxAttnProcessor(*args, **kwargs)
+
+
+class FusedAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`FusedAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AttnProcessor`"
+        deprecate("FusedAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return AttnProcessor(*args, **kwargs)
+
+
+class JointAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`JointAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `JointAttnProcessor`"
+        deprecate("JointAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return JointAttnProcessor(*args, **kwargs)
+
+
+class PAGJointAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`PAGJointAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGJointAttnProcessor`"
+        deprecate("PAGJointAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return PAGJointAttnProcessor(*args, **kwargs)
+
+
+class PAGCFGJointAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`PAGCFGJointAttnProcessor2_0 is deprecated and this will be removed in a future version. Please use `PAGCFGJointAttnProcessor`"
+        deprecate("PAGCFGJointAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return PAGCFGJointAttnProcessor(*args, **kwargs)
+
+
+class FusedJointAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`FusedJointAttnProcessor2_0 is deprecated and this will be removed in a future version. Please use `JointAttnProcessor`"
+        deprecate("FusedJointAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return JointAttnProcessor(*args, **kwargs)
+
+
+class FusedAuraFlowAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`FusedAuraFlowAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AuraFlowAttnProcessor`"
+        deprecate("FusedAuraFlowAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return AuraFlowAttnProcessor(*args, **kwargs)
+
+
+class FusedFluxAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`FusedFluxAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FluxAttnProcessor`"
+        deprecate("FusedFluxAttnProcessor2_0", "1.0.0", deprecation_message)
+        from .transformers.transformer_flux import FluxAttnProcessor
+
+        return FluxAttnProcessor(*args, **kwargs)
+
+
+class CogVideoXAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`CogVideoXAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `CogVideoXAttnProcessor`"
+        deprecate("CogVideoXAttnProcessor2_0", "1.0.0", deprecation_message)
+        from .transformers.cogvideox_transformer_3d import CogVideoXAttnProcessor
+
+        return CogVideoXAttnProcessor(*args, **kwargs)
+
+
+class FusedCogVideoXAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`FusedCogVideoXAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `CogVideoXAttnProcessor`"
+        deprecate("FusedCogVideoXAttnProcessor2_0", "1.0.0", deprecation_message)
+        from .transformers.cogvideox_transformer_3d import CogVideoXAttnProcessor
+
+        return CogVideoXAttnProcessor(*args, **kwargs)
+
+
+class XLAFlashAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`XLAFlashAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `XLAFlashAttnProcessor`"
+        deprecate("XLAFlashAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return XLAFlashAttnProcessor(*args, **kwargs)
+
+
+class XLAFluxFlashAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`XLAFluxFlashAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `XLAFluxFlashAttnProcessor`"
+        deprecate("XLAFluxFlashAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        from transformers.transformer_flux import FluxAttnProcessorXLA
+
+        return FluxAttnProcessorXLA(*args, **kwargs)
+
+
+class StableAudioAttnProcessor2_0:
+    def __new__(self, *args, **kwargs):
+        deprecation_message = "`StableAudioAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `StableAudioAttnProcessor`"
+        deprecate("StableAudioAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return StableAudioAttnProcessor(*args, **kwargs)
+
+
+class HunyuanAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`HunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `HunyuanAttnProcessor`"
+        deprecate("HunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return HunyuanAttnProcessor(*args, **kwargs)
+
+
+class FusedHunyuanAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`FusedHunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedHunyuanAttnProcessor`"
+        deprecate("FusedHunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return HunyuanAttnProcessor(*args, **kwargs)
+
+
+class PAGHunyuanAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`PAGHunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGHunyuanAttnProcessor`"
+        deprecate("PAGHunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return PAGHunyuanAttnProcessor(*args, **kwargs)
+
+
+class PAGCFGHunyuanAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`PAGCFGHunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGHunyuanAttnProcessor`"
+        deprecate("PAGCFGHunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return PAGCFGHunyuanAttnProcessor(*args, **kwargs)
+
+
+class LuminaAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`LuminaAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `LuminaAttnProcessor`"
+        deprecate("LuminaAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return LuminaAttnProcessor(*args, **kwargs)
+
+
+class PAGIdentitySelfAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`PAGIdentitySelfAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGIdentitySelfAttnProcessor`"
+        deprecate("PAGIdentitySelfAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return PAGIdentitySelfAttnProcessor(*args, **kwargs)
+
+
+class PAGCFGIdentitySelfAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`PAGCFGIdentitySelfAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGIdentitySelfAttnProcessor`"
+        deprecate("PAGCFGIdentitySelfAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return PAGCFGIdentitySelfAttnProcessor(*args, **kwargs)
+
+
+class SanaMultiscaleAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`SanaMultiscaleAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `SanaMultiscaleAttnProcessor`"
+        deprecate("SanaMultiscaleAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return SanaMultiscaleAttnProcessor(*args, **kwargs)
+
+
+class LoRAAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`LoRAAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `LoRAAttnProcessor`"
+        deprecate("LoRAAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return LoRAAttnProcessor(*args, **kwargs)
+
+
+class SanaLinearAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`SanaLinearAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `SanaLinearAttnProcessor`"
+        deprecate("SanaLinearAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return SanaLinearAttnProcessor(*args, **kwargs)
+
+
+class PAGCFGSanaLinearAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`PAGCFGSanaLinearAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGSanaLinearAttnProcessor`"
+        deprecate("PAGCFGSanaLinearAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return PAGCFGSanaLinearAttnProcessor(*args, **kwargs)
+
+
+class PAGIdentitySanaLinearAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`PAGIdentitySanaLinearAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGIdentitySanaLinearAttnProcessor`"
+        deprecate("PAGIdentitySanaLinearAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return PAGIdentitySanaLinearAttnProcessor(*args, **kwargs)
+
+
+class IPAdapterAttnProcessor(IPAdapterAttnProcessor):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`IPAdapterAttnProcessor` is deprecated and this will be removed in a future version. Please use `IPAdapterAttnProcessor`"
+        deprecate("IPAdapterAttnProcessor", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class IPAdapterAttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "`IPAdapterAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `IPAdapterAttnProcessor`"
+        deprecate("IPAdapterAttnProcessor2_0", "1.0.0", deprecation_message)
+
+        return IPAdapterAttnProcessor(*args, **kwargs)
+
+
 ADDED_KV_ATTENTION_PROCESSORS = (
     AttnAddedKVProcessor,
     SlicedAttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
+    AttnAddedKVProcessor,
     XFormersAttnAddedKVProcessor,
 )
 
 CROSS_ATTENTION_PROCESSORS = (
     AttnProcessor,
-    AttnProcessor2_0,
+    AttnProcessor,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
     IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
-    FluxIPAdapterJointAttnProcessor2_0,
+    IPAdapterAttnProcessor,
 )
 
 AttentionProcessor = Union[
-    AttnProcessor,
-    CustomDiffusionAttnProcessor,
     AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    JointAttnProcessor2_0,
-    PAGJointAttnProcessor2_0,
-    PAGCFGJointAttnProcessor2_0,
-    FusedJointAttnProcessor2_0,
-    AllegroAttnProcessor2_0,
-    AuraFlowAttnProcessor2_0,
-    FusedAuraFlowAttnProcessor2_0,
-    FluxAttnProcessor2_0,
-    FluxAttnProcessor2_0_NPU,
-    FusedFluxAttnProcessor2_0,
-    FusedFluxAttnProcessor2_0_NPU,
-    CogVideoXAttnProcessor2_0,
-    FusedCogVideoXAttnProcessor2_0,
+    JointAttnProcessor,
+    PAGJointAttnProcessor,
+    PAGCFGJointAttnProcessor,
+    FusedJointAttnProcessor,
+    FusedAuraFlowAttnProcessor,
+    CogVideoXAttnProcessor,
+    FusedCogVideoXAttnProcessor,
     XFormersAttnAddedKVProcessor,
     XFormersAttnProcessor,
-    XLAFlashAttnProcessor2_0,
+    XLAFlashAttnProcessor,
     AttnProcessorNPU,
-    AttnProcessor2_0,
-    MochiVaeAttnProcessor2_0,
-    MochiAttnProcessor2_0,
-    StableAudioAttnProcessor2_0,
-    HunyuanAttnProcessor2_0,
-    FusedHunyuanAttnProcessor2_0,
-    PAGHunyuanAttnProcessor2_0,
-    PAGCFGHunyuanAttnProcessor2_0,
-    LuminaAttnProcessor2_0,
-    FusedAttnProcessor2_0,
+    AttnProcessor,
+    MochiVaeAttnProcessor,
+    StableAudioAttnProcessor,
+    FusedHunyuanAttnProcessor,
+    PAGHunyuanAttnProcessor,
+    PAGCFGHunyuanAttnProcessor,
+    LuminaAttnProcessor,
+    FusedAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
-    CustomDiffusionAttnProcessor2_0,
+    CustomDiffusionAttnProcessor,
     SlicedAttnProcessor,
     SlicedAttnAddedKVProcessor,
-    SanaLinearAttnProcessor2_0,
-    PAGCFGSanaLinearAttnProcessor2_0,
-    PAGIdentitySanaLinearAttnProcessor2_0,
-    SanaMultiscaleLinearAttention,
-    SanaMultiscaleAttnProcessor2_0,
-    SanaMultiscaleAttentionProjection,
+    SanaLinearAttnProcessor,
+    PAGCFGSanaLinearAttnProcessor,
+    PAGIdentitySanaLinearAttnProcessor,
+    SanaMultiscaleAttnProcessor,
     IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
     IPAdapterXFormersAttnProcessor,
-    SD3IPAdapterJointAttnProcessor2_0,
-    PAGIdentitySelfAttnProcessor2_0,
-    PAGCFGIdentitySelfAttnProcessor2_0,
+    SD3IPAdapterJointAttnProcessor,
+    PAGIdentitySelfAttnProcessor,
+    PAGCFGIdentitySelfAttnProcessor,
     LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
 ]
