@@ -8,6 +8,7 @@ import torch.nn as nn
 from diffusers import (
     AuraFlowPipeline,
     AuraFlowTransformer2DModel,
+    DiffusionPipeline,
     FluxControlPipeline,
     FluxPipeline,
     FluxTransformer2DModel,
@@ -15,7 +16,6 @@ from diffusers import (
     HiDreamImageTransformer2DModel,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
-    DiffusionPipeline,
 )
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
@@ -29,12 +29,14 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate,
     require_big_accelerator,
-    require_torch_version_greater,
     require_gguf_version_greater_or_equal,
     require_peft_backend,
+    require_torch_version_greater,
     torch_device,
 )
+
 from ..test_torch_compile_utils import QuantCompileTests
+
 
 if is_gguf_available():
     from diffusers.quantizers.gguf.utils import GGUFLinear, GGUFParameter
@@ -592,9 +594,7 @@ class GGUFCompileTests(QuantCompileTests):
             self.gguf_ckpt, quantization_config=self.quantization_config, torch_dtype=self.torch_dtype
         )
         pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-3.5-medium",
-            transformer=transformer,
-            torch_dtype=self.torch_dtype
+            "stabilityai/stable-diffusion-3.5-medium", transformer=transformer, torch_dtype=self.torch_dtype
         )
         return pipe
 
