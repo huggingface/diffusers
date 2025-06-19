@@ -324,8 +324,6 @@ class SkyReelsV2TransformerBlock(nn.Module):
         hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
         return hidden_states
 
-    def set_ar_attention(self):
-        self.attn1.processor.set_ar_attention()
 
 
 class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
