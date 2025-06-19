@@ -38,7 +38,6 @@ from ..utils import (
 from ..utils.peft_utils import (
     _create_lora_config,
     _maybe_warn_for_unhandled_keys,
-    _maybe_warn_if_no_keys_found,
 )
 from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
 from .unet_loader_utils import _maybe_expand_lora_scales
@@ -364,7 +363,15 @@ class PeftAdapterMixin:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
 
-        _maybe_warn_if_no_keys_found(state_dict, prefix, model_class_name=self.__class__.__name__)
+        if prefix is not None and not state_dict:
+            model_class_name = self.__class__.__name__
+            logger.warning(
+                f"No LoRA keys associated to {model_class_name} found with the {prefix=}. "
+                "This is safe to ignore if LoRA state dict didn't originally have any "
+                f"{model_class_name} related params. You can also try specifying `prefix=None` "
+                "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
+                "https://github.com/huggingface/diffusers/issues/new"
+            )
 
     def save_lora_adapter(
         self,

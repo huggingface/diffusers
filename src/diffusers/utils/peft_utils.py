@@ -326,17 +326,6 @@ def _create_lora_config(
         raise TypeError("`LoraConfig` class could not be instantiated.") from e
 
 
-def _maybe_warn_if_no_keys_found(state_dict, prefix, model_class_name):
-    if prefix is not None and not state_dict:
-        logger.warning(
-            f"No LoRA keys associated to {model_class_name} found with the {prefix=}. "
-            "This is safe to ignore if LoRA state dict didn't originally have any "
-            f"{model_class_name} related params. You can also try specifying `prefix=None` "
-            "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
-            "https://github.com/huggingface/diffusers/issues/new"
-        )
-
-
 def _maybe_raise_error_for_ambiguous_keys(config):
     rank_pattern = config["rank_pattern"].copy()
     target_modules = config["target_modules"]

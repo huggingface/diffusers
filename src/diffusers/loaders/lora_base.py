@@ -45,7 +45,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from ..utils.peft_utils import _create_lora_config, _maybe_warn_if_no_keys_found
+from ..utils.peft_utils import _create_lora_config
 from ..utils.state_dict_utils import _load_sft_state_dict_metadata
 
 
@@ -412,7 +412,15 @@ def _load_lora_into_text_encoder(
             _pipeline.enable_sequential_cpu_offload()
         # Unsafe code />
 
-    _maybe_warn_if_no_keys_found(state_dict, prefix, model_class_name=text_encoder.__class__.__name__)
+    if prefix is not None and not state_dict:
+        model_class_name = text_encoder.__class__.__name__
+        logger.warning(
+            f"No LoRA keys associated to {model_class_name} found with the {prefix=}. "
+            "This is safe to ignore if LoRA state dict didn't originally have any "
+            f"{model_class_name} related params. You can also try specifying `prefix=None` "
+            "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
+            "https://github.com/huggingface/diffusers/issues/new"
+        )
 
 
 def _func_optionally_disable_offloading(_pipeline):
