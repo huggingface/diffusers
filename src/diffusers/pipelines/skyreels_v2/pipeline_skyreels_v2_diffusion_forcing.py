@@ -456,18 +456,34 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         └─────────────────────────────────────────────────────────────────┘
 
         For Long Videos (num_frames > base_num_frames):
-        ┌── Chunk 1 ───┐   ┌── Chunk 2 ───┐   ┌── Chunk 3 ───┐
-        │ base_num_    │   │ base_num_    │   │ base_num_    │
-        │ frames=97    │   │ frames=97    │   │ frames=97    │
-        │ (5 blocks)   │   │ (5 blocks)   │   │ (5 blocks)   │
-        └──────────────┘   └──────────────┘   └──────────────┘
-            ↑                   ↑                   ↑
-        Async processing   Async processing   Async processing
-        within chunk       within chunk       within chunk
+        base_num_frames acts as the "sliding window size" for chunked processing.
+
+        Example: 300-frame video with base_num_frames=97, overlap_history=17
+        ┌────── Chunk 1 (frames 1-97) ───────┐
+        │ Processing window: 97 frames       │ → 5 blocks, async processing
+        │ Generates: frames 1-97             │
+        └────────────────────────────────────┘
+                    ┌────── Chunk 2 (frames 81-177) ───────┐
+                    │ Processing window: 97 frames         │ → 5 blocks, async processing
+                    │ Overlap: 17 frames (81-97) from prev │
+                    │ Generates: frames 98-177             │
+                    └──────────────────────────────────────┘
+                                ┌────── Chunk 3 (frames 161-260) ───────┐
+                                │ Processing window: 97 frames          │ → 5 blocks, async processing
+                                │ Overlap: 17 frames (161-177) from prev│
+                                │ Generates: frames 178-260             │
+                                └───────────────────────────────────────┘
+
+        Each chunk independently runs the asynchronous processing with its own 5 blocks.
+        base_num_frames controls:
+        1. Memory usage (larger window = more VRAM)
+        2. Model context length (must match training constraints)
+        3. Number of blocks per chunk (base_num_latent_frames // causal_block_size)
 
         Each block takes 30 steps to complete denoising.
         Block N starts at step: 1 + (N-1) x ar_step
         Total steps: 30 + (5-1) x 5 = 50 steps
+
 
         Synchronous mode (ar_step=0) would process all blocks/frames simultaneously:
         ┌──────────────────────────────────────────────┐
