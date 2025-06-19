@@ -902,7 +902,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+            batch_size = 1 #len(prompt) # thesea modified for text prompt mask
         else:
             batch_size = prompt_embeds.shape[0]
 
@@ -1330,7 +1330,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 if self.interrupt:
                     continue
                 
-                print(f'latents.shape[0] = {latents.shape[0]}')
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
                 # predict the noise residual
