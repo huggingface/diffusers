@@ -3,7 +3,6 @@ import logging
 import math
 import os
 from pathlib import Path
-import shutil
 
 import numpy as np
 import pandas as pd
@@ -14,28 +13,33 @@ from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub.utils import insecure_hashlib
-from peft import LoraConfig, prepare_model_for_kbit_training, set_peft_model_state_dict
+from peft import LoraConfig, prepare_model_for_kbit_training
 from peft.utils import get_peft_model_state_dict
 from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
 from torchvision import transforms
-from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 
 import diffusers
 from diffusers import (
-    AutoencoderKL, BitsAndBytesConfig, FlowMatchEulerDiscreteScheduler,
-    FluxPipeline, FluxTransformer2DModel,
+    AutoencoderKL,
+    BitsAndBytesConfig,
+    FlowMatchEulerDiscreteScheduler,
+    FluxPipeline,
+    FluxTransformer2DModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
-    cast_training_params, compute_density_for_timestep_sampling,
-    compute_loss_weighting_for_sd3, free_memory,
+    cast_training_params,
+    compute_density_for_timestep_sampling,
+    compute_loss_weighting_for_sd3,
+    free_memory,
 )
-from diffusers.utils import convert_unet_state_dict_to_peft, is_wandb_available
 from diffusers.utils.torch_utils import is_compiled_module
 
+
 logger = get_logger(__name__)
+
 
 class DreamBoothDataset(Dataset):
     def __init__(self, data_df_path, dataset_name, width, height, max_sequence_length=77):
@@ -66,12 +70,14 @@ class DreamBoothDataset(Dataset):
         }
 
     def _apply_transforms(self):
-        transform = transforms.Compose([
-            transforms.Resize((self.height, self.width), interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.RandomCrop((self.height, self.width)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ])
+        transform = transforms.Compose(
+            [
+                transforms.Resize((self.height, self.width), interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.RandomCrop((self.height, self.width)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
 
         pixel_values = []
         for image in self.instance_images:
@@ -89,6 +95,7 @@ class DreamBoothDataset(Dataset):
             data_dict[row["image_hash"]] = (prompt_embeds, pooled_prompt_embeds, text_ids)
         return data_dict
 
+
 def collate_fn(examples):
     pixel_values = torch.stack([ex["instance_images"] for ex in examples]).float()
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -102,6 +109,7 @@ def collate_fn(examples):
         "pooled_prompt_embeds": pooled_prompt_embeds,
         "text_ids": text_ids,
     }
+
 
 def main(args):
     # Setup accelerator
@@ -126,15 +134,19 @@ def main(args):
     os.makedirs(args.output_dir, exist_ok=True) if accelerator.is_main_process else None
 
     # Load models with quantization
-    noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="scheduler"
+    )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
 
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
 
     nf4_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16)
     transformer = FluxTransformer2DModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="transformer",
-        quantization_config=nf4_config, torch_dtype=torch.float16
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        quantization_config=nf4_config,
+        torch_dtype=torch.float16,
     )
     transformer = prepare_model_for_kbit_training(transformer, use_gradient_checkpointing=False)
 
@@ -154,13 +166,18 @@ def main(args):
     )
     transformer.add_adapter(transformer_lora_config)
 
-    print(f"trainable params: {transformer.num_parameters(only_trainable=True)} || all params: {transformer.num_parameters()}")
+    print(
+        f"trainable params: {transformer.num_parameters(only_trainable=True)} || all params: {transformer.num_parameters()}"
+    )
 
     # Setup optimizer
     import bitsandbytes as bnb
+
     optimizer = bnb.optim.AdamW8bit(
         [{"params": list(filter(lambda p: p.requires_grad, transformer.parameters())), "lr": args.learning_rate}],
-        betas=(0.9, 0.999), weight_decay=1e-04, eps=1e-08
+        betas=(0.9, 0.999),
+        weight_decay=1e-04,
+        eps=1e-08,
     )
 
     # Setup dataset and dataloader
@@ -186,10 +203,14 @@ def main(args):
 
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
-    lr_scheduler = get_scheduler("constant", optimizer=optimizer, num_warmup_steps=0, num_training_steps=args.max_train_steps)
+    lr_scheduler = get_scheduler(
+        "constant", optimizer=optimizer, num_warmup_steps=0, num_training_steps=args.max_train_steps
+    )
 
     # Prepare for training
-    transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(transformer, optimizer, train_dataloader, lr_scheduler)
+    transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        transformer, optimizer, train_dataloader, lr_scheduler
+    )
 
     # Register save/load hooks
     def unwrap_model(model):
@@ -201,14 +222,18 @@ def main(args):
             for model in models:
                 if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
                     lora_layers = get_peft_model_state_dict(unwrap_model(model))
-                    FluxPipeline.save_lora_weights(output_dir, transformer_lora_layers=lora_layers, text_encoder_lora_layers=None)
+                    FluxPipeline.save_lora_weights(
+                        output_dir, transformer_lora_layers=lora_layers, text_encoder_lora_layers=None
+                    )
                     weights.pop() if weights else None
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     cast_training_params([transformer], dtype=torch.float32) if args.mixed_precision == "fp16" else None
 
     # Initialize tracking
-    accelerator.init_trackers("dreambooth-flux-dev-lora-alphonse-mucha", config=vars(args)) if accelerator.is_main_process else None
+    accelerator.init_trackers(
+        "dreambooth-flux-dev-lora-alphonse-mucha", config=vars(args)
+    ) if accelerator.is_main_process else None
 
     # Training loop
     def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
@@ -233,8 +258,11 @@ def main(args):
 
                 # Prepare inputs
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
-                    model_input.shape[0], model_input.shape[2] // 2, model_input.shape[3] // 2,
-                    accelerator.device, torch.float16
+                    model_input.shape[0],
+                    model_input.shape[2] // 2,
+                    model_input.shape[3] // 2,
+                    accelerator.device,
+                    torch.float16,
                 )
 
                 noise = torch.randn_like(model_input)
@@ -248,12 +276,19 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 packed_noisy_model_input = FluxPipeline._pack_latents(
-                    noisy_model_input, model_input.shape[0], model_input.shape[1],
-                    model_input.shape[2], model_input.shape[3]
+                    noisy_model_input,
+                    model_input.shape[0],
+                    model_input.shape[1],
+                    model_input.shape[2],
+                    model_input.shape[3],
                 )
 
                 # Forward pass
-                guidance = torch.tensor([args.guidance_scale], device=accelerator.device).expand(bsz) if unwrap_model(transformer).config.guidance_embeds else None
+                guidance = (
+                    torch.tensor([args.guidance_scale], device=accelerator.device).expand(bsz)
+                    if unwrap_model(transformer).config.guidance_embeds
+                    else None
+                )
 
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
@@ -268,14 +303,18 @@ def main(args):
 
                 vae_scale_factor = 2 ** (len(vae_config.block_out_channels) - 1)
                 model_pred = FluxPipeline._unpack_latents(
-                    model_pred, model_input.shape[2] * vae_scale_factor,
-                    model_input.shape[3] * vae_scale_factor, vae_scale_factor
+                    model_pred,
+                    model_input.shape[2] * vae_scale_factor,
+                    model_input.shape[3] * vae_scale_factor,
+                    vae_scale_factor,
                 )
 
                 # Compute loss
                 weighting = compute_loss_weighting_for_sd3("none", sigmas)
                 target = noise - model_input
-                loss = torch.mean((weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1).mean()
+                loss = torch.mean(
+                    (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
+                ).mean()
 
                 accelerator.backward(loss)
 
@@ -291,7 +330,9 @@ def main(args):
                 global_step += 1
 
                 # Checkpointing
-                if global_step % args.checkpointing_steps == 0 and (accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED):
+                if global_step % args.checkpointing_steps == 0 and (
+                    accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED
+                ):
                     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                     accelerator.save_state(save_path)
 
@@ -307,7 +348,9 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer_lora_layers = get_peft_model_state_dict(unwrap_model(transformer))
-        FluxPipeline.save_lora_weights(args.output_dir, transformer_lora_layers=transformer_lora_layers, text_encoder_lora_layers=None)
+        FluxPipeline.save_lora_weights(
+            args.output_dir, transformer_lora_layers=transformer_lora_layers, text_encoder_lora_layers=None
+        )
 
     if torch.cuda.is_available():
         print(f"Pipeline memory usage: {torch.cuda.max_memory_reserved() / 1024**3:.3f} GB")
@@ -316,7 +359,9 @@ def main(args):
 
     accelerator.end_training()
 
+
 if __name__ == "__main__":
+
     class Args:
         pretrained_model_name_or_path = "black-forest-labs/FLUX.1-dev"
         data_df_path = "embeddings_alphonse_mucha.parquet"
