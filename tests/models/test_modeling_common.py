@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 
 import copy
 import gc
+import glob
 import inspect
 import json
 import os
@@ -1692,6 +1693,35 @@ class ModelTesterMixin:
         )
         model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
         _ = model(**inputs_dict)[0]
+
+    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @require_torch_accelerator
+    @torch.no_grad()
+    def test_group_offloading_with_disk(self, record_stream, offload_type):
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        if not getattr(model, "_supports_group_offloading", True):
+            return
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.eval()
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.enable_group_offload(
+                torch_device,
+                offload_type=offload_type,
+                offload_to_disk_path=tmpdir,
+                use_stream=True,
+                record_stream=record_stream,
+                **additional_kwargs,
+            )
+            has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
+            assert has_safetensors, "No safetensors found in the directory."
+            _ = model(**inputs_dict)[0]
 
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
