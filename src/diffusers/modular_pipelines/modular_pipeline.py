@@ -529,6 +529,21 @@ class PipelineBlock(ModularPipelineBlocks):
                     if current_value is not param:  # Using identity comparison to check if object was modified
                         state.add_intermediate(param_name, param, input_param.kwargs_type)
 
+    def save_pretrained(self, save_directory, push_to_hub = False, **kwargs):
+        # TODO: factor out this logic.
+        cls_name = self.__class__.__name__
+        
+        full_mod = type(self).__module__ 
+        module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
+        parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]  
+        auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
+        _component_names = [c.name for c in self.expected_components]
+        
+        self.register_to_config(auto_map=auto_map, _component_names=_component_names)
+        self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
+        config = dict(self.config)
+        self._internal_dict = FrozenDict(config)
+
 
 def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
     """
