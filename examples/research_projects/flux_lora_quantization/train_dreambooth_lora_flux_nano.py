@@ -146,8 +146,12 @@ def main(args):
         diffusers.utils.logging.set_verbosity_error()
 
     set_seed(args.seed) if args.seed is not None else None
-    os.makedirs(args.output_dir, exist_ok=True) if accelerator.is_main_process else None
 
+    if accelerator.is_main_proces:
+        if args.output_dir is not None:
+            os.makedirs(args.output_dir, exist_ok=True)
+        accelerator.init_trackers("dreambooth-flux-dev-lora-alphonse-mucha", config=vars(args))
+    
     # Load models with quantization
     noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="scheduler"
