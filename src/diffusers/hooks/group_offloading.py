@@ -506,8 +506,6 @@ def apply_group_offloading(
             option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
             the CPU memory is a bottleneck but may counteract the benefits of using streams.
 
-    (TODO: include example with `offload_to_disk_path`)
-
     Example:
         ```python
         >>> from diffusers import CogVideoXTransformer3DModel
