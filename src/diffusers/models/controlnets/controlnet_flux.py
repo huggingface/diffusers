@@ -291,6 +291,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             guidance = guidance.to(hidden_states.dtype) * 1000
         else:
             guidance = None
+        print(f'pooled_projections shape = {pooled_projections.shape}')
         temb = (
             self.time_text_embed(timestep, pooled_projections)
             if guidance is None
