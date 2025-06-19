@@ -16,7 +16,6 @@ PEFT utilities: Utilities related to peft library
 """
 
 import collections
-import contextlib
 import importlib
 from typing import Optional
 
@@ -325,24 +324,6 @@ def _create_lora_config(
         return LoraConfig(**lora_config_kwargs)
     except TypeError as e:
         raise TypeError("`LoraConfig` class could not be instantiated.") from e
-
-
-@contextlib.contextmanager
-def _lora_loading_context(_pipeline):
-    from ..loaders.lora_base import _func_optionally_disable_offloading
-
-    if _pipeline is None:
-        yield
-        return
-
-    is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
-    try:
-        yield
-    finally:
-        if is_model_cpu_offload:
-            _pipeline.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            _pipeline.enable_sequential_cpu_offload()
 
 
 def _maybe_warn_if_no_keys_found(state_dict, prefix, model_class_name):
