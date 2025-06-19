@@ -421,7 +421,9 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
     for param in params:
         # Format parameter name and type
         type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
-        param_str = f"{param_indent}{param.name} (`{type_str}`"
+        # YiYi Notes: remove this line if we remove kwargs_type
+        name = f'**{param.kwargs_type}' if param.name is None and param.kwargs_type is not None else param.name
+        param_str = f"{param_indent}{name} (`{type_str}`"
         
         # Add optional tag and default value if parameter is an InputParam and optional
         if hasattr(param, "required"):
