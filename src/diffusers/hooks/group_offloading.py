@@ -20,6 +20,7 @@ import safetensors.torch
 import torch
 
 from ..utils import get_logger, is_accelerate_available
+from ..utils.import_utils import is_deepspeed_available, is_deepspeed_version
 from .hooks import HookRegistry, ModelHook
 
 
@@ -27,6 +28,8 @@ if is_accelerate_available():
     from accelerate.hooks import AlignDevicesHook, CpuOffload
     from accelerate.utils import send_to_device
 
+if is_deepspeed_available() and is_deepspeed_version(">=", "0.16"):
+    from ..utils.state_dict_utils import _fast_aio_save
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -62,6 +65,7 @@ class ModuleGroup:
         low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
         offload_to_disk_path: Optional[str] = None,
+        _enable_deepnvme_disk_offloading: Optional[bool] = False
     ) -> None:
         self.modules = modules
         self.offload_device = offload_device
@@ -80,7 +84,9 @@ class ModuleGroup:
         self._is_offloaded_to_disk = False
 
         if self.offload_to_disk_path:
-            self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{id(self)}.safetensors")
+            self._enable_deepnvme_disk_offloading = _enable_deepnvme_disk_offloading
+            ext = ".pt" if _enable_deepnvme_disk_offloading else ".safetensors"
+            self.param_file_path = os.path.join(self.offload_to_disk_path, f"group_{id(self)}.{ext}")
 
             all_tensors = []
             for module in self.modules:
@@ -153,8 +159,8 @@ class ModuleGroup:
 
             with context:
                 if self.stream is not None:
-                    # Load to CPU, pin, and async copy to device for overlapping transfer and compute
-                    loaded_cpu_tensors = safetensors.torch.load_file(self.safetensors_file_path, device="cpu")
+                    # Load to CPU from disk, pin, and async copy to device for overlapping transfer and compute
+                    loaded_cpu_tensors = safetensors.torch.load_file(self.param_file_path, device="cpu")
                     for key, tensor_obj in self.key_to_tensor.items():
                         pinned_tensor = loaded_cpu_tensors[key].pin_memory()
                         tensor_obj.data = pinned_tensor.to(self.onload_device, non_blocking=self.non_blocking)
@@ -165,7 +171,7 @@ class ModuleGroup:
                     onload_device = (
                         self.onload_device.type if isinstance(self.onload_device, torch.device) else self.onload_device
                     )
-                    loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=onload_device)
+                    loaded_tensors = safetensors.torch.load_file(self.param_file_path, device=onload_device)
                     for key, tensor_obj in self.key_to_tensor.items():
                         tensor_obj.data = loaded_tensors[key]
             return
@@ -218,15 +224,18 @@ class ModuleGroup:
         if self.offload_to_disk_path:
             # TODO: we can potentially optimize this code path by checking if the _all_ the desired
             # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
-            # overhead. Currently, we just check if the given `safetensors_file_path` exists and if not
+            # overhead. Currently, we just check if the given `param_file_path` exists and if not
             # we perform a write.
             # Check if the file has been saved in this session or if it already exists on disk.
-            if not self._is_offloaded_to_disk and not os.path.exists(self.safetensors_file_path):
-                os.makedirs(os.path.dirname(self.safetensors_file_path), exist_ok=True)
+            if not self._is_offloaded_to_disk and not os.path.exists(self.param_file_path):
+                os.makedirs(os.path.dirname(self.param_file_path), exist_ok=True)
                 tensors_to_save = {
                     key: tensor.data.to(self.offload_device) for tensor, key in self.tensor_to_key.items()
                 }
-                safetensors.torch.save_file(tensors_to_save, self.safetensors_file_path)
+                if not self._enable_deepnvme_disk_offloading:
+                    safetensors.torch.save_file(tensors_to_save, self.param_file_path)
+                else:
+                    _fast_aio_save(tensors_to_save, self.param_file_path)
 
             # The group is now considered offloaded to disk for the rest of the session.
             self._is_offloaded_to_disk = True
@@ -426,6 +435,7 @@ def apply_group_offloading(
     record_stream: bool = False,
     low_cpu_mem_usage: bool = False,
     offload_to_disk_path: Optional[str] = None,
+    _enable_deepnvme_disk_offloading: Optional[bool] = False
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -531,6 +541,7 @@ def apply_group_offloading(
             stream=stream,
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            _enable_deepnvme_disk_offloading=_enable_deepnvme_disk_offloading
         )
     elif offload_type == "leaf_level":
         _apply_group_offloading_leaf_level(
@@ -542,6 +553,7 @@ def apply_group_offloading(
             stream=stream,
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            _enable_deepnvme_disk_offloading=_enable_deepnvme_disk_offloading
         )
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
@@ -557,6 +569,7 @@ def _apply_group_offloading_block_level(
     record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
     offload_to_disk_path: Optional[str] = None,
+    _enable_deepnvme_disk_offloading: Optional[bool] = False
 ) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
@@ -617,6 +630,7 @@ def _apply_group_offloading_block_level(
                 record_stream=record_stream,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 onload_self=True,
+                _enable_deepnvme_disk_offloading=_enable_deepnvme_disk_offloading
             )
             matched_module_groups.append(group)
             for j in range(i, i + len(current_modules)):
@@ -651,6 +665,7 @@ def _apply_group_offloading_block_level(
         stream=None,
         record_stream=False,
         onload_self=True,
+        _enable_deepnvme_disk_offloading=_enable_deepnvme_disk_offloading,
     )
     if stream is None:
         _apply_group_offloading_hook(module, unmatched_group, None)
@@ -667,6 +682,7 @@ def _apply_group_offloading_leaf_level(
     record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
     offload_to_disk_path: Optional[str] = None,
+    _enable_deepnvme_disk_offloading: Optional[bool] = False
 ) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
@@ -717,6 +733,7 @@ def _apply_group_offloading_leaf_level(
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
+            _enable_deepnvme_disk_offloading=_enable_deepnvme_disk_offloading
         )
         _apply_group_offloading_hook(submodule, group, None)
         modules_with_group_offloading.add(name)
@@ -764,6 +781,7 @@ def _apply_group_offloading_leaf_level(
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
+            _enable_deepnvme_disk_offloading=_enable_deepnvme_disk_offloading
         )
         _apply_group_offloading_hook(parent_module, group, None)
 
@@ -785,6 +803,7 @@ def _apply_group_offloading_leaf_level(
             record_stream=False,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
+            _enable_deepnvme_disk_offloading=_enable_deepnvme_disk_offloading
         )
         _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 

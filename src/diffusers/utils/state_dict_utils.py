@@ -18,12 +18,18 @@ State dict utilities: utility methods for converting state dicts easily
 import enum
 import json
 
-from .import_utils import is_torch_available
+from .import_utils import is_deepspeed_available, is_deepspeed_version, is_torch_available
 from .logging import get_logger
 
 
 if is_torch_available():
     import torch
+
+if is_deepspeed_available() and is_deepspeed_version(">", "0.16"):
+    from deepspeed.io import FastFileWriter, FastFileWriterConfig
+    from deepspeed.ops.op_builder import AsyncIOBuilder, GDSBuilder
+
+    from .deep_nvme_utils import save as _nvme_save
 
 
 logger = get_logger(__name__)
@@ -364,3 +370,53 @@ def _load_sft_state_dict_metadata(model_file: str):
         return json.loads(raw) if raw else None
     else:
         return None
+
+
+# Utilities below are taken from
+# https://github.com/deepspeedai/DeepSpeedExamples/blob/28a984e77b8d096dadc6389b6d1440b823587e28/deepnvme/model_checkpoint/torch_save_utils.py#L16
+def _load_io_ops(args):
+    if AsyncIOBuilder().is_compatible():
+        AsyncIOBuilder().load(verbose=False)
+    if args.gpu and GDSBuilder().is_compatible():
+        GDSBuilder().load(verbose=False)
+
+
+def _get_aio_handle():
+    AIO_QUEUE_DEPTH = 8
+    AIO_BLOCK_SIZE = 8 * (1024**2)
+    AIO_INTRA_OP_PARALLEL = 1
+    AIO_SINGLE_SUBMIT = False
+
+    h = (
+        AsyncIOBuilder()
+        .load(verbose=False)
+        .aio_handle(
+            block_size=AIO_BLOCK_SIZE,
+            queue_depth=AIO_QUEUE_DEPTH,
+            single_submit=AIO_SINGLE_SUBMIT,
+            overlap_events=AIO_SINGLE_SUBMIT,
+            intra_op_parallelism=AIO_INTRA_OP_PARALLEL,
+        )
+    )
+    return h
+
+
+def _get_aio_components():
+    PINNED_BUFFER_MB = 64
+    h = _get_aio_handle()
+    pinned_memory = torch.zeros(PINNED_BUFFER_MB * (1024**2), dtype=torch.uint8, device="cpu").pin_memory()
+    return h, pinned_memory
+
+
+def _fast_aio_save(buffer, file, single_io_buffer=False):
+    h, pinned_memory = _get_aio_components()
+    fast_writer_config = FastFileWriterConfig(
+        dnvme_handle=h,
+        pinned_tensor=pinned_memory,
+        double_buffer=not single_io_buffer,
+        num_parallel_writers=1,
+        writer_rank=0,
+    )
+
+    ds_fast_writer = FastFileWriter(file_path=file, config=fast_writer_config)
+    _nvme_save(f=ds_fast_writer, obj=buffer, _use_new_zipfile_serialization=False)
