@@ -82,9 +82,13 @@ class ModuleGroup:
 
         if self.offload_to_disk_path:
             all_tensors = []
+            param_names = []
             for module in self.modules:
                 all_tensors.extend(list(module.parameters()))
                 all_tensors.extend(list(module.buffers()))
+
+                param_names.extend([param_name for param_name, _ in module.named_parameters()])
+
             all_tensors.extend(self.parameters)
             all_tensors.extend(self.buffers)
             all_tensors = list(dict.fromkeys(all_tensors))  # Remove duplicates
@@ -92,7 +96,7 @@ class ModuleGroup:
             self.tensor_to_key = {tensor: f"tensor_{i}" for i, tensor in enumerate(all_tensors)}
             self.key_to_tensor = {v: k for k, v in self.tensor_to_key.items()}
 
-            group_id_key = "_".join(sorted([param_name for param_name, _ in module.named_parameters()]))
+            group_id_key = "_".join(sorted(param_names))
             self._disk_offload_group_id = hashlib.md5(group_id_key.encode()).hexdigest()[:8]
 
             self.cpu_param_dict = {}
