@@ -51,26 +51,21 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import ChromaTransformer2DModel, ChromaImg2ImgPipeline
-        >>> from transformers import AutoModel, Autotokenizer
 
+        >>> model_id = "lodestones/Chroma"
         >>> ckpt_path = "https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors"
-        >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
-        >>> text_encoder = AutoModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2")
-        >>> tokenizer = AutoTokenizer.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="tokenizer_2")
         >>> pipe = ChromaImg2ImgPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-schnell",
+        ...     model_id,
         ...     transformer=transformer,
-        ...     text_encoder=text_encoder,
-        ...     tokenizer=tokenizer,
         ...     torch_dtype=torch.bfloat16,
         ... )
         >>> pipe.enable_model_cpu_offload()
-        >>> image = load_image(
+        >>> init_image = load_image(
         ...     "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
         ... )
         >>> prompt = "a scenic fastasy landscape with a river and mountains in the background, vibrant colors, detailed, high resolution"
         >>> negative_prompt = "low quality, ugly, unfinished, out of focus, deformed, disfigure, blurry, smudged, restricted palette, flat colors"
-        >>> image = pipe(prompt, image=image, negative_prompt=negative_prompt).images[0]
+        >>> image = pipe(prompt, image=init_image, negative_prompt=negative_prompt).images[0]
         >>> image.save("chroma-img2img.png")
         ```
 """

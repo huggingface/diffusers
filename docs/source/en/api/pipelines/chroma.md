@@ -29,7 +29,7 @@ Chroma can use all the same optimizations as Flux.
 
 ## Inference
 
-The Diffusers version of Chroma is based on the `unlocked-v37`  version of the original model, which is available in the [Chroma repository](https://huggingface.co/lodestones/Chroma).
+The Diffusers version of Chroma is based on the [`unlocked-v37`](https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors) version of the original model, which is available in the [Chroma repository](https://huggingface.co/lodestones/Chroma).
 
 ```python
 import torch
