@@ -913,16 +913,44 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(
-            prompt=prompt,
-            prompt_2=prompt_2,
-            prompt_embeds=prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            max_sequence_length=max_sequence_length,
-            lora_scale=lora_scale,
-        )
+
+        prompt_embeds_list = []
+        text_ids_list = []
+        if isinstance(prompt, list):
+            for pmt in prompt:
+                (
+                    prompt_embeds,
+                    pooled_prompt_embeds,
+                    text_ids,
+                ) = self.encode_prompt(
+                    prompt=pmt,
+                    prompt_2=prompt_2,
+                    #prompt_embeds=prompt_embeds,
+                    #pooled_prompt_embeds=pooled_prompt_embeds,
+                    device=device,
+                    num_images_per_prompt=num_images_per_prompt,
+                    max_sequence_length=max_sequence_length,
+                    lora_scale=lora_scale,
+                )
+                prompt_embeds_list.append(prompt_embeds)
+                text_ids_list.append(text_ids)
+            prompt_embeds = torch.cat(prompt_embeds_list, dim=1)
+            text_ids = torch.cat(text_ids_list, dim=0)
+        else:
+            (
+                prompt_embeds,
+                pooled_prompt_embeds,
+                text_ids,
+            ) = self.encode_prompt(
+                prompt=prompt,
+                prompt_2=prompt_2,
+                prompt_embeds=prompt_embeds,
+                pooled_prompt_embeds=pooled_prompt_embeds,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                lora_scale=lora_scale,
+            )
 
         # 4. Preprocess mask and image
         if padding_mask_crop is not None:
