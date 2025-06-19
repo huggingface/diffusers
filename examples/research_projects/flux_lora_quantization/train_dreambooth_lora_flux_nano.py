@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+# coding=utf-8
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+
 import copy
 import logging
 import math
@@ -8,7 +23,7 @@ import numpy as np
 import pandas as pd
 import torch
 import transformers
-from accelerate import Accelerator, DistributedType
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from datasets import load_dataset
@@ -170,6 +185,12 @@ def main(args):
         f"trainable params: {transformer.num_parameters(only_trainable=True)} || all params: {transformer.num_parameters()}"
     )
 
+    # Make sure the trainable params are in float32.
+    if args.mixed_precision == "fp16":
+        models = [transformer]
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(models, dtype=torch.float32)
+
     # Setup optimizer
     import bitsandbytes as bnb
 
@@ -213,23 +234,9 @@ def main(args):
         transformer, optimizer, train_dataloader, lr_scheduler
     )
 
-    # Register save/load hooks
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
         return model._orig_mod if is_compiled_module(model) else model
-
-    def save_model_hook(models, weights, output_dir):
-        if accelerator.is_main_process:
-            for model in models:
-                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
-                    lora_layers = get_peft_model_state_dict(unwrap_model(model))
-                    FluxPipeline.save_lora_weights(
-                        output_dir, transformer_lora_layers=lora_layers, text_encoder_lora_layers=None
-                    )
-                    weights.pop() if weights else None
-
-    accelerator.register_save_state_pre_hook(save_model_hook)
-    cast_training_params([transformer], dtype=torch.float32) if args.mixed_precision == "fp16" else None
 
     # Initialize tracking
     accelerator.init_trackers(
@@ -269,7 +276,13 @@ def main(args):
                 noise = torch.randn_like(model_input)
                 bsz = model_input.shape[0]
 
-                u = compute_density_for_timestep_sampling("none", bsz, 0.0, 1.0, 1.29)
+                u = compute_density_for_timestep_sampling(
+                    weighting_scheme=args.weighting_scheme,
+                    batch_size=bsz,
+                    logit_mean=args.logit_mean,
+                    logit_std=args.logit_std,
+                    mode_scale=args.mode_scale,
+                )
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
@@ -311,7 +324,7 @@ def main(args):
                 )
 
                 # Compute loss
-                weighting = compute_loss_weighting_for_sd3("none", sigmas)
+                weighting = compute_loss_weighting_for_sd3(args.weighting_scheme, sigmas)
                 target = noise - model_input
                 loss = torch.mean(
                     (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
@@ -329,13 +342,6 @@ def main(args):
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-
-                # Checkpointing
-                if global_step % args.checkpointing_steps == 0 and (
-                    accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED
-                ):
-                    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                    accelerator.save_state(save_path)
 
             # Logging
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -365,10 +371,10 @@ if __name__ == "__main__":
 
     class Args:
         pretrained_model_name_or_path = "black-forest-labs/FLUX.1-dev"
-        data_df_path = "embeddings_alphonse_mucha.parquet"
+        data_df_path = "embeddings_alphonse_mucha.parquet"  # first, run compute_embeddings.py with a dataset like https://huggingface.co/datasets/derekl35/alphonse-mucha-style
         output_dir = "alphonse_mucha_lora_flux_nf4"
         mixed_precision = "fp16"
-        weighting_scheme = "none"
+        weighting_scheme = "none"  # "sigma_sqrt", "logit_normal", "mode", "cosmap", "none"
         width, height = 512, 768
         train_batch_size = 1
         learning_rate = 1e-4
@@ -380,5 +386,8 @@ if __name__ == "__main__":
         max_train_steps = 700
         seed = 0
         checkpointing_steps = 100
+        logit_mean = 0.0
+        logit_std = 1.0
+        mode_scale = 1.29
 
     main(Args())
