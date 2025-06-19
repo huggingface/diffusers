@@ -92,8 +92,8 @@ class ModuleGroup:
             self.tensor_to_key = {tensor: f"tensor_{i}" for i, tensor in enumerate(all_tensors)}
             self.key_to_tensor = {v: k for k, v in self.tensor_to_key.items()}
 
-            keys_str = "_".join(sorted(self.key_to_tensor.keys()))
-            self._disk_offload_group_id = hashlib.md5(keys_str.encode()).hexdigest()[:8]
+            group_id_key = "_".join(sorted([param_name for param_name, _ in module.named_parameters()]))
+            self._disk_offload_group_id = hashlib.md5(group_id_key.encode()).hexdigest()[:8]
 
             self.cpu_param_dict = {}
         else:
