@@ -304,6 +304,7 @@ class ModularPipelineBlocks(ConfigMixin):
         }
 
         return block_cls(**block_kwargs)
+    
     def init_pipeline(self, modular_repo: Optional[Union[str, os.PathLike]] = None, component_manager: Optional[ComponentsManager] = None, collection: Optional[str] = None):
         """
         create a ModularLoader, optionally accept modular_repo to load from hub.
@@ -2137,6 +2138,10 @@ class ModularPipeline:
         self.blocks = blocks
         self.loader = loader
 
+    def __repr__(self):
+        blocks_class = self.blocks.__class__.__name__
+        loader_class = self.loader.__class__.__name__
+        return f"ModularPipeline(blocks={blocks_class}, loader={loader_class})"
 
     @property
     def default_call_parameters(self) -> Dict[str, Any]:
