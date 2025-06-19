@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipeline"] = [
         "ModularPipelineBlocks",
+        "ModularPipeline",
         "PipelineBlock",
         "AutoPipelineBlocks",
         "SequentialPipelineBlocks",
@@ -54,6 +55,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LoopSequentialPipelineBlocks,
             ModularLoader,
             ModularPipelineBlocks,
+            ModularPipeline,
             PipelineBlock,
             PipelineState,
             SequentialPipelineBlocks,
