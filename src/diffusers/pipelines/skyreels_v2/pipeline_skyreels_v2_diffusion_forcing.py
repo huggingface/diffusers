@@ -358,7 +358,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-        base_num_frames: Optional[int] = None,
+        base_latent_num_frames: Optional[int] = None,
         video_latents: Optional[torch.Tensor] = None,
         causal_block_size: Optional[int] = None,
         overlap_history_latent_frames: Optional[int] = None,
@@ -388,12 +388,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             prefix_video_latents_length = prefix_video_latents.shape[2]
 
             finished_frame_num = (
-                long_video_iter * (base_num_frames - overlap_history_latent_frames) + overlap_history_latent_frames
+                long_video_iter * (base_latent_num_frames - overlap_history_latent_frames) + overlap_history_latent_frames
             )
             left_frame_num = num_latent_frames - finished_frame_num
-            num_latent_frames = min(left_frame_num + overlap_history_latent_frames, base_num_frames)
-        elif base_num_frames is not None:  # long video generation at the first iteration
-            num_latent_frames = base_num_frames
+            num_latent_frames = min(left_frame_num + overlap_history_latent_frames, base_latent_num_frames)
+        elif base_latent_num_frames is not None:  # long video generation at the first iteration
+            num_latent_frames = base_latent_num_frames
         else:  # short video generation
             num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
 
@@ -416,9 +416,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
 
     def generate_timestep_matrix(
         self,
-        num_frames: int,
+        num_latent_frames: int,
         step_template: torch.Tensor,
-        base_num_frames: int,
+        base_num_latent_frames: int,
         ar_step: int = 5,
         num_pre_ready: int = 0,
         causal_block_size: int = 1,
@@ -427,8 +427,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         step_matrix, step_index = [], []
         update_mask, valid_interval = [], []
         num_iterations = len(step_template) + 1
-        num_blocks = num_frames // causal_block_size
-        base_num_blocks = base_num_frames // causal_block_size
+        num_blocks = num_latent_frames // causal_block_size
+        base_num_blocks = base_num_latent_frames // causal_block_size
         if base_num_blocks < num_blocks:
             min_ar_step = len(step_template) / base_num_blocks
             if ar_step < min_ar_step:
@@ -463,7 +463,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             step_matrix.append(step_template[new_row])
             pre_row = new_row
 
-        # for long video we split into several sequences, base_num_frames is set to the model max length (for training)
+        # for long video we split into several sequences, base_num_latent_frames is set to the model max length (for training)
         terminal_flag = base_num_blocks
         if shrink_interval_with_mask:
             idx_sequence = torch.arange(num_blocks, dtype=torch.int64)
@@ -715,19 +715,19 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             # Long video generation setup
             overlap_history_latent_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
             num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-            base_num_frames = (
+            base_latent_num_frames = (
                 (base_num_frames - 1) // self.vae_scale_factor_temporal + 1
                 if base_num_frames is not None
                 else num_latent_frames
             )
             n_iter = (
-                1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_latent_frames) + 1
+                1 + (num_latent_frames - base_latent_num_frames - 1) // (base_latent_num_frames - overlap_history_latent_frames) + 1
             )
 
         else:
             # Short video generation setup
             n_iter = 1
-            base_num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+            base_latent_num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
 
         # Loop through iterations (multiple iterations only for long videos)
         for iter_idx in range(n_iter):
@@ -748,7 +748,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                     generator,
                     latents if iter_idx == 0 else None,
                     video_latents=accumulated_latents,  # Pass latents directly instead of decoded video
-                    base_num_frames=base_num_frames if is_long_video else None,
+                    base_latent_num_frames=base_latent_num_frames if is_long_video else None,
                     causal_block_size=causal_block_size,
                     overlap_history_latent_frames=overlap_history_latent_frames if is_long_video else None,
                     long_video_iter=iter_idx if is_long_video else None,
@@ -769,7 +769,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                 current_num_latent_frames,
                 timesteps,
-                current_num_latent_frames if is_long_video else base_num_frames,
+                current_num_latent_frames if is_long_video else base_latent_num_frames,
                 ar_step,
                 prefix_video_latents_length,
                 causal_block_size,
