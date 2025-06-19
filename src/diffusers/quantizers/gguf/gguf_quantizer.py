@@ -146,6 +146,10 @@ class GGUFQuantizer(DiffusersQuantizer):
     def is_trainable(self) -> bool:
         return False
 
+    @property
+    def is_compileable(self) -> bool:
+        return True
+
     def _dequantize(self, model):
         is_model_on_cpu = model.device.type == "cpu"
         if is_model_on_cpu:
