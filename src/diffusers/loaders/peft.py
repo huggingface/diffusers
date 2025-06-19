@@ -35,10 +35,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from ..utils.peft_utils import (
-    _create_lora_config,
-    _maybe_warn_for_unhandled_keys,
-)
+from ..utils.peft_utils import _create_lora_config, _maybe_warn_for_unhandled_keys
 from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
 from .unet_loader_utils import _maybe_expand_lora_scales
 
