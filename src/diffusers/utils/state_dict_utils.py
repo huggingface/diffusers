@@ -420,3 +420,4 @@ def _fast_aio_save(buffer, file, single_io_buffer=False):
 
     ds_fast_writer = FastFileWriter(file_path=file, config=fast_writer_config)
     _nvme_save(f=ds_fast_writer, obj=buffer, _use_new_zipfile_serialization=False)
+    ds_fast_writer.close()
