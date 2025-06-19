@@ -426,6 +426,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[tuple]]:
         """
         Generate timestep matrix for (a)synchronous inference.
+        To examine a visualized demonstration, please refer to the documentation page: [SkyReels-V2 Documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/skyreels_v2)
 
         Args:
             num_latent_frames: Number of latent frames to process
@@ -435,63 +436,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             num_pre_ready: Number of frames that are ready before the first step
             causal_block_size: Frames per block
             shrink_interval_with_mask: If True, the valid interval will be shrunk based on the update mask
-
-        An example:
-        base_num_frames=97, num_frames=97, num_inference_steps=30, ar_step=5, causal_block_size=5
-
-        vae_scale_factor_temporal -> 4
-        num_latent_frames: (97-1)//vae_scale_factor_temporal+1 = 25 frames -> 5 blocks of 5 frames each
-
-        base_num_latent_frames = (97-1)//vae_scale_factor_temporal+1 = 25 → blocks = 25//5 = 5 blocks
-        This 5 blocks means the maximum context length of the model is 25 frames in the latent space.
-
-        Asynchronous Processing Timeline within one chunk:
-        ┌─────────────────────────────────────────────────────────────────┐
-        │ Steps:    1    6   11   16   21   26   31   36   41   46   50   │
-        │ Block 1: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]                       │
-        │ Block 2:      [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]                  │
-        │ Block 3:           [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]             │
-        │ Block 4:                [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]        │
-        │ Block 5:                     [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]   │
-        └─────────────────────────────────────────────────────────────────┘
-
-        For Long Videos (num_frames > base_num_frames):
-        base_num_frames acts as the "sliding window size" for chunked processing.
-
-        Example: 300-frame video with base_num_frames=97, overlap_history=17
-        ┌────── Chunk 1 (frames 1-97) ───────┐
-        │ Processing window: 97 frames       │ → 5 blocks, async processing
-        │ Generates: frames 1-97             │
-        └────────────────────────────────────┘
-                    ┌────── Chunk 2 (frames 81-177) ───────┐
-                    │ Processing window: 97 frames         │ → 5 blocks, async processing
-                    │ Overlap: 17 frames (81-97) from prev │
-                    │ Generates: frames 98-177             │
-                    └──────────────────────────────────────┘
-                                ┌────── Chunk 3 (frames 161-260) ───────┐
-                                │ Processing window: 97 frames          │ → 5 blocks, async processing
-                                │ Overlap: 17 frames (161-177) from prev│
-                                │ Generates: frames 178-260             │
-                                └───────────────────────────────────────┘
-
-        Each chunk independently runs the asynchronous processing with its own 5 blocks.
-        base_num_frames controls:
-        1. Memory usage (larger window = more VRAM)
-        2. Model context length (must match training constraints)
-        3. Number of blocks per chunk (base_num_latent_frames // causal_block_size)
-
-        Each block takes 30 steps to complete denoising.
-        Block N starts at step: 1 + (N-1) x ar_step
-        Total steps: 30 + (5-1) x 5 = 50 steps
-
-
-        Synchronous mode (ar_step=0) would process all blocks/frames simultaneously:
-        ┌──────────────────────────────────────────────┐
-        │ Steps:       1            ...            30  │
-        │ All blocks: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■] │
-        └──────────────────────────────────────────────┘
-        Total steps: 30 steps
-
 
         Returns:
             Tuple of (step_matrix, step_index, step_update_mask, valid_interval)
