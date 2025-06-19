@@ -310,7 +310,7 @@ def _create_lora_config(
             rank_pattern_dict, network_alpha_dict=network_alphas, peft_state_dict=state_dict, is_unet=is_unet
         )
 
-    _maybe_raise_error_for_ambiguity(lora_config_kwargs)
+    _maybe_raise_error_for_ambiguous_keys(lora_config_kwargs)
 
     # Version checks for DoRA and lora_bias
     if "use_dora" in lora_config_kwargs and lora_config_kwargs["use_dora"]:
@@ -356,7 +356,7 @@ def _maybe_warn_if_no_keys_found(state_dict, prefix, model_class_name):
         )
 
 
-def _maybe_raise_error_for_ambiguity(config):
+def _maybe_raise_error_for_ambiguous_keys(config):
     rank_pattern = config["rank_pattern"].copy()
     target_modules = config["target_modules"]
 
