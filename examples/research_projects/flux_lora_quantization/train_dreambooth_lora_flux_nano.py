@@ -385,7 +385,6 @@ if __name__ == "__main__":
         rank = 4
         max_train_steps = 700
         seed = 0
-        checkpointing_steps = 100
         logit_mean = 0.0
         logit_std = 1.0
         mode_scale = 1.29
