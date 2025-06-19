@@ -548,6 +548,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         use_stream: bool = False,
         record_stream: bool = False,
         low_cpu_mem_usage=False,
+        offload_to_disk_path: Optional[str] = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -588,15 +589,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
         apply_group_offloading(
-            self,
-            onload_device,
-            offload_device,
-            offload_type,
-            num_blocks_per_group,
-            non_blocking,
-            use_stream,
-            record_stream,
+            module=self,
+            onload_device=onload_device,
+            offload_device=offload_device,
+            offload_type=offload_type,
+            num_blocks_per_group=num_blocks_per_group,
+            non_blocking=non_blocking,
+            use_stream=use_stream,
+            record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            offload_to_disk_path=offload_to_disk_path,
         )
 
     def save_pretrained(
