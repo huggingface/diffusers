@@ -1720,7 +1720,7 @@ class ModelTesterMixin:
                 **additional_kwargs,
             )
             has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
-            assert has_safetensors
+            assert has_safetensors, "No safetensors found in the directory."
             _ = model(**inputs_dict)[0]
 
     def test_auto_model(self, expected_max_diff=5e-5):

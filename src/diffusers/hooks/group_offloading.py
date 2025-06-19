@@ -464,8 +464,9 @@ def apply_group_offloading(
         offload_type (`str`, defaults to "block_level"):
             The type of offloading to be applied. Can be one of "block_level" or "leaf_level". Default is
             "block_level".
-        offload_to_disk_path (`str`, *optional*):
-            The path to the directory where offloaded parameters will be stored.
+        offload_to_disk_path (`str`, *optional*, defaults to `None`):
+            The path to the directory where parameters will be offloaded. Setting this option can be useful in limited
+            RAM environment settings where a reasonable speed-memory trade-off is desired.
         num_blocks_per_group (`int`, *optional*):
             The number of blocks per group when using offload_type="block_level". This is required when using
             offload_type="block_level".
@@ -566,7 +567,9 @@ def _apply_group_offloading_block_level(
             The module to which group offloading is applied.
         offload_device (`torch.device`):
             The device to which the group of modules are offloaded. This should typically be the CPU.
-        offload_to_disk_path: TODO
+        offload_to_disk_path (`str`, *optional*, defaults to `None`):
+            The path to the directory where parameters will be offloaded. Setting this option can be useful in limited
+            RAM environment settings where a reasonable speed-memory trade-off is desired.
         onload_device (`torch.device`):
             The device to which the group of modules are onloaded.
         non_blocking (`bool`):
@@ -678,7 +681,9 @@ def _apply_group_offloading_leaf_level(
             The device to which the group of modules are offloaded. This should typically be the CPU.
         onload_device (`torch.device`):
             The device to which the group of modules are onloaded.
-        offload_to_disk_path: TODO
+        offload_to_disk_path (`str`, *optional*, defaults to `None`):
+            The path to the directory where parameters will be offloaded. Setting this option can be useful in limited
+            RAM environment settings where a reasonable speed-memory trade-off is desired.
         non_blocking (`bool`):
             If True, offloading and onloading is done asynchronously. This can be useful for overlapping computation
             and data transfer.
