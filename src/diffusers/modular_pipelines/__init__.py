@@ -23,7 +23,8 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_pt_objects))
 else:
     _import_structure["modular_pipeline"] = [
-        "ModularPipelineMixin",
+        "ModularPipelineBlocks",
+        "ModularPipeline",
         "PipelineBlock",
         "AutoPipelineBlocks",
         "SequentialPipelineBlocks",
@@ -53,7 +54,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             BlockState,
             LoopSequentialPipelineBlocks,
             ModularLoader,
-            ModularPipelineMixin,
+            ModularPipelineBlocks,
+            ModularPipeline,
             PipelineBlock,
             PipelineState,
             SequentialPipelineBlocks,

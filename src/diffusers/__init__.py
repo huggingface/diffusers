@@ -264,6 +264,8 @@ else:
     _import_structure["modular_pipelines"].extend(
         [
             "ModularLoader",
+            "ModularPipeline",
+            "ModularPipelineBlocks",
             "ComponentSpec",
             "ComponentsManager",
         ]
@@ -894,6 +896,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .modular_pipelines import (
             ModularLoader,
+            ModularPipeline,
+            ModularPipelineBlocks,
             ComponentSpec,
             ComponentsManager,
         )
