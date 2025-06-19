@@ -194,6 +194,7 @@ def main(args):
             pixel_values = batch["pixel_values"].to(accelerator.device, dtype=torch.float16)
             latents_cache.append(vae.encode(pixel_values).latent_dist)
 
+    vae.cpu()
     del vae
     free_memory()
 
