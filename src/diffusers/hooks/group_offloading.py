@@ -81,21 +81,17 @@ class ModuleGroup:
 
         if self.offload_to_disk_path:
             self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{id(self)}.safetensors")
+
             all_tensors = []
-            param_names = []
             for module in self.modules:
                 all_tensors.extend(list(module.parameters()))
                 all_tensors.extend(list(module.buffers()))
-
-                param_names.extend([param_name for param_name, _ in module.named_parameters()])
-
             all_tensors.extend(self.parameters)
             all_tensors.extend(self.buffers)
             all_tensors = list(dict.fromkeys(all_tensors))  # Remove duplicates
 
             self.tensor_to_key = {tensor: f"tensor_{i}" for i, tensor in enumerate(all_tensors)}
             self.key_to_tensor = {v: k for k, v in self.tensor_to_key.items()}
-
             self.cpu_param_dict = {}
         else:
             self.cpu_param_dict = self._init_cpu_param_dict()
@@ -199,6 +195,30 @@ class ModuleGroup:
         context = nullcontext() if self.stream is None else torch_accelerator_module.stream(self.stream)
         current_stream = torch_accelerator_module.current_stream() if self.record_stream else None
 
+        if self.offload_to_disk_path:
+            if self.stream is not None:
+                # Wait for previous Host->Device transfer to complete
+                self.stream.synchronize()
+
+            with context:
+                if self.stream is not None:
+                    # Load to CPU, pin, and async copy to device for overlapping transfer and compute
+                    loaded_cpu_tensors = safetensors.torch.load_file(self.safetensors_file_path, device="cpu")
+                    for key, tensor_obj in self.key_to_tensor.items():
+                        pinned_tensor = loaded_cpu_tensors[key].pin_memory()
+                        tensor_obj.data = pinned_tensor.to(self.onload_device, non_blocking=self.non_blocking)
+                        if self.record_stream:
+                            tensor_obj.data.record_stream(current_stream)
+                else:
+                    # Load directly to the target device (synchronous)
+                    onload_device = (
+                        self.onload_device.type if isinstance(self.onload_device, torch.device) else self.onload_device
+                    )
+                    loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=onload_device)
+                    for key, tensor_obj in self.key_to_tensor.items():
+                        tensor_obj.data = loaded_tensors[key]
+            return
+
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
             self.stream.synchronize()
@@ -220,6 +240,28 @@ class ModuleGroup:
             os.makedirs(os.path.dirname(self.safetensors_file_path), exist_ok=True)
             tensors_to_save = {key: tensor.data.to(self.offload_device) for tensor, key in self.tensor_to_key.items()}
             safetensors.torch.save_file(tensors_to_save, self.safetensors_file_path)
+    def offload_(self):
+        r"""Offloads the group of modules to the offload_device."""
+        if self.offload_to_disk_path:
+            # TODO: we can potentially optimize this code path by checking if the _all_ the desired
+            # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
+            # overhead. Currently, we just check if the given `safetensors_file_path` exists and if not
+            # we perform a write.
+            # Check if the file has been saved in this session or if it already exists on disk.
+            if not self._is_offloaded_to_disk and not os.path.exists(self.safetensors_file_path):
+                os.makedirs(os.path.dirname(self.safetensors_file_path), exist_ok=True)
+                tensors_to_save = {
+                    key: tensor.data.to(self.offload_device) for tensor, key in self.tensor_to_key.items()
+                }
+                safetensors.torch.save_file(tensors_to_save, self.safetensors_file_path)
+
+            # The group is now considered offloaded to disk for the rest of the session.
+            self._is_offloaded_to_disk = True
+
+            # We do this to free up the RAM which is still holding the up tensor data.
+            for tensor_obj in self.tensor_to_key.keys():
+                tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
+            return
 
         # The group is now considered offloaded to disk for the rest of the session.
         self._is_offloaded_to_disk = True
