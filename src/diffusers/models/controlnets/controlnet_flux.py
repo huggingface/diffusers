@@ -292,6 +292,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         else:
             guidance = None
         print(f'pooled_projections shape = {pooled_projections.shape}')
+        print(f'timestep = {timestep}')
         temb = (
             self.time_text_embed(timestep, pooled_projections)
             if guidance is None
