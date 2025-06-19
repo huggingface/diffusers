@@ -52,7 +52,7 @@ The following SkyReels-V2 models are supported in Diffusers:
         base_num_latent_frames = (97-1)//vae_scale_factor_temporal+1 = 25 → blocks = 25//5 = 5 blocks
         This 5 blocks means the maximum context length of the model is 25 frames in the latent space.
 
-        Asynchronous Processing Timeline within one chunk:
+        Asynchronous Processing Timeline:
         ┌─────────────────────────────────────────────────────────────────┐
         │ Steps:    1    6   11   16   21   26   31   36   41   46   50   │
         │ Block 1: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]                       │
@@ -63,29 +63,29 @@ The following SkyReels-V2 models are supported in Diffusers:
         └─────────────────────────────────────────────────────────────────┘
 
         For Long Videos (num_frames > base_num_frames):
-        base_num_frames acts as the "sliding window size" for chunked processing.
+        base_num_frames acts as the "sliding window size" for processing long videos.
 
-        Example: 300-frame video with base_num_frames=97, overlap_history=17
-        ┌────── Chunk 1 (frames 1-97) ───────┐
-        │ Processing window: 97 frames       │ → 5 blocks, async processing
-        │ Generates: frames 1-97             │
-        └────────────────────────────────────┘
-                    ┌────── Chunk 2 (frames 81-177) ───────┐
-                    │ Processing window: 97 frames         │ → 5 blocks, async processing
-                    │ Overlap: 17 frames (81-97) from prev │
-                    │ Generates: frames 98-177             │
-                    └──────────────────────────────────────┘
-                                ┌────── Chunk 3 (frames 161-260) ───────┐
-                                │ Processing window: 97 frames          │ → 5 blocks, async processing
-                                │ Overlap: 17 frames (161-177) from prev│
-                                │ Generates: frames 178-260             │
-                                └───────────────────────────────────────┘
+        Example: 257-frame video with base_num_frames=97, overlap_history=17
+        ┌──── Iteration 1 (frames 1-97) ────┐
+        │ Processing window: 97 frames      │ → 5 blocks, async processing
+        │ Generates: frames 1-97            │
+        └───────────────────────────────────┘
+                    ┌────── Iteration 2 (frames 81-177) ──────┐
+                    │ Processing window: 97 frames            │
+                    │ Overlap: 17 frames (81-97) from prev    │ → 5 blocks, async processing
+                    │ Generates: frames 98-177                │
+                    └─────────────────────────────────────────┘
+                                ┌────── Iteration 3 (frames 161-257) ──────┐
+                                │ Processing window: 97 frames             │
+                                │ Overlap: 17 frames (161-177) from prev   │ → 5 blocks, async processing
+                                │ Generates: frames 178-257                │
+                                └──────────────────────────────────────────┘
 
-        Each chunk independently runs the asynchronous processing with its own 5 blocks.
+        Each iteration independently runs the asynchronous processing with its own 5 blocks.
         base_num_frames controls:
         1. Memory usage (larger window = more VRAM)
         2. Model context length (must match training constraints)
-        3. Number of blocks per chunk (base_num_latent_frames // causal_block_size)
+        3. Number of blocks per iteration (base_num_latent_frames // causal_block_size)
 
         Each block takes 30 steps to complete denoising.
         Block N starts at step: 1 + (N-1) x ar_step
