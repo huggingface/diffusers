@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
 import os
 from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -80,8 +81,6 @@ class ModuleGroup:
         self._is_offloaded_to_disk = False
 
         if self.offload_to_disk_path:
-            self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{id(self)}.safetensors")
-
             all_tensors = []
             for module in self.modules:
                 all_tensors.extend(list(module.parameters()))
@@ -92,12 +91,23 @@ class ModuleGroup:
 
             self.tensor_to_key = {tensor: f"tensor_{i}" for i, tensor in enumerate(all_tensors)}
             self.key_to_tensor = {v: k for k, v in self.tensor_to_key.items()}
+
+            keys_str = "_".join(sorted(self.key_to_tensor.keys()))
+            self._disk_offload_group_id = hashlib.md5(keys_str.encode()).hexdigest()[:8]
+
             self.cpu_param_dict = {}
         else:
             self.cpu_param_dict = self._init_cpu_param_dict()
 
         if self.stream is None and self.record_stream:
             raise ValueError("`record_stream` cannot be True when `stream` is None.")
+
+    @property
+    def _disk_offload_file_path(self):
+        if self.offload_to_disk_path:
+            return os.path.join(self.offload_to_disk_path, f"group_{self._disk_offload_group_id}.safetensors")
+
+        return None
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -159,7 +169,7 @@ class ModuleGroup:
 
     def _onload_from_disk(self, current_stream):
         if self.stream is not None:
-            loaded_cpu_tensors = safetensors.torch.load_file(self.safetensors_file_path, device="cpu")
+            loaded_cpu_tensors = safetensors.torch.load_file(self._disk_offload_file_path, device="cpu")
 
             for key, tensor_obj in self.key_to_tensor.items():
                 self.cpu_param_dict[tensor_obj] = loaded_cpu_tensors[key]
@@ -174,7 +184,7 @@ class ModuleGroup:
             onload_device = (
                 self.onload_device.type if isinstance(self.onload_device, torch.device) else self.onload_device
             )
-            loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=onload_device)
+            loaded_tensors = safetensors.torch.load_file(self._disk_offload_file_path, device=onload_device)
             for key, tensor_obj in self.key_to_tensor.items():
                 tensor_obj.data = loaded_tensors[key]
 
@@ -187,6 +197,11 @@ class ModuleGroup:
 
     @torch.compiler.disable()
     def onload_(self):
+        # Generate disk offload group ID if needed and not already set
+        if self.offload_to_disk_path and self._disk_offload_group_id is None:
+            keys_str = "_".join(sorted(self.key_to_tensor.keys()))
+            self._disk_offload_group_id = hashlib.md5(keys_str.encode()).hexdigest()[:8]
+
         torch_accelerator_module = (
             getattr(torch, torch.accelerator.current_accelerator().type)
             if hasattr(torch, "accelerator")
