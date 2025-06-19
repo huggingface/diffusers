@@ -227,10 +227,10 @@ class ModuleGroup:
         # overhead. Currently, we just check if the given `safetensors_file_path` exists and if not
         # we perform a write.
         # Check if the file has been saved in this session or if it already exists on disk.
-        if not self._is_offloaded_to_disk and not os.path.exists(self.safetensors_file_path):
-            os.makedirs(os.path.dirname(self.safetensors_file_path), exist_ok=True)
+        if not self._is_offloaded_to_disk and not os.path.exists(self._disk_offload_file_path):
+            os.makedirs(os.path.dirname(self._disk_offload_file_path), exist_ok=True)
             tensors_to_save = {key: tensor.data.to(self.offload_device) for tensor, key in self.tensor_to_key.items()}
-            safetensors.torch.save_file(tensors_to_save, self.safetensors_file_path)
+            safetensors.torch.save_file(tensors_to_save, self._disk_offload_file_path)
 
         # The group is now considered offloaded to disk for the rest of the session.
         self._is_offloaded_to_disk = True
