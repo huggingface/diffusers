@@ -1131,3 +1131,7 @@ def _maybe_raise_error_for_incorrect_transformers(config_dict):
                 break
     if has_transformers_component and not is_transformers_version(">", "4.47.1"):
         raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")
+
+
+def _maybe_warn_for_wrong_component_in_quant_config(pipe_init_dict, quant_config):
+    pass
