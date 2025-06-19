@@ -46,8 +46,6 @@ class SkyReelsV2AttnProcessor2_0:
                 "SkyReelsV2AttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
             )
 
-        self._flag_ar_attention = False
-
     def __call__(
         self,
         attn: Attention,
@@ -108,7 +106,7 @@ class SkyReelsV2AttnProcessor2_0:
             query,
             key,
             value,
-            attn_mask=attention_mask if self._flag_ar_attention else None,
+            attn_mask=attention_mask,
             dropout_p=0.0,
             is_causal=False,
         )
@@ -122,9 +120,6 @@ class SkyReelsV2AttnProcessor2_0:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
-
-    def set_ar_attention(self):
-        self._flag_ar_attention = True
 
 
 # Copied from diffusers.models.transformers.transformer_wan.WanImageEmbedding with WanImageEmbedding -> SkyReelsV2ImageEmbedding
@@ -325,7 +320,6 @@ class SkyReelsV2TransformerBlock(nn.Module):
         return hidden_states
 
 
-
 class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
     A Transformer model for video-like data used in the Wan-based SkyReels-V2 model.
@@ -396,7 +390,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         pos_embed_seq_len: Optional[int] = None,
         inject_sample_info: bool = False,
         num_frame_per_block: int = 1,
-        flag_causal_attention: bool = False,
     ) -> None:
         super().__init__()
 
@@ -476,7 +469,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
-        if self.config.flag_causal_attention:
+        causal_mask = None
+        if self.config.num_frame_per_block > 1:
             block_num = post_patch_num_frames // self.config.num_frame_per_block
             range_tensor = torch.arange(block_num, device=hidden_states.device).repeat_interleave(
                 self.config.num_frame_per_block
@@ -529,9 +523,8 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                     encoder_hidden_states,
                     timestep_proj,
                     rotary_emb,
-                    causal_mask if self.config.flag_causal_attention else None,
+                    causal_mask,
                 )
-
         else:
             for block in self.blocks:
                 hidden_states = block(
@@ -539,7 +532,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                     encoder_hidden_states,
                     timestep_proj,
                     rotary_emb,
-                    causal_mask if self.config.flag_causal_attention else None,
+                    causal_mask,
                 )
 
         if temb.dim() == 2:
@@ -574,7 +567,5 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         return Transformer2DModelOutput(sample=output)
 
-    def set_ar_attention(self, causal_block_size):
-        self.register_to_config(num_frame_per_block=causal_block_size, flag_causal_attention=True)
-        for block in self.blocks:
-            block.set_ar_attention()
+    def set_ar_attention(self, causal_block_size: int):
+        self.register_to_config(num_frame_per_block=causal_block_size)
