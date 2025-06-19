@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import hashlib
 import os
 from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -192,11 +191,6 @@ class ModuleGroup:
 
     @torch.compiler.disable()
     def onload_(self):
-        # Generate disk offload group ID if needed and not already set
-        if self.offload_to_disk_path and self._disk_offload_group_id is None:
-            keys_str = "_".join(sorted(self.key_to_tensor.keys()))
-            self._disk_offload_group_id = hashlib.md5(keys_str.encode()).hexdigest()[:8]
-
         torch_accelerator_module = (
             getattr(torch, torch.accelerator.current_accelerator().type)
             if hasattr(torch, "accelerator")
