@@ -1329,7 +1329,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
+                
+                print(f'latents.shape[0] = {latents.shape[0]}')
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
                 # predict the noise residual
