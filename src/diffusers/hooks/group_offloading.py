@@ -135,9 +135,7 @@ class ModuleGroup:
         finally:
             pinned_dict = None
 
-    def _transfer_tensor_to_device(self, tensor, source_tensor=None, current_stream=None):
-        if source_tensor is None:
-            source_tensor = tensor
+    def _transfer_tensor_to_device(self, tensor, source_tensor, current_stream=None):
         tensor.data = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
         if self.record_stream and current_stream is not None:
             tensor.data.record_stream(current_stream)
@@ -158,26 +156,6 @@ class ModuleGroup:
         for buffer in self.buffers:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
             self._transfer_tensor_to_device(buffer, source, current_stream)
-
-    @torch.compiler.disable()
-    def onload_(self):
-        torch_accelerator_module = (
-            getattr(torch, torch.accelerator.current_accelerator().type)
-            if hasattr(torch, "accelerator")
-            else torch.cuda
-        )
-        context = nullcontext() if self.stream is None else torch_accelerator_module.stream(self.stream)
-        current_stream = torch_accelerator_module.current_stream() if self.record_stream else None
-
-        if self.stream is not None:
-            # Wait for previous Host->Device transfer to complete
-            self.stream.synchronize()
-
-        with context:
-            if self.offload_to_disk_path:
-                self._onload_from_disk(current_stream)
-            else:
-                self._onload_from_memory(current_stream)
 
     def _onload_from_disk(self, current_stream):
         if self.stream is not None:
@@ -206,6 +184,26 @@ class ModuleGroup:
                 self._process_tensors_from_modules(pinned_memory, current_stream)
         else:
             self._process_tensors_from_modules(None, current_stream)
+
+    @torch.compiler.disable()
+    def onload_(self):
+        torch_accelerator_module = (
+            getattr(torch, torch.accelerator.current_accelerator().type)
+            if hasattr(torch, "accelerator")
+            else torch.cuda
+        )
+        context = nullcontext() if self.stream is None else torch_accelerator_module.stream(self.stream)
+        current_stream = torch_accelerator_module.current_stream() if self.record_stream else None
+
+        if self.stream is not None:
+            # Wait for previous Host->Device transfer to complete
+            self.stream.synchronize()
+
+        with context:
+            if self.offload_to_disk_path:
+                self._onload_from_disk(current_stream)
+            else:
+                self._onload_from_memory(current_stream)
 
     @torch.compiler.disable()
     def _offload_to_disk(self):
