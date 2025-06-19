@@ -274,9 +274,6 @@ class GroupOffloadingHook(ModelHook):
     def __init__(self, group: ModuleGroup, next_group: Optional[ModuleGroup] = None) -> None:
         self.group = group
         self.next_group = next_group
-        # map param/buffer name -> file path
-        self.param_to_path: Dict[str, str] = {}
-        self.buffer_to_path: Dict[str, str] = {}
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         if self.group.offload_leader == module:
@@ -423,12 +420,12 @@ def apply_group_offloading(
     onload_device: torch.device,
     offload_device: torch.device = torch.device("cpu"),
     offload_type: str = "block_level",
-    offload_to_disk_path: Optional[str] = None,
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,
     record_stream: bool = False,
     low_cpu_mem_usage: bool = False,
+    offload_to_disk_path: Optional[str] = None,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -553,12 +550,12 @@ def _apply_group_offloading_block_level(
     module: torch.nn.Module,
     num_blocks_per_group: int,
     offload_device: torch.device,
-    offload_to_disk_path: Optional[str],
     onload_device: torch.device,
     non_blocking: bool,
     stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
     record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
+    offload_to_disk_path: Optional[str] = None,
 ) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
@@ -662,11 +659,11 @@ def _apply_group_offloading_leaf_level(
     module: torch.nn.Module,
     offload_device: torch.device,
     onload_device: torch.device,
-    offload_to_disk_path: Optional[str],
     non_blocking: bool,
     stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
     record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
+    offload_to_disk_path: Optional[str] = None,
 ) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory

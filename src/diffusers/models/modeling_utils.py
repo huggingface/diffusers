@@ -543,12 +543,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         onload_device: torch.device,
         offload_device: torch.device = torch.device("cpu"),
         offload_type: str = "block_level",
-        offload_to_disk_path: Optional[str] = None,
         num_blocks_per_group: Optional[int] = None,
         non_blocking: bool = False,
         use_stream: bool = False,
         record_stream: bool = False,
         low_cpu_mem_usage=False,
+        offload_to_disk_path: Optional[str] = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
