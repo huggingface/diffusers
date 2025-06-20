@@ -1131,3 +1131,26 @@ def _maybe_raise_error_for_incorrect_transformers(config_dict):
                 break
     if has_transformers_component and not is_transformers_version(">", "4.47.1"):
         raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")
+
+
+def _maybe_warn_for_wrong_component_in_quant_config(pipe_init_dict, quant_config):
+    if quant_config is None:
+        return
+
+    actual_pipe_components = set(pipe_init_dict.keys())
+    missing = ""
+    quant_components = None
+    if getattr(quant_config, "components_to_quantize", None) is not None:
+        quant_components = set(quant_config.components_to_quantize)
+    elif getattr(quant_config, "quant_mapping", None) is not None and isinstance(quant_config.quant_mapping, dict):
+        quant_components = set(quant_config.quant_mapping.keys())
+
+    if quant_components and not quant_components.issubset(actual_pipe_components):
+        missing = quant_components - actual_pipe_components
+
+    if missing:
+        logger.warning(
+            f"The following components in the quantization config {missing} will be ignored "
+            "as they do not belong to the underlying pipeline. Acceptable values for the pipeline "
+            f"components are: {', '.join(actual_pipe_components)}."
+        )
