@@ -427,10 +427,10 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         timestep: Optional[torch.Tensor] = None,
-        base_num_frames: Optional[int] = None,
+        base_latent_num_frames: Optional[int] = None,
         overlap_history: Optional[int] = None,
         causal_block_size: Optional[int] = None,
-        overlap_history_frames: Optional[int] = None,
+        overlap_history_latent_frames: Optional[int] = None,
         long_video_iter: Optional[int] = None,
     ) -> torch.Tensor:
         if latents is not None:
@@ -473,9 +473,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
         prefix_video_latents_length = prefix_video_latents.shape[2]
 
-        finished_frame_num = long_video_iter * (base_num_frames - overlap_history_frames) + overlap_history_frames
+        finished_frame_num = long_video_iter * (base_latent_num_frames - overlap_history_latent_frames) + overlap_history_latent_frames
         left_frame_num = num_latent_frames - finished_frame_num
-        num_latent_frames = min(left_frame_num + overlap_history_frames, base_num_frames)
+        num_latent_frames = min(left_frame_num + overlap_history_latent_frames, base_latent_num_frames)
 
         shape = (
             batch_size,
@@ -884,14 +884,14 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
 
         # Long video generation
-        overlap_history_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
+        overlap_history_latent_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        base_num_frames = (
+        base_latent_num_frames = (
             (base_num_frames - 1) // self.vae_scale_factor_temporal + 1
             if base_num_frames is not None
             else num_latent_frames
         )
-        n_iter = 1 + (num_latent_frames - base_num_frames - 1) // (base_num_frames - overlap_history_frames) + 1
+        n_iter = 1 + (num_latent_frames - base_latent_num_frames - 1) // (base_latent_num_frames - overlap_history_latent_frames) + 1
         for long_video_iter in range(n_iter):
             print(f"long_video_iter:{long_video_iter}")
             # 5. Prepare latent variables
@@ -908,9 +908,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
                 generator,
                 latents if long_video_iter == 0 else None,
                 overlap_history=overlap_history,
-                base_num_frames=base_num_frames,
+                base_latent_num_frames=base_latent_num_frames,
                 causal_block_size=causal_block_size,
-                overlap_history_frames=overlap_history_frames,
+                overlap_history_latent_frames=overlap_history_latent_frames,
                 long_video_iter=long_video_iter,
             )
 
