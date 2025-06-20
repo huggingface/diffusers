@@ -88,6 +88,7 @@ from .pipeline_loading_utils import (
     _identify_model_variants,
     _maybe_raise_error_for_incorrect_transformers,
     _maybe_raise_warning_for_inpainting,
+    _maybe_warn_for_wrong_component_in_quant_config,
     _resolve_custom_pipeline_and_cls,
     _unwrap_model,
     _update_init_kwargs_with_connected_pipeline,
@@ -984,6 +985,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # 7. Load each module in the pipeline
         current_device_map = None
+        _maybe_warn_for_wrong_component_in_quant_config(init_dict, quantization_config)
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 7.1 device_map shenanigans
             if final_device_map is not None and len(final_device_map) > 0:
