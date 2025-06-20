@@ -425,31 +425,106 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         shrink_interval_with_mask: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[tuple]]:
         """
-        Generate timestep matrix for (a)synchronous inference.
-        To examine a visualized demonstration, please refer to the documentation page: [SkyReels-V2 Documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/skyreels_v2)
+        Generate the timestep scheduling matrix for diffusion forcing video generation.
+
+        This function implements the core diffusion forcing algorithm that creates a coordinated
+        denoising schedule across temporal frames. It supports both synchronous and asynchronous
+        generation modes:
+
+        **Synchronous Mode** (ar_step=0, causal_block_size=1):
+        - All frames are denoised simultaneously at each timestep
+        - Each frame follows the same denoising trajectory: [1000, 800, 600, ..., 0]
+        - Simpler but may have less temporal consistency for long videos
+
+        **Asynchronous Mode** (ar_step>0, causal_block_size>1):
+        - Frames are grouped into causal blocks and processed block/chunk-wise
+        - Each block is denoised in a staggered pattern creating a "denoising wave"
+        - Earlier blocks are more denoised, later blocks lag behind by ar_step timesteps
+        - Creates stronger temporal dependencies and better consistency
 
         Args:
-            num_latent_frames: Number of latent frames to process
-            step_template: Timestep schedule
-            base_num_latent_frames: Defines the processing window that contains all the asynchronous blocks
-            ar_step: Delay between starting each block (0 = synchronous)
-            num_pre_ready: Number of frames that are ready before the first step
-            causal_block_size: Frames per block
-            shrink_interval_with_mask: If True, the valid interval will be shrunk based on the update mask
+            num_latent_frames (int): Total number of latent frames to generate
+            step_template (torch.Tensor): Base timestep schedule (e.g., [1000, 800, 600, ..., 0])
+            base_num_latent_frames (int): Maximum frames the model can process in one forward pass
+            ar_step (int, optional): Autoregressive step size for temporal lag.
+                                   0 = synchronous, >0 = asynchronous. Defaults to 5.
+            num_pre_ready (int, optional): Number of frames already denoised (e.g., from prefix in a video2video task).
+                                         Defaults to 0.
+            causal_block_size (int, optional): Number of frames processed as a causal block.
+                                             Defaults to 1.
+            shrink_interval_with_mask (bool, optional): Whether to optimize processing intervals.
+                                                      Defaults to False.
 
         Returns:
-            Tuple of (step_matrix, step_index, step_update_mask, valid_interval)
+            tuple containing:
+                - step_matrix (torch.Tensor): Matrix of timesteps for each frame at each iteration
+                  Shape: [num_iterations, num_latent_frames]
+                - step_index (torch.Tensor): Index matrix for timestep lookup
+                  Shape: [num_iterations, num_latent_frames]
+                - step_update_mask (torch.Tensor): Boolean mask indicating which frames to update
+                  Shape: [num_iterations, num_latent_frames]
+                - valid_interval (list[tuple]): List of (start, end) intervals for each iteration
+
+        Raises:
+            ValueError: If ar_step is too small for the given configuration
+
+        **Example**
+        Given the parameters: (num_inference_steps=30, shift=8, num_frames=97, ar_step=5, causal_block_size=5)
+        - num_latent_frames = (97 frames - 1) // (4 temporal downsampling) + 1 = 25
+        - step_template = [999, 995, 991, 986, 980, 975, 969, 963, 956, 948,
+                           941, 932, 922, 912, 901, 888, 874, 859, 841, 822,
+                           799, 773, 743, 708, 666, 615, 551, 470, 363, 216]
+
+        The algorithm creates a 50x25 step_matrix where:
+        - Row 1:  [999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+        - Row 2:  [995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+        - Row 3:  [991, 991, 991, 991, 991, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+        - ...
+        - Row 17: [859, 859, 859, 859, 859, 922, 922, 922, 922, 922, 963, 963, 963, 963, 963, 991, 991, 991, 991, 991, 999, 999, 999, 999, 999]
+        - ...
+        - Row 25: [666, 666, 666, 666, 666, 822, 822, 822, 822, 822, 901, 901, 901, 901, 901, 948, 948, 948, 948, 948, 980, 980, 980, 980, 980]
+        - ...
+        - Row 35: [  0,   0,   0,   0,   0, 216, 216, 216, 216, 216, 666, 666, 666, 666, 666, 822, 822, 822, 822, 822, 901, 901, 901, 901, 901]
+        - ...
+        - Row 42: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 551, 551, 551, 551, 551, 773, 773, 773, 773, 773]
+        - ...
+        - Row 50: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 216, 216, 216, 216, 216]
+
+        **Detailed Row 5 Analysis:**
+        - step_matrix[4]:        [980, 980, 980, 980, 980, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+        - step_index[4]:         [5, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        - step_update_mask[4]:   [ True,  True,  True,  True,  True, False, False, False, False, False,
+                                    False, False, False, False, False, False, False, False, False, False,
+                                    False, False, False, False, False]
+        - valid_interval[4]:     (0, 25)
+
+        Key Pattern: Block i lags behind Block i-1 by exactly ar_step=5 timesteps, creating the
+        staggered "diffusion forcing" effect where later blocks condition on cleaner earlier blocks.
         """
-        step_matrix, step_index = [], []
-        update_mask, valid_interval = [], []
+        # Initialize lists to store the scheduling matrices and metadata
+        step_matrix, step_index = [], []  # Will store timestep values and indices for each iteration
+        update_mask, valid_interval = [], []  # Will store update masks and processing intervals
+
+        # Calculate total number of denoising iterations (add 1 for initial noise state)
         num_iterations = len(step_template) + 1
+
+        # Convert frame counts to block counts for causal processing
+        # Each block contains causal_block_size frames that are processed together
+        # With your parameters: 25 frames ÷ 5 = 5 blocks total
         num_blocks = num_latent_frames // causal_block_size
         base_num_blocks = base_num_latent_frames // causal_block_size
+
+        # Validate ar_step is sufficient for the given configuration
+        # In asynchronous mode, we need enough timesteps to create the staggered pattern
+        # With your parameters: 5 blocks need ~25 iterations to all start + 31 to complete = ~50 total
         if base_num_blocks < num_blocks:
             min_ar_step = len(step_template) / base_num_blocks
             if ar_step < min_ar_step:
                 raise ValueError(f"`ar_step` should be at least {math.ceil(min_ar_step)} in your setting")
 
+        # Extend step_template with boundary values for easier indexing
+        # 999: dummy value for counter starting from 1
+        # 0: final timestep (completely denoised)
         step_template = torch.cat(
             [
                 torch.tensor([999], dtype=torch.int64, device=step_template.device),
@@ -457,30 +532,53 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                 torch.tensor([0], dtype=torch.int64, device=step_template.device),
             ]
         )  # to handle the counter in row works starting from 1
+
+        # Initialize the previous row state (tracks denoising progress for each block)
+        # 0 means not started, num_iterations means fully denoised
         pre_row = torch.zeros(num_blocks, dtype=torch.long)
+
+        # Mark pre-ready frames (e.g., from prefix video) as already at final denoising state
         if num_pre_ready > 0:
             pre_row[: num_pre_ready // causal_block_size] = num_iterations
 
+        # Main loop: Generate denoising schedule until all frames are fully denoised
         while not torch.all(pre_row >= (num_iterations - 1)):
+            # Create new row representing the next denoising step
             new_row = torch.zeros(num_blocks, dtype=torch.long)
+
+            # Apply diffusion forcing logic for each block
             for i in range(num_blocks):
+                # First block OR previous block is fully denoised: advance this block
                 if i == 0 or pre_row[i - 1] >= (
                     num_iterations - 1
                 ):  # the first frame or the last frame is completely denoised
-                    new_row[i] = pre_row[i] + 1
+                    new_row[i] = pre_row[i] + 1  # Advance to next denoising step
                 else:
+                    # Asynchronous mode: lag behind previous block by ar_step timesteps
+                    # This creates the "diffusion forcing" staggered pattern
                     new_row[i] = new_row[i - 1] - ar_step
+
+            # Clamp values to valid range [0, num_iterations]
             new_row = new_row.clamp(0, num_iterations)
 
+            # Create update mask: True for blocks that need denoising update at this iteration
+            # Exclude blocks that haven't started (new_row != pre_row) or are finished (new_row != num_iterations)
+            # Final state example: [False, False, False, False, False, ..., True, True, True, True, True]
+            # where first 20 frames are done (False) and last 5 frames still need updates (True)
             update_mask.append(
                 (new_row != pre_row) & (new_row != num_iterations)
             )  # False: no need to update， True: need to update
-            step_index.append(new_row)
-            step_matrix.append(step_template[new_row])
-            pre_row = new_row
 
-        # for long video we split into several sequences, base_num_latent_frames is set to the model max length (for training)
+            # Store the iteration state
+            step_index.append(new_row)  # Index into step_template
+            step_matrix.append(step_template[new_row])  # Actual timestep values
+            pre_row = new_row  # Update for next iteration
+
+        # Determine processing intervals for long video generation
+        # For videos longer than model capacity, we process in sliding windows
         terminal_flag = base_num_blocks
+
+        # Optional optimization: shrink interval based on first update mask
         if shrink_interval_with_mask:
             idx_sequence = torch.arange(num_blocks, dtype=torch.int64)
             update_mask = update_mask[0]
@@ -488,19 +586,28 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             last_update_idx = update_mask_idx[-1].item()
             terminal_flag = last_update_idx + 1
 
+        # Generate valid processing intervals for each iteration
+        # Each interval defines which frames to process in the current forward pass
         for curr_mask in update_mask:
+            # Extend terminal flag if current mask has updates beyond current terminal
             if terminal_flag < num_blocks and curr_mask[terminal_flag]:
                 terminal_flag += 1
+            # Create interval: [start, end) where start ensures we don't exceed model capacity
             valid_interval.append((max(terminal_flag - base_num_blocks, 0), terminal_flag))
 
+        # Convert lists to tensors for efficient processing
         step_update_mask = torch.stack(update_mask, dim=0)
         step_index = torch.stack(step_index, dim=0)
         step_matrix = torch.stack(step_matrix, dim=0)
 
+        # Handle causal block size > 1: expand block-level scheduling to frame-level
+        # Each block's schedule is replicated to all frames within that block
         if causal_block_size > 1:
+            # Expand each block to causal_block_size frames
             step_update_mask = step_update_mask.unsqueeze(-1).repeat(1, 1, causal_block_size).flatten(1).contiguous()
             step_index = step_index.unsqueeze(-1).repeat(1, 1, causal_block_size).flatten(1).contiguous()
             step_matrix = step_matrix.unsqueeze(-1).repeat(1, 1, causal_block_size).flatten(1).contiguous()
+            # Scale intervals from block-level to frame-level
             valid_interval = [(s * causal_block_size, e * causal_block_size) for s, e in valid_interval]
 
         return step_matrix, step_index, step_update_mask, valid_interval
