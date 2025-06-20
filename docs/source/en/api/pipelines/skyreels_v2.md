@@ -41,7 +41,7 @@ The following SkyReels-V2 models are supported in Diffusers:
 > [!TIP]
 > Click on the SkyReels-V2 models in the right sidebar for more examples of video generation.
 
-### A Visual Demonstration
+### A _Visual_ Demonstration
 
         An example with these parameters:
         base_num_frames=97, num_frames=97, num_inference_steps=30, ar_step=5, causal_block_size=5
@@ -98,6 +98,38 @@ The following SkyReels-V2 models are supported in Diffusers:
         │ All blocks: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■] │
         └──────────────────────────────────────────────┘
         Total steps: 30 steps
+
+
+        An example on how the step matrix is constructed for asynchronous processing:
+        Given the parameters: (num_inference_steps=30, shift=8, num_frames=97, ar_step=5, causal_block_size=5)
+        - num_latent_frames = (97 frames - 1) // (4 temporal downsampling) + 1 = 25
+        - step_template = [999, 995, 991, 986, 980, 975, 969, 963, 956, 948,
+                           941, 932, 922, 912, 901, 888, 874, 859, 841, 822,
+                           799, 773, 743, 708, 666, 615, 551, 470, 363, 216]
+
+        The algorithm creates a 50x25 step_matrix where:
+        - Row 1:  [999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+        - Row 2:  [995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+        - Row 3:  [991, 991, 991, 991, 991, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+        - ...
+        - Row 7:  [969, 969, 969, 969, 969, 995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+        - ...
+        - Row 21: [799, 799, 799, 799, 799, 888, 888, 888, 888, 888, 941, 941, 941, 941, 941, 975, 975, 975, 975, 975, 999, 999, 999, 999, 999]
+        - ...
+        - Row 35: [  0,   0,   0,   0,   0, 216, 216, 216, 216, 216, 666, 666, 666, 666, 666, 822, 822, 822, 822, 822, 901, 901, 901, 901, 901]
+        - ...
+        - Row 42: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 551, 551, 551, 551, 551, 773, 773, 773, 773, 773]
+        - ...
+        - Row 50: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 216, 216, 216, 216, 216]
+
+        Detailed Row 6 Analysis:
+        - step_matrix[5]:       [ 975, 975, 975, 975, 975, 999, 999, 999, 999, 999, 999,  ...,  999]
+        - step_index[5]:        [   6,   6,   6,   6,   6,   1,   1,   1,   1,   1,   0,  ...,    0]
+        - step_update_mask[5]:  [True,True,True,True,True,True,True,True,True,True,False, ...,False]
+        - valid_interval[5]:    (0, 25)
+
+        Key Pattern: Block i lags behind Block i-1 by exactly ar_step=5 timesteps, creating the
+        staggered "diffusion forcing" effect where later blocks condition on cleaner earlier blocks.
 
 ### Text-to-Video Generation
 
