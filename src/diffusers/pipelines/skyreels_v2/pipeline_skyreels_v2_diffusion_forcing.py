@@ -480,9 +480,9 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         - Row 2:  [995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
         - Row 3:  [991, 991, 991, 991, 991, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
         - ...
-        - Row 17: [859, 859, 859, 859, 859, 922, 922, 922, 922, 922, 963, 963, 963, 963, 963, 991, 991, 991, 991, 991, 999, 999, 999, 999, 999]
+        - Row 7:  [969, 969, 969, 969, 969, 995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
         - ...
-        - Row 25: [666, 666, 666, 666, 666, 822, 822, 822, 822, 822, 901, 901, 901, 901, 901, 948, 948, 948, 948, 948, 980, 980, 980, 980, 980]
+        - Row 21: [799, 799, 799, 799, 799, 888, 888, 888, 888, 888, 941, 941, 941, 941, 941, 975, 975, 975, 975, 975, 999, 999, 999, 999, 999]
         - ...
         - Row 35: [  0,   0,   0,   0,   0, 216, 216, 216, 216, 216, 666, 666, 666, 666, 666, 822, 822, 822, 822, 822, 901, 901, 901, 901, 901]
         - ...
@@ -490,13 +490,11 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         - ...
         - Row 50: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 216, 216, 216, 216, 216]
 
-        **Detailed Row 5 Analysis:**
-        - step_matrix[4]:        [980, 980, 980, 980, 980, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
-        - step_index[4]:         [5, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        - step_update_mask[4]:   [ True,  True,  True,  True,  True, False, False, False, False, False,
-                                    False, False, False, False, False, False, False, False, False, False,
-                                    False, False, False, False, False]
-        - valid_interval[4]:     (0, 25)
+        **Detailed Row 6 Analysis:**
+        - step_matrix[5]:       [ 975, 975, 975, 975, 975, 999, 999, 999, 999, 999, 999,  ...,  999]
+        - step_index[5]:        [   6,   6,   6,   6,   6,   1,   1,   1,   1,   1,   0,  ...,    0]
+        - step_update_mask[5]:  [True,True,True,True,True,True,True,True,True,True,False, ...,False]
+        - valid_interval[5]:    (0, 25)
 
         Key Pattern: Block i lags behind Block i-1 by exactly ar_step=5 timesteps, creating the
         staggered "diffusion forcing" effect where later blocks condition on cleaner earlier blocks.
@@ -510,13 +508,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
 
         # Convert frame counts to block counts for causal processing
         # Each block contains causal_block_size frames that are processed together
-        # With your parameters: 25 frames ÷ 5 = 5 blocks total
+        # E.g.: 25 frames ÷ 5 = 5 blocks total
         num_blocks = num_latent_frames // causal_block_size
         base_num_blocks = base_num_latent_frames // causal_block_size
 
         # Validate ar_step is sufficient for the given configuration
         # In asynchronous mode, we need enough timesteps to create the staggered pattern
-        # With your parameters: 5 blocks need ~25 iterations to all start + 31 to complete = ~50 total
         if base_num_blocks < num_blocks:
             min_ar_step = len(step_template) / base_num_blocks
             if ar_step < min_ar_step:
@@ -531,13 +528,13 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                 step_template.long(),
                 torch.tensor([0], dtype=torch.int64, device=step_template.device),
             ]
-        )  # to handle the counter in row works starting from 1
+        )
 
         # Initialize the previous row state (tracks denoising progress for each block)
         # 0 means not started, num_iterations means fully denoised
         pre_row = torch.zeros(num_blocks, dtype=torch.long)
 
-        # Mark pre-ready frames (e.g., from prefix video) as already at final denoising state
+        # Mark pre-ready frames (e.g., from prefix video for a video2video task) as already at final denoising state
         if num_pre_ready > 0:
             pre_row[: num_pre_ready // causal_block_size] = num_iterations
 
@@ -548,11 +545,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
 
             # Apply diffusion forcing logic for each block
             for i in range(num_blocks):
-                # First block OR previous block is fully denoised: advance this block
                 if i == 0 or pre_row[i - 1] >= (
                     num_iterations - 1
                 ):  # the first frame or the last frame is completely denoised
-                    new_row[i] = pre_row[i] + 1  # Advance to next denoising step
+                    new_row[i] = pre_row[i] + 1
                 else:
                     # Asynchronous mode: lag behind previous block by ar_step timesteps
                     # This creates the "diffusion forcing" staggered pattern
@@ -563,18 +559,17 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
 
             # Create update mask: True for blocks that need denoising update at this iteration
             # Exclude blocks that haven't started (new_row != pre_row) or are finished (new_row != num_iterations)
-            # Final state example: [False, False, False, False, False, ..., True, True, True, True, True]
+            # Final state example: [False, ..., False, True, True, True, True, True]
             # where first 20 frames are done (False) and last 5 frames still need updates (True)
             update_mask.append(
                 (new_row != pre_row) & (new_row != num_iterations)
-            )  # False: no need to update， True: need to update
+            )
 
             # Store the iteration state
             step_index.append(new_row)  # Index into step_template
             step_matrix.append(step_template[new_row])  # Actual timestep values
             pre_row = new_row  # Update for next iteration
 
-        # Determine processing intervals for long video generation
         # For videos longer than model capacity, we process in sliding windows
         terminal_flag = base_num_blocks
 
@@ -586,7 +581,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             last_update_idx = update_mask_idx[-1].item()
             terminal_flag = last_update_idx + 1
 
-        # Generate valid processing intervals for each iteration
         # Each interval defines which frames to process in the current forward pass
         for curr_mask in update_mask:
             # Extend terminal flag if current mask has updates beyond current terminal
@@ -600,7 +594,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         step_index = torch.stack(step_index, dim=0)
         step_matrix = torch.stack(step_matrix, dim=0)
 
-        # Handle causal block size > 1: expand block-level scheduling to frame-level
         # Each block's schedule is replicated to all frames within that block
         if causal_block_size > 1:
             # Expand each block to causal_block_size frames
