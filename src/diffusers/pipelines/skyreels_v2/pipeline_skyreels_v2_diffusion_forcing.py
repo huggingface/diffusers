@@ -808,7 +808,6 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                 // (base_latent_num_frames - overlap_history_latent_frames)
                 + 1
             )
-
         else:
             # Short video generation setup
             n_iter = 1

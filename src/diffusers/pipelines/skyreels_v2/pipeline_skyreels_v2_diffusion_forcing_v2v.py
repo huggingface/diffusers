@@ -476,7 +476,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
         prefix_video_latents_frames = prefix_video_latents.shape[2]
 
-        finished_frame_num = long_video_iter * (base_latent_num_frames - overlap_history_latent_frames) + overlap_history_latent_frames
+        finished_frame_num = (
+            long_video_iter * (base_latent_num_frames - overlap_history_latent_frames) + overlap_history_latent_frames
+        )
         left_frame_num = num_latent_frames - finished_frame_num
         num_latent_frames = min(left_frame_num + overlap_history_latent_frames, base_latent_num_frames)
 
@@ -895,28 +897,35 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             if base_num_frames is not None
             else num_latent_frames
         )
-        n_iter = 1 + (num_latent_frames - base_latent_num_frames - 1) // (base_latent_num_frames - overlap_history_latent_frames) + 1
+        n_iter = (
+            1
+            + (num_latent_frames - base_latent_num_frames - 1)
+            // (base_latent_num_frames - overlap_history_latent_frames)
+            + 1
+        )
         for long_video_iter in range(n_iter):
             print(f"long_video_iter:{long_video_iter}")
             # 5. Prepare latent variables
             num_channels_latents = self.transformer.config.in_channels
-            latents, current_num_latent_frames, prefix_video_latents, prefix_video_latents_frames = self.prepare_latents(
-                video,
-                batch_size * num_videos_per_prompt,
-                num_channels_latents,
-                height,
-                width,
-                num_frames,
-                torch.float32,
-                device,
-                generator,
-                latents if long_video_iter == 0 else None,
-                video_latents=accumulated_latents,  # Pass latents directly instead of decoded video
-                overlap_history=overlap_history,
-                base_latent_num_frames=base_latent_num_frames,
-                causal_block_size=causal_block_size,
-                overlap_history_latent_frames=overlap_history_latent_frames,
-                long_video_iter=long_video_iter,
+            latents, current_num_latent_frames, prefix_video_latents, prefix_video_latents_frames = (
+                self.prepare_latents(
+                    video,
+                    batch_size * num_videos_per_prompt,
+                    num_channels_latents,
+                    height,
+                    width,
+                    num_frames,
+                    torch.float32,
+                    device,
+                    generator,
+                    latents if long_video_iter == 0 else None,
+                    video_latents=accumulated_latents,  # Pass latents directly instead of decoded video
+                    overlap_history=overlap_history,
+                    base_latent_num_frames=base_latent_num_frames,
+                    causal_block_size=causal_block_size,
+                    overlap_history_latent_frames=overlap_history_latent_frames,
+                    long_video_iter=long_video_iter,
+                )
             )
 
             if prefix_video_latents_frames > 0:
@@ -1036,9 +1045,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
                 .to(latents.device, latents.dtype)
             )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(
-                1, self.vae.config.z_dim, 1, 1, 1
-            ).to(latents.device, latents.dtype)
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                latents.device, latents.dtype
+            )
             latents = latents / latents_std + latents_mean
             videos = self.vae.decode(latents, return_dict=False)[0]
             video = torch.cat([video, videos[:, :, overlap_history:]], dim=2)

@@ -392,8 +392,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
 
         prefix_video_latents_frames = 0
 
-        if video is not None:  # long video generation at the iterations other than the first one
-            condition = retrieve_latents(self.vae.encode(video[:, :, -overlap_history:]), sample_mode="argmax")
+        if video_latents is not None:  # long video generation at the iterations other than the first one
+            condition = retrieve_latents(self.vae.encode(video_latents[:, :, -overlap_history:]), sample_mode="argmax")
 
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
@@ -415,7 +415,10 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                 condition = condition[:, :, :-truncate_len_latents]
             prefix_video_latents_frames = condition.shape[2]
 
-            finished_frame_num = long_video_iter * (base_latent_num_frames - overlap_history_latent_frames) + overlap_history_latent_frames
+            finished_frame_num = (
+                long_video_iter * (base_latent_num_frames - overlap_history_latent_frames)
+                + overlap_history_latent_frames
+            )
             left_frame_num = num_latent_frames - finished_frame_num
             num_latent_frames = min(left_frame_num + overlap_history_latent_frames, base_latent_num_frames)
         elif base_latent_num_frames is not None:  # long video generation at the first iteration
@@ -917,15 +920,18 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
             latents[:, :, :prefix_video_latents_frames, :, :] = condition[: condition.shape[0] // 2].to(
                 transformer_dtype
             )
+            if iter_idx == 0 and last_image is not None:
+                end_video_latents = condition[condition.shape[0] // 2 :]
+                latents[:, :, :prefix_video_latents_frames, :, :] = condition[: condition.shape[0] // 2].to(
+                    transformer_dtype
+                )
+            else:
+                latents[:, :, :prefix_video_latents_frames, :, :] = condition.to(transformer_dtype)
 
             if last_image is not None and iter_idx + 1 == n_iter:
                 latents = torch.cat([latents, condition[condition.shape[0] // 2 :].to(transformer_dtype)], dim=2)
                 base_latent_num_frames += prefix_video_latents_frames
                 current_num_latent_frames += prefix_video_latents_frames
-
-            if last_image is not None and iter_idx + 1 == n_iter:
-                step_matrix[:, -prefix_video_latents_frames:] = 0
-                step_update_mask[:, -prefix_video_latents_frames:] = False
 
             # 4. Prepare sample schedulers and timestep matrix
             sample_schedulers = []
@@ -934,8 +940,17 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                 sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                current_num_latent_frames, timesteps, base_latent_num_frames, ar_step, prefix_video_latents_frames, causal_block_size
+                current_num_latent_frames,
+                timesteps,
+                base_latent_num_frames,
+                ar_step,
+                prefix_video_latents_frames,
+                causal_block_size,
             )
+
+            if last_image is not None and iter_idx + 1 == n_iter:
+                step_matrix[:, -prefix_video_latents_frames:] = 0
+                step_update_mask[:, -prefix_video_latents_frames:] = False
 
             # 6. Denoising loop
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1016,30 +1031,22 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-                if long_video_iter == 0 and last_image is not None:
-                    end_video_latents = condition[condition.shape[0] // 2 :]
-                    latents[:, :, :prefix_video_latents_frames, :, :] = condition[: condition.shape[0] // 2].to(
-                        transformer_dtype
-                    )
-                else:
-                    latents[:, :, :prefix_video_latents_frames, :, :] = condition.to(transformer_dtype)
-
-                if last_image is not None and long_video_iter + 1 == n_iter:
-                    latents = torch.cat([latents, end_video_latents.to(transformer_dtype)], dim=2)
-                    current_num_latent_frames += prefix_video_latents_frames
-
-                if last_image is not None and long_video_iter + 1 == n_iter:
-                    step_matrix[:, -prefix_video_latents_frames:] = 0
-                    step_update_mask[:, -prefix_video_latents_frames:] = False
-
             # Handle latent accumulation for long videos or use the current latents for short videos
             if is_long_video:
                 if accumulated_latents is None:
-                    accumulated_latents = latents[:, :, :-prefix_video_latents_frames] if last_image is not None else latents
+                    accumulated_latents = (
+                        latents[:, :, :-prefix_video_latents_frames] if last_image is not None else latents
+                    )
                 else:
                     # Keep overlap frames for conditioning but don't include them in final output
                     accumulated_latents = torch.cat(
-                        [accumulated_latents, latents[:, :, :-prefix_video_latents_frames][:, :, overlap_history_latent_frames:] if last_image is not None else latents[:, :, overlap_history_latent_frames:]], dim=2
+                        [
+                            accumulated_latents,
+                            latents[:, :, :-prefix_video_latents_frames][:, :, overlap_history_latent_frames:]
+                            if last_image is not None
+                            else latents[:, :, overlap_history_latent_frames:],
+                        ],
+                        dim=2,
                     )
 
         if is_long_video:
