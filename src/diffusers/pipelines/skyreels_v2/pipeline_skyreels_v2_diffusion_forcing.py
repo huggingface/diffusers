@@ -388,7 +388,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             prefix_video_latents_length = prefix_video_latents.shape[2]
 
             finished_frame_num = (
-                long_video_iter * (base_latent_num_frames - overlap_history_latent_frames) + overlap_history_latent_frames
+                long_video_iter * (base_latent_num_frames - overlap_history_latent_frames)
+                + overlap_history_latent_frames
             )
             left_frame_num = num_latent_frames - finished_frame_num
             num_latent_frames = min(left_frame_num + overlap_history_latent_frames, base_latent_num_frames)
@@ -425,11 +426,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         shrink_interval_with_mask: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[tuple]]:
         """
-        Generate the timestep scheduling matrix for diffusion forcing video generation.
-
-        This function implements the core diffusion forcing algorithm that creates a coordinated
-        denoising schedule across temporal frames. It supports both synchronous and asynchronous
-        generation modes:
+        This function implements the core diffusion forcing algorithm that creates a coordinated denoising schedule
+        across temporal frames. It supports both synchronous and asynchronous generation modes:
 
         **Synchronous Mode** (ar_step=0, causal_block_size=1):
         - All frames are denoised simultaneously at each timestep
@@ -448,7 +446,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             base_num_latent_frames (int): Maximum frames the model can process in one forward pass
             ar_step (int, optional): Autoregressive step size for temporal lag.
                                    0 = synchronous, >0 = asynchronous. Defaults to 5.
-            num_pre_ready (int, optional): Number of frames already denoised (e.g., from prefix in a video2video task).
+            num_pre_ready (int, optional):
+                                         Number of frames already denoised (e.g., from prefix in a video2video task).
                                          Defaults to 0.
             causal_block_size (int, optional): Number of frames processed as a causal block.
                                              Defaults to 1.
@@ -457,12 +456,12 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
 
         Returns:
             tuple containing:
-                - step_matrix (torch.Tensor): Matrix of timesteps for each frame at each iteration
-                  Shape: [num_iterations, num_latent_frames]
-                - step_index (torch.Tensor): Index matrix for timestep lookup
-                  Shape: [num_iterations, num_latent_frames]
-                - step_update_mask (torch.Tensor): Boolean mask indicating which frames to update
-                  Shape: [num_iterations, num_latent_frames]
+                - step_matrix (torch.Tensor): Matrix of timesteps for each frame at each iteration Shape:
+                  [num_iterations, num_latent_frames]
+                - step_index (torch.Tensor): Index matrix for timestep lookup Shape: [num_iterations,
+                  num_latent_frames]
+                - step_update_mask (torch.Tensor): Boolean mask indicating which frames to update Shape:
+                  [num_iterations, num_latent_frames]
                 - valid_interval (list[tuple]): List of (start, end) intervals for each iteration
 
         Raises:
@@ -530,9 +529,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
             # Exclude blocks that haven't started (new_row != pre_row) or are finished (new_row != num_iterations)
             # Final state example: [False, ..., False, True, True, True, True, True]
             # where first 20 frames are done (False) and last 5 frames still need updates (True)
-            update_mask.append(
-                (new_row != pre_row) & (new_row != num_iterations)
-            )
+            update_mask.append((new_row != pre_row) & (new_row != num_iterations))
 
             # Store the iteration state
             step_index.append(new_row)  # Index into step_template
@@ -806,7 +803,10 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                 else num_latent_frames
             )
             n_iter = (
-                1 + (num_latent_frames - base_latent_num_frames - 1) // (base_latent_num_frames - overlap_history_latent_frames) + 1
+                1
+                + (num_latent_frames - base_latent_num_frames - 1)
+                // (base_latent_num_frames - overlap_history_latent_frames)
+                + 1
             )
 
         else:
