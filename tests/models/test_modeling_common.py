@@ -40,6 +40,7 @@ from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 
+from diffusers.hooks.group_offloading import _check_safetensors_serialization
 from diffusers.models import SD3Transformer2DModel, UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor,
@@ -1697,6 +1698,7 @@ class ModelTesterMixin:
     @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
     @require_torch_accelerator
     @torch.no_grad()
+    @torch.inference_mode()
     def test_group_offloading_with_disk(self, record_stream, offload_type):
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1705,11 +1707,15 @@ class ModelTesterMixin:
         if not getattr(model, "_supports_group_offloading", True):
             return
 
+        model.eval()
+        output_without_group_offloading = model(**inputs_dict)[0]
+
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.eval()
-        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+        num_blocks_per_group = None if offload_type == "leaf_level" else 1
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": num_blocks_per_group}
         with tempfile.TemporaryDirectory() as tmpdir:
             model.enable_group_offload(
                 torch_device,
@@ -1720,8 +1726,24 @@ class ModelTesterMixin:
                 **additional_kwargs,
             )
             has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
-            assert has_safetensors, "No safetensors found in the directory."
-            _ = model(**inputs_dict)[0]
+            # Group offloading with disk support related checks.
+            self.assertTrue(has_safetensors, "No safetensors found in the directory.")
+            is_correct, extra_files, missing_files = _check_safetensors_serialization(
+                module=model,
+                offload_to_disk_path=tmpdir,
+                offload_type=offload_type,
+                num_blocks_per_group=num_blocks_per_group,
+            )
+            if not is_correct:
+                if extra_files:
+                    raise ValueError(f"Found extra files: {', '.join(extra_files)}")
+                elif missing_files:
+                    raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
+
+        output_with_group_offloading = model(**inputs_dict)[0]
+        self.assertTrue(
+            torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=1e-4, rtol=1 - 4)
+        )
 
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
