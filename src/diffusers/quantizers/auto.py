@@ -20,9 +20,11 @@ import warnings
 from typing import Dict, Optional, Union
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
+from .finegrained_fp8 import FinegrainedFP8Quantizer
 from .gguf import GGUFQuantizer
 from .quantization_config import (
     BitsAndBytesConfig,
+    FinegrainedFP8Config,
     GGUFQuantizationConfig,
     QuantizationConfigMixin,
     QuantizationMethod,
@@ -39,6 +41,7 @@ AUTO_QUANTIZER_MAPPING = {
     "gguf": GGUFQuantizer,
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
+    "finegrained_fp8": FinegrainedFP8Quantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -47,6 +50,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "gguf": GGUFQuantizationConfig,
     "quanto": QuantoConfig,
     "torchao": TorchAoConfig,
+    "finegrained_fp8": FinegrainedFP8Config,
 }
 
 
