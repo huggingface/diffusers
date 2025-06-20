@@ -372,7 +372,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         latent_width = width // self.vae_scale_factor_spatial
 
         prefix_video_latents = None
-        prefix_video_latents_length = 0
+        prefix_video_latents_frames = 0
 
         if video_latents is not None:  # long video generation at the iterations other than the first one
             prefix_video_latents = video_latents[:, :, -overlap_history_latent_frames:]
@@ -385,7 +385,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                     f"However, it may slightly affect the continuity of the generated video at the truncation boundary."
                 )
                 prefix_video_latents = prefix_video_latents[:, :, :-truncate_len_latents]
-            prefix_video_latents_length = prefix_video_latents.shape[2]
+            prefix_video_latents_frames = prefix_video_latents.shape[2]
 
             finished_frame_num = (
                 long_video_iter * (base_latent_num_frames - overlap_history_latent_frames)
@@ -413,7 +413,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        return latents, num_latent_frames, prefix_video_latents, prefix_video_latents_length
+        return latents, num_latent_frames, prefix_video_latents, prefix_video_latents_frames
 
     def generate_timestep_matrix(
         self,
@@ -821,7 +821,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
 
             # 5. Prepare latent variables
             num_channels_latents = self.transformer.config.in_channels
-            latents, current_num_latent_frames, prefix_video_latents, prefix_video_latents_length = (
+            latents, current_num_latent_frames, prefix_video_latents, prefix_video_latents_frames = (
                 self.prepare_latents(
                     batch_size * num_videos_per_prompt,
                     num_channels_latents,
@@ -840,8 +840,8 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                 )
             )
 
-            if prefix_video_latents_length > 0:
-                latents[:, :, :prefix_video_latents_length, :, :] = prefix_video_latents.to(transformer_dtype)
+            if prefix_video_latents_frames > 0:
+                latents[:, :, :prefix_video_latents_frames, :, :] = prefix_video_latents.to(transformer_dtype)
 
             # 6. Prepare sample schedulers and timestep matrix
             sample_schedulers = []
@@ -856,7 +856,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                 timesteps,
                 current_num_latent_frames if is_long_video else base_latent_num_frames,
                 ar_step,
-                prefix_video_latents_length,
+                prefix_video_latents_frames,
                 causal_block_size,
             )
 
@@ -876,17 +876,17 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                     )
                     timestep = t.expand(latents.shape[0], -1)[:, valid_interval_start:valid_interval_end].clone()
 
-                    if addnoise_condition > 0 and valid_interval_start < prefix_video_latents_length:
+                    if addnoise_condition > 0 and valid_interval_start < prefix_video_latents_frames:
                         noise_factor = 0.001 * addnoise_condition
-                        latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :] = (
-                            latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :]
+                        latent_model_input[:, :, valid_interval_start:prefix_video_latents_frames, :, :] = (
+                            latent_model_input[:, :, valid_interval_start:prefix_video_latents_frames, :, :]
                             * (1.0 - noise_factor)
                             + torch.randn_like(
-                                latent_model_input[:, :, valid_interval_start:prefix_video_latents_length, :, :]
+                                latent_model_input[:, :, valid_interval_start:prefix_video_latents_frames, :, :]
                             )
                             * noise_factor
                         )
-                        timestep[:, valid_interval_start:prefix_video_latents_length] = addnoise_condition
+                        timestep[:, valid_interval_start:prefix_video_latents_frames] = addnoise_condition
 
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
