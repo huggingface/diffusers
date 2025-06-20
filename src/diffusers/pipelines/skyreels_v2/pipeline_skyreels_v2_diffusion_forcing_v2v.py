@@ -417,6 +417,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
     def prepare_latents(
         self,
         video: torch.Tensor,
+        video_latents: Optional[torch.Tensor] = None,
         batch_size: int = 1,
         num_channels_latents: int = 16,
         height: int = 480,
@@ -426,7 +427,6 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.Tensor] = None,
         base_latent_num_frames: Optional[int] = None,
         overlap_history: Optional[int] = None,
         causal_block_size: Optional[int] = None,
@@ -437,31 +437,34 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             return latents.to(device=device, dtype=dtype)
 
         num_latent_frames = (
-            (video.shape[2] - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.shape[2]
+            (num_frames - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.shape[2]
         )
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
 
-        prefix_video_latents = [
-            retrieve_latents(
-                self.vae.encode(
-                    vid.unsqueeze(0)[:, :, -overlap_history:] if vid.dim() == 4 else vid[:, :, -overlap_history:]
-                ),
-                sample_mode="argmax",
-            )
-            for vid in video
-        ]
-        prefix_video_latents = torch.cat(prefix_video_latents, dim=0).to(dtype)
+        if long_video_iter == 0:
+            prefix_video_latents = [
+                retrieve_latents(
+                    self.vae.encode(
+                        vid.unsqueeze(0)[:, :, -overlap_history:] if vid.dim() == 4 else vid[:, :, -overlap_history:]
+                    ),
+                    sample_mode="argmax",
+                )
+                for vid in video
+            ]
+            prefix_video_latents = torch.cat(prefix_video_latents, dim=0).to(dtype)
 
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean)
-            .view(1, self.vae.config.z_dim, 1, 1, 1)
-            .to(device, self.vae.dtype)
-        )
-        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-            device, self.vae.dtype
-        )
-        prefix_video_latents = (prefix_video_latents - latents_mean) * latents_std
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(device, self.vae.dtype)
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                device, self.vae.dtype
+            )
+            prefix_video_latents = (prefix_video_latents - latents_mean) * latents_std
+        else:
+            prefix_video_latents = video_latents[:, :, -overlap_history_latent_frames:]
 
         if prefix_video_latents.shape[2] % causal_block_size != 0:
             truncate_len_latents = prefix_video_latents.shape[2] % causal_block_size
@@ -884,6 +887,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
 
         # Long video generation
+        accumulated_latents = None
         overlap_history_latent_frames = (overlap_history - 1) // self.vae_scale_factor_temporal + 1
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         base_latent_num_frames = (
@@ -896,7 +900,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             print(f"long_video_iter:{long_video_iter}")
             # 5. Prepare latent variables
             num_channels_latents = self.transformer.config.in_channels
-            latents, num_latent_frames, prefix_video_latents, prefix_video_latents_length = self.prepare_latents(
+            latents, current_num_latent_frames, prefix_video_latents, prefix_video_latents_length = self.prepare_latents(
                 video,
                 batch_size * num_videos_per_prompt,
                 num_channels_latents,
@@ -907,6 +911,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
                 device,
                 generator,
                 latents if long_video_iter == 0 else None,
+                video_latents=accumulated_latents,  # Pass latents directly instead of decoded video
                 overlap_history=overlap_history,
                 base_latent_num_frames=base_latent_num_frames,
                 causal_block_size=causal_block_size,
@@ -919,14 +924,14 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
 
             # 4. Prepare sample schedulers and timestep matrix
             sample_schedulers = []
-            for _ in range(num_latent_frames):
+            for _ in range(current_num_latent_frames):
                 sample_scheduler = deepcopy(self.scheduler)
                 sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                 sample_schedulers.append(sample_scheduler)
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                num_latent_frames,
+                current_num_latent_frames,
                 timesteps,
-                num_latent_frames,
+                current_num_latent_frames,
                 ar_step,
                 prefix_video_latents_length,
                 causal_block_size,
@@ -1011,25 +1016,32 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-            if not output_type == "latent":
-                latents = latents.to(self.vae.dtype)
-                latents_mean = (
-                    torch.tensor(self.vae.config.latents_mean)
-                    .view(1, self.vae.config.z_dim, 1, 1, 1)
-                    .to(latents.device, latents.dtype)
-                )
-                latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(
-                    1, self.vae.config.z_dim, 1, 1, 1
-                ).to(latents.device, latents.dtype)
-                latents = latents / latents_std + latents_mean
-                videos = self.vae.decode(latents, return_dict=False)[0]
-                video = torch.cat([video, videos[:, :, overlap_history:]], dim=2)
+            if accumulated_latents is None:
+                accumulated_latents = latents
             else:
-                video = latents
+                # Keep overlap frames for conditioning but don't include them in final output
+                accumulated_latents = torch.cat(
+                    [accumulated_latents, latents[:, :, overlap_history_latent_frames:]], dim=2
+                )
+
+        latents = accumulated_latents
 
         self._current_timestep = None
 
+        # Final decoding step - convert latents to pixels
         if not output_type == "latent":
+            latents = latents.to(self.vae.dtype)
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(
+                1, self.vae.config.z_dim, 1, 1, 1
+            ).to(latents.device, latents.dtype)
+            latents = latents / latents_std + latents_mean
+            videos = self.vae.decode(latents, return_dict=False)[0]
+            video = torch.cat([video, videos[:, :, overlap_history:]], dim=2)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
