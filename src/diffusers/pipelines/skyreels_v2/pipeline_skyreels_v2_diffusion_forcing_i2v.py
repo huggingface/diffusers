@@ -1006,7 +1006,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                 print(f"long_video_iter:{long_video_iter}")
                 # 5. Prepare latent variables
                 num_channels_latents = self.vae.config.z_dim
-                latents, num_latent_frames, condition, prefix_video_latents_frames = self.prepare_latents(
+                latents, current_num_latent_frames, condition, prefix_video_latents_frames = self.prepare_latents(
                     image if long_video_iter == 0 else None,
                     batch_size * num_videos_per_prompt,
                     num_channels_latents,
@@ -1036,18 +1036,18 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
 
                 if last_image is not None and long_video_iter + 1 == n_iter:
                     latents = torch.cat([latents, end_video_latents.to(transformer_dtype)], dim=2)
-                    num_latent_frames += prefix_video_latents_frames
+                    current_num_latent_frames += prefix_video_latents_frames
 
                 # 4. Prepare sample schedulers and timestep matrix
                 sample_schedulers = []
-                for _ in range(num_latent_frames):
+                for _ in range(current_num_latent_frames):
                     sample_scheduler = deepcopy(self.scheduler)
                     sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
                     sample_schedulers.append(sample_scheduler)
                 step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
-                    num_latent_frames,
+                    current_num_latent_frames,
                     timesteps,
-                    num_latent_frames,
+                    current_num_latent_frames,
                     ar_step,
                     prefix_video_latents_frames,
                     causal_block_size,
