@@ -220,6 +220,11 @@ _pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_availab
 _better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
 _nltk_available, _nltk_version = _is_package_available("nltk")
 _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("cosmos_guardrail")
+_deepspeed_available, _deepspeed_version = _is_package_available("deepspeed")
+
+
+def is_deepspeed_available():
+    return _deepspeed_available
 
 
 def is_torch_available():
@@ -653,6 +658,19 @@ def is_torch_version(operation: str, version: str):
             A string version of PyTorch
     """
     return compare_versions(parse(_torch_version), operation, version)
+
+
+def is_deepspeed_version(operation: str, version: str):
+    """
+    Compares the current DeepSpeed version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A string version of DeepSpeed
+    """
+    return compare_versions(parse(_deepspeed_version), operation, version)
 
 
 def is_torch_xla_version(operation: str, version: str):
