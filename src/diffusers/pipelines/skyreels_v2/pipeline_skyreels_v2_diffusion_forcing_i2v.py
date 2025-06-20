@@ -1025,10 +1025,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                 else:
                     # Keep overlap frames for conditioning but don't include them in final output
                     accumulated_latents = torch.cat(
-                        [
-                            accumulated_latents,
-                            latents[:, :, overlap_history_latent_frames:]
-                        ],
+                        [accumulated_latents, latents[:, :, overlap_history_latent_frames:]],
                         dim=2,
                     )
 
