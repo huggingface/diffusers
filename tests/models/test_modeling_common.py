@@ -1346,7 +1346,6 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
                 # Making sure part of the model will actually end up offloaded
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
-                print(f" new_model.hf_device_map:{new_model.hf_device_map}")
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
 
@@ -1708,6 +1707,7 @@ class ModelTesterMixin:
             return
 
         model.eval()
+        model.to(torch_device)
         output_without_group_offloading = model(**inputs_dict)[0]
 
         torch.manual_seed(0)
@@ -1740,10 +1740,10 @@ class ModelTesterMixin:
                 elif missing_files:
                     raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
 
-        output_with_group_offloading = model(**inputs_dict)[0]
-        self.assertTrue(
-            torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=1e-4, rtol=1 - 4)
-        )
+            output_with_group_offloading = model(**inputs_dict)[0]
+            self.assertTrue(
+                torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=1e-4, rtol=1e-4)
+            )
 
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:

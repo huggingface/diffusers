@@ -37,7 +37,8 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 _GROUP_OFFLOADING = "group_offloading"
 _LAYER_EXECUTION_TRACKER = "layer_execution_tracker"
 _LAZY_PREFETCH_GROUP_OFFLOADING = "lazy_prefetch_group_offloading"
-
+_GROUP_ID_LAZY_LEAF = "lazy_leafs"
+_GROUP_ID_UNMATCHED_GROUP = "top_level_unmatched_modules"
 _SUPPORTED_PYTORCH_LAYERS = (
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
     torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
@@ -84,7 +85,7 @@ class ModuleGroup:
 
         if self.offload_to_disk_path:
             self._group_id = _group_id
-            short_hash = self._compute_group_hash(self._group_id)
+            short_hash = _compute_group_hash(self._group_id)
             self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{short_hash}.safetensors")
 
             all_tensors = []
@@ -264,11 +265,6 @@ class ModuleGroup:
                 param.data = param.data.to(self.offload_device, non_blocking=self.non_blocking)
             for buffer in self.buffers:
                 buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
-
-    def _compute_group_hash(self, group_id):
-        hashed_id = hashlib.sha256(group_id.encode("utf-8")).hexdigest()
-        # first 16 characters for a reasonably short but unique name
-        return hashed_id[:16]
 
 
 class GroupOffloadingHook(ModelHook):
@@ -663,7 +659,7 @@ def _apply_group_offloading_block_level(
         stream=None,
         record_stream=False,
         onload_self=True,
-        _group_id="top_level_unmatched_modules",
+        _group_id=_GROUP_ID_UNMATCHED_GROUP,
     )
     if stream is None:
         _apply_group_offloading_hook(module, unmatched_group, None)
@@ -800,7 +796,7 @@ def _apply_group_offloading_leaf_level(
             record_stream=False,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
-            name="lazy_leafs",
+            _group_id=_GROUP_ID_LAZY_LEAF,
         )
         _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 
@@ -910,6 +906,12 @@ def _get_group_onload_device(module: torch.nn.Module) -> torch.device:
     raise ValueError("Group offloading is not enabled for the provided module.")
 
 
+def _compute_group_hash(group_id):
+    hashed_id = hashlib.sha256(group_id.encode("utf-8")).hexdigest()
+    # first 16 characters for a reasonably short but unique name
+    return hashed_id[:16]
+
+
 def _get_expected_safetensors_files(
     module: torch.nn.Module,
     offload_to_disk_path: str,
@@ -919,8 +921,7 @@ def _get_expected_safetensors_files(
     expected_files = set()
 
     def get_hashed_filename(group_id: str) -> str:
-        hashed_id = hashlib.sha256(group_id.encode("utf-8")).hexdigest()
-        short_hash = hashed_id[:16]
+        short_hash = _compute_group_hash(group_id)
         return os.path.join(offload_to_disk_path, f"group_{short_hash}.safetensors")
 
     if offload_type == "block_level":
@@ -942,7 +943,7 @@ def _get_expected_safetensors_files(
                 expected_files.add(get_hashed_filename(group_id))
 
         # Handle the group for unmatched top-level modules and parameters
-        group_id = "top_level_unmatched_modules"
+        group_id = _GROUP_ID_UNMATCHED_GROUP
         expected_files.add(get_hashed_filename(group_id))
 
     elif offload_type == "leaf_level":
@@ -972,6 +973,7 @@ def _get_expected_safetensors_files(
             for parent_name in parent_to_tensors:
                 # A file is expected for each parent that gathers orphaned tensors
                 expected_files.add(get_hashed_filename(parent_name))
+        expected_files.add(get_hashed_filename(_GROUP_ID_LAZY_LEAF))
 
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
