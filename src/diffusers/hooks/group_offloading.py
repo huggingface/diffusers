@@ -229,7 +229,6 @@ class ModuleGroup:
             else:
                 self._onload_from_memory(current_stream)
 
-    @torch.compiler.disable()
     def _offload_to_disk(self):
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
         # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
@@ -248,7 +247,6 @@ class ModuleGroup:
         for tensor_obj in self.tensor_to_key.keys():
             tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
 
-    @torch.compiler.disable()
     def _offload_to_memory(self):
         torch_accelerator_module = (
             getattr(torch, torch.accelerator.current_accelerator().type)
