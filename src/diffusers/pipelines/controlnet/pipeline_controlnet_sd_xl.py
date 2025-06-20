@@ -1465,7 +1465,11 @@ class StableDiffusionXLControlNetPipeline(
 
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-                if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
+                if (
+                    torch.cuda.is_available()
+                    and (is_unet_compiled and is_controlnet_compiled)
+                    and is_torch_higher_equal_2_1
+                ):
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents

@@ -23,6 +23,7 @@ from packaging import version
 
 from . import logging
 from .import_utils import is_peft_available, is_peft_version, is_torch_available
+from .torch_utils import empty_device_cache
 
 
 logger = logging.get_logger(__name__)
@@ -98,8 +99,7 @@ def recurse_remove_peft_layers(model):
                 setattr(model, name, new_module)
                 del module
 
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                empty_device_cache()
     return model
 
 
