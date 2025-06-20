@@ -37,7 +37,7 @@ pip install -U bitsandbytes
 
 Start by [quantizing](../quantization/overview) a model to reduce the memory required for storage and [compiling](./fp16#torchcompile) it to accelerate inference.
 
-Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `capture_dynamic_output_shape_ops = True` to handle dynamic outputs when compiling bitsandbytes models with `fullgraph=True`.
+Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `capture_dynamic_output_shape_ops = True` to handle dynamic outputs when compiling bitsandbytes models.
 
 ```py
 import torch
@@ -72,7 +72,7 @@ pipeline("""
 
 In addition to quantization and torch.compile, try offloading if you need to reduce memory-usage further. Offloading moves various layers or model components from the CPU to the GPU as needed for computations.
 
-Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `cache_size_limit` during offloading to avoid excessive recompilation.
+Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `cache_size_limit` during offloading to avoid excessive recompilation and set `capture_dynamic_output_shape_ops = True` to handle dynamic outputs when compiling bitsandbytes models.
 
 <hfoptions id="offloading">
 <hfoption id="model CPU offloading">
@@ -85,6 +85,7 @@ from diffusers import DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 
 torch._dynamo.config.cache_size_limit = 1000
+torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 # quantize
 pipeline_quant_config = PipelineQuantizationConfig(
@@ -125,6 +126,7 @@ from diffusers.quantizers import PipelineQuantizationConfig
 from transformers import UMT5EncoderModel
 
 torch._dynamo.config.cache_size_limit = 1000
+torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 # quantize
 pipeline_quant_config = PipelineQuantizationConfig(
