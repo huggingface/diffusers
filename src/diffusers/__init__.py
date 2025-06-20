@@ -34,10 +34,12 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "guiders": [],
     "hooks": [],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
+    "modular_pipelines": [],
     "quantizers.quantization_config": [],
     "schedulers": [],
     "utils": [
@@ -130,12 +132,26 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
+    _import_structure["guiders"].extend(
+        [
+            "AdaptiveProjectedGuidance",
+            "AutoGuidance",
+            "ClassifierFreeGuidance",
+            "ClassifierFreeZeroStarGuidance",
+            "SkipLayerGuidance",
+            "SmoothedEnergyGuidance",
+            "TangentialClassifierFreeGuidance",
+        ]
+    )
     _import_structure["hooks"].extend(
         [
             "FasterCacheConfig",
             "HookRegistry",
             "PyramidAttentionBroadcastConfig",
+            "LayerSkipConfig",
+            "SmoothedEnergyGuidanceConfig",
             "apply_faster_cache",
+            "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -239,11 +255,19 @@ else:
             "KarrasVePipeline",
             "LDMPipeline",
             "LDMSuperResolutionPipeline",
-            "ModularPipeline",
             "PNDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
             "StableDiffusionMixin",
+        ]
+    )
+    _import_structure["modular_pipelines"].extend(
+        [
+            "ModularLoader",
+            "ModularPipeline",
+            "ModularPipelineBlocks",
+            "ComponentSpec",
+            "ComponentsManager",
         ]
     )
     _import_structure["quantizers"] = ["DiffusersQuantizer"]
@@ -494,12 +518,10 @@ else:
             "StableDiffusionXLImg2ImgPipeline",
             "StableDiffusionXLInpaintPipeline",
             "StableDiffusionXLInstructPix2PixPipeline",
-            "StableDiffusionXLModularPipeline",
             "StableDiffusionXLPAGImg2ImgPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPipeline",
-            "StableDiffusionXLAutoPipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
             "StableVideoDiffusionPipeline",
@@ -526,6 +548,24 @@ else:
         ]
     )
 
+
+try:
+    if not (is_torch_available() and is_transformers_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torch_and_transformers_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_transformers_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_objects) if not name.startswith("_")
+    ]
+
+else:
+    _import_structure["modular_pipelines"].extend(
+        [
+            "StableDiffusionXLAutoPipeline",
+            "StableDiffusionXLModularLoader",
+        ]
+    )
 try:
     if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
         raise OptionalDependencyNotAvailable()
@@ -731,10 +771,22 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .guiders import (
+            AdaptiveProjectedGuidance,
+            AutoGuidance,
+            ClassifierFreeGuidance,
+            ClassifierFreeZeroStarGuidance,
+            SkipLayerGuidance,
+            SmoothedEnergyGuidance,
+            TangentialClassifierFreeGuidance,
+        )
         from .hooks import (
             FasterCacheConfig,
             HookRegistry,
+            LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
+            SmoothedEnergyGuidanceConfig,
+            apply_layer_skip,
             apply_faster_cache,
             apply_pyramid_attention_broadcast,
         )
@@ -837,11 +889,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KarrasVePipeline,
             LDMPipeline,
             LDMSuperResolutionPipeline,
-            ModularPipeline,
             PNDMPipeline,
             RePaintPipeline,
             ScoreSdeVePipeline,
             StableDiffusionMixin,
+        )
+        from .modular_pipelines import (
+            ModularLoader,
+            ModularPipeline,
+            ModularPipelineBlocks,
+            ComponentSpec,
+            ComponentsManager,
         )
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
@@ -1070,12 +1128,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,
             StableDiffusionXLInstructPix2PixPipeline,
-            StableDiffusionXLModularPipeline,
             StableDiffusionXLPAGImg2ImgPipeline,
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
             StableDiffusionXLPipeline,
-            StableDiffusionXLAutoPipeline,
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
             StableVideoDiffusionPipeline,
@@ -1100,7 +1156,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
-
+    try:
+        if not (is_torch_available() and is_transformers_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
+    else:
+        from .modular_pipelines import (
+            StableDiffusionXLAutoPipeline,
+            StableDiffusionXLModularLoader,
+        )
     try:
         if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
             raise OptionalDependencyNotAvailable()
