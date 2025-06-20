@@ -106,11 +106,6 @@ AUTO_BLOCKS = InsertableOrderedDict([
     ("decode", StableDiffusionXLAutoDecodeStep)
 ])
 
-AUTO_CORE_BLOCKS = InsertableOrderedDict([
-    ("before_denoise", StableDiffusionXLAutoBeforeDenoiseStep),
-    ("denoise", StableDiffusionXLAutoDenoiseStep),
-])
-
 
 SDXL_SUPPORTED_BLOCKS = {
     "text2img": TEXT2IMAGE_BLOCKS,
