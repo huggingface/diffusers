@@ -1244,6 +1244,7 @@ def main(args):
         text_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
         text_lora_config = get_lora_config(
             rank=args.rank,
+            lora_alpha=args.lora_alpha,
             dropout=args.lora_dropout,
             use_dora=args.use_dora,
             target_modules=text_target_modules,
