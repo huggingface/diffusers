@@ -879,7 +879,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         timesteps = self.scheduler.timesteps
 
         if latents is None:
-            video = self.video_processor.preprocess_video(video, height=height, width=width).to(
+            video_original = self.video_processor.preprocess_video(video, height=height, width=width).to(
                 device, dtype=torch.float32
             )
 
@@ -913,7 +913,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             num_channels_latents = self.transformer.config.in_channels
             latents, current_num_latent_frames, prefix_video_latents, prefix_video_latents_frames = (
                 self.prepare_latents(
-                    video,
+                    video_original,
                     batch_size * num_videos_per_prompt,
                     num_channels_latents,
                     height,
@@ -1053,8 +1053,8 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
                 latents.device, latents.dtype
             )
             latents = latents / latents_std + latents_mean
-            videos = self.vae.decode(latents, return_dict=False)[0]
-            video = torch.cat([video, videos[:, :, overlap_history:]], dim=2)
+            video_generated = self.vae.decode(latents, return_dict=False)[0]
+            video = torch.cat([video_original, video_generated], dim=2)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
