@@ -846,6 +846,9 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
 
         if causal_block_size is None:
             causal_block_size = self.transformer.config.num_frame_per_block
+        else:
+            self.transformer._set_ar_attention(causal_block_size)
+
         fps_embeds = [fps] * prompt_embeds.shape[0]
         fps_embeds = [0 if i == 16 else 1 for i in fps_embeds]
 
