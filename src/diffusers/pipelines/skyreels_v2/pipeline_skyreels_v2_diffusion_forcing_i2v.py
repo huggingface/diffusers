@@ -900,7 +900,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                 last_image,
                 video_latents=accumulated_latents,  # Pass latents directly instead of decoded video
                 base_latent_num_frames=base_latent_num_frames if is_long_video else None,
-                overlap_history=overlap_history,
                 causal_block_size=causal_block_size,
                 overlap_history_latent_frames=overlap_history_latent_frames if is_long_video else None,
                 long_video_iter=iter_idx if is_long_video else None,
