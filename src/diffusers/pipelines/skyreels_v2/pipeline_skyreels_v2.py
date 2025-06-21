@@ -81,7 +81,6 @@ EXAMPLE_DOC_STRING = """\
         ...     width=960,
         ...     guidance_scale=6.0,  # 6.0 for T2V, 5.0 for I2V
         ...     num_frames=97,
-        ...     shift=8.0,
         ... ).frames[0]
         >>> export_to_video(output, "video.mp4", fps=24, quality=8)
         ```

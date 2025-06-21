@@ -75,7 +75,6 @@ EXAMPLE_DOC_STRING = """\
         >>> shift = 8.0  # 8.0 for T2V, 5.0 for I2V
         >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
         >>> pipe = pipe.to("cuda")
-        >>> pipe.transformer.set_ar_attention(causal_block_size=5)
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 
@@ -87,6 +86,7 @@ EXAMPLE_DOC_STRING = """\
         ...     guidance_scale=6.0,  # 6.0 for T2V, 5.0 for I2V
         ...     num_frames=97,
         ...     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
+        ...     causal_block_size=5,  # Number of frames processed together in a causal block
         ...     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos
         ...     addnoise_condition=20,  # Improves consistency in long video generation
         ... ).frames[0]
