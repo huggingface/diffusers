@@ -536,8 +536,21 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 )
 
         if temb.dim() == 2:
+            # If temb is 2D, we assume it has time 1-D time embedding values for each batch.
+            # For models:
+            # - Skywork/SkyReels-V2-T2V-14B-540P-Diffusers
+            # - Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
+            # - Skywork/SkyReels-V2-I2V-1.3B-540P-Diffusers
+            # - Skywork/SkyReels-V2-I2V-14B-540P-Diffusers
+            # - Skywork/SkyReels-V2-I2V-14B-720P-Diffusers
             shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
         elif temb.dim() == 3:
+            # If temb is 3D, we assume it has 2-D time embedding values for each batch.
+            # Each time embedding tensor includes values for each latent frame; thus Diffusion Forcing.
+            # For models:
+            # - Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers
+            # - Skywork/SkyReels-V2-DF-14B-540P-Diffusers
+            # - Skywork/SkyReels-V2-DF-14B-720P-Diffusers
             shift, scale = (self.scale_shift_table.unsqueeze(2) + temb.unsqueeze(1)).chunk(2, dim=1)
             shift, scale = shift.squeeze(1), scale.squeeze(1)
 
