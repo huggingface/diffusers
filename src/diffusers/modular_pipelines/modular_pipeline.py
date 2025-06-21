@@ -48,6 +48,7 @@ from .modular_pipeline_utils import (
     format_inputs_short,
     format_intermediates_short,
     make_doc_string,
+    InsertableOrderedDict
 )
 from .components_manager import ComponentsManager
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
@@ -64,6 +65,7 @@ MODULAR_LOADER_MAPPING = OrderedDict(
         ("stable-diffusion-xl", "StableDiffusionXLModularLoader"),
     ]
 )
+
 
 
 @dataclass
@@ -622,7 +624,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     block_trigger_inputs = []
 
     def __init__(self):
-        blocks = OrderedDict()
+        blocks = InsertableOrderedDict()
         for block_name, block_cls in zip(self.block_names, self.block_classes):
             blocks[block_name] = block_cls()
         self.blocks = blocks
@@ -958,7 +960,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return instance
     
     def __init__(self):
-        blocks = OrderedDict()
+        blocks = InsertableOrderedDict()
         for block_name, block_cls in zip(self.block_names, self.block_classes):
             blocks[block_name] = block_cls()
         self.blocks = blocks
@@ -1449,7 +1451,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
 
     def __init__(self):
-        blocks = OrderedDict()
+        blocks = InsertableOrderedDict()
         for block_name, block_cls in zip(self.block_names, self.block_classes):
             blocks[block_name] = block_cls()
         self.blocks = blocks
@@ -1662,6 +1664,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
 
     """
     config_name = "modular_model_index.json"
+    hf_device_map = None
 
 
     def register_components(self, **kwargs):
@@ -2013,7 +2016,26 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         # Register all components at once
         self.register_components(**components_to_register)
 
-    # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.to
+    # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline._maybe_raise_error_if_group_offload_active
+    def _maybe_raise_error_if_group_offload_active(
+        self, raise_error: bool = False, module: Optional[torch.nn.Module] = None
+    ) -> bool:
+        from ..hooks.group_offloading import _is_group_offload_enabled
+
+        components = self.components.values() if module is None else [module]
+        components = [component for component in components if isinstance(component, torch.nn.Module)]
+        for component in components:
+            if _is_group_offload_enabled(component):
+                if raise_error:
+                    raise ValueError(
+                        "You are trying to apply model/sequential CPU offloading to a pipeline that contains components "
+                        "with group offloading enabled. This is not supported. Please disable group offloading for "
+                        "components of the pipeline to use other offloading methods."
+                    )
+                return True
+        return False
+    
+    # Modified from diffusers.pipelines.pipeline_utils.DiffusionPipeline.to
     def to(self, *args, **kwargs) -> Self:
         r"""
         Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
@@ -2050,6 +2072,10 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         Returns:
             [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
         """
+        from ..pipelines.pipeline_utils import _check_bnb_status, DiffusionPipeline
+        from ..utils import is_accelerate_available, is_accelerate_version, is_hpu_available, is_transformers_version
+
+
         dtype = kwargs.pop("dtype", None)
         device = kwargs.pop("device", None)
         silence_dtype_warnings = kwargs.pop("silence_dtype_warnings", False)
@@ -2152,8 +2178,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
             logger.debug("Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1")
 
-        module_names, _ = self._get_signature_keys(self)
-        modules = [getattr(self, n, None) for n in module_names]
+        modules = self.components.values()
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
@@ -2432,3 +2457,11 @@ class ModularPipeline:
     @property
     def doc(self):
         return self.blocks.doc
+    
+    def to(self, *args, **kwargs):
+        self.loader.to(*args, **kwargs)
+        return self
+    
+    @property
+    def components(self):
+        return self.loader.components
