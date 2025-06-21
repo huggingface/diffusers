@@ -816,7 +816,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         # Loop through iterations (multiple iterations only for long videos)
         for iter_idx in range(n_iter):
             if is_long_video:
-                print(f"long_video_iter:{iter_idx}")
+                print(f"Processing iteration {iter_idx + 1}/{n_iter} for long video generation...")
 
             # 5. Prepare latent variables
             num_channels_latents = self.transformer.config.in_channels
