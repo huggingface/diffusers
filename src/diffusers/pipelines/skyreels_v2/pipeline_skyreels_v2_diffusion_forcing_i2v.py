@@ -907,14 +907,15 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
             )
 
             if iter_idx == 0:
-                prefix_video_latents = condition[: condition.shape[0] // 2].to(transformer_dtype)
-                if last_image is not None:
-                    end_video_latents = condition[condition.shape[0] // 2 :]
+                latents[:, :, :prefix_video_latents_frames, :, :] = condition[: (condition.shape[0] + 1) // 2].to(transformer_dtype)
+            else:
+                latents[:, :, :prefix_video_latents_frames, :, :] = condition.to(transformer_dtype)
 
-            latents[:, :, :prefix_video_latents_frames, :, :] = prefix_video_latents
+            if iter_idx == 0 and last_image is not None:
+                end_video_latents = condition[condition.shape[0] // 2 :].to(transformer_dtype)
 
             if last_image is not None and iter_idx + 1 == n_iter:
-                latents = torch.cat([latents, end_video_latents.to(transformer_dtype)], dim=2)
+                latents = torch.cat([latents, end_video_latents], dim=2)
                 base_latent_num_frames += prefix_video_latents_frames
                 current_num_latent_frames += prefix_video_latents_frames
 
@@ -1019,9 +1020,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
             # Handle latent accumulation for long videos or use the current latents for short videos
             if is_long_video:
                 if accumulated_latents is None:
-                    accumulated_latents = (
-                        latents[:, :, :-prefix_video_latents_frames] if last_image is not None else latents
-                    )
+                    accumulated_latents = latents
                 else:
                     # Keep overlap frames for conditioning but don't include them in final output
                     accumulated_latents = torch.cat(
@@ -1036,7 +1035,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
 
         # Final decoding step - convert latents to pixels
         if not output_type == "latent":
-            latents = latents[:, :, :-prefix_video_latents_frames, :, :].to(self.vae.dtype)
+            if last_image is not None:
+                latents = latents[:, :, :-prefix_video_latents_frames, :, :].to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
