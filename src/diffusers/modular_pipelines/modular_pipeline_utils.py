@@ -41,6 +41,16 @@ class InsertableOrderedDict(OrderedDict):
         
         # Return self for method chaining
         return self
+    
+    def __repr__(self):
+        if not self:
+            return "InsertableOrderedDict()"
+        
+        items = []
+        for i, (key, value) in enumerate(self.items()):
+            items.append(f"{i}: ({repr(key)}, {repr(value)})")
+        
+        return "InsertableOrderedDict([\n  " + ",\n  ".join(items) + "\n])"
 
 
 # YiYi TODO:
