@@ -906,7 +906,9 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
             )
 
             if iter_idx == 0:
-                latents[:, :, :prefix_video_latents_frames, :, :] = condition[: (condition.shape[0] + 1) // 2].to(transformer_dtype)
+                latents[:, :, :prefix_video_latents_frames, :, :] = condition[: (condition.shape[0] + 1) // 2].to(
+                    transformer_dtype
+                )
             else:
                 latents[:, :, :prefix_video_latents_frames, :, :] = condition.to(transformer_dtype)
 
