@@ -257,7 +257,7 @@ class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
                         0.8378906,
                         0.94433594,
                         0.91503906,
-                        0.8491211
+                        0.8491211,
                     ]
                 ),
                 ("cuda", 7): np.array(

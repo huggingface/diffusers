@@ -312,7 +312,7 @@ class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase)
                         0.29492188,
                         0.140625,
                         0.3046875,
-                        0.28515625
+                        0.28515625,
                     ]
                 ),
                 ("cuda", 7): np.array(
