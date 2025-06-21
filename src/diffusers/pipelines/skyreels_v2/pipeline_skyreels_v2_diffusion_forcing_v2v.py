@@ -417,7 +417,6 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
     def prepare_latents(
         self,
         video: torch.Tensor,
-        video_latents: Optional[torch.Tensor] = None,
         batch_size: int = 1,
         num_channels_latents: int = 16,
         height: int = 480,
@@ -427,6 +426,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        video_latents: Optional[torch.Tensor] = None,
         base_latent_num_frames: Optional[int] = None,
         overlap_history: Optional[int] = None,
         causal_block_size: Optional[int] = None,
