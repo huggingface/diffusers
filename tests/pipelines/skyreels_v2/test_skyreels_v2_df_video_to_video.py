@@ -102,7 +102,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        video = [Image.new("RGB", (16, 16))] * 17
+        video = [Image.new("RGB", (16, 16))] * 7
         inputs = {
             "video": video,
             "prompt": "dance monkey",
@@ -115,7 +115,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
             "max_sequence_length": 16,
             "output_type": "pt",
             "overlap_history": 3,
-            "num_frames": 9,
+            "num_frames": 17,
             "base_num_frames": 5,
         }
         return inputs
@@ -132,8 +132,10 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (21, 3, 16, 16))
-        expected_video = torch.randn(21, 3, 16, 16)
+        total_frames = len(inputs["video"]) + inputs["num_frames"]
+        expected_shape = (total_frames, 3, 16, 16)
+        self.assertEqual(generated_video.shape, expected_shape)
+        expected_video = torch.randn(*expected_shape)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
