@@ -76,7 +76,7 @@ EXAMPLE_DOC_STRING = """\
         ...     vae=vae,
         ...     torch_dtype=torch.bfloat16,
         ... )
-        >>> shift = 8.0  # 8.0 for T2V, 5.0 for I2V
+        >>> shift = 5.0  # 8.0 for T2V, 5.0 for I2V
         >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
         >>> pipe = pipe.to("cuda")
 
@@ -669,7 +669,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         overlap_history: Optional[int] = None,
-        shift: float = 5.0,
         addnoise_condition: float = 0,
         base_num_frames: int = 97,
         ar_step: int = 0,
@@ -744,8 +743,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, *optional*, defaults to `512`):
                 The maximum sequence length of the prompt.
-            shift (`float`, *optional*, defaults to `5.0`):
-                Flow matching scheduler parameter (**5.0 for I2V**, **8.0 for T2V**)
             overlap_history (`int`, *optional*, defaults to `None`):
                 Number of frames to overlap for smooth transitions in long videos. If `None`, the pipeline assumes
                 short video generation mode, and no overlap is applied. 17 and 37 are recommended to set.
@@ -840,7 +837,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         if causal_block_size is None:
@@ -926,7 +923,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
             sample_schedulers = []
             for _ in range(current_num_latent_frames):
                 sample_scheduler = deepcopy(self.scheduler)
-                sample_scheduler.set_timesteps(num_inference_steps, device=device, shift=shift)
+                sample_scheduler.set_timesteps(num_inference_steps, device=device)
                 sample_schedulers.append(sample_scheduler)
             step_matrix, _, step_update_mask, valid_interval = self.generate_timestep_matrix(
                 current_num_latent_frames,
