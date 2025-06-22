@@ -134,18 +134,20 @@ The following SkyReels-V2 models are supported in Diffusers:
 
 ### Text-to-Video Generation
 
-The example below demonstrates how to generate a video from text optimized for memory or inference speed.
+The example below demonstrates how to generate a video from text.
 
 <hfoptions id="T2V usage">
 <hfoption id="T2V memory">
 
 Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
 
+From the original repo:
+>You can use --ar_step 5 to enable asynchronous inference. When asynchronous inference, --causal_block_size 5 is recommended while it is not supposed to be set for synchronous generation... Asynchronous inference will take more steps to diffuse the whole sequence which means it will be SLOWER than synchronous mode. In our experiments, asynchronous inference may improve the instruction following and visual consistent performance.
+
 ```py
 # pip install ftfy
 import torch
-import numpy as np
-from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
+from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline, FlowMatchUniPCMultistepScheduler
 from diffusers.utils import export_to_video
 
 vae = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32)
@@ -158,6 +160,8 @@ pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     text_encoder=text_encoder,
     torch_dtype=torch.bfloat16
 )
+shift = 8.0  # 8.0 for T2V, 5.0 for I2V
+pipeline.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
 pipe = pipe.to("cuda")
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
@@ -191,7 +195,7 @@ The example below demonstrates how to use the image-to-video pipeline to generat
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingImageToVideoPipeline
+from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingImageToVideoPipeline, FlowMatchUniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_image
 
 
@@ -200,6 +204,8 @@ vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=to
 pipe = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
 )
+shift = 5.0  # 8.0 for T2V, 5.0 for I2V
+pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
 pipe.to("cuda")
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
@@ -252,7 +258,7 @@ export_to_video(output, "output.mp4", fps=24, quality=8)
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingVideoToVideoPipeline
+from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingVideoToVideoPipeline, FlowMatchUniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
 
 
@@ -261,6 +267,8 @@ vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=to
 pipe = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
 )
+shift = 5.0  # 8.0 for T2V, 5.0 for I2V
+pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
 pipe.to("cuda")
 
 video = load_video("input_video.mp4")
@@ -269,10 +277,10 @@ prompt = "CG animation style, a small blue bird takes off from the ground, flapp
 
 output = pipe(
     video=video, prompt=prompt, height=544, width=960, guidance_scale=5.0,
-    num_inference_steps=30, num_frames=257, base_num_frames=121#, ar_step=5, causal_block_size=5,
+    num_inference_steps=30, num_frames=257, base_num_frames=97#, ar_step=5, causal_block_size=5,
 ).frames[0]
 export_to_video(output, "output.mp4", fps=24, quality=8)
-# Total frames will be given video frames + 257
+# Total frames will be the number of frames of given video + 257
 ```
 
 </hfoption>
