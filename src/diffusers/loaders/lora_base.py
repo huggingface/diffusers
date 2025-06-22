@@ -456,7 +456,8 @@ def _func_optionally_disable_offloading(_pipeline):
                 logger.info(
                     "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                 )
-                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+                if is_sequential_cpu_offload or is_model_cpu_offload:
+                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
     return (is_model_cpu_offload, is_sequential_cpu_offload)
 
