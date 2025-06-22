@@ -173,11 +173,26 @@ class SkyReelsV2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.Test
             ffn_dim=32,
             num_layers=2,
             cross_attn_norm=True,
-            pos_embed_seq_len=2050,  # TODO: Why 2050?
+            pos_embed_seq_len=2 * (4 * 4 + 1),
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
             image_dim=4,
         )
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=4,
+            projection_dim=4,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            image_size=4,
+            intermediate_size=16,
+            patch_size=1,
+        )
+        components["image_encoder"] = CLIPVisionModelWithProjection(image_encoder_config)
+
+        torch.manual_seed(0)
+        components["image_processor"] = CLIPImageProcessor(crop_size=4, size=4)
+
         pipe = self.pipeline_class(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
