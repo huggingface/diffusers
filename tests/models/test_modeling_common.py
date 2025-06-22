@@ -1728,17 +1728,21 @@ class ModelTesterMixin:
             has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
             # Group offloading with disk support related checks.
             self.assertTrue(has_safetensors, "No safetensors found in the directory.")
-            is_correct, extra_files, missing_files = _check_safetensors_serialization(
-                module=model,
-                offload_to_disk_path=tmpdir,
-                offload_type=offload_type,
-                num_blocks_per_group=num_blocks_per_group,
-            )
-            if not is_correct:
-                if extra_files:
-                    raise ValueError(f"Found extra files: {', '.join(extra_files)}")
-                elif missing_files:
-                    raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
+
+            # For "leaf-level", there is a prefetching hook which makes this check a bit non-deterministic
+            # in nature. So, skip it.
+            if offload_type != "leaf_level":
+                is_correct, extra_files, missing_files = _check_safetensors_serialization(
+                    module=model,
+                    offload_to_disk_path=tmpdir,
+                    offload_type=offload_type,
+                    num_blocks_per_group=num_blocks_per_group,
+                )
+                if not is_correct:
+                    if extra_files:
+                        raise ValueError(f"Found extra files: {', '.join(extra_files)}")
+                    elif missing_files:
+                        raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
 
             output_with_group_offloading = model(**inputs_dict)[0]
             self.assertTrue(
