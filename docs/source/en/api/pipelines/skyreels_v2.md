@@ -145,29 +145,10 @@ Refer to the [Reduce memory usage](../../optimization/memory) guide for more det
 import torch
 import numpy as np
 from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
-from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video
-from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
 vae = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32)
 transformer = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
-
-# group-offloading
-onload_device = torch.device("cuda")
-offload_device = torch.device("cpu")
-apply_group_offloading(text_encoder,
-    onload_device=onload_device,
-    offload_device=offload_device,
-    offload_type="block_level",
-    num_blocks_per_group=4
-)
-transformer.enable_group_offload(
-    onload_device=onload_device,
-    offload_device=offload_device,
-    offload_type="leaf_level",
-    use_stream=True
-)
 
 pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     "Skywork/SkyReels-V2-DF-14B-540P-Diffusers",
@@ -177,18 +158,19 @@ pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     torch_dtype=torch.bfloat16
 )
 pipe = pipe.to("cuda")
-pipe.transformer.set_ar_attention(causal_block_size=5)
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 
 output = pipe(
     prompt=prompt,
     num_inference_steps=30,
-    height=544,
-    width=960,
+    height=544,  # 720 for 720P
+    width=960,   # 1280 for 720P
     num_frames=97,
+    base_num_frames=97,  # 121 for 720P
     ar_step=5,  # Controls asynchronous inference (0 for synchronous mode)
-    overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos; 17 for long
+    causal_block_size=5,  # Number of frames in each block for asynchronous processing
+    overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos; 17 for long video generations
     addnoise_condition=20,  # Improves consistency in long video generation
 ).frames[0]
 export_to_video(output, "T2V.mp4", fps=24, quality=8)
@@ -251,7 +233,45 @@ prompt = "CG animation style, a small blue bird takes off from the ground, flapp
 output = pipe(
     image=first_frame, last_image=last_frame, prompt=prompt, height=height, width=width, guidance_scale=5.0
 ).frames[0]
-export_to_video(output, "output.mp4", fps=24)
+export_to_video(output, "output.mp4", fps=24, quality=8)
+```
+
+</hfoption>
+</hfoptions>
+
+
+### Video-to-Video Generation
+
+<hfoptions id="V2V usage">
+<hfoption id="usage">
+
+`SkyReelsV2DiffusionForcingVideoToVideoPipeline` extends a given video.
+
+```python
+import numpy as np
+import torch
+import torchvision.transforms.functional as TF
+from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingVideoToVideoPipeline
+from diffusers.utils import export_to_video, load_video
+
+
+model_id = "Skywork/SkyReels-V2-DF-14B-540P-Diffusers"
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+pipe = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
+    model_id, vae=vae, torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+video = load_video("input_video.mp4")
+
+prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+
+output = pipe(
+    video=video, prompt=prompt, height=544, width=960, guidance_scale=5.0,
+    num_inference_steps=30, num_frames=257, base_num_frames=121#, ar_step=5, causal_block_size=5,
+).frames[0]
+export_to_video(output, "output.mp4", fps=24, quality=8)
+# Total frames will be given video frames + 257
 ```
 
 </hfoption>
