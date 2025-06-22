@@ -42,7 +42,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # YiYi experimenting composible denoise loop
 # loop step (1): prepare latent input for denoiser
-class StableDiffusionXLDenoiseLoopBeforeDenoiser(PipelineBlock):
+class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
 
@@ -76,7 +76,7 @@ class StableDiffusionXLDenoiseLoopBeforeDenoiser(PipelineBlock):
         return components, block_state
 
 # loop step (1): prepare latent input for denoiser (with inpainting)
-class StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser(PipelineBlock):
+class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
 
@@ -147,7 +147,7 @@ class StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser(PipelineBlock):
         return components, block_state
 
 # loop step (2): denoise the latents with guidance
-class StableDiffusionXLDenoiseLoopDenoiser(PipelineBlock):
+class StableDiffusionXLLoopDenoiser(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
 
@@ -251,7 +251,7 @@ class StableDiffusionXLDenoiseLoopDenoiser(PipelineBlock):
         return components, block_state
 
 # loop step (2): denoise the latents with guidance (with controlnet)
-class StableDiffusionXLControlNetDenoiseLoopDenoiser(PipelineBlock):
+class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
 
@@ -446,7 +446,7 @@ class StableDiffusionXLControlNetDenoiseLoopDenoiser(PipelineBlock):
         return components, block_state
 
 # loop step (3): scheduler step to update latents
-class StableDiffusionXLDenoiseLoopAfterDenoiser(PipelineBlock):
+class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
 
@@ -508,7 +508,7 @@ class StableDiffusionXLDenoiseLoopAfterDenoiser(PipelineBlock):
         return components, block_state
 
 # loop step (3): scheduler step to update latents (with inpainting)
-class StableDiffusionXLInpaintDenoiseLoopAfterDenoiser(PipelineBlock):
+class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
 
@@ -680,7 +680,7 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
 # composing the denoising loops
 class StableDiffusionXLDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [StableDiffusionXLDenoiseLoopBeforeDenoiser, StableDiffusionXLDenoiseLoopDenoiser, StableDiffusionXLDenoiseLoopAfterDenoiser]
+    block_classes = [StableDiffusionXLLoopBeforeDenoiser, StableDiffusionXLLoopDenoiser, StableDiffusionXLLoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
 
     @property
@@ -689,14 +689,14 @@ class StableDiffusionXLDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `blocks` sequencially:\n"
-            " - `StableDiffusionXLDenoiseLoopBeforeDenoiser`\n"
-            " - `StableDiffusionXLDenoiseLoopDenoiser`\n"
-            " - `StableDiffusionXLDenoiseLoopAfterDenoiser`\n"
+            " - `StableDiffusionXLLoopBeforeDenoiser`\n"
+            " - `StableDiffusionXLLoopDenoiser`\n"
+            " - `StableDiffusionXLLoopAfterDenoiser`\n"
         )
 
 # control_cond
 class StableDiffusionXLControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [StableDiffusionXLDenoiseLoopBeforeDenoiser, StableDiffusionXLControlNetDenoiseLoopDenoiser, StableDiffusionXLDenoiseLoopAfterDenoiser]
+    block_classes = [StableDiffusionXLLoopBeforeDenoiser, StableDiffusionXLControlNetLoopDenoiser, StableDiffusionXLLoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
     @property
     def description(self) -> str:
@@ -704,14 +704,14 @@ class StableDiffusionXLControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper
             "Denoise step that iteratively denoise the latents with controlnet. \n"
             "Its loop logic is defined in  `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `blocks` sequencially:\n"
-            " - `StableDiffusionXLDenoiseLoopBeforeDenoiser`\n"
-            " - `StableDiffusionXLControlNetDenoiseLoopDenoiser`\n"
-            " - `StableDiffusionXLDenoiseLoopAfterDenoiser`\n"
+            " - `StableDiffusionXLLoopBeforeDenoiser`\n"
+            " - `StableDiffusionXLControlNetLoopDenoiser`\n"
+            " - `StableDiffusionXLLoopAfterDenoiser`\n"
         )
 
 # mask
 class StableDiffusionXLInpaintDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser, StableDiffusionXLDenoiseLoopDenoiser, StableDiffusionXLInpaintDenoiseLoopAfterDenoiser]
+    block_classes = [StableDiffusionXLInpaintLoopBeforeDenoiser, StableDiffusionXLLoopDenoiser, StableDiffusionXLInpaintLoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
     @property
     def description(self) -> str:
@@ -719,13 +719,13 @@ class StableDiffusionXLInpaintDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
             "Denoise step that iteratively denoise the latents(for inpainting task only). \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `blocks` sequencially:\n"
-            " - `StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser`\n"
-            " - `StableDiffusionXLDenoiseLoopDenoiser`\n"
-            " - `StableDiffusionXLInpaintDenoiseLoopAfterDenoiser`\n"
+            " - `StableDiffusionXLInpaintLoopBeforeDenoiser`\n"
+            " - `StableDiffusionXLLoopDenoiser`\n"
+            " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"
         )
 # control_cond + mask
 class StableDiffusionXLInpaintControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser, StableDiffusionXLControlNetDenoiseLoopDenoiser, StableDiffusionXLInpaintDenoiseLoopAfterDenoiser]
+    block_classes = [StableDiffusionXLInpaintLoopBeforeDenoiser, StableDiffusionXLControlNetLoopDenoiser, StableDiffusionXLInpaintLoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
     @property
     def description(self) -> str:
@@ -733,9 +733,9 @@ class StableDiffusionXLInpaintControlNetDenoiseLoop(StableDiffusionXLDenoiseLoop
             "Denoise step that iteratively denoise the latents(for inpainting task only) with controlnet. \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `blocks` sequencially:\n"
-            " - `StableDiffusionXLInpaintDenoiseLoopBeforeDenoiser`\n"
-            " - `StableDiffusionXLControlNetDenoiseLoopDenoiser`\n"
-            " - `StableDiffusionXLInpaintDenoiseLoopAfterDenoiser`\n"
+            " - `StableDiffusionXLInpaintLoopBeforeDenoiser`\n"
+            " - `StableDiffusionXLControlNetLoopDenoiser`\n"
+            " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"
         )
 
 
