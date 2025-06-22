@@ -245,6 +245,72 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "image_dim": 1280,
             },
         }
+    elif model_type == "SkyReels-V2-FLF2V-1.3B-540P":
+        config = {
+            "model_id": "Skywork/SkyReels-V2-I2V-1.3B-540P",
+            "diffusers_config": {
+                "added_kv_proj_dim": 1536,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 8960,
+                "freq_dim": 256,
+                "in_channels": 36,
+                "num_attention_heads": 12,
+                "inject_sample_info": False,
+                "num_layers": 30,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+                "image_dim": 1280,
+                "pos_embed_seq_len": 514,
+            },
+        }
+    elif model_type == "SkyReels-V2-FLF2V-14B-540P":
+        config = {
+            "model_id": "Skywork/SkyReels-V2-I2V-14B-540P",
+            "diffusers_config": {
+                "added_kv_proj_dim": 5120,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 36,
+                "num_attention_heads": 40,
+                "inject_sample_info": False,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+                "image_dim": 1280,
+                "pos_embed_seq_len": 514,
+            },
+        }
+    elif model_type == "SkyReels-V2-FLF2V-14B-720P":
+        config = {
+            "model_id": "Skywork/SkyReels-V2-I2V-14B-720P",
+            "diffusers_config": {
+                "added_kv_proj_dim": 5120,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 36,
+                "num_attention_heads": 40,
+                "inject_sample_info": False,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+                "image_dim": 1280,
+                "pos_embed_seq_len": 514,
+            },
+        }
     return config
 
 
@@ -285,6 +351,13 @@ def convert_transformer(model_type: str):
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
+
+    if "FLF2V" in model_type:
+        if hasattr(transformer.condition_embedder, 'image_embedder') and \
+        hasattr(transformer.condition_embedder.image_embedder, 'pos_embed') and \
+        transformer.condition_embedder.image_embedder.pos_embed is not None:
+            pos_embed_shape = transformer.condition_embedder.image_embedder.pos_embed.shape
+            original_state_dict["condition_embedder.image_embedder.pos_embed"] = torch.zeros(pos_embed_shape)
 
     transformer.load_state_dict(original_state_dict, strict=True, assign=True)
     return transformer
@@ -523,7 +596,7 @@ if __name__ == "__main__":
         num_train_timesteps=1000,
     )
 
-    if "I2V" in args.model_type:
+    if "I2V" in args.model_type or "FLF2V" in args.model_type:
         image_encoder = CLIPVisionModelWithProjection.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
         pipe = SkyReelsV2ImageToVideoPipeline(
