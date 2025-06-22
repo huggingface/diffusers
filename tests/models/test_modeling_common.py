@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 
 import copy
 import gc
+import glob
 import inspect
 import json
 import os
@@ -1693,6 +1694,35 @@ class ModelTesterMixin:
         model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
         _ = model(**inputs_dict)[0]
 
+    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @require_torch_accelerator
+    @torch.no_grad()
+    def test_group_offloading_with_disk(self, record_stream, offload_type):
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        if not getattr(model, "_supports_group_offloading", True):
+            return
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.eval()
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.enable_group_offload(
+                torch_device,
+                offload_type=offload_type,
+                offload_to_disk_path=tmpdir,
+                use_stream=True,
+                record_stream=record_stream,
+                **additional_kwargs,
+            )
+            has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
+            assert has_safetensors, "No safetensors found in the directory."
+            _ = model(**inputs_dict)[0]
+
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
             model = self.model_class(**self.init_dict)
@@ -1735,6 +1765,45 @@ class ModelTesterMixin:
             expected_max_diff,
             f"AutoModel forward pass diff: {max_diff} exceeds threshold {expected_max_diff}",
         )
+
+    @parameterized.expand(
+        [
+            (-1, "You can't pass device_map as a negative int"),
+            ("foo", "When passing device_map as a string, the value needs to be a device name"),
+        ]
+    )
+    def test_wrong_device_map_raises_error(self, device_map, msg_substring):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            with self.assertRaises(ValueError) as err_ctx:
+                _ = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+
+        assert msg_substring in str(err_ctx.exception)
+
+    @parameterized.expand([0, "cuda", torch.device("cuda")])
+    @require_torch_gpu
+    def test_passing_non_dict_device_map_works(self, device_map):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).eval()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+            _ = loaded_model(**inputs_dict)
+
+    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
+    @require_torch_gpu
+    def test_passing_dict_device_map_works(self, name, device):
+        # There are other valid dict-based `device_map` values too. It's best to refer to
+        # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).eval()
+        device_map = {name: device}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+            _ = loaded_model(**inputs_dict)
 
 
 @is_staging_test

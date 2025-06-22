@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -202,6 +202,46 @@ pipeline("bears, pizza bites").images[0]
 
 </hfoption>
 </hfoptions>
+
+### Scale scheduling
+
+Dynamically adjusting the LoRA scale during sampling gives you better control over the overall composition and layout because certain steps may benefit more from an increased or reduced scale.
+
+The [character LoRA](https://huggingface.co/alvarobartt/ghibli-characters-flux-lora) in the example below starts with a higher scale that gradually decays over the first 20 steps to establish the character generation. In the later steps, only a scale of 0.2 is applied to avoid adding too much of the LoRA features to other parts of the image the LoRA wasn't trained on.
+
+```py
+import torch
+from diffusers import FluxPipeline
+
+pipeline = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+).to("cuda")
+
+pipelne.load_lora_weights("alvarobartt/ghibli-characters-flux-lora", "lora")
+
+num_inference_steps = 30
+lora_steps = 20
+lora_scales = torch.linspace(1.5, 0.7, lora_steps).tolist()
+lora_scales += [0.2] * (num_inference_steps - lora_steps + 1)
+
+pipeline.set_adapters("lora", lora_scales[0])
+
+def callback(pipeline: FluxPipeline, step: int, timestep: torch.LongTensor, callback_kwargs: dict):
+    pipeline.set_adapters("lora", lora_scales[step + 1])
+    return callback_kwargs
+
+prompt = """
+Ghibli style The Grinch, a mischievous green creature with a sly grin, peeking out from behind a snow-covered tree while plotting his antics, 
+in a quaint snowy village decorated for the holidays, warm light glowing from cozy homes, with playful snowflakes dancing in the air
+"""
+pipeline(
+    prompt=prompt,
+    guidance_scale=3.0,
+    num_inference_steps=num_inference_steps,
+    generator=torch.Generator().manual_seed(42),
+    callback_on_step_end=callback,
+).images[0]
+```
 
 ## Hotswapping
 
