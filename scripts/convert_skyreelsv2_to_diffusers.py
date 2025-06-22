@@ -353,9 +353,11 @@ def convert_transformer(model_type: str):
             handler_fn_inplace(key, original_state_dict)
 
     if "FLF2V" in model_type:
-        if hasattr(transformer.condition_embedder, 'image_embedder') and \
-        hasattr(transformer.condition_embedder.image_embedder, 'pos_embed') and \
-        transformer.condition_embedder.image_embedder.pos_embed is not None:
+        if (
+            hasattr(transformer.condition_embedder, "image_embedder")
+            and hasattr(transformer.condition_embedder.image_embedder, "pos_embed")
+            and transformer.condition_embedder.image_embedder.pos_embed is not None
+        ):
             pos_embed_shape = transformer.condition_embedder.image_embedder.pos_embed.shape
             original_state_dict["condition_embedder.image_embedder.pos_embed"] = torch.zeros(pos_embed_shape)
 

@@ -139,8 +139,8 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
         image_encoder ([`CLIPVisionModelWithProjection`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModelWithProjection), specifically
-            the
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModelWithProjection),
+            specifically the
             [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large)
             variant.
         transformer ([`SkyReelsV2Transformer3DModel`]):
