@@ -703,7 +703,7 @@ class ComponentsManager:
         col_widths = {
             "name": max(15, max(len(name) for name in simple_names)),
             "class": max(25, max(len(component.__class__.__name__) for component in self.components.values())),
-            "device": 15,  # Reduced since using more compact format
+            "device": 20,
             "dtype": 15,
             "size": 10,
             "load_id": max_load_id_len,
@@ -725,7 +725,7 @@ class ComponentsManager:
             output += "Models:\n" + dash_line
             # Column headers
             output += f"{'Name':<{col_widths['name']}} | {'Class':<{col_widths['class']}} | "
-            output += f"{'Device':<{col_widths['device']}} | {'Dtype':<{col_widths['dtype']}} | "
+            output += f"{'Device: act(exec)':<{col_widths['device']}} | {'Dtype':<{col_widths['dtype']}} | "
             output += f"{'Size (GB)':<{col_widths['size']}} | {'Load ID':<{col_widths['load_id']}} | Collection\n"
             output += dash_line
 
@@ -790,7 +790,6 @@ class ComponentsManager:
                     output += f"  Adapters: {info['adapters']}\n"
                 if info.get("ip_adapter"):
                     output += f"  IP-Adapter: Enabled\n"
-                output += f"  Added Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(info['added_time']))}\n"
         
         return output
 
