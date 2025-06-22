@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import unittest
 
 import numpy as np
@@ -27,6 +28,7 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -139,14 +141,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
     def test_callback_cfg(self):
-        import inspect
-        from diffusers.utils.testing_utils import torch_device
-        
         sig = inspect.signature(self.pipeline_class.__call__)
         has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
         has_callback_step_end = "callback_on_step_end" in sig.parameters
@@ -168,7 +163,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
 
         # Track the number of callback calls for diffusion forcing pipelines
         callback_call_count = [0]  # Use list to make it mutable in closure
-        
+
         def callback_increase_guidance(pipe, i, t, callback_kwargs):
             pipe._guidance_scale += 1.0
             callback_call_count[0] += 1
@@ -186,8 +181,12 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
         # For diffusion forcing pipelines, use the actual callback count
         # since they run multiple iterations with nested denoising loops
         expected_guidance_scale = inputs["guidance_scale"] + callback_call_count[0]
-        
+
         assert pipe.guidance_scale == expected_guidance_scale
+
+    @unittest.skip("Test not supported")
+    def test_attention_slicing_forward_pass(self):
+        pass
 
     @unittest.skip(
         "SkyReelsV2DiffusionForcingVideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors"
