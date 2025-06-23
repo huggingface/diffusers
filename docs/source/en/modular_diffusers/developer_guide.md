@@ -38,24 +38,24 @@ Let's see how this works with the Differential Diffusion example.
 
 Differential diffusion (https://differential-diffusion.github.io/) is an image-to-image workflow, so it makes sense for us to start with the preset of pipeline blocks used to build img2img pipeline (`IMAGE2IMAGE_BLOCKS`) and see how we can build this new pipeline with them. 
 
-```python
-IMAGE2IMAGE_BLOCKS = InsertableOrderedDict([
-    ("text_encoder", StableDiffusionXLTextEncoderStep),
-    ("image_encoder", StableDiffusionXLVaeEncoderStep),
-    ("input", StableDiffusionXLInputStep),
-    ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
-    ("prepare_latents", StableDiffusionXLImg2ImgPrepareLatentsStep),
-    ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
-    ("denoise", StableDiffusionXLDenoiseLoop),
-    ("decode", StableDiffusionXLDecodeStep)
-])
+```py
+>>> IMAGE2IMAGE_BLOCKS = InsertableOrderedDict([
+...     ("text_encoder", StableDiffusionXLTextEncoderStep),
+...     ("image_encoder", StableDiffusionXLVaeEncoderStep),
+...     ("input", StableDiffusionXLInputStep),
+...     ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
+...     ("prepare_latents", StableDiffusionXLImg2ImgPrepareLatentsStep),
+...     ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
+...     ("denoise", StableDiffusionXLDenoiseLoop),
+...     ("decode", StableDiffusionXLDecodeStep)
+... ])
 ```
 
 Note that "denoise" (`StableDiffusionXLDenoiseLoop`) is a loop that contains 3 loop blocks (more on SequentialLoopBlocks [here](https://colab.research.google.com/drive/1iVRjy_tOfmmm4gd0iVe0_Rl3c6cBzVqi?usp=sharing))
 
-```python
-denoise_blocks = IMAGE2IMAGE_BLOCKS["denoise"]()
-print(denoise_blocks)
+```py
+>>> denoise_blocks = IMAGE2IMAGE_BLOCKS["denoise"]()
+>>> print(denoise_blocks)
 ```
 
 ```out
@@ -103,66 +103,65 @@ Differential diffusion shares exact same pipeline structure as img2img. Here is 
 
 ok now we've identified the blocks to modify, let's build the pipeline skeleton first - at this stage, our goal is to get the pipeline struture working end-to-end (even though it's just doing the img2img behavior). I would simply create placeholder blocks by copying from existing ones:
 
-```python
-# Copy existing blocks as placeholders
-class SDXLDiffDiffPrepareLatentsStep(PipelineBlock):
-    """Copied from StableDiffusionXLImg2ImgPrepareLatentsStep - will modify later"""
-    # ... same implementation as StableDiffusionXLImg2ImgPrepareLatentsStep
-
-class SDXLDiffDiffLoopBeforeDenoiser(PipelineBlock):
-    """Copied from StableDiffusionXLLoopBeforeDenoiser - will modify later"""
-    # ... same implementation as StableDiffusionXLLoopBeforeDenoiser
+```py
+>>> # Copy existing blocks as placeholders
+>>> class SDXLDiffDiffPrepareLatentsStep(PipelineBlock):
+...     """Copied from StableDiffusionXLImg2ImgPrepareLatentsStep - will modify later"""
+...     # ... same implementation as StableDiffusionXLImg2ImgPrepareLatentsStep
+... 
+>>> class SDXLDiffDiffLoopBeforeDenoiser(PipelineBlock):
+...     """Copied from StableDiffusionXLLoopBeforeDenoiser - will modify later"""
+...     # ... same implementation as StableDiffusionXLLoopBeforeDenoiser
 ```
 
 `SDXLDiffDiffLoopBeforeDenoiser` is the be part of the denoise loop we need to change. Let's use it to assemble a `SDXLDiffDiffDenoiseLoop`.
 
-```python
-class SDXLDiffDiffDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [SDXLDiffDiffLoopBeforeDenoiser, StableDiffusionXLLoopDenoiser, StableDiffusionXLLoopAfterDenoiser]
-    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+```py
+>>> class SDXLDiffDiffDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
+...     block_classes = [SDXLDiffDiffLoopBeforeDenoiser, StableDiffusionXLLoopDenoiser, StableDiffusionXLLoopAfterDenoiser]
+...     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
 ```
 
 Now we can put together our differential diffusion pipeline.
 
-```python
-DIFFDIFF_BLOCKS = IMAGE2IMAGE_BLOCKS.copy()
-DIFFDIFF_BLOCKS["set_timesteps"] = TEXT2IMAGE_BLOCKS["set_timesteps"]
-DIFFDIFF_BLOCKS["prepare_latents"] = SDXLDiffDiffPrepareLatentsStep
-DIFFDIFF_BLOCKS["denoise"] = SDXLDiffDiffDenoiseLoop
-
-dd_blocks = SequentialPipelineBlocks.from_blocks_dict(DIFFDIFF_BLOCKS)
-print(dd_blocks)
-# At this point, the pipeline works exactly like img2img since our blocks are just copies
+```py
+>>> DIFFDIFF_BLOCKS = IMAGE2IMAGE_BLOCKS.copy()
+>>> DIFFDIFF_BLOCKS["set_timesteps"] = TEXT2IMAGE_BLOCKS["set_timesteps"]
+>>> DIFFDIFF_BLOCKS["prepare_latents"] = SDXLDiffDiffPrepareLatentsStep
+>>> DIFFDIFF_BLOCKS["denoise"] = SDXLDiffDiffDenoiseLoop
+>>> 
+>>> dd_blocks = SequentialPipelineBlocks.from_blocks_dict(DIFFDIFF_BLOCKS)
+>>> print(dd_blocks)
+>>> # At this point, the pipeline works exactly like img2img since our blocks are just copies
 ```
 
 ok, so now our blocks should be able to compile without an error, we can move on to the next step. Let's setup a simple exapmple so we can run the pipeline as we build it. diff-diff use same components as SDXL so we can fetch the models from a regular SDXL repo.
 
-```python
-dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_componenets(torch_dtype=torch.float16)
-dd_pipeline.to("cuda")
+```py
+>>> dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
+>>> dd_pipeline.load_componenets(torch_dtype=torch.float16)
+>>> dd_pipeline.to("cuda")
 ```
 
 We will use this example script:
 
-```python
-
-image = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png?download=true")
-mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true") 
-
-prompt = "a green pear"
-negative_prompt = "blurry"
-
-image = dd_pipeline.run(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    num_inference_steps=25,
-    diffdiff_map=mask,
-    image=image,
-    output="images"
-)[0]
-
-image.save("diffdiff_out.png")
+```py
+>>> image = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png?download=true")
+>>> mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true") 
+>>> 
+>>> prompt = "a green pear"
+>>> negative_prompt = "blurry"
+>>> 
+>>> image = dd_pipeline.run(
+...     prompt=prompt,
+...     negative_prompt=negative_prompt,
+...     num_inference_steps=25,
+...     diffdiff_map=mask,
+...     image=image,
+...     output="images"
+... )[0]
+>>> 
+>>> image.save("diffdiff_out.png")
 ```
 
 If you run the script right now, you will get a complaint about unexpected input `diffdiff_map`. 
@@ -330,7 +329,7 @@ That's all there is to it! Now your script should run as expected and get a resu
 Here is the pipeline we created ( hint, `print(dd_blocks)`)
 It is a simple sequential pipeline.
 
-```
+```out
 SequentialPipelineBlocks(
   Class: ModularPipelineBlocks
 
@@ -398,10 +397,10 @@ We provide an auto IP-adapter block that you can plug-and-play into your modular
 
 Let's create IP-adapter block:
 
-```python
-from diffusers.modular_pipelines.stable_diffusion_xl.encoders import StableDiffusionXLAutoIPAdapterStep
-ip_adapter_block = StableDiffusionXLAutoIPAdapterStep()
-print(ip_adapter_block)
+```py
+>>> from diffusers.modular_pipelines.stable_diffusion_xl.encoders import StableDiffusionXLAutoIPAdapterStep
+>>> ip_adapter_block = StableDiffusionXLAutoIPAdapterStep()
+>>> print(ip_adapter_block)
 ```
 
 It has 4 components: `unet` and `guider` are already used in diff-diff, but it also has two new ones: `image_encoder` and `feature_extractor`
@@ -435,14 +434,14 @@ It has 4 components: `unet` and `guider` are already used in diff-diff, but it a
 
 We can directly add the ip-adapter block instance to the `diffdiff_blocks` that we created before. The `blocks` attribute is a `InsertableOrderedDict`, so we're able to insert the it at specific position (index `0` here).
 
-```python
-dd_blocks.blocks.insert("ip_adapter", ip_adapter_block, 0)
+```py
+>>> dd_blocks.blocks.insert("ip_adapter", ip_adapter_block, 0)
 ```
 
 Take a look at the new diff-diff pipeline with ip-adapter! 
 
-```python
-print(dd_blocks)
+```py
+>>> print(dd_blocks)
 ```
 
 The pipeline now lists ip-adapter as its first block, and tells you that it will run only if `ip_adapter_image` is provided. It also includes the two new components from ip-adpater: `image_encoder` and `feature_extractor`
@@ -519,35 +518,34 @@ SequentialPipelineBlocks(
 Let's test it out. I used an orange image to condition the generation via ip-addapter and we can see a slight orange color and texture in the final output.
 
 
-```python
-ip_adapter_block = StableDiffusionXLAutoIPAdapterStep()
-dd_blocks.blocks.insert("ip_adapter", ip_adapter_block, 0)
-
-dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_components(torch_dtype=torch.float16)
-dd_pipeline.loader.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
-dd_pipeline.loader.set_ip_adapter_scale(0.6)
-dd_pipeline = dd_pipeline.to(device)
-
-ip_adapter_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_orange.jpeg")
-image = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png?download=true")
-mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true") 
-
-prompt = "a green pear"
-negative_prompt = "blurry"
-generator = torch.Generator(device=device).manual_seed(42)
-
-image = dd_pipeline(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    num_inference_steps=25,
-    generator=generator,
-    ip_adapter_image=ip_adapter_image,
-    diffdiff_map=mask,
-    image=image,
-    output="images"
-)[0]
-
+```py
+>>> ip_adapter_block = StableDiffusionXLAutoIPAdapterStep()
+>>> dd_blocks.blocks.insert("ip_adapter", ip_adapter_block, 0)
+>>> 
+>>> dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
+>>> dd_pipeline.load_components(torch_dtype=torch.float16)
+>>> dd_pipeline.loader.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
+>>> dd_pipeline.loader.set_ip_adapter_scale(0.6)
+>>> dd_pipeline = dd_pipeline.to(device)
+>>> 
+>>> ip_adapter_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_orange.jpeg")
+>>> image = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png?download=true")
+>>> mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true") 
+>>> 
+>>> prompt = "a green pear"
+>>> negative_prompt = "blurry"
+>>> generator = torch.Generator(device=device).manual_seed(42)
+>>> 
+>>> image = dd_pipeline(
+...     prompt=prompt,
+...     negative_prompt=negative_prompt,
+...     num_inference_steps=25,
+...     generator=generator,
+...     ip_adapter_image=ip_adapter_image,
+...     diffdiff_map=mask,
+...     image=image,
+...     output="images"
+... )[0]
 ```
 
 ## Working with ControlNets
@@ -562,22 +560,22 @@ Intuitively, these two techniques are orthogonal and should combine naturally: d
 
 With this understanding, let's assemble the `SDXLDiffDiffControlNetDenoiseLoop`:
 
-```python
-class SDXLDiffDiffControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [SDXLDiffDiffLoopBeforeDenoiser, StableDiffusionXLControlNetLoopDenoiser, StableDiffusionXLDenoiseLoopAfterDenoiser]
-    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
-
-controlnet_denoise_block = SDXLDiffDiffControlNetDenoiseLoop()
-# print(controlnet_denoise)
+```py
+>>> class SDXLDiffDiffControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
+...     block_classes = [SDXLDiffDiffLoopBeforeDenoiser, StableDiffusionXLControlNetLoopDenoiser, StableDiffusionXLDenoiseLoopAfterDenoiser]
+...     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+>>> 
+>>> controlnet_denoise_block = SDXLDiffDiffControlNetDenoiseLoop()
+>>> # print(controlnet_denoise)
 ```
 
 We provide a auto controlnet input block that you can directly put into your workflow: similar to auto ip-adapter block, this step will only run if `control_image` input is passed from user. It work with both controlnet and controlnet union.
 
 
-```python
-from diffusers.modular_pipelines.stable_diffusion_xl.before_denoise import StableDiffusionXLControlNetAutoInput
-control_input_block = StableDiffusionXLControlNetAutoInput()
-print(control_input_block)
+```py
+>>> from diffusers.modular_pipelines.stable_diffusion_xl.before_denoise import StableDiffusionXLControlNetAutoInput
+>>> control_input_block = StableDiffusionXLControlNetAutoInput()
+>>> print(control_input_block)
 ```
 
 ```out
@@ -613,43 +611,43 @@ StableDiffusionXLControlNetAutoInput(
 
 Let's assemble the blocks and run an example using controlnet + differential diffusion. I used a canny of a tomato as `control_image`, so you can see in the output, the right half that transformed into a pear had a tomato-like shape.
 
-```python
-dd_blocks.blocks.insert("controlnet_input", control_input_block, 7)
-dd_blocks.blocks["denoise"] = controlnet_denoise_block
-
-dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_components(torch_dtype=torch.float16)
-dd_pipeline = dd_pipeline.to(device)
-
-control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_tomato_canny.jpeg")
-image = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png?download=true")
-mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true") 
-
-prompt = "a green pear"
-negative_prompt = "blurry"
-generator = torch.Generator(device=device).manual_seed(42)
-
-image = dd_pipeline(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    num_inference_steps=25,
-    generator=generator,
-    control_image=control_image,
-    controlnet_conditioning_scale=0.5,
-    diffdiff_map=mask,
-    image=image,
-    output="images"
-)[0]
+```py
+>>> dd_blocks.blocks.insert("controlnet_input", control_input_block, 7)
+>>> dd_blocks.blocks["denoise"] = controlnet_denoise_block
+>>> 
+>>> dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
+>>> dd_pipeline.load_components(torch_dtype=torch.float16)
+>>> dd_pipeline = dd_pipeline.to(device)
+>>> 
+>>> control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_tomato_canny.jpeg")
+>>> image = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png?download=true")
+>>> mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true") 
+>>> 
+>>> prompt = "a green pear"
+>>> negative_prompt = "blurry"
+>>> generator = torch.Generator(device=device).manual_seed(42)
+>>> 
+>>> image = dd_pipeline(
+...     prompt=prompt,
+...     negative_prompt=negative_prompt,
+...     num_inference_steps=25,
+...     generator=generator,
+...     control_image=control_image,
+...     controlnet_conditioning_scale=0.5,
+...     diffdiff_map=mask,
+...     image=image,
+...     output="images"
+... )[0]
 ```
 
 Optionally, We can combine `SDXLDiffDiffControlNetDenoiseLoop` and `SDXLDiffDiffDenoiseLoop` into a `AutoPipelineBlocks` so that same workflow can work with or without controlnet. 
 
 
-```python
-class SDXLDiffDiffAutoDenoiseStep(AutoPipelineBlocks):
-    block_classes = [SDXLDiffDiffControlNetDenoiseLoop, SDXLDiffDiffDenoiseLoop]
-    block_names = ["controlnet_denoise", "denoise"]
-    block_trigger_inputs = ["controlnet_cond", None]
+```py
+>>> class SDXLDiffDiffAutoDenoiseStep(AutoPipelineBlocks):
+...     block_classes = [SDXLDiffDiffControlNetDenoiseLoop, SDXLDiffDiffDenoiseLoop]
+...     block_names = ["controlnet_denoise", "denoise"]
+...     block_trigger_inputs = ["controlnet_cond", None]
 ```
 
 `SDXLDiffDiffAutoDenoiseStep` will run the ControlNet denoise step if `control_image` input is provided, otherwise it will run the regular denoise step.
@@ -658,22 +656,22 @@ We won't go into too much detail about `AutoPipelineBlocks` in this section, but
 
 now you can create the differential diffusion preset that works with ip-adapter & controlnet.
 
-```python
-DIFFDIFF_AUTO_BLOCKS = IMAGE2IMAGE_BLOCKS.copy()
-DIFFDIFF_AUTO_BLOCKS["prepare_latents"] = SDXLDiffDiffPrepareLatentsStep
-DIFFDIFF_AUTO_BLOCKS["set_timesteps"] = TEXT2IMAGE_BLOCKS["set_timesteps"]
-DIFFDIFF_AUTO_BLOCKS["denoise"] = SDXLDiffDiffAutoDenoiseStep
-DIFFDIFF_AUTO_BLOCKS.insert("ip_adapter", StableDiffusionXLAutoIPAdapterStep, 0)
-DIFFDIFF_AUTO_BLOCKS.insert("controlnet_input",StableDiffusionXLControlNetAutoInput, 7)
-
-print(DIFFDIFF_AUTO_BLOCKS)
+```py
+>>> DIFFDIFF_AUTO_BLOCKS = IMAGE2IMAGE_BLOCKS.copy()
+>>> DIFFDIFF_AUTO_BLOCKS["prepare_latents"] = SDXLDiffDiffPrepareLatentsStep
+>>> DIFFDIFF_AUTO_BLOCKS["set_timesteps"] = TEXT2IMAGE_BLOCKS["set_timesteps"]
+>>> DIFFDIFF_AUTO_BLOCKS["denoise"] = SDXLDiffDiffAutoDenoiseStep
+>>> DIFFDIFF_AUTO_BLOCKS.insert("ip_adapter", StableDiffusionXLAutoIPAdapterStep, 0)
+>>> DIFFDIFF_AUTO_BLOCKS.insert("controlnet_input",StableDiffusionXLControlNetAutoInput, 7)
+>>> 
+>>> print(DIFFDIFF_AUTO_BLOCKS)
 ```
 
 to use
 
-```python
-dd_auto_blocks = SequentialPipelineBlocks.from_blocks_dict(DIFFDIFF_AUTO_BLOCKS)
-dd_pipeline = dd_auto_blocks.init_pipeline(...)
+```py
+>>> dd_auto_blocks = SequentialPipelineBlocks.from_blocks_dict(DIFFDIFF_AUTO_BLOCKS)
+>>> dd_pipeline = dd_auto_blocks.init_pipeline(...)
 ```
 ## Creating a Modular Repo
 
@@ -683,23 +681,22 @@ You can easily share your differential diffusion workflow on the hub, by creatin
 
 With a modular repo, it is very easy for the community to use the workflow you just created!
 
-```python
-
-from diffusers.modular_pipelines import ModularPipeline, ComponentsManager
-import torch
-from diffusers.utils import load_image
-
-repo_id = "YiYiXu/modular-diffdiff"
-
-components = ComponentsManager()
-
-diffdiff_pipeline = ModularPipeline.from_pretrained(repo_id, trust_remote_code=True, component_manager=components, collection="diffdiff")
-diffdiff_pipeline.loader.load(torch_dtype=torch.float16)
-components.enable_auto_cpu_offload()
+```py
+>>> from diffusers.modular_pipelines import ModularPipeline, ComponentsManager
+>>> import torch
+>>> from diffusers.utils import load_image
+>>> 
+>>> repo_id = "YiYiXu/modular-diffdiff"
+>>> 
+>>> components = ComponentsManager()
+>>> 
+>>> diffdiff_pipeline = ModularPipeline.from_pretrained(repo_id, trust_remote_code=True, component_manager=components, collection="diffdiff")
+>>> diffdiff_pipeline.loader.load(torch_dtype=torch.float16)
+>>> components.enable_auto_cpu_offload()
 ```
 
 see more usage example on model card
 
 ## deploy a mellon node
 
-YIYI TODO: an example of mellon node https://huggingface.co/YiYiXu/diff-diff-mellon
+[YIYI TODO: for now, here is an example of mellon node https://huggingface.co/YiYiXu/diff-diff-mellon]
