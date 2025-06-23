@@ -1414,39 +1414,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         can reduce end-to-end compile time substantially, while preserving the
         runtime speed-ups you would expect from a full `torch.compile`.
 
-        The set of sub-modules to compile is discovered in one of two ways:
-
-        1. **`_repeated_blocks`** – Preferred.  Define this attribute on your
-        subclass as a list/tuple of class names (strings).  Every module whose
-        class name matches will be compiled.
-
-        2. **`_no_split_modules`** – Fallback.  If the preferred attribute is
-        missing or empty, we fall back to the legacy Diffusers attribute
-        `_no_split_modules`.
+        The set of sub-modules to compile is discovered by the presence of
+        **`_repeated_blocks`** attribute in the model definition. Define this
+        attribute on your model subclass as a list/tuple of class names
+        (strings). Every module whose class name matches will be compiled.
 
         Once discovered, each matching sub-module is compiled by calling
-        ``submodule.compile(*args, **kwargs)``.  Any positional or keyword
-        arguments you supply to :meth:`compile_repeated_blocks` are forwarded
+        `submodule.compile(*args, **kwargs)`.  Any positional or keyword
+        arguments you supply to `compile_repeated_blocks` are forwarded
         verbatim to `torch.compile`.
         """
         repeated_blocks = getattr(self, "_repeated_blocks", None)
 
         if not repeated_blocks:
-            logger.warning("_repeated_blocks attribute is empty. Using _no_split_modules to find compile regions.")
-
-            repeated_blocks = getattr(self, "_no_split_modules", None)
-
-        if not repeated_blocks:
             raise ValueError(
-                "Both _repeated_blocks and _no_split_modules attribute are empty. "
-                "Set _repeated_blocks for the model to benefit from faster compilation. "
+                "`_repeated_blocks` attribute is empty. "
+                f"Set `_repeated_blocks` for the class `{self.__class__.__name__}` to benefit from faster compilation. "
             )
-
         has_compiled_region = False
         for submod in self.modules():
             if submod.__class__.__name__ in repeated_blocks:
-                has_compiled_region = True
                 submod.compile(*args, **kwargs)
+                has_compiled_region = True
 
         if not has_compiled_region:
             raise ValueError(
