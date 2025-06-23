@@ -15,6 +15,7 @@
 
 import copy
 import gc
+import glob
 import inspect
 import json
 import os
@@ -29,6 +30,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import pytest
 import requests_mock
 import safetensors.torch
 import torch
@@ -937,8 +939,9 @@ class ModelTesterMixin:
 
     @require_torch_accelerator_with_training
     def test_enable_disable_gradient_checkpointing(self):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
 
@@ -956,8 +959,9 @@ class ModelTesterMixin:
 
     @require_torch_accelerator_with_training
     def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip: set[str] = {}):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1014,8 +1018,9 @@ class ModelTesterMixin:
     def test_gradient_checkpointing_is_applied(
         self, expected_set=None, attention_head_dim=None, num_attention_heads=None, block_out_channels=None
     ):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -1072,7 +1077,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         torch.manual_seed(0)
         output_no_lora = model(**inputs_dict, return_dict=False)[0]
@@ -1127,7 +1132,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         denoiser_lora_config = LoraConfig(
             r=4,
@@ -1158,7 +1163,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         denoiser_lora_config = LoraConfig(
             r=rank,
@@ -1195,7 +1200,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         denoiser_lora_config = LoraConfig(
             r=4,
@@ -1232,10 +1237,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_cpu_offload(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1262,10 +1267,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_disk_offload_without_safetensors(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1295,10 +1300,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_disk_offload_with_safetensors(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1323,10 +1328,10 @@ class ModelTesterMixin:
 
     @require_torch_multi_accelerator
     def test_model_parallelism(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1425,10 +1430,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_sharded_checkpoints_device_map(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
         model = model.to(torch_device)
 
         torch.manual_seed(0)
@@ -1496,7 +1501,7 @@ class ModelTesterMixin:
     def test_layerwise_casting_training(self):
         def test_fn(storage_dtype, compute_dtype):
             if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
-                return
+                pytest.skip("Skipping test because CPU doesn't go well with bfloat16.")
             init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
             model = self.model_class(**init_dict)
@@ -1616,6 +1621,9 @@ class ModelTesterMixin:
     @parameterized.expand([False, True])
     @require_torch_accelerator
     def test_group_offloading(self, record_stream):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
 
@@ -1632,8 +1640,6 @@ class ModelTesterMixin:
             return model(**inputs_dict)[0]
 
         model = self.model_class(**init_dict)
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.to(torch_device)
         output_without_group_offloading = run_forward(model)
@@ -1669,12 +1675,12 @@ class ModelTesterMixin:
     @require_torch_accelerator
     @torch.no_grad()
     def test_group_offloading_with_layerwise_casting(self, record_stream, offload_type):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
-
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.to(torch_device)
         model.eval()
@@ -1692,6 +1698,35 @@ class ModelTesterMixin:
         )
         model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
         _ = model(**inputs_dict)[0]
+
+    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @require_torch_accelerator
+    @torch.no_grad()
+    def test_group_offloading_with_disk(self, record_stream, offload_type):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.eval()
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.enable_group_offload(
+                torch_device,
+                offload_type=offload_type,
+                offload_to_disk_path=tmpdir,
+                use_stream=True,
+                record_stream=record_stream,
+                **additional_kwargs,
+            )
+            has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
+            assert has_safetensors, "No safetensors found in the directory."
+            _ = model(**inputs_dict)[0]
 
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
