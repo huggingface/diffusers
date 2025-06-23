@@ -169,16 +169,26 @@ and you would get the same result as the original img2img pipeline.
 
 Let's modify the pipeline so that we can get expected result with this example script.
 
-We'll start with the `prepare_latents` step, as it is the first step that gets called right after the `input` step. The main changes are:
-- new input `diffdiff_map`: It will become a new input to the pipeline after we built it.
-- `num_inference_steps` and `timestesp` as intermediates inputs: Both variables are created in `set_timesteps` block, we need to list them as intermediates inputs so that we can now use them in `__call__`.
-- A new component `mask_processor`: A default one will be created when we build the pipeline, but user can update it. 
-- Inside `__call__`, we created 2 new variables: the change map `diffdiff_mask` and the pre-computed noised latents for all timesteps `original_latents`. We also need to list them as intermediates outputs so the we can use them in the `denoise` step later.
+We'll start with the `prepare_latents` step, as it is the first step that gets called right after the `input` step. Let's first apply changes in inputs/outputs/components. The main changes are:
+- new input `diffdiff_map`
+- new intermediates inputs `num_inference_steps` and `timestesp`. Both variables are already created in `set_timesteps` block, we can now need to use them in `prepare_latents` step.
+- A new component `mask_processor` to process the `diffdiff_map`
 
-I have two tips I want to share for this process:
-1. use `print(dd_pipeline.doc)` to check compiled inputs and outputs of the built piepline. 
+<Tip>
+
+💡  use `print(dd_pipeline.doc)` to check compiled inputs and outputs of the built piepline. 
+
 e.g. after we added `diffdiff_map` as an input in this step, we can run `print(dd_pipeline.doc)` to verify that it shows up in the docstring as a user input. 
-2. insert `print(state)` and `print(block_state)` everywhere inside the `__call__` method to inspect the intermediate results.
+
+</Tip>
+
+Once we make sure all the variables we need are available in the block state, we can implement the diff-diff logic inside `__call__`. We created 2 new variables: the change map `diffdiff_mask` and the pre-computed noised latents for all timesteps `original_latents`. We also need to list them as intermediates outputs so the we can use them in the `denoise` step later.
+
+<Tip>
+
+💡  Implement incrementally! Run the example script as you go, and insert `print(state)` and `print(block_state)` everywhere inside the `__call__` method to inspect the intermediate results. This helps you understand what's going on and what each line you just added does.
+
+</Tip>
 
 This is the modified `StableDiffusionXLImg2ImgPrepareLatentsStep` we ended up with :
 ```diff
@@ -265,7 +275,7 @@ This is the modified `StableDiffusionXLImg2ImgPrepareLatentsStep` we ended up wi
           self.add_block_state(state, block_state)
 ```
 
-This is the modified `before_denoiser` step, we use diff-diff map to freeze certain regions in the latents before each denoising step.
+Now let's modify `before_denoiser` step, we use diff-diff map to freeze certain regions in the latents before each denoising step.
 
 ```diff
 class SDXLDiffDiffLoopBeforeDenoiser(PipelineBlock):
@@ -324,10 +334,15 @@ class SDXLDiffDiffLoopBeforeDenoiser(PipelineBlock):
         return components, block_state
 ```
 
-That's all there is to it! Now your script should run as expected and get a result like this one.
+That's all there is to it! We've just created a simple sequential pipeline by mix-and-match some existing and new pipeline blocks.
 
-Here is the pipeline we created ( hint, `print(dd_blocks)`)
-It is a simple sequential pipeline.
+
+<Tip>
+
+💡 You can inspect the pipeline you built with `print()`
+
+</Tip>
+
 
 ```out
 SequentialPipelineBlocks(
@@ -515,7 +530,7 @@ SequentialPipelineBlocks(
 )
 ```
 
-Let's test it out. I used an orange image to condition the generation via ip-addapter and we can see a slight orange color and texture in the final output.
+Let's test it out. We used an orange image to condition the generation via ip-addapter and we can see a slight orange color and texture in the final output.
 
 
 ```py
@@ -551,8 +566,8 @@ Let's test it out. I used an orange image to condition the generation via ip-add
 ## Working with ControlNets
 
 What about controlnet? Can differential diffusion work with controlnet? The key differences between a regular pipeline and a ControlNet pipeline are:
-    * A ControlNet input step that prepares the control condition
-    * Inside the denoising loop, a modified denoiser step where the control image is first processed through ControlNet, then control information is injected into the UNet
+1. A ControlNet input step that prepares the control condition
+2. Inside the denoising loop, a modified denoiser step where the control image is first processed through ControlNet, then control information is injected into the UNet
 
 From looking at the code workflow: differential diffusion only modifies the "before denoiser" step, while ControlNet operates within the "denoiser" itself. Since they intervene at different points in the pipeline, they should work together without conflicts.
 
@@ -569,7 +584,7 @@ With this understanding, let's assemble the `SDXLDiffDiffControlNetDenoiseLoop`:
 >>> # print(controlnet_denoise)
 ```
 
-We provide a auto controlnet input block that you can directly put into your workflow: similar to auto ip-adapter block, this step will only run if `control_image` input is passed from user. It work with both controlnet and controlnet union.
+We provide a auto controlnet input block that you can directly put into your workflow to proceess the `control_image`: similar to auto ip-adapter block, this step will only run if `control_image` input is passed from user. It work with both controlnet and controlnet union.
 
 
 ```py
@@ -609,7 +624,7 @@ StableDiffusionXLControlNetAutoInput(
 )
 ```
 
-Let's assemble the blocks and run an example using controlnet + differential diffusion. I used a canny of a tomato as `control_image`, so you can see in the output, the right half that transformed into a pear had a tomato-like shape.
+Let's assemble the blocks and run an example using controlnet + differential diffusion. We used a tomato as `control_image`, so you can see that in the output, the right half that transformed into a pear had a tomato-like shape.
 
 ```py
 >>> dd_blocks.blocks.insert("controlnet_input", control_input_block, 7)
@@ -652,9 +667,13 @@ Optionally, We can combine `SDXLDiffDiffControlNetDenoiseLoop` and `SDXLDiffDiff
 
 `SDXLDiffDiffAutoDenoiseStep` will run the ControlNet denoise step if `control_image` input is provided, otherwise it will run the regular denoise step.
 
-We won't go into too much detail about `AutoPipelineBlocks` in this section, but you can read more about it [here](TODO). Note that it's perfectly fine not to use `AutoPipelineBlocks`. In fact, we recommend only using `AutoPipelineBlocks` to package your workflow at the end once you've verified all your pipelines work as expected.
+<Tip>
 
-now you can create the differential diffusion preset that works with ip-adapter & controlnet.
+ Note that it's perfectly fine not to use `AutoPipelineBlocks`. In fact, we recommend only using `AutoPipelineBlocks` to package your workflow at the end once you've verified all your pipelines work as expected. We won't go into too much detail about `AutoPipelineBlocks` in this section, but you can read more about it [here](TODO).
+
+</Tip>
+
+Now you can create the differential diffusion preset that works with ip-adapter & controlnet.
 
 ```py
 >>> DIFFDIFF_AUTO_BLOCKS = IMAGE2IMAGE_BLOCKS.copy()
