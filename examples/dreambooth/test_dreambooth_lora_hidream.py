@@ -220,7 +220,6 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             loaded_lora_rank = raw["transformer.r"]
             self.assertTrue(loaded_lora_rank == rank)
 
-
     def test_dreambooth_lora_hidream_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
