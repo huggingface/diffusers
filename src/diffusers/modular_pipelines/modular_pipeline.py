@@ -947,7 +947,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         instance = cls()
         
         # Create instances if classes are provided
-        blocks = {}
+        blocks = InsertableOrderedDict()
         for name, block in blocks_dict.items():
             if inspect.isclass(block):
                 blocks[name] = block()

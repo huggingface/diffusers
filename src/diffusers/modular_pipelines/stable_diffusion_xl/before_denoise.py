@@ -1698,7 +1698,13 @@ class StableDiffusionXLControlNetAutoInput(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLControlNetUnionInputStep, StableDiffusionXLControlNetInputStep]
     block_names = ["controlnet_union", "controlnet"]
     block_trigger_inputs = ["control_mode", "control_image"]
-
+    
+    @property
+    def description(self):
+        return "Controlnet Input step that prepare the controlnet input.\n" + \
+               "This is an auto pipeline block that works for both controlnet and controlnet_union.\n" + \
+               " - `StableDiffusionXLControlNetUnionInputStep` is called to prepare the controlnet input when `control_mode` and `control_image` are provided.\n" + \
+               " - `StableDiffusionXLControlNetInputStep` is called to prepare the controlnet input when `control_image` is provided."
 
 
 # Before denoise
