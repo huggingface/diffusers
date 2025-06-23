@@ -67,7 +67,7 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
-from ..utils.torch_utils import get_device, is_compiled_module
+from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
 
 
 if is_torch_npu_available():
@@ -1203,9 +1203,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._offload_device = device
 
         self.to("cpu", silence_dtype_warnings=True)
-        device_mod = getattr(torch, device.type, None)
-        if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-            device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+        empty_device_cache(device.type)
 
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
@@ -1315,10 +1313,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._offload_device = device
 
         if self.device.type != "cpu":
+            orig_device_type = self.device.type
             self.to("cpu", silence_dtype_warnings=True)
-            device_mod = getattr(torch, self.device.type, None)
-            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+            empty_device_cache(orig_device_type)
 
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
