@@ -737,7 +737,7 @@ class FinegrainedFP8Config(QuantizationConfigMixin):
             The size of the weight blocks for quantization, default is (128, 128).
         modules_to_not_convert (`list`, *optional*):
             A list of module names that should not be converted during quantization.
-        
+
         Example:
         ```python
         from diffusers import FluxTransformer2DModel, FinegrainedFP8Config

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class FinegrainedFP8Quantizer(DiffusersQuantizer):
     """
     FP8 quantization implementation supporting both standard and MoE models.
-    Supports both e4m3fn formats based on platform.
+    Supports e4m3fn fp8 format on NVIDIA GPUs.
     """
 
     requires_parameters_quantization = True
@@ -88,8 +88,10 @@ class FinegrainedFP8Quantizer(DiffusersQuantizer):
     ):
         """
         Quantizes weights to FP8 format using Block-wise quantization
+
+        For more details about finegrained quantization, please refer to :tiona
+            DeepSeek-V3 Technical Report : https://arxiv.org/pdf/2412.19437
         """
-        # print("############ create quantized param ########")
         from accelerate.utils import set_module_tensor_to_device
 
         set_module_tensor_to_device(model, param_name, target_device, param_value)
@@ -198,8 +200,4 @@ class FinegrainedFP8Quantizer(DiffusersQuantizer):
 
     @property
     def is_trainable(self) -> bool:
-        return False
-
-    def get_cuda_warm_up_factor(self):
-        # Pre-processing is done cleanly, so we can allocate everything here
-        return 2
+        return True

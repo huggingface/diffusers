@@ -96,7 +96,17 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["quantizers.quantization_config"].append("TorchAoConfig")
 
-_import_structure["quantizers.quantization_config"].append("FinegrainedFP8Config")
+try:
+    if not is_torch_available() and not is_accelerate_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_finegrained_fp8_objects
+
+    _import_structure["utils.dummy_finegrained_fp8_objects"] = [
+        name for name in dir(dummy_finegrained_fp8_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("FinegrainedFP8Config")
 
 try:
     if not is_torch_available() and not is_accelerate_available() and not is_optimum_quanto_available():

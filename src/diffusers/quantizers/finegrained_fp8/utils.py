@@ -32,7 +32,7 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)
 
 
-# Copied from https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/main/inference/kernel.py
+# Copied from https://huggingface.co/deepseek-ai/DeepSeek-V3/blob/dd31960ee457249502f7c6a652a30ff78e9fc792/inference/kernel.py
 @triton.jit
 def act_quant_kernel(x_ptr, y_ptr, s_ptr, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
@@ -58,7 +58,7 @@ def act_quant(x: torch.Tensor, block_size: int = 128) -> Tuple[torch.Tensor, tor
     return y, s
 
 
-# Adapted from https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/quantization/fp8_kernel.py
+# Adapted from https://github.com/sgl-project/sglang/blob/10d60cd41bb520d2cbd16f577f6d60f578e3ab4a/python/sglang/srt/layers/quantization/fp8_kernel.py
 @triton.jit
 def _w8a8_block_fp8_matmul(
     # Pointers to inputs and output
@@ -224,25 +224,27 @@ def w8a8_block_fp8_matmul_triton(
     return C
 
 
-# Python version of the above triton function, it's much slower than the triton version, for testing
+# Python version of the above triton function, it's much slower than the triton version
+# Manually implemented for testing, and understanding the kernel code
+# Do no use this in production !
 @torch.compile
 def w8a8_block_fp8_matmul_compile(
-    input_q: torch.Tensor,  # [batch, seq_len, hidden_dim]
-    weight_q: torch.Tensor,  # [out_features, hidden_dim]
-    input_scale: torch.Tensor,  # [batch * seq_len, num_input_groups]
-    weight_scale: torch.Tensor,  # [num_weight_blocks_m, num_weight_blocks_n]
-    block_size: Optional[Tuple[int, int]] = None,  # (M=128, N=128) for weights for example
+    input_q: torch.Tensor,
+    weight_q: torch.Tensor,
+    input_scale: torch.Tensor,
+    weight_scale: torch.Tensor,
+    block_size: Optional[Tuple[int, int]] = None,
     output_dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     """
     Performs blocked matrix multiplication with FP8 quantized matrices.
 
     Args:
-        input_q: Quantized input tensor with 1x128 block quantization
-        weight_q: Quantized weight tensor with 128x128 block quantization
-        input_scale: Scaling factors for input blocks
-        weight_scale: Scaling factors for weight blocks
-        block_size: Tuple of (M, N) for weight block dimensions
+        input_q: Quantized input tensor with 1xN block quantization : [batch, seq_len, hidden_dim]
+        weight_q: Quantized weight tensor with MxN block quantization : [out_features, hidden_dim]
+        input_scale: Scaling factors for input blocks : [batch * seq_len, num_input_groups]
+        weight_scale: Scaling factors for weight blocks : [num_weight_blocks_m, num_weight_blocks_n]
+        block_size: Tuple of (M, N) for weight block dimensions : (128, 128) for example
         output_dtype: Desired output dtype
     """
     batch_size, seq_len, hidden_dim = input_q.shape if input_q.ndim == 3 else (1, input_q.shape[0], input_q.shape[1])
