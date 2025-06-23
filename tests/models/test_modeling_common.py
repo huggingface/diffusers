@@ -1961,6 +1961,22 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
+    def test_compile_on_different_shapes(self):
+        torch.fx.experimental._config.use_duck_shape = False
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True, dynamic=True)
+
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(error_on_recompile=True),
+            torch.no_grad(),
+        ):
+            print(f"{inputs_dict.keys()=}")
+            out = model(**inputs_dict)
+        assert out is None
+
 
 @slow
 @require_torch_2
