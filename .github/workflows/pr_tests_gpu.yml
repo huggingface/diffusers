@@ -131,7 +131,7 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
-          pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
           pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
 
       - name: Environment
@@ -201,8 +201,8 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        python -m uv pip install peft@git+https://github.com/huggingface/peft.git
-        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install peft@git+https://github.com/huggingface/peft.git --no-deps
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
         pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
 
     - name: Environment
@@ -265,8 +265,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
         python -m uv pip install -e [quality,test,training]
+        pip uninstall peft -y && python -m uv pip install peft@git+https://github.com/huggingface/peft.git --no-deps
+        pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        python -m uv pip install timm
 
     - name: Environment
       run: |
@@ -278,7 +281,6 @@ jobs:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install timm
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports

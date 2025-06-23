@@ -229,6 +229,7 @@ extras["test"] = deps_list(
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "pytest-reportlog",
     "requests-mock",
     "safetensors",
     "sentencepiece",
