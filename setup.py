@@ -121,6 +121,7 @@ _deps = [
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "pytest-reportlog",
     "python>=3.8.0",
     "ruff==0.9.10",
     "safetensors>=0.3.1",
