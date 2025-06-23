@@ -593,7 +593,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_ref_images = len(reference_images_batch)
             if num_ref_images > 0:
                 mask_padding = torch.zeros_like(mask_[:, :num_ref_images, :, :])
-                mask_ = torch.cat([mask_, mask_padding], dim=1)
+                mask_ = torch.cat([mask_padding, mask_], dim=1)
             mask_list.append(mask_)
         return torch.stack(mask_list)
 
