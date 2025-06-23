@@ -444,7 +444,7 @@ class PeftAdapterMixin:
         weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
     ):
         """
-        Set the currently active adapters for use in the UNet.
+        Set the currently active adapters for use in the diffusion network (e.g. unet, transformer, etc.).
 
         Args:
             adapter_names (`List[str]` or `str`):
@@ -466,7 +466,7 @@ class PeftAdapterMixin:
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.unet.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -714,7 +714,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.disable_lora()
+        pipeline.unet.disable_lora()
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -737,7 +737,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.enable_lora()
+        pipeline.unet.enable_lora()
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -764,7 +764,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_names="cinematic"
         )
-        pipeline.delete_adapters("cinematic")
+        pipeline.unet.delete_adapters("cinematic")
         ```
         """
         if not USE_PEFT_BACKEND:
