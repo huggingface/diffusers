@@ -319,7 +319,9 @@ def free_memory():
 
 
 @contextmanager
-def offload_models(*modules: torch.nn.Module | DiffusionPipeline, device: str | torch.device, offload: bool = True):
+def offload_models(
+    *modules: Union[torch.nn.Module, DiffusionPipeline], device: Union[str, torch.device], offload: bool = True
+):
     """
     Context manager that, if offload=True, moves each module to `device` on enter, then moves it back to its original
     device on exit.
