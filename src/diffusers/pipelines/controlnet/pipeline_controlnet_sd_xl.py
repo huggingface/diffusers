@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1465,7 +1465,11 @@ class StableDiffusionXLControlNetPipeline(
 
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-                if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
+                if (
+                    torch.cuda.is_available()
+                    and (is_unet_compiled and is_controlnet_compiled)
+                    and is_torch_higher_equal_2_1
+                ):
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents

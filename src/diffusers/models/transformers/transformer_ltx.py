@@ -1,4 +1,4 @@
-# Copyright 2024 The Genmo team and The HuggingFace Team.
+# Copyright 2025 The Genmo team and The HuggingFace Team.
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -481,7 +481,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
 
 def apply_rotary_emb(x, freqs):
     cos, sin = freqs
-    x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, H, D // 2]
+    x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, C // 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
     out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
     return out
