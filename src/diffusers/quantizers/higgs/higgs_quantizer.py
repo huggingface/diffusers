@@ -35,7 +35,7 @@ if is_torch_available():
 logger = logging.get_logger(__name__)
 
 
-class HiggsHfQuantizer(DiffusersQuantizer):
+class HiggsQuantizer(DiffusersQuantizer):
     """
     Quantizer of the HIGGS method. Enables the loading of prequantized models and in-flight quantization of
     full-precision models.

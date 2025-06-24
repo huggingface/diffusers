@@ -46,6 +46,7 @@ class QuantizationMethod(str, Enum):
     GGUF = "gguf"
     TORCHAO = "torchao"
     QUANTO = "quanto"
+    HIGGS = "higgs"
 
 
 if is_torchao_available():

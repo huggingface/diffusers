@@ -21,6 +21,7 @@ from typing import Dict, Optional, Union
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
+from .higgs import HiggsQuantizer
 from .quantization_config import (
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
@@ -40,7 +41,7 @@ AUTO_QUANTIZER_MAPPING = {
     "gguf": GGUFQuantizer,
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
-    "higgs": 1,
+    "higgs": HiggsQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
