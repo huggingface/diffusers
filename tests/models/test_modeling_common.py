@@ -41,7 +41,6 @@ from parameterized import parameterized
 from pytest import skip
 from requests.exceptions import HTTPError
 
-from diffusers.hooks.group_offloading import _check_safetensors_serialization
 from diffusers.models import SD3Transformer2DModel, UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor,
@@ -62,6 +61,7 @@ from diffusers.utils import (
 from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    _check_safetensors_serialization,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
