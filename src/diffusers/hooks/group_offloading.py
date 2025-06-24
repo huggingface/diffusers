@@ -65,7 +65,7 @@ class ModuleGroup:
         low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
         offload_to_disk_path: Optional[str] = None,
-        _group_id: Optional[int] = None,
+        group_id: Optional[int] = None,
     ) -> None:
         self.modules = modules
         self.offload_device = offload_device
@@ -84,8 +84,8 @@ class ModuleGroup:
         self._is_offloaded_to_disk = False
 
         if self.offload_to_disk_path:
-            self._group_id = _group_id
-            short_hash = _compute_group_hash(self._group_id)
+            self.group_id = group_id
+            short_hash = _compute_group_hash(self.group_id)
             self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{short_hash}.safetensors")
 
             all_tensors = []
