@@ -127,6 +127,7 @@ CHECKPOINT_KEY_NAMES = {
     "wan": ["model.diffusion_model.head.modulation", "head.modulation"],
     "wan_vae": "decoder.middle.0.residual.0.gamma",
     "hidream": "double_stream_blocks.0.block.adaLN_modulation.1.bias",
+    "cosmos-1.0": "net.blocks.block1.blocks.0.block.attn.to_q.0.weight",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -193,6 +194,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-t2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-14B-Diffusers"},
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
     "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
+    "cosmos-1.0": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-7B-Text2World"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -709,6 +711,8 @@ def infer_diffusers_model_type(checkpoint):
         model_type = "wan-t2v-14B"
     elif CHECKPOINT_KEY_NAMES["hidream"] in checkpoint:
         model_type = "hidream"
+    elif CHECKPOINT_KEY_NAMES["cosmos-1.0"] in checkpoint:
+        model_type = "cosmos-1.0"
     else:
         model_type = "v1"
 
@@ -3477,5 +3481,77 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     converted_state_dict["proj_out.weight"] = checkpoint.pop("final_layer.linear.weight")
     converted_state_dict["proj_out.bias"] = checkpoint.pop("final_layer.linear.bias")
+
+    return converted_state_dict
+
+
+def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    def remove_keys_(key: str, state_dict):
+        state_dict.pop(key)
+
+    def rename_transformer_blocks_(key: str, state_dict):
+        block_index = int(key.split(".")[1].removeprefix("block"))
+        new_key = key
+        old_prefix = f"blocks.block{block_index}"
+        new_prefix = f"transformer_blocks.{block_index}"
+        new_key = new_prefix + new_key.removeprefix(old_prefix)
+        state_dict[new_key] = state_dict.pop(key)
+
+    TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0 = {
+        "t_embedder.1": "time_embed.t_embedder",
+        "affline_norm": "time_embed.norm",
+        ".blocks.0.block.attn": ".attn1",
+        ".blocks.1.block.attn": ".attn2",
+        ".blocks.2.block": ".ff",
+        ".blocks.0.adaLN_modulation.1": ".norm1.linear_1",
+        ".blocks.0.adaLN_modulation.2": ".norm1.linear_2",
+        ".blocks.1.adaLN_modulation.1": ".norm2.linear_1",
+        ".blocks.1.adaLN_modulation.2": ".norm2.linear_2",
+        ".blocks.2.adaLN_modulation.1": ".norm3.linear_1",
+        ".blocks.2.adaLN_modulation.2": ".norm3.linear_2",
+        "to_q.0": "to_q",
+        "to_q.1": "norm_q",
+        "to_k.0": "to_k",
+        "to_k.1": "norm_k",
+        "to_v.0": "to_v",
+        "layer1": "net.0.proj",
+        "layer2": "net.2",
+        "proj.1": "proj",
+        "x_embedder": "patch_embed",
+        "extra_pos_embedder": "learnable_pos_embed",
+        "final_layer.adaLN_modulation.1": "norm_out.linear_1",
+        "final_layer.adaLN_modulation.2": "norm_out.linear_2",
+        "final_layer.linear": "proj_out",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_1_0 = {
+        "blocks.block": rename_transformer_blocks_,
+        "logvar.0.freqs": remove_keys_,
+        "logvar.0.phases": remove_keys_,
+        "logvar.1.weight": remove_keys_,
+        "pos_embedder.seq": remove_keys_,
+    }
+
+    TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0
+    TRANSFORMER_SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_1_0
+    PREFIX_KEY = "net."
+
+    state_dict_keys = list(converted_state_dict.keys())
+    for key in state_dict_keys:
+        new_key = key[:]
+        if new_key.startswith(PREFIX_KEY):
+            new_key = new_key.removeprefix(PREFIX_KEY)
+        for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    state_dict_keys = list(converted_state_dict.keys())
+    for key in state_dict_keys:
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
 
     return converted_state_dict
