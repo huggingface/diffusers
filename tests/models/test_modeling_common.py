@@ -1533,6 +1533,28 @@ class ModelTesterMixin:
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
         torch.manual_seed(0)
+        offload_type = "leaf_level"
+        record_stream = True
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.eval()
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.enable_group_offload(
+                torch_device,
+                offload_type=offload_type,
+                offload_to_disk_path=tmpdir,
+                use_stream=True,
+                record_stream=record_stream,
+                **additional_kwargs,
+            )
+            has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
+            self.assertTrue(len(has_safetensors) > 0, "No safetensors found in the offload directory.")
+            _ = model(**inputs_dict)[0]
+
+        del model, init_dict, inputs_dict
+
+        torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config)
         model.eval()
@@ -1575,6 +1597,7 @@ class ModelTesterMixin:
         test_layerwise_casting(torch.float8_e4m3fn, torch.bfloat16)
 
     @require_torch_accelerator
+    @torch.no_grad()
     def test_layerwise_casting_memory(self):
         MB_TOLERANCE = 0.2
         LEAST_COMPUTE_CAPABILITY = 8.0
