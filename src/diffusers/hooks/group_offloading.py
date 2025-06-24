@@ -63,9 +63,6 @@ class ModuleGroup:
         onload_self: bool = True,
         offload_to_disk_path: Optional[str] = None,
     ) -> None:
-        if stream is None and record_stream:
-            raise ValueError("`record_stream` cannot be True when `stream` is None.")
-
         self.modules = modules
         self.offload_device = offload_device
         self.onload_device = onload_device
