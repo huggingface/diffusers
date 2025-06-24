@@ -609,8 +609,6 @@ def _apply_group_offloading_block_level(
 
         for i in range(0, len(submodule), num_blocks_per_group):
             current_modules = submodule[i : i + num_blocks_per_group]
-            start_idx = i
-            end_idx = i + len(current_modules) - 1
             group_id = f"{name}_{i}_{i+len(current_modules)-1}"
             group = ModuleGroup(
                 modules=current_modules,
