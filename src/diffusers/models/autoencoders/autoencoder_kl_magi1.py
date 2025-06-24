@@ -17,7 +17,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
@@ -28,13 +27,68 @@ from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 from ..normalization import FP32LayerNorm
-from ..embeddings import apply_rotary_emb
+from ..embeddings import apply_rotary_emb, get_3d_rotary_pos_embed
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 CACHE_T = 2
 
+# Similar to diffusers.pipelines.hunyuandit.pipeline_hunyuandit.get_resize_crop_region_for_grid
+def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
+    """
+    This function calculates the resize and crop region for an image to fit a target width and height while preserving
+    the aspect ratio.
+
+    Parameters:
+    - src (tuple): A tuple containing the source image's height (h) and width (w).
+    - tgt_width (int): The target width to resize the image.
+    - tgt_height (int): The target height to resize the image.
+
+    Returns:
+    - tuple: Two tuples representing the crop region:
+        1. The top-left coordinates of the crop region.
+        2. The bottom-right coordinates of the crop region.
+    """
+
+    tw = tgt_width
+    th = tgt_height
+    h, w = src
+    r = h / w
+    if r > (th / tw):
+        resize_height = th
+        resize_width = int(round(th / h * w))
+    else:
+        resize_width = tw
+        resize_height = int(round(tw / w * h))
+
+    crop_top = int(round((th - resize_height) / 2.0))
+    crop_left = int(round((tw - resize_width) / 2.0))
+
+    return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
+
+def prepare_rotary_positional_embeddings(
+    grid_height: int,
+    grid_width: int,
+    num_frames: int,
+    attention_head_dim: int = 64,
+    device = None,
+    base_latent_frame: int = 4,
+    base_latent_height: int = 16,
+    base_latent_width: int = 16,
+):
+    grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_latent_width, base_latent_height)
+    freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
+        embed_dim=attention_head_dim,
+        crops_coords=grid_crops_coords,
+        grid_size=(grid_height, grid_width),
+        temporal_size=num_frames,
+        device=device,
+        center_grid_hw_indices=True,
+        equal_split_ratio=3,
+    )
+
+    return freqs_cos, freqs_sin
 
 class Magi1CausalConv3d(nn.Conv3d):
     r"""
@@ -297,12 +351,11 @@ class Magi1AttentionBlock(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
         if ln_in_attn:
-            # TODO: ManualLayerNorm at original repo?
             self.qkv_norm = FP32LayerNorm(dim // num_heads, elementwise_affine=False)
         else:
             self.qkv_norm = nn.Identity()
 
-    def forward(self, x, feat_shape=None):
+    def forward(self, x):
         identity = x
         batch_size, channels, time, height, width = x.size()
 
@@ -315,9 +368,16 @@ class Magi1AttentionBlock(nn.Module):
         q, k, v = qkv.chunk(3, dim=2)
 
         if self.use_rope:
-            rope_emb = cache_rotary_emb(feat_shape=feat_shape,
-                                        dim=channels // self.num_heads,
-                                        device=x.device, dtype=x.dtype)
+            cos_emb, sin_emb = prepare_rotary_positional_embeddings(
+                grid_height=height,
+                grid_width=width,
+                num_frames=time,
+                attention_head_dim=channels // self.num_heads,
+                device=x.device,
+                base_latent_frame=4,
+                base_latent_height=16,
+                base_latent_width=16,
+            )
             q = q.reshape(batch_size, self.num_heads, time * height * width, channels // self.num_heads)
             k = k.reshape(batch_size, self.num_heads, time * height * width, channels // self.num_heads)
             q[:, 1:, :] = apply_rotary_emb(q[:, :, 1:], (cos_emb, sin_emb)).bfloat16()
