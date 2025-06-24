@@ -828,7 +828,7 @@ class LoraBaseMixin:
 
         Args:
             adapter_names (`Union[List[str], str]`):
-                The names (single string or list of strings) of the adapter to delete.
+                The names of the adapters to delete.
 
         Example:
 
@@ -945,17 +945,14 @@ class LoraBaseMixin:
                                     ].to(device)
 
     def enable_lora_hotswap(self, **kwargs) -> None:
-        """Enables the possibility to hotswap LoRA adapters.
-
-        Calling this method is only required when hotswapping adapters and if the model is compiled or if the ranks of
-        the loaded adapters differ.
+        """
+        Hotswap adapters without triggering recompilation of a model or if the ranks of the loaded adapters are different.
 
         Args:
             target_rank (`int`):
                 The highest rank among all the adapters that will be loaded.
             check_compiled (`str`, *optional*, defaults to `"error"`):
-                How to handle the case when the model is already compiled, which should generally be avoided. The
-                options are:
+                How to handle a model that is already compiled. The check can return the following messages:
                   - "error" (default): raise an error
                   - "warn": issue a warning
                   - "ignore": do nothing
