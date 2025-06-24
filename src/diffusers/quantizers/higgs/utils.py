@@ -558,7 +558,9 @@ class HiggsLinear(torch.nn.Module):
         )
 
 
-def _replace_with_higgs_linear(model, quantization_config=None, current_key_name=None, has_been_replaced=False):
+def _replace_with_higgs_linear(
+    model, quantization_config=None, current_key_name=None, modules_to_not_convert=None, has_been_replaced=False
+):
     from accelerate import init_empty_weights
 
     for name, module in model.named_children():
@@ -567,13 +569,15 @@ def _replace_with_higgs_linear(model, quantization_config=None, current_key_name
         current_key_name.append(name)
 
         if isinstance(module, nn.Linear):
-            # Check if the current key is not in the `quantization_config.modules_to_not_convert`
             current_key_name_str = ".".join(current_key_name)
-            if not any(current_key_name_str.endswith(key) for key in quantization_config.modules_to_not_convert):
+            if not any(current_key_name_str.endswith(key) for key in modules_to_not_convert):
                 with init_empty_weights():
                     in_features = module.in_features
                     out_features = module.out_features
-
+                    # Original size is [3072, 4096]. But after `HiggsLinear`, this is
+                    # [768, 4096]. 🤯
+                    if name == "context_embedder":
+                        print(f"{in_features=}, {out_features=}")
                     model._modules[name] = HiggsLinear(
                         in_features,
                         out_features,
@@ -582,6 +586,8 @@ def _replace_with_higgs_linear(model, quantization_config=None, current_key_name
                         hadamard_size=quantization_config.hadamard_size,
                         group_size=quantization_config.group_size,
                     )
+                    if name == "context_embedder":
+                        print(model._modules[name].weight.shape)
                     has_been_replaced = True
 
                     # Store the module class in case we need to transpose the weight later
@@ -589,10 +595,11 @@ def _replace_with_higgs_linear(model, quantization_config=None, current_key_name
                     # Force requires grad to False to avoid unexpected errors
                     model._modules[name].requires_grad_(False)
         if len(list(module.children())) > 0:
-            _, has_been_replaced = replace_with_higgs_linear(
+            _, has_been_replaced = _replace_with_higgs_linear(
                 module,
                 quantization_config=quantization_config,
                 current_key_name=current_key_name,
+                modules_to_not_convert=modules_to_not_convert,
                 has_been_replaced=has_been_replaced,
             )
         # Remove the last key for recursion
@@ -623,8 +630,10 @@ def replace_with_higgs_linear(
             A boolean that indicates if the conversion has been successful or not. This is used for recursion and
             should not be passed by the user.
     """
-
-    model, _ = _replace_with_higgs_linear(model, quantization_config, current_key_name, has_been_replaced)
+    modules_to_not_convert = quantization_config.modules_to_not_convert or []
+    model, _ = _replace_with_higgs_linear(
+        model, quantization_config, current_key_name, modules_to_not_convert, has_been_replaced
+    )
 
     has_been_replaced = any(isinstance(replaced_module, HiggsLinear) for _, replaced_module in model.named_modules())
     if not has_been_replaced:
