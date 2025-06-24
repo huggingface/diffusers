@@ -1528,14 +1528,16 @@ class ModelTesterMixin:
         test_fn(torch.float8_e5m2, torch.float32)
         test_fn(torch.float8_e4m3fn, torch.bfloat16)
 
+    @torch.no_grad()
     def test_layerwise_casting_inference(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-        base_slice = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+        model = self.model_class(**config)
+        model.eval()
+        model.to(torch_device)
+        base_slice = model(**inputs_dict)[0].detach().flatten().cpu().numpy()
 
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
@@ -1709,10 +1711,6 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
-
-        torch.manual_seed(0)
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
         model.eval()
         additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1725,7 +1723,7 @@ class ModelTesterMixin:
                 **additional_kwargs,
             )
             has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
-            assert has_safetensors, "No safetensors found in the directory."
+            self.assertTrue(len(has_safetensors) > 0, "No safetensors found in the offload directory.")
             _ = model(**inputs_dict)[0]
 
     def test_auto_model(self, expected_max_diff=5e-5):
