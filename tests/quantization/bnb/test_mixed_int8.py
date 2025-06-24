@@ -101,6 +101,10 @@ class Base8bitTests(unittest.TestCase):
     def setUpClass(cls):
         torch.use_deterministic_algorithms(True)
 
+    @classmethod
+    def tearDownClass(cls):
+        torch.use_deterministic_algorithms(False)
+
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
             "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/prompt_embeds.pt",
