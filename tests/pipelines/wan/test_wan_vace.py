@@ -199,3 +199,15 @@ class WanVACEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Batching is not yet supported with this pipeline")
     def test_inference_batch_single_identical(self):
         return super().test_inference_batch_single_identical()
+
+    @unittest.skip(
+        "AutoencoderKLWan encoded latents are always in FP32. This test is not designed to handle mixed dtype inputs"
+    )
+    def test_float16_inference(self):
+        pass
+
+    @unittest.skip(
+        "AutoencoderKLWan encoded latents are always in FP32. This test is not designed to handle mixed dtype inputs"
+    )
+    def test_save_load_float16(self):
+        pass

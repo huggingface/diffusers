@@ -1,4 +1,4 @@
-# Copyright 2024 CVSSP, ByteDance and The HuggingFace Team. All rights reserved.
+# Copyright 2025 CVSSP, ByteDance and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.import_utils import is_transformers_version
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import empty_device_cache, randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
@@ -267,9 +267,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
-            device_mod = getattr(torch, device.type, None)
-            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+            empty_device_cache(device.type)
 
         model_sequence = [
             self.text_encoder.text_model,
