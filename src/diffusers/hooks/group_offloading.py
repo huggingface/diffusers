@@ -84,7 +84,7 @@ class ModuleGroup:
         self._is_offloaded_to_disk = False
 
         if self.offload_to_disk_path:
-            self.group_id = group_id
+            self.group_id = group_id or id(self)
             short_hash = _compute_group_hash(self.group_id)
             self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{short_hash}.safetensors")
 
