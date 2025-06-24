@@ -39,6 +39,7 @@ else:
 if is_torch_xla_available():
     # flash attention pallas kernel is introduced in the torch_xla 2.3 release.
     if is_torch_xla_version(">", "2.2"):
+        from torch_xla.experimental.dot_product_attention import CrossAttention
         from torch_xla.experimental.custom_kernel import flash_attention
         from torch_xla.runtime import is_spmd
     XLA_AVAILABLE = True
@@ -306,7 +307,7 @@ class Attention(nn.Module):
             )
         self.set_processor(processor)
 
-    def set_use_xla_flash_attention(
+    def set_use_xla_attention(
         self,
         use_xla_flash_attention: bool,
         partition_spec: Optional[Tuple[Optional[str], ...]] = None,
@@ -335,7 +336,7 @@ class Attention(nn.Module):
                     processor = XLAFlashAttnProcessor2_0(partition_spec)
         else:
             processor = (
-                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
+                XLADotAttnProcessor(partition_spec=partition_spec)
             )
         self.set_processor(processor)
 
@@ -3452,6 +3453,27 @@ class XLAFlashAttnProcessor2_0:
 
         return hidden_states
 
+class XLADotAttnProcessor:
+    r"""
+    Processor for implementing scaled dot-product attention using `torch_xla`.
+    """
+
+    def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
+        self.partition_spec = partition_spec
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        *args,
+        **kwargs,
+    ) -> torch.Tensor:
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        hidden_states = CrossAttention.apply(hidden_states, encoder_hidden_states, attn.to_q.weight, attn.to_k.weight, attn.to_v.weight, attn.heads)
+        hidden_states = attn.to_out[0](hidden_states)
+        return hidden_states
 
 class XLAFluxFlashAttnProcessor2_0:
     r"""
