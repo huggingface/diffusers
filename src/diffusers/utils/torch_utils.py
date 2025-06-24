@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ PyTorch utilities: Utilities related to PyTorch
 from typing import List, Optional, Tuple, Union
 
 from . import logging
-from .import_utils import is_torch_available, is_torch_version
+from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version
 
 
 if is_torch_available():
@@ -38,7 +38,7 @@ except (ImportError, ModuleNotFoundError):
 def randn_tensor(
     shape: Union[Tuple, List],
     generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
-    device: Optional["torch.device"] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
     dtype: Optional["torch.dtype"] = None,
     layout: Optional["torch.layout"] = None,
 ):
@@ -47,6 +47,8 @@ def randn_tensor(
     is always created on the CPU.
     """
     # device on which tensor is created defaults to device
+    if isinstance(device, str):
+        device = torch.device(device)
     rand_device = device
     batch_size = shape[0]
 
@@ -61,7 +63,7 @@ def randn_tensor(
                 logger.info(
                     f"The passed generator was created on 'cpu' even though a tensor on {device} was expected."
                     f" Tensors will be created on 'cpu' and then moved to {device}. Note that one can probably"
-                    f" slighly speed up this function by passing a generator that was created on the {device} device."
+                    f" slightly speed up this function by passing a generator that was created on the {device} device."
                 )
         elif gen_device_type != device.type and gen_device_type == "cuda":
             raise ValueError(f"Cannot generate a {device} tensor from a generator of type {gen_device_type}.")
@@ -91,7 +93,7 @@ def is_compiled_module(module) -> bool:
 
 
 def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.Tensor":
-    """Fourier filter as introduced in FreeU (https://arxiv.org/abs/2309.11497).
+    """Fourier filter as introduced in FreeU (https://huggingface.co/papers/2309.11497).
 
     This version of the method comes from here:
     https://github.com/huggingface/diffusers/pull/5164#issuecomment-1732638706
@@ -159,3 +161,21 @@ def get_torch_cuda_device_capability():
         return float(compute_capability)
     else:
         return None
+
+
+def get_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    elif is_torch_npu_available():
+        return "npu"
+    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+        return "xpu"
+    else:
+        return "cpu"
+
+
+def empty_device_cache(device_type: Optional[str] = None):
+    if device_type is None:
+        device_type = get_device()
+    device_mod = getattr(torch, device_type, torch.cuda)
+    device_mod.empty_cache()

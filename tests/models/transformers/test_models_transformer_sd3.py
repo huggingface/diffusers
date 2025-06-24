@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,9 +92,9 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
 
         model.enable_xformers_memory_efficient_attention()
 
-        assert (
-            model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor"
-        ), "xformers is not enabled"
+        assert model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor", (
+            "xformers is not enabled"
+        )
 
     @unittest.skip("SD3Transformer2DModel uses a dedicated attention processor. This test doesn't apply")
     def test_set_attn_processor_for_determinism(self):
@@ -167,9 +167,9 @@ class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
 
         model.enable_xformers_memory_efficient_attention()
 
-        assert (
-            model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor"
-        ), "xformers is not enabled"
+        assert model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor", (
+            "xformers is not enabled"
+        )
 
     @unittest.skip("SD3Transformer2DModel uses a dedicated attention processor. This test doesn't apply")
     def test_set_attn_processor_for_determinism(self):

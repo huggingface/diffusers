@@ -13,10 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import json
 import os
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import safetensors
 import torch
@@ -28,13 +29,13 @@ from ..utils import (
     convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
-    get_peft_kwargs,
     is_peft_available,
     is_peft_version,
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from ..utils.peft_utils import _create_lora_config, _maybe_warn_for_unhandled_keys
 from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
 from .unet_loader_utils import _maybe_expand_lora_scales
 
@@ -52,65 +53,15 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HunyuanVideoTransformer3DModel": lambda model_cls, weights: weights,
     "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
+    "AuraFlowTransformer2DModel": lambda model_cls, weights: weights,
     "Lumina2Transformer2DModel": lambda model_cls, weights: weights,
     "WanTransformer3DModel": lambda model_cls, weights: weights,
     "CogView4Transformer2DModel": lambda model_cls, weights: weights,
+    "HiDreamImageTransformer2DModel": lambda model_cls, weights: weights,
+    "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
+    "WanVACETransformer3DModel": lambda model_cls, weights: weights,
+    "ChromaTransformer2DModel": lambda model_cls, weights: weights,
 }
-
-
-def _maybe_adjust_config(config):
-    """
-    We may run into some ambiguous configuration values when a model has module names, sharing a common prefix
-    (`proj_out.weight` and `blocks.transformer.proj_out.weight`, for example) and they have different LoRA ranks. This
-    method removes the ambiguity by following what is described here:
-    https://github.com/huggingface/diffusers/pull/9985#issuecomment-2493840028.
-    """
-    # Track keys that have been explicitly removed to prevent re-adding them.
-    deleted_keys = set()
-
-    rank_pattern = config["rank_pattern"].copy()
-    target_modules = config["target_modules"]
-    original_r = config["r"]
-
-    for key in list(rank_pattern.keys()):
-        key_rank = rank_pattern[key]
-
-        # try to detect ambiguity
-        # `target_modules` can also be a str, in which case this loop would loop
-        # over the chars of the str. The technically correct way to match LoRA keys
-        # in PEFT is to use LoraModel._check_target_module_exists (lora_config, key).
-        # But this cuts it for now.
-        exact_matches = [mod for mod in target_modules if mod == key]
-        substring_matches = [mod for mod in target_modules if key in mod and mod != key]
-        ambiguous_key = key
-
-        if exact_matches and substring_matches:
-            # if ambiguous, update the rank associated with the ambiguous key (`proj_out`, for example)
-            config["r"] = key_rank
-            # remove the ambiguous key from `rank_pattern` and record it as deleted
-            del config["rank_pattern"][key]
-            deleted_keys.add(key)
-            # For substring matches, add them with the original rank only if they haven't been assigned already
-            for mod in substring_matches:
-                if mod not in config["rank_pattern"] and mod not in deleted_keys:
-                    config["rank_pattern"][mod] = original_r
-
-            # Update the rest of the target modules with the original rank if not already set and not deleted
-            for mod in target_modules:
-                if mod != ambiguous_key and mod not in config["rank_pattern"] and mod not in deleted_keys:
-                    config["rank_pattern"][mod] = original_r
-
-    # Handle alphas to deal with cases like:
-    # https://github.com/huggingface/diffusers/pull/9999#issuecomment-2516180777
-    has_different_ranks = len(config["rank_pattern"]) > 1 and list(config["rank_pattern"])[0] != config["r"]
-    if has_different_ranks:
-        config["lora_alpha"] = config["r"]
-        alpha_pattern = {}
-        for module_name, rank in config["rank_pattern"].items():
-            alpha_pattern[module_name] = rank
-        config["alpha_pattern"] = alpha_pattern
-
-    return config
 
 
 class PeftAdapterMixin:
@@ -128,24 +79,17 @@ class PeftAdapterMixin:
     """
 
     _hf_peft_config_loaded = False
+    # kwargs for prepare_model_for_compiled_hotswap, if required
+    _prepare_lora_hotswap_kwargs: Optional[dict] = None
 
     @classmethod
     # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
-        """
-        Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
-
-        Args:
-            _pipeline (`DiffusionPipeline`):
-                The pipeline to disable offloading for.
-
-        Returns:
-            tuple:
-                A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
-        """
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
-    def load_lora_adapter(self, pretrained_model_name_or_path_or_dict, prefix="transformer", **kwargs):
+    def load_lora_adapter(
+        self, pretrained_model_name_or_path_or_dict, prefix="transformer", hotswap: bool = False, **kwargs
+    ):
         r"""
         Loads a LoRA adapter into the underlying model.
 
@@ -189,8 +133,34 @@ class PeftAdapterMixin:
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter.
+
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+
+                ```py
+                pipeline = ...  # load diffusers pipeline
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
+                ```
+
+                Note that hotswapping adapters of the text encoder is not yet supported. There are some further
+                limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
+            metadata:
+                LoRA adapter metadata. When supplied, the metadata inferred through the state dict isn't used to
+                initialize `LoraConfig`.
         """
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from peft import inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
 
         cache_dir = kwargs.pop("cache_dir", None)
@@ -206,6 +176,7 @@ class PeftAdapterMixin:
         network_alphas = kwargs.pop("network_alphas", None)
         _pipeline = kwargs.pop("_pipeline", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        metadata = kwargs.pop("metadata", None)
         allow_pickle = False
 
         if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
@@ -213,12 +184,8 @@ class PeftAdapterMixin:
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
-
-        state_dict = _fetch_state_dict(
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -231,17 +198,27 @@ class PeftAdapterMixin:
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+            metadata=metadata,
         )
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
+        if network_alphas and metadata:
+            raise ValueError("Both `network_alphas` and `metadata` cannot be specified.")
 
         if prefix is not None:
-            state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+            state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+            if metadata is not None:
+                metadata = {k.removeprefix(f"{prefix}."): v for k, v in metadata.items() if k.startswith(f"{prefix}.")}
 
         if len(state_dict) > 0:
-            if adapter_name in getattr(self, "peft_config", {}):
+            if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."
+                )
+            elif adapter_name not in getattr(self, "peft_config", {}) and hotswap:
+                raise ValueError(
+                    f"Trying to hotswap LoRA adapter '{adapter_name}' but there is no existing adapter by that name. "
+                    "Please choose an existing adapter name or set `hotswap=False` to prevent hotswapping."
                 )
 
             # check with first key if is not in peft format
@@ -251,41 +228,24 @@ class PeftAdapterMixin:
 
             rank = {}
             for key, val in state_dict.items():
-                # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
+                # Cannot figure out rank from lora layers that don't have at least 2 dimensions.
                 # Bias layers in LoRA only have a single dimension
                 if "lora_B" in key and val.ndim > 1:
-                    # TODO: revisit this after https://github.com/huggingface/peft/pull/2382 is merged.
-                    rank[key] = val.shape[1]
+                    # Check out https://github.com/huggingface/peft/pull/2419 for the `^` symbol.
+                    # We may run into some ambiguous configuration values when a model has module
+                    # names, sharing a common prefix (`proj_out.weight` and `blocks.transformer.proj_out.weight`,
+                    # for example) and they have different LoRA ranks.
+                    rank[f"^{key}"] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
                 alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
-                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+                network_alphas = {
+                    k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
+                }
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
-            # TODO: revisit this after https://github.com/huggingface/peft/pull/2382 is merged.
-            lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
+            # create LoraConfig
+            lora_config = _create_lora_config(state_dict, network_alphas, metadata, rank)
 
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"]:
-                    if is_peft_version("<", "0.9.0"):
-                        raise ValueError(
-                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<", "0.9.0"):
-                        lora_config_kwargs.pop("use_dora")
-
-            if "lora_bias" in lora_config_kwargs:
-                if lora_config_kwargs["lora_bias"]:
-                    if is_peft_version("<=", "0.13.2"):
-                        raise ValueError(
-                            "You need `peft` 0.14.0 at least to use `lora_bias` in LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<=", "0.13.2"):
-                        lora_config_kwargs.pop("lora_bias")
-
-            lora_config = LoraConfig(**lora_config_kwargs)
             # adapter_name
             if adapter_name is None:
                 adapter_name = get_adapter_name(self)
@@ -295,18 +255,74 @@ class PeftAdapterMixin:
             # Now we remove any existing hooks to `_pipeline`.
 
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
-            # otherwise loading LoRA weights will lead to an error
+            # otherwise loading LoRA weights will lead to an error.
             is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
-
             peft_kwargs = {}
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            # To handle scenarios where we cannot successfully set state dict. If it's unsucessful,
+            if hotswap or (self._prepare_lora_hotswap_kwargs is not None):
+                if is_peft_version(">", "0.14.0"):
+                    from peft.utils.hotswap import (
+                        check_hotswap_configs_compatible,
+                        hotswap_adapter_from_state_dict,
+                        prepare_model_for_compiled_hotswap,
+                    )
+                else:
+                    msg = (
+                        "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
+                        "from source."
+                    )
+                    raise ImportError(msg)
+
+            if hotswap:
+
+                def map_state_dict_for_hotswap(sd):
+                    # For hotswapping, we need the adapter name to be present in the state dict keys
+                    new_sd = {}
+                    for k, v in sd.items():
+                        if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
+                            k = k[: -len(".weight")] + f".{adapter_name}.weight"
+                        elif k.endswith("lora_B.bias"):  # lora_bias=True option
+                            k = k[: -len(".bias")] + f".{adapter_name}.bias"
+                        new_sd[k] = v
+                    return new_sd
+
+            # To handle scenarios where we cannot successfully set state dict. If it's unsuccessful,
             # we should also delete the `peft_config` associated to the `adapter_name`.
             try:
-                inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
-                incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+                if hotswap:
+                    state_dict = map_state_dict_for_hotswap(state_dict)
+                    check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
+                    try:
+                        hotswap_adapter_from_state_dict(
+                            model=self,
+                            state_dict=state_dict,
+                            adapter_name=adapter_name,
+                            config=lora_config,
+                        )
+                    except Exception as e:
+                        logger.error(f"Hotswapping {adapter_name} was unsuccessful with the following error: \n{e}")
+                        raise
+                    # the hotswap function raises if there are incompatible keys, so if we reach this point we can set
+                    # it to None
+                    incompatible_keys = None
+                else:
+                    inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+                    incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+
+                    if self._prepare_lora_hotswap_kwargs is not None:
+                        # For hotswapping of compiled models or adapters with different ranks.
+                        # If the user called enable_lora_hotswap, we need to ensure it is called:
+                        # - after the first adapter was loaded
+                        # - before the model is compiled and the 2nd adapter is being hotswapped in
+                        # Therefore, it needs to be called here
+                        prepare_model_for_compiled_hotswap(
+                            self, config=lora_config, **self._prepare_lora_hotswap_kwargs
+                        )
+                        # We only want to call prepare_model_for_compiled_hotswap once
+                        self._prepare_lora_hotswap_kwargs = None
+
                 # Set peft config loaded flag to True if module has been successfully injected and incompatible keys retrieved
                 if not self._hf_peft_config_loaded:
                     self._hf_peft_config_loaded = True
@@ -321,33 +337,10 @@ class PeftAdapterMixin:
                                     module.delete_adapter(adapter_name)
 
                     self.peft_config.pop(adapter_name)
-                logger.error(f"Loading {adapter_name} was unsucessful with the following error: \n{e}")
+                logger.error(f"Loading {adapter_name} was unsuccessful with the following error: \n{e}")
                 raise
 
-            warn_msg = ""
-            if incompatible_keys is not None:
-                # Check only for unexpected keys.
-                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-                if unexpected_keys:
-                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    if lora_unexpected_keys:
-                        warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
-                            f" {', '.join(lora_unexpected_keys)}. "
-                        )
-
-                # Filter missing keys specific to the current adapter.
-                missing_keys = getattr(incompatible_keys, "missing_keys", None)
-                if missing_keys:
-                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    if lora_missing_keys:
-                        warn_msg += (
-                            f"Loading adapter weights from state_dict led to missing keys in the model:"
-                            f" {', '.join(lora_missing_keys)}."
-                        )
-
-            if warn_msg:
-                logger.warning(warn_msg)
+            _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name)
 
             # Offload back.
             if is_model_cpu_offload:
@@ -357,10 +350,11 @@ class PeftAdapterMixin:
             # Unsafe code />
 
         if prefix is not None and not state_dict:
+            model_class_name = self.__class__.__name__
             logger.warning(
-                f"No LoRA keys associated to {self.__class__.__name__} found with the {prefix=}. "
+                f"No LoRA keys associated to {model_class_name} found with the {prefix=}. "
                 "This is safe to ignore if LoRA state dict didn't originally have any "
-                f"{self.__class__.__name__} related params. You can also try specifying `prefix=None` "
+                f"{model_class_name} related params. You can also try specifying `prefix=None` "
                 "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
                 "https://github.com/huggingface/diffusers/issues/new"
             )
@@ -383,23 +377,21 @@ class PeftAdapterMixin:
                 underlying model has multiple adapters loaded.
             upcast_before_saving (`bool`, defaults to `False`):
                 Whether to cast the underlying model to `torch.float32` before serialization.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             weight_name: (`str`, *optional*, defaults to `None`): Name of the file to serialize the state dict with.
         """
         from peft.utils import get_peft_model_state_dict
 
-        from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
+        from .lora_base import LORA_ADAPTER_METADATA_KEY, LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
 
         if adapter_name is None:
             adapter_name = get_adapter_name(self)
 
         if adapter_name not in getattr(self, "peft_config", {}):
             raise ValueError(f"Adapter name {adapter_name} not found in the model.")
+
+        lora_adapter_metadata = self.peft_config[adapter_name].to_dict()
 
         lora_layers_to_save = get_peft_model_state_dict(
             self.to(dtype=torch.float32 if upcast_before_saving else None), adapter_name=adapter_name
@@ -410,7 +402,15 @@ class PeftAdapterMixin:
         if safe_serialization:
 
             def save_function(weights, filename):
-                return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+                # Inject framework format.
+                metadata = {"format": "pt"}
+                if lora_adapter_metadata is not None:
+                    for key, value in lora_adapter_metadata.items():
+                        if isinstance(value, set):
+                            lora_adapter_metadata[key] = list(value)
+                    metadata[LORA_ADAPTER_METADATA_KEY] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+
+                return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
         else:
             save_function = torch.save
@@ -423,7 +423,6 @@ class PeftAdapterMixin:
             else:
                 weight_name = LORA_WEIGHT_NAME
 
-        # TODO: we could consider saving the `peft_config` as well.
         save_path = Path(save_directory, weight_name).as_posix()
         save_function(lora_layers_to_save, save_path)
         logger.info(f"Model weights saved in {save_path}")
@@ -434,7 +433,7 @@ class PeftAdapterMixin:
         weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
     ):
         """
-        Set the currently active adapters for use in the UNet.
+        Set the currently active adapters for use in the diffusion network (e.g. unet, transformer, etc.).
 
         Args:
             adapter_names (`List[str]` or `str`):
@@ -456,7 +455,7 @@ class PeftAdapterMixin:
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.unet.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -654,7 +653,7 @@ class PeftAdapterMixin:
             if self.lora_scale != 1.0:
                 module.scale_layer(self.lora_scale)
 
-            # For BC with prevous PEFT versions, we need to check the signature
+            # For BC with previous PEFT versions, we need to check the signature
             # of the `merge` method to see if it supports the `adapter_names` argument.
             supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
             if "adapter_names" in supported_merge_kwargs:
@@ -704,7 +703,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.disable_lora()
+        pipeline.unet.disable_lora()
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -727,7 +726,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.enable_lora()
+        pipeline.unet.enable_lora()
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -754,7 +753,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_names="cinematic"
         )
-        pipeline.delete_adapters("cinematic")
+        pipeline.unet.delete_adapters("cinematic")
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -769,3 +768,36 @@ class PeftAdapterMixin:
             # Pop also the corresponding adapter from the config
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
+
+    def enable_lora_hotswap(
+        self, target_rank: int = 128, check_compiled: Literal["error", "warn", "ignore"] = "error"
+    ) -> None:
+        """Enables the possibility to hotswap LoRA adapters.
+
+        Calling this method is only required when hotswapping adapters and if the model is compiled or if the ranks of
+        the loaded adapters differ.
+
+        Args:
+            target_rank (`int`, *optional*, defaults to `128`):
+                The highest rank among all the adapters that will be loaded.
+
+            check_compiled (`str`, *optional*, defaults to `"error"`):
+                How to handle the case when the model is already compiled, which should generally be avoided. The
+                options are:
+                  - "error" (default): raise an error
+                  - "warn": issue a warning
+                  - "ignore": do nothing
+        """
+        if getattr(self, "peft_config", {}):
+            if check_compiled == "error":
+                raise RuntimeError("Call `enable_lora_hotswap` before loading the first adapter.")
+            elif check_compiled == "warn":
+                logger.warning(
+                    "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
+                )
+            elif check_compiled != "ignore":
+                raise ValueError(
+                    f"check_compiles should be one of 'error', 'warn', or 'ignore', got '{check_compiled}' instead."
+                )
+
+        self._prepare_lora_hotswap_kwargs = {"target_rank": target_rank, "check_compiled": check_compiled}

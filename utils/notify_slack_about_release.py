@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 def check_pypi_for_latest_release(library_name):
     """Check PyPI for the latest release of the library."""
-    response = requests.get(f"https://pypi.org/pypi/{library_name}/json")
+    response = requests.get(f"https://pypi.org/pypi/{library_name}/json", timeout=60)
     if response.status_code == 200:
         data = response.json()
         return data["info"]["version"]
@@ -38,7 +38,7 @@ def check_pypi_for_latest_release(library_name):
 def get_github_release_info(github_repo):
     """Fetch the latest release info from GitHub."""
     url = f"https://api.github.com/repos/{github_repo}/releases/latest"
-    response = requests.get(url)
+    response = requests.get(url, timeout=60)
 
     if response.status_code == 200:
         data = response.json()

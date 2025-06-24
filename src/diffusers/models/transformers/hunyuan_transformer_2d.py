@@ -1,4 +1,4 @@
-# Copyright 2024 HunyuanDiT Authors, Qixun Wang and The HuggingFace Team. All rights reserved.
+# Copyright 2025 HunyuanDiT Authors, Qixun Wang and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -308,7 +308,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
                     activation_fn=activation_fn,
                     ff_inner_dim=int(self.inner_dim * mlp_ratio),
                     cross_attention_dim=cross_attention_dim,
-                    qk_norm=True,  # See http://arxiv.org/abs/2302.05442 for details.
+                    qk_norm=True,  # See https://huggingface.co/papers/2302.05442 for details.
                     skip=layer > num_layers // 2,
                 )
                 for layer in range(num_layers)

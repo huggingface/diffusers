@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 
 import copy
 import gc
+import glob
 import inspect
 import json
 import os
@@ -24,11 +25,14 @@ import traceback
 import unittest
 import unittest.mock as mock
 import uuid
+import warnings
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import pytest
 import requests_mock
+import safetensors.torch
 import torch
 import torch.nn as nn
 from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
@@ -44,6 +48,7 @@ from diffusers.models.attention_processor import (
     AttnProcessorNPU,
     XFormersAttnProcessor,
 )
+from diffusers.models.auto_model import AutoModel
 from diffusers.training_utils import EMAModel
 from diffusers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -56,15 +61,23 @@ from diffusers.utils import (
 from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_peak_memory_stats,
+    backend_synchronize,
+    check_if_dicts_are_equal,
     get_python_version,
     is_torch_compile,
     numpy_cosine_similarity_distance,
+    require_peft_backend,
+    require_peft_version_greater,
     require_torch_2,
     require_torch_accelerator,
     require_torch_accelerator_with_training,
     require_torch_gpu,
     require_torch_multi_accelerator,
     run_test_in_subprocess,
+    slow,
     torch_all_close,
     torch_device,
 )
@@ -292,9 +305,9 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             download_requests = [r.method for r in m.request_history]
-            assert (
-                download_requests.count("HEAD") == 3
-            ), "3 HEAD requests one for config, one for model, and one for shard index file."
+            assert download_requests.count("HEAD") == 3, (
+                "3 HEAD requests one for config, one for model, and one for shard index file."
+            )
             assert download_requests.count("GET") == 2, "2 GET requests one for config, one for model"
 
             with requests_mock.mock(real_http=True) as m:
@@ -306,9 +319,9 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             cache_requests = [r.method for r in m.request_history]
-            assert (
-                "HEAD" == cache_requests[0] and len(cache_requests) == 2
-            ), "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
+            assert "HEAD" == cache_requests[0] and len(cache_requests) == 2, (
+                "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
+            )
 
     def test_weight_overwrite(self):
         with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
@@ -334,7 +347,7 @@ class ModelUtilsTest(unittest.TestCase):
 
         assert model.config.in_channels == 9
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_keep_modules_in_fp32(self):
         r"""
         A simple tests to check if the modules under `_keep_in_fp32_modules` are kept in fp32 when we load the model in fp16/bf16
@@ -926,8 +939,9 @@ class ModelTesterMixin:
 
     @require_torch_accelerator_with_training
     def test_enable_disable_gradient_checkpointing(self):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
 
@@ -945,8 +959,9 @@ class ModelTesterMixin:
 
     @require_torch_accelerator_with_training
     def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip: set[str] = {}):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1003,8 +1018,9 @@ class ModelTesterMixin:
     def test_gradient_checkpointing_is_applied(
         self, expected_set=None, attention_head_dim=None, num_attention_heads=None, block_out_channels=None
     ):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -1048,11 +1064,10 @@ class ModelTesterMixin:
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
 
-    @parameterized.expand([True, False])
+    @parameterized.expand([(4, 4, True), (4, 8, False), (8, 4, False)])
     @torch.no_grad()
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_save_load_lora_adapter(self, use_dora=False):
-        import safetensors
+    def test_save_load_lora_adapter(self, rank, lora_alpha, use_dora=False):
         from peft import LoraConfig
         from peft.utils import get_peft_model_state_dict
 
@@ -1062,14 +1077,14 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         torch.manual_seed(0)
         output_no_lora = model(**inputs_dict, return_dict=False)[0]
 
         denoiser_lora_config = LoraConfig(
-            r=4,
-            lora_alpha=4,
+            r=rank,
+            lora_alpha=lora_alpha,
             target_modules=["to_q", "to_k", "to_v", "to_out.0"],
             init_lora_weights=False,
             use_dora=use_dora,
@@ -1108,7 +1123,7 @@ class ModelTesterMixin:
         self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
 
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_wrong_adapter_name_raises_error(self):
+    def test_lora_wrong_adapter_name_raises_error(self):
         from peft import LoraConfig
 
         from diffusers.loaders.peft import PeftAdapterMixin
@@ -1117,7 +1132,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         denoiser_lora_config = LoraConfig(
             r=4,
@@ -1136,12 +1151,96 @@ class ModelTesterMixin:
 
             self.assertTrue(f"Adapter name {wrong_name} not found in the model." in str(err_context.exception))
 
+    @parameterized.expand([(4, 4, True), (4, 8, False), (8, 4, False)])
+    @torch.no_grad()
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
+    def test_lora_adapter_metadata_is_loaded_correctly(self, rank, lora_alpha, use_dora):
+        from peft import LoraConfig
+
+        from diffusers.loaders.peft import PeftAdapterMixin
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        if not issubclass(model.__class__, PeftAdapterMixin):
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
+
+        denoiser_lora_config = LoraConfig(
+            r=rank,
+            lora_alpha=lora_alpha,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=use_dora,
+        )
+        model.add_adapter(denoiser_lora_config)
+        metadata = model.peft_config["default"].to_dict()
+        self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_lora_adapter(tmpdir)
+            model_file = os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
+            self.assertTrue(os.path.isfile(model_file))
+
+            model.unload_lora()
+            self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+            model.load_lora_adapter(tmpdir, prefix=None, use_safetensors=True)
+            parsed_metadata = model.peft_config["default_0"].to_dict()
+            check_if_dicts_are_equal(metadata, parsed_metadata)
+
+    @torch.no_grad()
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
+    def test_lora_adapter_wrong_metadata_raises_error(self):
+        from peft import LoraConfig
+
+        from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
+        from diffusers.loaders.peft import PeftAdapterMixin
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        if not issubclass(model.__class__, PeftAdapterMixin):
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
+
+        denoiser_lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        model.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_lora_adapter(tmpdir)
+            model_file = os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
+            self.assertTrue(os.path.isfile(model_file))
+
+            # Perturb the metadata in the state dict.
+            loaded_state_dict = safetensors.torch.load_file(model_file)
+            metadata = {"format": "pt"}
+            lora_adapter_metadata = denoiser_lora_config.to_dict()
+            lora_adapter_metadata.update({"foo": 1, "bar": 2})
+            for key, value in lora_adapter_metadata.items():
+                if isinstance(value, set):
+                    lora_adapter_metadata[key] = list(value)
+            metadata[LORA_ADAPTER_METADATA_KEY] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+            safetensors.torch.save_file(loaded_state_dict, model_file, metadata=metadata)
+
+            model.unload_lora()
+            self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+            with self.assertRaises(TypeError) as err_context:
+                model.load_lora_adapter(tmpdir, prefix=None, use_safetensors=True)
+            self.assertTrue("`LoraConfig` class could not be instantiated" in str(err_context.exception))
+
     @require_torch_accelerator
     def test_cpu_offload(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1168,10 +1267,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_disk_offload_without_safetensors(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1201,10 +1300,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_disk_offload_with_safetensors(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1229,10 +1328,10 @@ class ModelTesterMixin:
 
     @require_torch_multi_accelerator
     def test_model_parallelism(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1331,10 +1430,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_sharded_checkpoints_device_map(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
         model = model.to(torch_device)
 
         torch.manual_seed(0)
@@ -1402,7 +1501,7 @@ class ModelTesterMixin:
     def test_layerwise_casting_training(self):
         def test_fn(storage_dtype, compute_dtype):
             if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
-                return
+                pytest.skip("Skipping test because CPU doesn't go well with bfloat16.")
             init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
             model = self.model_class(**init_dict)
@@ -1473,16 +1572,16 @@ class ModelTesterMixin:
         test_layerwise_casting(torch.float8_e5m2, torch.float32)
         test_layerwise_casting(torch.float8_e4m3fn, torch.bfloat16)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_layerwise_casting_memory(self):
         MB_TOLERANCE = 0.2
         LEAST_COMPUTE_CAPABILITY = 8.0
 
         def reset_memory_stats():
             gc.collect()
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
+            backend_synchronize(torch_device)
+            backend_empty_cache(torch_device)
+            backend_reset_peak_memory_stats(torch_device)
 
         def get_memory_usage(storage_dtype, compute_dtype):
             torch.manual_seed(0)
@@ -1495,7 +1594,7 @@ class ModelTesterMixin:
             reset_memory_stats()
             model(**inputs_dict)
             model_memory_footprint = model.get_memory_footprint()
-            peak_inference_memory_allocated_mb = torch.cuda.max_memory_allocated() / 1024**2
+            peak_inference_memory_allocated_mb = backend_max_memory_allocated(torch_device) / 1024**2
 
             return model_memory_footprint, peak_inference_memory_allocated_mb
 
@@ -1505,7 +1604,7 @@ class ModelTesterMixin:
             torch.float8_e4m3fn, torch.bfloat16
         )
 
-        compute_capability = get_torch_cuda_device_capability()
+        compute_capability = get_torch_cuda_device_capability() if torch_device == "cuda" else None
         self.assertTrue(fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint < fp32_memory_footprint)
         # NOTE: the following assertion would fail on our CI (running Tesla T4) due to bf16 using more memory than fp32.
         # On other devices, such as DGX (Ampere) and Audace (Ada), the test passes. So, we conditionally check it.
@@ -1519,8 +1618,12 @@ class ModelTesterMixin:
             or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
         )
 
-    @require_torch_gpu
-    def test_group_offloading(self):
+    @parameterized.expand([False, True])
+    @require_torch_accelerator
+    def test_group_offloading(self, record_stream):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
 
@@ -1537,8 +1640,6 @@ class ModelTesterMixin:
             return model(**inputs_dict)[0]
 
         model = self.model_class(**init_dict)
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.to(torch_device)
         output_without_group_offloading = run_forward(model)
@@ -1560,13 +1661,154 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        model.enable_group_offload(torch_device, offload_type="leaf_level", use_stream=True)
+        model.enable_group_offload(
+            torch_device, offload_type="leaf_level", use_stream=True, record_stream=record_stream
+        )
         output_with_group_offloading4 = run_forward(model)
 
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading3, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5))
+
+    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @require_torch_accelerator
+    @torch.no_grad()
+    def test_group_offloading_with_layerwise_casting(self, record_stream, offload_type):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        model.to(torch_device)
+        model.eval()
+        _ = model(**inputs_dict)[0]
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        storage_dtype, compute_dtype = torch.float16, torch.float32
+        inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+        model = self.model_class(**init_dict)
+        model.eval()
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+        model.enable_group_offload(
+            torch_device, offload_type=offload_type, use_stream=True, record_stream=record_stream, **additional_kwargs
+        )
+        model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+        _ = model(**inputs_dict)[0]
+
+    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @require_torch_accelerator
+    @torch.no_grad()
+    def test_group_offloading_with_disk(self, record_stream, offload_type):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.eval()
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.enable_group_offload(
+                torch_device,
+                offload_type=offload_type,
+                offload_to_disk_path=tmpdir,
+                use_stream=True,
+                record_stream=record_stream,
+                **additional_kwargs,
+            )
+            has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
+            assert has_safetensors, "No safetensors found in the directory."
+            _ = model(**inputs_dict)[0]
+
+    def test_auto_model(self, expected_max_diff=5e-5):
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
+
+        model = model.eval()
+        model = model.to(torch_device)
+
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            model.save_pretrained(tmpdirname, safe_serialization=False)
+
+            auto_model = AutoModel.from_pretrained(tmpdirname)
+            if hasattr(auto_model, "set_default_attn_processor"):
+                auto_model.set_default_attn_processor()
+
+        auto_model = auto_model.eval()
+        auto_model = auto_model.to(torch_device)
+
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_original = model(**self.inputs_dict(0))
+                output_auto = auto_model(**self.inputs_dict(0))
+            else:
+                output_original = model(**inputs_dict)
+                output_auto = auto_model(**inputs_dict)
+
+            if isinstance(output_original, dict):
+                output_original = output_original.to_tuple()[0]
+            if isinstance(output_auto, dict):
+                output_auto = output_auto.to_tuple()[0]
+
+        max_diff = (output_original - output_auto).abs().max().item()
+        self.assertLessEqual(
+            max_diff,
+            expected_max_diff,
+            f"AutoModel forward pass diff: {max_diff} exceeds threshold {expected_max_diff}",
+        )
+
+    @parameterized.expand(
+        [
+            (-1, "You can't pass device_map as a negative int"),
+            ("foo", "When passing device_map as a string, the value needs to be a device name"),
+        ]
+    )
+    def test_wrong_device_map_raises_error(self, device_map, msg_substring):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            with self.assertRaises(ValueError) as err_ctx:
+                _ = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+
+        assert msg_substring in str(err_ctx.exception)
+
+    @parameterized.expand([0, "cuda", torch.device("cuda")])
+    @require_torch_gpu
+    def test_passing_non_dict_device_map_works(self, device_map):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).eval()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+            _ = loaded_model(**inputs_dict)
+
+    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
+    @require_torch_gpu
+    def test_passing_dict_device_map_works(self, name, device):
+        # There are other valid dict-based `device_map` values too. It's best to refer to
+        # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).eval()
+        device_map = {name: device}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+            _ = loaded_model(**inputs_dict)
 
 
 @is_staging_test
@@ -1659,3 +1901,304 @@ class ModelPushToHubTester(unittest.TestCase):
 
         # Reset repo
         delete_repo(self.repo_id, token=TOKEN)
+
+
+@require_torch_gpu
+@require_torch_2
+@is_torch_compile
+@slow
+class TorchCompileTesterMixin:
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        torch.compiler.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        # clean up the VRAM after each test in case of CUDA runtime errors
+        super().tearDown()
+        torch.compiler.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_torch_compile_recompilation_and_graph_break(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True)
+
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(error_on_recompile=True),
+            torch.no_grad(),
+        ):
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
+    def test_compile_with_group_offloading(self):
+        torch._dynamo.config.cache_size_limit = 10000
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        if not getattr(model, "_supports_group_offloading", True):
+            return
+
+        model.eval()
+        # TODO: Can test for other group offloading kwargs later if needed.
+        group_offload_kwargs = {
+            "onload_device": "cuda",
+            "offload_device": "cpu",
+            "offload_type": "block_level",
+            "num_blocks_per_group": 1,
+            "use_stream": True,
+            "non_blocking": True,
+        }
+        model.enable_group_offload(**group_offload_kwargs)
+        model.compile()
+        with torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
+
+@slow
+@require_torch_2
+@require_torch_accelerator
+@require_peft_backend
+@require_peft_version_greater("0.14.0")
+@is_torch_compile
+class LoraHotSwappingForModelTesterMixin:
+    """Test that hotswapping does not result in recompilation on the model directly.
+
+    We're not extensively testing the hotswapping functionality since it is implemented in PEFT and is extensively
+    tested there. The goal of this test is specifically to ensure that hotswapping with diffusers does not require
+    recompilation.
+
+    See
+    https://github.com/huggingface/peft/blob/eaab05e18d51fb4cce20a73c9acd82a00c013b83/tests/test_gpu_examples.py#L4252
+    for the analogous PEFT test.
+
+    """
+
+    def tearDown(self):
+        # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
+        # there will be recompilation errors, as torch caches the model when run in the same process.
+        super().tearDown()
+        torch.compiler.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def get_lora_config(self, lora_rank, lora_alpha, target_modules):
+        # from diffusers test_models_unet_2d_condition.py
+        from peft import LoraConfig
+
+        lora_config = LoraConfig(
+            r=lora_rank,
+            lora_alpha=lora_alpha,
+            target_modules=target_modules,
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        return lora_config
+
+    def get_linear_module_name_other_than_attn(self, model):
+        linear_names = [
+            name for name, module in model.named_modules() if isinstance(module, nn.Linear) and "to_" not in name
+        ]
+        return linear_names[0]
+
+    def check_model_hotswap(self, do_compile, rank0, rank1, target_modules0, target_modules1=None):
+        """
+        Check that hotswapping works on a small unet.
+
+        Steps:
+        - create 2 LoRA adapters and save them
+        - load the first adapter
+        - hotswap the second adapter
+        - check that the outputs are correct
+        - optionally compile the model
+
+        Note: We set rank == alpha here because save_lora_adapter does not save the alpha scalings, thus the test would
+        fail if the values are different. Since rank != alpha does not matter for the purpose of this test, this is
+        fine.
+        """
+        # create 2 adapters with different ranks and alphas
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        alpha0, alpha1 = rank0, rank1
+        max_rank = max([rank0, rank1])
+        if target_modules1 is None:
+            target_modules1 = target_modules0[:]
+        lora_config0 = self.get_lora_config(rank0, alpha0, target_modules0)
+        lora_config1 = self.get_lora_config(rank1, alpha1, target_modules1)
+
+        model.add_adapter(lora_config0, adapter_name="adapter0")
+        with torch.inference_mode():
+            torch.manual_seed(0)
+            output0_before = model(**inputs_dict)["sample"]
+
+        model.add_adapter(lora_config1, adapter_name="adapter1")
+        model.set_adapter("adapter1")
+        with torch.inference_mode():
+            torch.manual_seed(0)
+            output1_before = model(**inputs_dict)["sample"]
+
+        # sanity checks:
+        tol = 5e-3
+        assert not torch.allclose(output0_before, output1_before, atol=tol, rtol=tol)
+        assert not (output0_before == 0).all()
+        assert not (output1_before == 0).all()
+
+        with tempfile.TemporaryDirectory() as tmp_dirname:
+            # save the adapter checkpoints
+            model.save_lora_adapter(os.path.join(tmp_dirname, "0"), safe_serialization=True, adapter_name="adapter0")
+            model.save_lora_adapter(os.path.join(tmp_dirname, "1"), safe_serialization=True, adapter_name="adapter1")
+            del model
+
+            # load the first adapter
+            torch.manual_seed(0)
+            init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict).to(torch_device)
+
+            if do_compile or (rank0 != rank1):
+                # no need to prepare if the model is not compiled or if the ranks are identical
+                model.enable_lora_hotswap(target_rank=max_rank)
+
+            file_name0 = os.path.join(os.path.join(tmp_dirname, "0"), "pytorch_lora_weights.safetensors")
+            file_name1 = os.path.join(os.path.join(tmp_dirname, "1"), "pytorch_lora_weights.safetensors")
+            model.load_lora_adapter(file_name0, safe_serialization=True, adapter_name="adapter0", prefix=None)
+
+            if do_compile:
+                model = torch.compile(model, mode="reduce-overhead")
+
+            with torch.inference_mode():
+                output0_after = model(**inputs_dict)["sample"]
+            assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
+
+            # hotswap the 2nd adapter
+            model.load_lora_adapter(file_name1, adapter_name="adapter0", hotswap=True, prefix=None)
+
+            # we need to call forward to potentially trigger recompilation
+            with torch.inference_mode():
+                output1_after = model(**inputs_dict)["sample"]
+            assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
+
+            # check error when not passing valid adapter name
+            name = "does-not-exist"
+            msg = f"Trying to hotswap LoRA adapter '{name}' but there is no existing adapter by that name"
+            with self.assertRaisesRegex(ValueError, msg):
+                model.load_lora_adapter(file_name1, adapter_name=name, hotswap=True, prefix=None)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_model(self, rank0, rank1):
+        self.check_model_hotswap(
+            do_compile=False, rank0=rank0, rank1=rank1, target_modules0=["to_q", "to_k", "to_v", "to_out.0"]
+        )
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_model_linear(self, rank0, rank1):
+        # It's important to add this context to raise an error on recompilation
+        target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
+            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_model_conv2d(self, rank0, rank1):
+        if "unet" not in self.model_class.__name__.lower():
+            return
+
+        # It's important to add this context to raise an error on recompilation
+        target_modules = ["conv", "conv1", "conv2"]
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
+            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_model_both_linear_and_conv2d(self, rank0, rank1):
+        if "unet" not in self.model_class.__name__.lower():
+            return
+
+        # It's important to add this context to raise an error on recompilation
+        target_modules = ["to_q", "conv"]
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
+            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_model_both_linear_and_other(self, rank0, rank1):
+        # In `test_hotswapping_compiled_model_both_linear_and_conv2d()`, we check if we can do hotswapping
+        # with `torch.compile()` for models that have both linear and conv layers. In this test, we check
+        # if we can target a linear layer from the transformer blocks and another linear layer from non-attention
+        # block.
+        target_modules = ["to_q"]
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        target_modules.append(self.get_linear_module_name_other_than_attn(model))
+        del model
+
+        # It's important to add this context to raise an error on recompilation
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
+
+    def test_enable_lora_hotswap_called_after_adapter_added_raises(self):
+        # ensure that enable_lora_hotswap is called before loading the first adapter
+        lora_config = self.get_lora_config(8, 8, target_modules=["to_q"])
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model.add_adapter(lora_config)
+
+        msg = re.escape("Call `enable_lora_hotswap` before loading the first adapter.")
+        with self.assertRaisesRegex(RuntimeError, msg):
+            model.enable_lora_hotswap(target_rank=32)
+
+    def test_enable_lora_hotswap_called_after_adapter_added_warning(self):
+        # ensure that enable_lora_hotswap is called before loading the first adapter
+        from diffusers.loaders.peft import logger
+
+        lora_config = self.get_lora_config(8, 8, target_modules=["to_q"])
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model.add_adapter(lora_config)
+        msg = (
+            "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
+        )
+        with self.assertLogs(logger=logger, level="WARNING") as cm:
+            model.enable_lora_hotswap(target_rank=32, check_compiled="warn")
+            assert any(msg in log for log in cm.output)
+
+    def test_enable_lora_hotswap_called_after_adapter_added_ignore(self):
+        # check possibility to ignore the error/warning
+        lora_config = self.get_lora_config(8, 8, target_modules=["to_q"])
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model.add_adapter(lora_config)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")  # Capture all warnings
+            model.enable_lora_hotswap(target_rank=32, check_compiled="warn")
+            self.assertEqual(len(w), 0, f"Expected no warnings, but got: {[str(warn.message) for warn in w]}")
+
+    def test_enable_lora_hotswap_wrong_check_compiled_argument_raises(self):
+        # check that wrong argument value raises an error
+        lora_config = self.get_lora_config(8, 8, target_modules=["to_q"])
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model.add_adapter(lora_config)
+        msg = re.escape("check_compiles should be one of 'error', 'warn', or 'ignore', got 'wrong-argument' instead.")
+        with self.assertRaisesRegex(ValueError, msg):
+            model.enable_lora_hotswap(target_rank=32, check_compiled="wrong-argument")
+
+    def test_hotswap_second_adapter_targets_more_layers_raises(self):
+        # check the error and log
+        from diffusers.loaders.peft import logger
+
+        # at the moment, PEFT requires the 2nd adapter to target the same or a subset of layers
+        target_modules0 = ["to_q"]
+        target_modules1 = ["to_q", "to_k"]
+        with self.assertRaises(RuntimeError):  # peft raises RuntimeError
+            with self.assertLogs(logger=logger, level="ERROR") as cm:
+                self.check_model_hotswap(
+                    do_compile=True, rank0=8, rank1=8, target_modules0=target_modules0, target_modules1=target_modules1
+                )
+                assert any("Hotswapping adapter0 was unsuccessful" in log for log in cm.output)

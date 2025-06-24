@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -87,15 +87,15 @@ class AutoencoderDCSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between pretrained loading and single file loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )
 
     def test_single_file_in_type_variant_components(self):
         # `in` variant checkpoints require passing in a `config` parameter
         # in order to set the scaling factor correctly.
         # `in` and `mix` variants have the same keys and we cannot automatically infer a scaling factor.
-        # We default to using teh `mix` config
+        # We default to using the `mix` config
         repo_id = "mit-han-lab/dc-ae-f128c512-in-1.0-diffusers"
         ckpt_path = "https://huggingface.co/mit-han-lab/dc-ae-f128c512-in-1.0/blob/main/model.safetensors"
 
@@ -106,9 +106,9 @@ class AutoencoderDCSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between pretrained loading and single file loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )
 
     def test_single_file_mix_type_variant_components(self):
         repo_id = "mit-han-lab/dc-ae-f128c512-mix-1.0-diffusers"
@@ -121,6 +121,6 @@ class AutoencoderDCSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between pretrained loading and single file loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )

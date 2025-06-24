@@ -57,7 +57,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -91,9 +91,9 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
             torch_dtype=weight_dtype,
         )
         pipeline.load_lora_weights(args.output_dir)
-        assert (
-            pipeline.transformer.config.in_channels == initial_channels * 2
-        ), f"{pipeline.transformer.config.in_channels=}"
+        assert pipeline.transformer.config.in_channels == initial_channels * 2, (
+            f"{pipeline.transformer.config.in_channels=}"
+        )
 
     pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -329,7 +329,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            'The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v,to_out.0" will result in lora training of attention layers only'
+            'The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. E.g. - "to_k,to_q,to_v,to_out.0" will result in lora training of attention layers only'
         ),
     )
     parser.add_argument(
@@ -954,7 +954,7 @@ def main(args):
 
             lora_state_dict = FluxControlPipeline.lora_state_dict(input_dir)
             transformer_lora_state_dict = {
-                f'{k.replace("transformer.", "")}': v
+                f"{k.replace('transformer.', '')}": v
                 for k, v in lora_state_dict.items()
                 if k.startswith("transformer.") and "lora" in k
             }
@@ -1060,7 +1060,7 @@ def main(args):
         args.lr_scheduler,
         optimizer=optimizer,
         num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_training_steps=num_training_steps_for_scheduler,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )

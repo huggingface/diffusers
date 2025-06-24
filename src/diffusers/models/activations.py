@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ class GELU(nn.Module):
 
 class GEGLU(nn.Module):
     r"""
-    A [variant](https://arxiv.org/abs/2002.05202) of the gated linear unit activation function.
+    A [variant](https://huggingface.co/papers/2002.05202) of the gated linear unit activation function.
 
     Parameters:
         dim_in (`int`): The number of channels in the input.
@@ -125,8 +125,8 @@ class GEGLU(nn.Module):
 
 class SwiGLU(nn.Module):
     r"""
-    A [variant](https://arxiv.org/abs/2002.05202) of the gated linear unit activation function. It's similar to `GEGLU`
-    but uses SiLU / Swish instead of GeLU.
+    A [variant](https://huggingface.co/papers/2002.05202) of the gated linear unit activation function. It's similar to
+    `GEGLU` but uses SiLU / Swish instead of GeLU.
 
     Parameters:
         dim_in (`int`): The number of channels in the input.
@@ -149,7 +149,7 @@ class SwiGLU(nn.Module):
 class ApproximateGELU(nn.Module):
     r"""
     The approximate form of the Gaussian Error Linear Unit (GELU). For more details, see section 2 of this
-    [paper](https://arxiv.org/abs/1606.08415).
+    [paper](https://huggingface.co/papers/1606.08415).
 
     Parameters:
         dim_in (`int`): The number of channels in the input.

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,7 +52,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -539,7 +539,7 @@ class VideoDataset(Dataset):
 
         if any(not path.is_file() for path in instance_videos):
             raise ValueError(
-                "Expected '--video_column' to be a path to a file in `--instance_data_root` containing line-separated paths to video data but found atleast one path that is not a valid file."
+                "Expected '--video_column' to be a path to a file in `--instance_data_root` containing line-separated paths to video data but found at least one path that is not a valid file."
             )
 
         return instance_prompts, instance_videos
@@ -901,7 +901,7 @@ def prepare_rotary_positional_embeddings(
 
 
 def get_optimizer(args, params_to_optimize, use_deepspeed: bool = False):
-    # Use DeepSpeed optimzer
+    # Use DeepSpeed optimizer
     if use_deepspeed:
         from accelerate.utils import DummyOptim
 
@@ -1159,7 +1159,7 @@ def main(args):
         lora_state_dict = CogVideoXPipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
-            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
+            f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
         }
         transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
         incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")

@@ -188,9 +188,9 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
                             prediction_type=prediction_type,
                             algorithm_type=algorithm_type,
                         )
-                        assert (
-                            not torch.isnan(sample).any()
-                        ), f"Samples have nan numbers, {order}, {solver_type}, {prediction_type}, {algorithm_type}"
+                        assert not torch.isnan(sample).any(), (
+                            f"Samples have nan numbers, {order}, {solver_type}, {prediction_type}, {algorithm_type}"
+                        )
 
     def test_lower_order_final(self):
         self.check_over_configs(lower_order_final=True)

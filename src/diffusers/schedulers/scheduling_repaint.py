@@ -1,4 +1,4 @@
-# Copyright 2024 ETH Zurich Computer Vision Lab and The HuggingFace Team. All rights reserved.
+# Copyright 2025 ETH Zurich Computer Vision Lab and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -233,10 +233,10 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
         # For t > 0, compute predicted variance βt (see formula (6) and (7) from
-        # https://arxiv.org/pdf/2006.11239.pdf) and sample from it to get
+        # https://huggingface.co/papers/2006.11239) and sample from it to get
         # previous sample x_{t-1} ~ N(pred_prev_sample, variance) == add
         # variance to pred_sample
-        # Is equivalent to formula (16) in https://arxiv.org/pdf/2010.02502.pdf
+        # Is equivalent to formula (16) in https://huggingface.co/papers/2010.02502
         # without eta.
         # variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.betas[t]
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
@@ -288,7 +288,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         beta_prod_t = 1 - alpha_prod_t
 
         # 2. compute predicted original sample from predicted noise also called
-        # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
+        # "predicted x_0" of formula (15) from https://huggingface.co/papers/2006.11239
         pred_original_sample = (sample - beta_prod_t**0.5 * model_output) / alpha_prod_t**0.5
 
         # 3. Clip "predicted x_0"
@@ -312,20 +312,20 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
             variance = std_dev_t * noise
 
         # 6. compute "direction pointing to x_t" of formula (12)
-        # from https://arxiv.org/pdf/2010.02502.pdf
+        # from https://huggingface.co/papers/2010.02502
         pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** 0.5 * model_output
 
-        # 7. compute x_{t-1} of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 7. compute x_{t-1} of formula (12) from https://huggingface.co/papers/2010.02502
         prev_unknown_part = alpha_prod_t_prev**0.5 * pred_original_sample + pred_sample_direction + variance
 
-        # 8. Algorithm 1 Line 5 https://arxiv.org/pdf/2201.09865.pdf
+        # 8. Algorithm 1 Line 5 https://huggingface.co/papers/2201.09865
         # The computation reported in Algorithm 1 Line 5 is incorrect. Line 5 refers to formula (8a) of the same paper,
         # which tells to sample from a Gaussian distribution with mean "(alpha_prod_t_prev**0.5) * original_image"
         # and variance "(1 - alpha_prod_t_prev)". This means that the standard Gaussian distribution "noise" should be
         # scaled by the square root of the variance (as it is done here), however Algorithm 1 Line 5 tells to scale by the variance.
         prev_known_part = (alpha_prod_t_prev**0.5) * original_image + ((1 - alpha_prod_t_prev) ** 0.5) * noise
 
-        # 9. Algorithm 1 Line 8 https://arxiv.org/pdf/2201.09865.pdf
+        # 9. Algorithm 1 Line 8 https://huggingface.co/papers/2201.09865
         pred_prev_sample = mask * prev_known_part + (1.0 - mask) * prev_unknown_part
 
         if not return_dict:
@@ -348,7 +348,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
             else:
                 noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
 
-            # 10. Algorithm 1 Line 10 https://arxiv.org/pdf/2201.09865.pdf
+            # 10. Algorithm 1 Line 10 https://huggingface.co/papers/2201.09865
             sample = (1 - beta) ** 0.5 * sample + beta**0.5 * noise
 
         return sample

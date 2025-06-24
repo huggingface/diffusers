@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team and Tencent Hunyuan Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team and Tencent Hunyuan Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # Hunyuan-DiT
 ![chinese elements understanding](https://github.com/gnobitab/diffusers-hunyuan/assets/1157982/39b99036-c3cb-4f16-bb1a-40ec25eda573)
 
-[Hunyuan-DiT : A Powerful Multi-Resolution Diffusion Transformer with Fine-Grained Chinese Understanding](https://arxiv.org/abs/2405.08748) from Tencent Hunyuan.
+[Hunyuan-DiT : A Powerful Multi-Resolution Diffusion Transformer with Fine-Grained Chinese Understanding](https://huggingface.co/papers/2405.08748) from Tencent Hunyuan.
 
 The abstract from the paper is:
 

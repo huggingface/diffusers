@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -64,7 +64,7 @@ diffusion 모델 생성을 제어하기 위해 `diffusers`가 지원하는 몇 �
 
 ## Pix2Pix Instruct
 
-[Paper](https://arxiv.org/abs/2211.09800)
+[Paper](https://huggingface.co/papers/2211.09800)
 
 [Instruct Pix2Pix](../api/pipelines/stable_diffusion/pix2pix) 는 입력 이미지 편집을 지원하기 위해 stable diffusion에서 미세-조정되었습니다. 이미지와 편집을 설명하는 프롬프트를 입력으로 받아 편집된 이미지를 출력합니다.
 Instruct Pix2Pix는 [InstructGPT](https://openai.com/blog/instruction-following/)와 같은 프롬프트와 잘 작동하도록 명시적으로 훈련되었습니다.
@@ -73,7 +73,7 @@ Instruct Pix2Pix는 [InstructGPT](https://openai.com/blog/instruction-following/
 
 ## Pix2Pix Zero
 
-[Paper](https://arxiv.org/abs/2302.03027)
+[Paper](https://huggingface.co/papers/2302.03027)
 
 [Pix2Pix Zero](../api/pipelines/stable_diffusion/pix2pix_zero)를 사용하면 일반적인 이미지 의미를 유지하면서 한 개념이나 피사체가 다른 개념이나 피사체로 변환되도록 이미지를 수정할 수 있습니다.
 
@@ -98,7 +98,7 @@ Pix2Pix Zero는 '제로 샷(zero-shot)' 이미지 편집이 가능한 최초의 
 
 ## Attend and Excite
 
-[Paper](https://arxiv.org/abs/2301.13826)
+[Paper](https://huggingface.co/papers/2301.13826)
 
 [Attend and Excite](../api/pipelines/stable_diffusion/attend_and_excite)를 사용하면 프롬프트의 피사체가 최종 이미지에 충실하게 표현되도록 할 수 있습니다.
 
@@ -110,7 +110,7 @@ Pix2Pix Zero와 마찬가지로 Attend and Excite 역시 파이프라인에 미�
 
 ## Semantic Guidance (SEGA)
 
-[Paper](https://arxiv.org/abs/2301.12247)
+[Paper](https://huggingface.co/papers/2301.12247)
 
 의미유도(SEGA)를 사용하면 이미지에서 하나 이상의 컨셉을 적용하거나 제거할 수 있습니다. 컨셉의 강도도 조절할 수 있습니다. 즉, 스마일 컨셉을 사용하여 인물 사진의 스마일을 점진적으로 늘리거나 줄일 수 있습니다.
 
@@ -122,7 +122,7 @@ Pix2Pix Zero 또는 Attend and Excite와 달리 SEGA는 명시적인 그라데�
 
 ## Self-attention Guidance (SAG)
 
-[Paper](https://arxiv.org/abs/2210.00939)
+[Paper](https://huggingface.co/papers/2210.00939)
 
 [자기 주의 안내](../api/pipelines/stable_diffusion/self_attention_guidance)는 이미지의 전반적인 품질을 개선합니다.
 
@@ -150,7 +150,7 @@ InstructPix2Pix와 Pix2Pix Zero와 같은 방법의 중요한 차이점은 전�
 
 ## MultiDiffusion Panorama
 
-[Paper](https://arxiv.org/abs/2302.08113)
+[Paper](https://huggingface.co/papers/2302.08113)
 
 MultiDiffusion은 사전 학습된 diffusion model을 통해 새로운 생성 프로세스를 정의합니다. 이 프로세스는 고품질의 다양한 이미지를 생성하는 데 쉽게 적용할 수 있는 여러 diffusion 생성 방법을 하나로 묶습니다. 결과는 원하는 종횡비(예: 파노라마) 및 타이트한 분할 마스크에서 바운딩 박스에 이르는 공간 안내 신호와 같은 사용자가 제공한 제어를 준수합니다.
 [MultiDiffusion 파노라마](../api/pipelines/stable_diffusion/panorama)를 사용하면 임의의 종횡비(예: 파노라마)로 고품질 이미지를 생성할 수 있습니다.
@@ -175,7 +175,7 @@ MultiDiffusion은 사전 학습된 diffusion model을 통해 새로운 생성 �
 
 ## ControlNet
 
-[Paper](https://arxiv.org/abs/2302.05543)
+[Paper](https://huggingface.co/papers/2302.05543)
 
 [ControlNet](../api/pipelines/stable_diffusion/controlnet)은 추가 조건을 추가하는 보조 네트워크입니다.
 가장자리 감지, 낙서, 깊이 맵, 의미적 세그먼트와 같은 다양한 조건에 대해 훈련된 8개의 표준 사전 훈련된 ControlNet이 있습니다,
@@ -200,7 +200,7 @@ DreamBooth 및 Textual Inversion 마찬가지로, 사용자 지정 확산은 사
 
 ## Model Editing
 
-[Paper](https://arxiv.org/abs/2303.08084)
+[Paper](https://huggingface.co/papers/2303.08084)
 
 [텍스트-이미지 모델 편집 파이프라인](../api/pipelines/model_editing)을 사용하면 사전학습된 text-to-image diffusion 모델이 입력 프롬프트에 있는 피사체에 대해 내릴 수 있는 잘못된 암시적 가정을 완화하는 데 도움이 됩니다.
 예를 들어, 안정적 확산에 "A pack of roses"에 대한 이미지를 생성하라는 메시지를 표시하면 생성된 이미지의 장미는 빨간색일 가능성이 높습니다. 이 파이프라인은 이러한 가정을 변경하는 데 도움이 됩니다.
@@ -209,7 +209,7 @@ DreamBooth 및 Textual Inversion 마찬가지로, 사용자 지정 확산은 사
 
 ## DiffEdit
 
-[Paper](https://arxiv.org/abs/2210.11427)
+[Paper](https://huggingface.co/papers/2210.11427)
 
 [DiffEdit](../api/pipelines/diffedit)를 사용하면 원본 입력 이미지를 최대한 보존하면서 입력 프롬프트와 함께 입력 이미지의 의미론적 편집이 가능합니다.
 
@@ -218,7 +218,7 @@ DreamBooth 및 Textual Inversion 마찬가지로, 사용자 지정 확산은 사
 
 ## T2I-Adapter
 
-[Paper](https://arxiv.org/abs/2302.08453)
+[Paper](https://huggingface.co/papers/2302.08453)
 
 [T2I-어댑터](../api/pipelines/stable_diffusion/adapter)는 추가적인 조건을 추가하는 auxiliary 네트워크입니다.
 가장자리 감지, 스케치, depth maps, semantic segmentations와 같은 다양한 조건에 대해 훈련된 8개의 표준 사전훈련된 adapter가 있습니다,

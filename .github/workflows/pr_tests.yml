@@ -11,6 +11,7 @@ on:
       - "tests/**.py"
       - ".github/**.yml"
       - "utils/**.py"
+      - "setup.py"
   push:
     branches:
       - ci-*
@@ -290,8 +291,8 @@ jobs:
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/tests_lora_failures_short.txt
-        cat reports/tests_models_lora_failures_short.txt
+        cat reports/tests_peft_main_failures_short.txt
+        cat reports/tests_models_lora_peft_main_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}

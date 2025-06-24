@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +16,14 @@ State dict utilities: utility methods for converting state dicts easily
 """
 
 import enum
+import json
 
+from .import_utils import is_torch_available
 from .logging import get_logger
+
+
+if is_torch_available():
+    import torch
 
 
 logger = get_logger(__name__)
@@ -214,7 +220,7 @@ def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
         kwargs (`dict`, *args*):
             Additional arguments to pass to the method.
 
-            - **adapter_name**: For example, in case of PEFT, some keys will be pre-pended
+            - **adapter_name**: For example, in case of PEFT, some keys will be prepended
                 with the adapter name, therefore needs a special handling. By default PEFT also takes care of that in
                 `get_peft_model_state_dict` method:
                 https://github.com/huggingface/peft/blob/ba0477f2985b1ba311b83459d29895c809404e99/src/peft/utils/save_and_load.py#L92
@@ -285,7 +291,7 @@ def convert_state_dict_to_kohya(state_dict, original_type=None, **kwargs):
         kwargs (`dict`, *args*):
             Additional arguments to pass to the method.
 
-            - **adapter_name**: For example, in case of PEFT, some keys will be pre-pended
+            - **adapter_name**: For example, in case of PEFT, some keys will be prepended
                 with the adapter name, therefore needs a special handling. By default PEFT also takes care of that in
                 `get_peft_model_state_dict` method:
                 https://github.com/huggingface/peft/blob/ba0477f2985b1ba311b83459d29895c809404e99/src/peft/utils/save_and_load.py#L92
@@ -329,7 +335,32 @@ def convert_state_dict_to_kohya(state_dict, original_type=None, **kwargs):
         kohya_key = kohya_key.replace(peft_adapter_name, "")  # Kohya doesn't take names
         kohya_ss_state_dict[kohya_key] = weight
         if "lora_down" in kohya_key:
-            alpha_key = f'{kohya_key.split(".")[0]}.alpha'
+            alpha_key = f"{kohya_key.split('.')[0]}.alpha"
             kohya_ss_state_dict[alpha_key] = torch.tensor(len(weight))
 
     return kohya_ss_state_dict
+
+
+def state_dict_all_zero(state_dict, filter_str=None):
+    if filter_str is not None:
+        if isinstance(filter_str, str):
+            filter_str = [filter_str]
+        state_dict = {k: v for k, v in state_dict.items() if any(f in k for f in filter_str)}
+
+    return all(torch.all(param == 0).item() for param in state_dict.values())
+
+
+def _load_sft_state_dict_metadata(model_file: str):
+    import safetensors.torch
+
+    from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
+
+    with safetensors.torch.safe_open(model_file, framework="pt", device="cpu") as f:
+        metadata = f.metadata() or {}
+
+    metadata.pop("format", None)
+    if metadata:
+        raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
+        return json.loads(raw) if raw else None
+    else:
+        return None

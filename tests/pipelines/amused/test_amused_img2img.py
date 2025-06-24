@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -126,8 +126,7 @@ class AmusedImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_consistent(batch_sizes=batch_sizes, batch_generator=False)
 
     @unittest.skip("aMUSEd does not support lists of generators")
-    def test_inference_batch_single_identical(self):
-        ...
+    def test_inference_batch_single_identical(self): ...
 
 
 @slow

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -82,5 +82,9 @@ Happy exploring, and thank you for being part of the Diffusers community!
   <tr style="border-top: 2px solid black">
     <td><a href="https://github.com/suzukimain/auto_diffusers"> Model Search </a></td>
     <td>Search models on Civitai and Hugging Face</td>
+  </tr>
+  <tr style="border-top: 2px solid black">
+    <td><a href="https://github.com/beinsezii/skrample"> Skrample </a></td>
+    <td>Fully modular scheduler functions with 1st class diffusers integration.</td>
   </tr>
 </table>

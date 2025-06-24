@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -123,7 +123,7 @@ class SD3Transformer2DLoadersMixin:
                 key = key.replace(f"layers.{idx}.2.1", f"layers.{idx}.adaln_proj")
             updated_state_dict[key] = value
 
-        # Image projetion parameters
+        # Image projection parameters
         embed_dim = updated_state_dict["proj_in.weight"].shape[1]
         output_dim = updated_state_dict["proj_out.weight"].shape[0]
         hidden_dim = updated_state_dict["proj_in.weight"].shape[0]

@@ -24,7 +24,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     require_torch_accelerator,
     torch_device,
 )
@@ -57,12 +57,12 @@ class WanTransformer3DModelText2VideoSingleFileTest(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between single file loading and pretrained loading"
+            )
 
 
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @require_torch_accelerator
 class WanTransformer3DModelImage2VideoSingleFileTest(unittest.TestCase):
     model_class = WanTransformer3DModel
@@ -88,6 +88,6 @@ class WanTransformer3DModelImage2VideoSingleFileTest(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between single file loading and pretrained loading"
+            )

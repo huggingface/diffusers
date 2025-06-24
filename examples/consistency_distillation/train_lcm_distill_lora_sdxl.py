@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The LCM team and the HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The LCM team and the HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -721,7 +721,7 @@ def main(args):
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        split_batches=True,  # It's important to set this to True when using webdataset to get the right number of steps for lr scheduling. If set to False, the number of steps will be devide by the number of processes assuming batches are multiplied by the number of processes
+        split_batches=True,  # It's important to set this to True when using webdataset to get the right number of steps for lr scheduling. If set to False, the number of steps will be divided by the number of processes assuming batches are multiplied by the number of processes
     )
 
     # Make one log on every process with the configuration for debugging.
@@ -829,7 +829,7 @@ def main(args):
         )
 
     # 8. Handle mixed precision and device placement
-    # For mixed precision training we cast all non-trainable weigths to half-precision
+    # For mixed precision training we cast all non-trainable weights to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -901,7 +901,7 @@ def main(args):
             unet_ = accelerator.unwrap_model(unet)
             lora_state_dict, _ = StableDiffusionXLPipeline.lora_state_dict(input_dir)
             unet_state_dict = {
-                f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")
+                f"{k.replace('unet.', '')}": v for k, v in lora_state_dict.items() if k.startswith("unet.")
             }
             unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
             incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")

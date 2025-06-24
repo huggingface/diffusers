@@ -1,8 +1,6 @@
 import gc
 import unittest
 
-import torch
-
 from diffusers import (
     SanaTransformer2DModel,
 )
@@ -47,15 +45,15 @@ class SanaTransformer2DModelSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between single file loading and pretrained loading"
+            )
 
     def test_checkpoint_loading(self):
         for ckpt_path in self.alternate_keys_ckpt_paths:
-            torch.cuda.empty_cache()
+            backend_empty_cache(torch_device)
             model = self.model_class.from_single_file(ckpt_path)
 
             del model
             gc.collect()
-            torch.cuda.empty_cache()
+            backend_empty_cache(torch_device)

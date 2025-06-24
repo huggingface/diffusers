@@ -199,7 +199,7 @@ class DiffusersQuantizer(ABC):
 
     def dequantize(self, model):
         """
-        Potentially dequantize the model to retrive the original model, with some loss in accuracy / performance. Note
+        Potentially dequantize the model to retrieve the original model, with some loss in accuracy / performance. Note
         not all quantization schemes support this.
         """
         model = self._dequantize(model)
@@ -215,19 +215,20 @@ class DiffusersQuantizer(ABC):
         )
 
     @abstractmethod
-    def _process_model_before_weight_loading(self, model, **kwargs):
-        ...
+    def _process_model_before_weight_loading(self, model, **kwargs): ...
 
     @abstractmethod
-    def _process_model_after_weight_loading(self, model, **kwargs):
-        ...
+    def _process_model_after_weight_loading(self, model, **kwargs): ...
 
     @property
     @abstractmethod
-    def is_serializable(self):
-        ...
+    def is_serializable(self): ...
 
     @property
     @abstractmethod
-    def is_trainable(self):
-        ...
+    def is_trainable(self): ...
+
+    @property
+    def is_compileable(self) -> bool:
+        """Flag indicating whether the quantized model can be compiled"""
+        return False
