@@ -63,6 +63,9 @@ class ModuleGroup:
         onload_self: bool = True,
         offload_to_disk_path: Optional[str] = None,
     ) -> None:
+        if stream is None and record_stream:
+            raise ValueError("`record_stream` cannot be True when `stream` is None.")
+
         self.modules = modules
         self.offload_device = offload_device
         self.onload_device = onload_device
@@ -95,9 +98,6 @@ class ModuleGroup:
             self.cpu_param_dict = {}
         else:
             self.cpu_param_dict = self._init_cpu_param_dict()
-
-        if self.stream is None and self.record_stream:
-            raise ValueError("`record_stream` cannot be True when `stream` is None.")
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -512,6 +512,9 @@ def apply_group_offloading(
             stream = torch.Stream()
         else:
             raise ValueError("Using streams for data transfer requires a CUDA device, or an Intel XPU device.")
+
+    if not use_stream and record_stream:
+        raise ValueError("`record_stream` cannot be True when `use_stream=False`.")
 
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
 
