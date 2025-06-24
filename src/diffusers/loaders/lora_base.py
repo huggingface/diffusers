@@ -946,7 +946,8 @@ class LoraBaseMixin:
 
     def enable_lora_hotswap(self, **kwargs) -> None:
         """
-        Hotswap adapters without triggering recompilation of a model or if the ranks of the loaded adapters are different.
+        Hotswap adapters without triggering recompilation of a model or if the ranks of the loaded adapters are
+        different.
 
         Args:
             target_rank (`int`):
