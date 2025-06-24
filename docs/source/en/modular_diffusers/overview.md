@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Overview
 
-The Modular Diffusers Framework consist of three main components
+The Modular Diffusers Framework consists of three main components:
 
 ## ModularPipelineBlocks
 
@@ -23,35 +23,37 @@ Pipeline blocks are the fundamental building blocks of the Modular Diffusers sys
 - [`AutoPipelineBlocks`](TODO)
 
 
-Each block defines:
-
-**Specifications:**
-- Inputs: User-provided parameters that the block expects
-- Intermediate inputs: Variables from other blocks that this block needs
-- Intermediate outputs: Variables this block produces for other blocks to use
-- Components: Models and processors the block requires (e.g., UNet, VAE, scheduler)
-
-**Computation:**
-- `__call__` method: Defines the actual computational steps within the block
-
-Pipeline blocks are essentially **"definitions"** - they define the specifications and computational steps for a pipeline, but are not runnable until converted into a `ModularPipeline` object.
-
-All blocks interact with a global `PipelineState` object that maintains the pipeline's state throughout execution.
-
-### Load/save a custom `ModularPipelineBlocks`
-
-You can load a custom pipeline block from a hub repository directly
-
+To use a `ModularPipelineBlocks` officially supported in 🧨 Diffusers
 ```py
-from diffusers import ModularPipelineBlocks
-diffdiff_block = ModularPipelineBlocks.from_pretrained(repo_id, trust_remote_code=True)
+>>> from diffusers.modular_pipelines.stable_diffusion_xl import StableDiffusionXLTextEncoderStep
+>>> text_encoder_block = StableDiffusionXLTextEncoderStep()
 ```
 
-to save, and publish to a hub repository
+Each [`ModularPipelineBlocks`] defines its requirement for components, configs, inputs, intermediate inputs, and outputs. You'll see that this text encoder block uses text_encoders, tokenizers as well as a guider component. It takes user inputs such as `prompt` and `negative_prompt`, and return a list of conditional text embeddings.
 
-```py
-diffdiff_block.save(repo_id)
 ```
+>>> text_encoder_block
+StableDiffusionXLTextEncoderStep(
+  Class: PipelineBlock
+  Description: Text Encoder step that generate text_embeddings to guide the image generation
+    Components:
+        text_encoder (`CLIPTextModel`)
+        text_encoder_2 (`CLIPTextModelWithProjection`)
+        tokenizer (`CLIPTokenizer`)
+        tokenizer_2 (`CLIPTokenizer`)
+        guider (`ClassifierFreeGuidance`)
+    Configs:
+        force_zeros_for_empty_prompt (default: True)
+  Inputs:
+    prompt=None, prompt_2=None, negative_prompt=None, negative_prompt_2=None, cross_attention_kwargs=None, clip_skip=None
+  Intermediates:
+    - outputs: prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+)
+```
+
+Pipeline blocks are essentially **"definitions"** - they define the specifications and computational steps for a pipeline. However, they do not contain any model states, and are not runnable until converted into a `ModularPipeline` object.
+
+Read more about how to write your own `ModularPipelineBlocks` [here](TODO)
 
 ## PipelineState & BlockState
 
@@ -67,15 +69,9 @@ You typically don't need to manually create or manage these state objects. The `
 
 `ModularPipeline` is the main interface to create and execute pipelines in the Modular Diffusers system.
 
-### Create a `ModularPipeline`
+### Modular Repo
 
-Each `ModularPipelineBlocks` has an `init_pipeline` method that can initialize a `ModularPipeline` object based on its component and configuration specifications.
-
-```py
->>> pipeline = blocks.init_pipeline(pretrained_model_name_or_path)
-```
-
-`ModularPipeline` only works with modular repositories, so make sure `pretrained_model_name_or_path` points to a modular repo (you can see an example [here](https://huggingface.co/YiYiXu/modular-diffdiff)).
+`ModularPipeline` only works with modular repositories. You can find an example modular repo [here](https://huggingface.co/YiYiXu/modular-diffdiff).
 
 The main differences from standard diffusers repositories are:
 
@@ -93,7 +89,7 @@ In standard `model_index.json`, each component entry is a `(library, class)` tup
 In `modular_model_index.json`, each component entry contains 3 elements: `(library, class, loading_specs {})`
 
 - `library` and `class`: Information about the actual component loaded in the pipeline at the time of saving (can be `None` if not loaded)
-- **`loading_specs`**: A dictionary containing all information required to load this component, including `repo`, `revision`, `subfolder`, `variant`, and `type_hint`
+- `loading_specs`: A dictionary containing all information required to load this component, including `repo`, `revision`, `subfolder`, `variant`, and `type_hint`
 
 ```py
 "text_encoder": [
@@ -114,7 +110,16 @@ In `modular_model_index.json`, each component entry contains 3 elements: `(libra
 
 2. Cross-Repository Component Loading
 
-Unlike standard repositories where components must be in subfolders within the same repo, modular repositories can fetch components from different repositories based on the `loading_specs` dictionary. In our example above, the `text_encoder` component will be fetched from the "text_encoder" folder in `stabilityai/stable-diffusion-xl-base-1.0` while other components come from different repositories.
+Unlike standard repositories where components must be in subfolders within the same repo, modular repositories can fetch components from different repositories based on the `loading_specs` dictionary. e.g. the `text_encoder` component will be fetched from the "text_encoder" folder in `stabilityai/stable-diffusion-xl-base-1.0` while other components come from different repositories.
+
+
+### Create a `ModularPipeline` from `ModularPipelineBlocks`
+
+Each `ModularPipelineBlocks` has an `init_pipeline` method that can initialize a `ModularPipeline` object based on its component and configuration specifications.
+
+```py
+>>> pipeline = blocks.init_pipeline(pretrained_model_name_or_path)
+```
 
 
 <Tip>
@@ -135,7 +140,6 @@ You can read more about Components Manager [here](TODO)
 
 </Tip>
 
-
 Unlike `DiffusionPipeline`, you need to explicitly load model components using `load_components`:
 
 ```py
@@ -155,6 +159,23 @@ You can partially load specific components using the `component_names` argument,
 
 </Tip>
 
+### Load a `ModularPipeline` from hub
+
+You can create a `ModularPipeline` from a HuggingFace Hub repository with `from_pretrained` method, as long as it's a modular repo:
+
+```py
+pipeline = ModularPipeline.from_pretrained(repo_id, components_manager=..., collection=...)
+```
+
+Loading custom code is also supported:
+
+```py
+diffdiff_pipeline = ModularPipeline.from_pretrained(repo_id, trust_remote_code=True, ...)
+```
+
+Similar to `init_pipeline` method, the modular pipeline will not load any components automatically, so you will have to call `load_components` to explicitly load the components you need.
+
+
 ### Execute a `ModularPipeline`
 
 The API to run the `ModularPipeline` is very similar to how you would run a regular `DiffusionPipeline`:
@@ -170,26 +191,10 @@ There are a few key differences though:
 
 Under the hood, `ModularPipeline`'s `__call__` method is a wrapper around the pipeline blocks' `__call__` method: it creates a `PipelineState` object and populates it with user inputs, then returns the output to the user based on the `output` argument. It also ensures that all pipeline-level config and components are exposed to all pipeline blocks by preparing and passing a `components` input.
 
-### Load a `ModularPipeline` from hub
-
-You can directly load a `ModularPipeline` from a HuggingFace Hub repository, as long as it's a modular repo
-
-```py
-pipeine = ModularPipeline.from_pretrained(repo_id, components_manager=..., collection=...)
-```
-
-Loading custom code is also supported, just pass a `trust_remote_code=True` argument:
-
-```py
-diffdiff_pipeline = ModularPipeline.from_pretrained(repo_id, trust_remote_code=True, ...)
-```
-
-The ModularPipeine created with `from_pretrained` method also would not load any components and you would have to call `load_components` to explicitly load components you need.
-
 
 ### Save a `ModularPipeline`
 
-to save a `ModularPipeline` and publish it to hub
+To save a `ModularPipeline` and publish it to hub:
 
 ```py
 pipeline.save_pretrained("YiYiXu/modular-loader-t2i", push_to_hub=True) 
@@ -197,7 +202,9 @@ pipeline.save_pretrained("YiYiXu/modular-loader-t2i", push_to_hub=True)
 
 <Tip>
 
-We do not automatically save custom code and share it on hub for you, please read more about how to share your custom pipeline on hub [here](TODO: ModularPipeline/CustomCode)
+We do not automatically save custom code and share it on hub for you. Please read more about how to share your custom pipeline on hub [here](TODO: ModularPipeline/CustomCode)
+
+</Tip>
 
 
 

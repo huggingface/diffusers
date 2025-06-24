@@ -89,6 +89,8 @@
 - sections:
   - local: modular_diffusers/developer_guide
     title: Developer Guide
+  - local: modular_diffusers/overview
+    title: Overview
 - sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
