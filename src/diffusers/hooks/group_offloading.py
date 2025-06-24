@@ -36,7 +36,7 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 _GROUP_OFFLOADING = "group_offloading"
 _LAYER_EXECUTION_TRACKER = "layer_execution_tracker"
 _LAZY_PREFETCH_GROUP_OFFLOADING = "lazy_prefetch_group_offloading"
-GROUP_ID_LAZY_LEAF = "lazy_leafs"
+_GROUP_ID_LAZY_LEAF = "lazy_leafs"
 _SUPPORTED_PYTORCH_LAYERS = (
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
     torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
@@ -792,7 +792,7 @@ def _apply_group_offloading_leaf_level(
             record_stream=False,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
-            group_id=GROUP_ID_LAZY_LEAF,
+            group_id=_GROUP_ID_LAZY_LEAF,
         )
         _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 
