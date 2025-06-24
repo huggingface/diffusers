@@ -1940,13 +1940,13 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
 
     def test_compile_with_group_offloading(self):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         torch._dynamo.config.cache_size_limit = 10000
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
-
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.eval()
         # TODO: Can test for other group offloading kwargs later if needed.
