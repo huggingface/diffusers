@@ -90,50 +90,6 @@ def prepare_rotary_positional_embeddings(
 
     return freqs_cos, freqs_sin
 
-class Magi1CausalConv3d(nn.Conv3d):
-    r"""
-    A custom 3D causal convolution layer with feature caching support.
-
-    This layer extends the standard Conv3D layer by ensuring causality in the time dimension and handling feature
-    caching for efficient inference.
-
-    Args:
-        in_channels (int): Number of channels in the input image
-        out_channels (int): Number of channels produced by the convolution
-        kernel_size (int or tuple): Size of the convolving kernel
-        stride (int or tuple, optional): Stride of the convolution. Default: 1
-        padding (int or tuple, optional): Zero-padding added to all three sides of the input. Default: 0
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]],
-        stride: Union[int, Tuple[int, int, int]] = 1,
-        padding: Union[int, Tuple[int, int, int]] = 0,
-    ) -> None:
-        super().__init__(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-        )
-
-        # Set up causal padding
-        self._padding = (self.padding[2], self.padding[2], self.padding[1], self.padding[1], 2 * self.padding[0], 0)
-        self.padding = (0, 0, 0)
-
-    def forward(self, x, cache_x=None):
-        padding = list(self._padding)
-        if cache_x is not None and self._padding[4] > 0:
-            cache_x = cache_x.to(x.device)
-            x = torch.cat([cache_x, x], dim=2)
-            padding[4] -= cache_x.shape[2]
-        x = F.pad(x, padding)
-        return super().forward(x)
-
 
 class Magi1RMS_norm(nn.Module):
     r"""
@@ -384,7 +340,7 @@ class Magi1AttentionBlock(nn.Module):
             k[:, 1:, :] = apply_rotary_emb(k[:, :, 1:], (cos_emb, sin_emb)).bfloat16()
             x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop_rate)
         else:
-            x = flash_attn_qkvpacked_func(qkv=qkv.bfloat16(), dropout_p=self.attn_drop_rate)
+            x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop_rate)
 
         # the output of sdpa = (batch, num_heads, seq_len, head_dim)
         x = x.permute(0, 2, 1, 3).reshape(batch_size, time * height * width, channels)
@@ -454,6 +410,11 @@ class Magi1Encoder3d(nn.Module):
 
     def __init__(
         self,
+        patch_size: Tuple[int] = (1, 2, 2),
+        num_attention_heads: int = 40,
+        attention_head_dim: int = 128,
+        in_channels: int = 16,
+        out_channels: int = 16,
         dim=128,
         z_dim=4,
         dim_mult=[1, 2, 4, 4],
@@ -475,9 +436,10 @@ class Magi1Encoder3d(nn.Module):
         # dimensions
         dims = [dim * u for u in [1] + dim_mult]
         scale = 1.0
-
-        # init block
-        self.conv_in = Magi1CausalConv3d(3, dims[0], 3, padding=1)
+        inner_dim = num_attention_heads * attention_head_dim
+        out_channels = out_channels or in_channels
+        # 1. Patch embedding
+        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # downsample blocks
         self.down_blocks = nn.ModuleList([])
@@ -1139,7 +1101,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     def forward(
         self,
         sample: torch.Tensor,
-        sample_posterior: bool = False,
+        sample_posterior: bool = True,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
     ) -> Union[DecoderOutput, torch.Tensor]:
