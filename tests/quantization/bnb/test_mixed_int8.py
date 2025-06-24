@@ -99,11 +99,14 @@ class Base8bitTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        torch.use_deterministic_algorithms(True)
+        cls.is_deterministic_enabled = torch.are_deterministic_algorithms_enabled()
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(True)
 
     @classmethod
     def tearDownClass(cls):
-        torch.use_deterministic_algorithms(False)
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(False)
 
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
