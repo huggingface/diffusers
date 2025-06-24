@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Team Inc.
+# Copyright 2025 The HuggingFace Team Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -95,6 +95,10 @@ class Base4bitTests(unittest.TestCase):
     prompt = "a beautiful sunset amidst the mountains."
     num_inference_steps = 10
     seed = 0
+
+    @classmethod
+    def setUpClass(cls):
+        torch.use_deterministic_algorithms(True)
 
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
@@ -480,7 +484,6 @@ class SlowBnb4BitTests(Base4bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
-        torch.use_deterministic_algorithms(True)
         self.pipeline_4bit.transformer.dequantize()
         output = self.pipeline_4bit(
             prompt=self.prompt,
