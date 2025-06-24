@@ -96,6 +96,10 @@ class Base4bitTests(unittest.TestCase):
     num_inference_steps = 10
     seed = 0
 
+    @classmethod
+    def setUpClass(cls):
+        torch.use_deterministic_algorithms(True)
+
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
             "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/prompt_embeds.pt",
@@ -480,7 +484,6 @@ class SlowBnb4BitTests(Base4bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
-        torch.use_deterministic_algorithms(True)
         self.pipeline_4bit.transformer.dequantize()
         output = self.pipeline_4bit(
             prompt=self.prompt,
