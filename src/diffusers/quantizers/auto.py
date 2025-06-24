@@ -24,6 +24,7 @@ from .gguf import GGUFQuantizer
 from .quantization_config import (
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
+    HiggsConfig,
     QuantizationConfigMixin,
     QuantizationMethod,
     QuantoConfig,
@@ -39,6 +40,7 @@ AUTO_QUANTIZER_MAPPING = {
     "gguf": GGUFQuantizer,
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
+    "higgs": 1,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -47,6 +49,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "gguf": GGUFQuantizationConfig,
     "quanto": QuantoConfig,
     "torchao": TorchAoConfig,
+    "higgs": HiggsConfig,
 }
 
 
