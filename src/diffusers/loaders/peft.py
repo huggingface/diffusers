@@ -22,6 +22,7 @@ from typing import Dict, List, Literal, Optional, Union
 import safetensors
 import torch
 
+from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
@@ -347,6 +348,10 @@ class PeftAdapterMixin:
                 _pipeline.enable_model_cpu_offload()
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
+            else:
+                for component in _pipeline.components.items():
+                    if isinstance(component, torch.nn.Module):
+                        _maybe_remove_and_reapply_group_offloading(component)
             # Unsafe code />
 
         if prefix is not None and not state_dict:
@@ -686,6 +691,8 @@ class PeftAdapterMixin:
         recurse_remove_peft_layers(self)
         if hasattr(self, "peft_config"):
             del self.peft_config
+
+        _maybe_remove_and_reapply_group_offloading(self)
 
     def disable_lora(self):
         """
