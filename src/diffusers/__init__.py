@@ -565,25 +565,14 @@ else:
             "WuerstchenPriorPipeline",
         ]
     )
-
-
-try:
-    if not (is_torch_available() and is_transformers_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_transformers_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_transformers_objects"] = [
-        name for name in dir(dummy_torch_and_transformers_objects) if not name.startswith("_")
-    ]
-
-else:
     _import_structure["modular_pipelines"].extend(
         [
             "StableDiffusionXLAutoPipeline",
             "StableDiffusionXLModularLoader",
         ]
     )
+
+
 try:
     if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
         raise OptionalDependencyNotAvailable()
@@ -1193,16 +1182,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
-    try:
-        if not (is_torch_available() and is_transformers_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
-    else:
         from .modular_pipelines import (
             StableDiffusionXLAutoPipeline,
             StableDiffusionXLModularLoader,
         )
+
     try:
         if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
             raise OptionalDependencyNotAvailable()
