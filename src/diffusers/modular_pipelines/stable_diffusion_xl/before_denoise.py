@@ -1369,6 +1369,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
             ),
             OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
         ]
+
     @staticmethod
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids with self->components
     def _get_add_time_ids(
