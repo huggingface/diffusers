@@ -25,6 +25,7 @@ import torch.nn as nn
 from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
+from ..hooks.group_offloading import _is_group_offload_enabled
 from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -433,14 +434,18 @@ def _func_optionally_disable_offloading(_pipeline):
 
     Returns:
         tuple:
-            A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
+            A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` or `is_group_offload` is True.
     """
     is_model_cpu_offload = False
     is_sequential_cpu_offload = False
+    is_group_offload = False
 
     if _pipeline is not None and _pipeline.hf_device_map is None:
         for _, component in _pipeline.components.items():
-            if not isinstance(component, nn.Module) or not hasattr(component, "_hf_hook"):
+            if not isinstance(component, nn.Module):
+                continue
+            is_group_offload = is_group_offload or _is_group_offload_enabled(component)
+            if not hasattr(component, "_hf_hook"):
                 continue
             is_model_cpu_offload = is_model_cpu_offload or isinstance(component._hf_hook, CpuOffload)
             is_sequential_cpu_offload = is_sequential_cpu_offload or (
@@ -458,7 +463,7 @@ def _func_optionally_disable_offloading(_pipeline):
                     continue
             remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-    return (is_model_cpu_offload, is_sequential_cpu_offload)
+    return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
 
 
 class LoraBaseMixin:

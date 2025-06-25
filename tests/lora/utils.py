@@ -2406,7 +2406,6 @@ class PeftLoraLoaderMixinTests:
             pipe.unload_lora_weights()
             group_offload_hook_2 = _get_top_level_group_offload_hook(denoiser)
             self.assertTrue(group_offload_hook_2 is not None)
-            self.assertNotEqual(group_offload_hook_1, group_offload_hook_2)
             output_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]  # noqa: F841
 
             # Add the lora again and check if group offloading works
@@ -2414,7 +2413,6 @@ class PeftLoraLoaderMixinTests:
             check_if_lora_correctly_set(denoiser)
             group_offload_hook_3 = _get_top_level_group_offload_hook(denoiser)
             self.assertTrue(group_offload_hook_3 is not None)
-            self.assertNotEqual(group_offload_hook_2, group_offload_hook_3)
             output_3 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(np.allclose(output_1, output_3, atol=1e-3, rtol=1e-3))

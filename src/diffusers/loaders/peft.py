@@ -257,7 +257,9 @@ class PeftAdapterMixin:
 
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error.
-            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
+                _pipeline
+            )
             peft_kwargs = {}
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
@@ -348,11 +350,10 @@ class PeftAdapterMixin:
                 _pipeline.enable_model_cpu_offload()
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
-            else:
-                if _pipeline is not None:
-                    for component in _pipeline.components.values():
-                        if isinstance(component, torch.nn.Module):
-                            _maybe_remove_and_reapply_group_offloading(component)
+            elif is_group_offload:
+                for component in _pipeline.components.values():
+                    if isinstance(component, torch.nn.Module):
+                        _maybe_remove_and_reapply_group_offloading(component)
             # Unsafe code />
 
         if prefix is not None and not state_dict:

@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 
+from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..models.embeddings import (
     ImageProjection,
     IPAdapterFaceIDImageProjection,
@@ -211,7 +212,7 @@ class UNet2DConditionLoadersMixin:
         if is_custom_diffusion:
             attn_processors = self._process_custom_diffusion(state_dict=state_dict)
         elif is_lora:
-            is_model_cpu_offload, is_sequential_cpu_offload = self._process_lora(
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._process_lora(
                 state_dict=state_dict,
                 unet_identifier_key=self.unet_name,
                 network_alphas=network_alphas,
@@ -230,7 +231,9 @@ class UNet2DConditionLoadersMixin:
 
         # For LoRA, the UNet is already offloaded at this stage as it is handled inside `_process_lora`.
         if is_custom_diffusion and _pipeline is not None:
-            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline=_pipeline)
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
+                _pipeline=_pipeline
+            )
 
             # only custom diffusion needs to set attn processors
             self.set_attn_processor(attn_processors)
@@ -241,6 +244,10 @@ class UNet2DConditionLoadersMixin:
             _pipeline.enable_model_cpu_offload()
         elif is_sequential_cpu_offload:
             _pipeline.enable_sequential_cpu_offload()
+        elif is_group_offload:
+            for component in _pipeline.components.values():
+                if isinstance(component, torch.nn.Module):
+                    _maybe_remove_and_reapply_group_offloading(component)
         # Unsafe code />
 
     def _process_custom_diffusion(self, state_dict):
@@ -356,7 +363,9 @@ class UNet2DConditionLoadersMixin:
 
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
-            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
+                _pipeline
+            )
             peft_kwargs = {}
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
@@ -389,7 +398,7 @@ class UNet2DConditionLoadersMixin:
             if warn_msg:
                 logger.warning(warn_msg)
 
-        return is_model_cpu_offload, is_sequential_cpu_offload
+        return is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload
 
     @classmethod
     # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
