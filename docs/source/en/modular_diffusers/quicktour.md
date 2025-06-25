@@ -620,6 +620,7 @@ t2i_pipeline.doc
 ```
 
 </Tip>
+
 ```py
 import torch
 from diffusers.modular_pipelines import SequentialPipelineBlocks
@@ -862,7 +863,7 @@ image = decoder_node(latents=latents, output="images")[0]
 refined_image = decoder_node(latents=refined_latents, output="images")[0]
 ```
 
-# YiYi TODO: maybe more on controlnet/lora/ip-adapter
+## YiYi TODO: maybe more on controlnet/lora/ip-adapter
 
 
 
