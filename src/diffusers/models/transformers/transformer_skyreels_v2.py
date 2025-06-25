@@ -426,11 +426,11 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
         self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
-        self.gradient_checkpointing = False
-
         if inject_sample_info:
             self.fps_embedding = nn.Embedding(2, inner_dim)
             self.fps_projection = FeedForward(inner_dim, inner_dim * 6, mult=1, activation_fn="linear-silu")
+
+        self.gradient_checkpointing = False
 
     def forward(
         self,
