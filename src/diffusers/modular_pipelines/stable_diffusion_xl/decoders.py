@@ -81,8 +81,9 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
             )
         ]
 
+    @staticmethod
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae with self->components
-    def upcast_vae(self, components):
+    def upcast_vae(components):
         dtype = components.vae.dtype
         components.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(

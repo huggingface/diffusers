@@ -451,8 +451,9 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
             ),
         ]
 
+    @staticmethod
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.get_timesteps with self->components
-    def get_timesteps(self, components, num_inference_steps, strength, device, denoising_start=None):
+    def get_timesteps(components, num_inference_steps, strength, device, denoising_start=None):
         # get the original timestep using init_timestep
         if denoising_start is None:
             init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -1042,15 +1043,14 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
                 f"`height` and `width` have to be divisible by {components.vae_scale_factor} but are {block_state.height} and {block_state.width}."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with self->components
-    def prepare_latents(
-        self, components, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None
-    ):
+    @staticmethod
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with self->comp
+    def prepare_latents(comp, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (
             batch_size,
             num_channels_latents,
-            int(height) // components.vae_scale_factor,
-            int(width) // components.vae_scale_factor,
+            int(height) // comp.vae_scale_factor,
+            int(width) // comp.vae_scale_factor,
         )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -1064,7 +1064,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * components.scheduler.init_noise_sigma
+        latents = latents * comp.scheduler.init_noise_sigma
         return latents
 
     @torch.no_grad()
@@ -1166,9 +1166,9 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
             OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
         ]
 
+    @staticmethod
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids with self->components
     def _get_add_time_ids(
-        self,
         components,
         original_size,
         crops_coords_top_left,
@@ -1369,10 +1369,10 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
             ),
             OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
         ]
-
+    @staticmethod
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids with self->components
     def _get_add_time_ids(
-        self, components, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+        components, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
