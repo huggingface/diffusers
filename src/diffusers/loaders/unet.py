@@ -204,6 +204,7 @@ class UNet2DConditionLoadersMixin:
         is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+        is_group_offload = False
 
         if is_lora:
             deprecation_message = "Using the `load_attn_procs()` method has been deprecated and will be removed in a future version. Please use `load_lora_adapter()`."
@@ -314,6 +315,7 @@ class UNet2DConditionLoadersMixin:
 
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+        is_group_offload = False
         state_dict_to_be_used = unet_state_dict if len(unet_state_dict) > 0 else state_dict
 
         if len(state_dict_to_be_used) > 0:

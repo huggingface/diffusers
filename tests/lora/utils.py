@@ -39,6 +39,7 @@ from diffusers.utils.testing_utils import (
     is_torch_version,
     require_peft_backend,
     require_peft_version_greater,
+    require_torch_accelerator,
     require_transformers_version_greater,
     skip_mps,
     torch_device,
@@ -2356,6 +2357,7 @@ class PeftLoraLoaderMixinTests:
                 output_lora_loaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
                 self.assertTrue(np.allclose(output_adapter_1, output_lora_loaded, atol=1e-3, rtol=1e-3))
 
+    @require_torch_accelerator
     @parameterized.expand([("block_level", True), ("leaf_level", False), ("leaf_level", True)])
     def test_group_offloading_inference_denoiser(self, offload_type, use_stream):
         from diffusers.hooks.group_offloading import _get_top_level_group_offload_hook
