@@ -109,9 +109,8 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
             ),
         ]
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image with self -> components
-    @staticmethod
-    def encode_image(components, image, device, num_images_per_prompt, output_hidden_states=None):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image with self->components
+    def encode_image(self, components, image, device, num_images_per_prompt, output_hidden_states=None):
         dtype = next(components.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):

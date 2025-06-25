@@ -1814,7 +1814,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         return torch.device("cpu")
 
     @property
-    # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline._execution_device
+    # Modified from diffusers.pipelines.pipeline_utils.DiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling

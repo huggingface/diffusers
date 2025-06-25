@@ -451,7 +451,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
             ),
         ]
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.get_timesteps with self -> components
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.get_timesteps with self->components
     def get_timesteps(self, components, num_inference_steps, strength, device, denoising_start=None):
         # get the original timestep using init_timestep
         if denoising_start is None:
@@ -697,7 +697,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             ),
         ]
 
-    # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image with self -> components
+    # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image with self->components
     # YiYi TODO: update the _encode_vae_image so that we can use #Coped from
     @staticmethod
     def _encode_vae_image(components, image: torch.Tensor, generator: torch.Generator):
@@ -1042,10 +1042,9 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
                 f"`height` and `width` have to be divisible by {components.vae_scale_factor} but are {block_state.height} and {block_state.width}."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with self -> components
-    @staticmethod
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with self->components
     def prepare_latents(
-        components, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None
+        self, components, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None
     ):
         shape = (
             batch_size,
@@ -1167,9 +1166,9 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
             OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
         ]
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids with self -> components
-    @staticmethod
-    def _get_add_time_ids_img2img(
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids with self->components
+    def _get_add_time_ids(
+        self,
         components,
         original_size,
         crops_coords_top_left,
@@ -1221,9 +1220,8 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
         return add_time_ids, add_neg_time_ids
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
-    @staticmethod
     def get_guidance_scale_embedding(
-        w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
+        self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
     ) -> torch.Tensor:
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
@@ -1273,7 +1271,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
         if block_state.negative_target_size is None:
             block_state.negative_target_size = block_state.target_size
 
-        block_state.add_time_ids, block_state.negative_add_time_ids = self._get_add_time_ids_img2img(
+        block_state.add_time_ids, block_state.negative_add_time_ids = self._get_add_time_ids(
             components,
             block_state.original_size,
             block_state.crops_coords_top_left,
@@ -1372,10 +1370,9 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
             OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
         ]
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids with self -> components
-    @staticmethod
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids with self->components
     def _get_add_time_ids(
-        components, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+        self, components, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
@@ -1393,9 +1390,8 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         return add_time_ids
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
-    @staticmethod
     def get_guidance_scale_embedding(
-        w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
+        self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
     ) -> torch.Tensor:
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
