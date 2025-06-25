@@ -17,6 +17,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from timm.models.layers import to_2tuple, trunc_normal_
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
@@ -511,6 +512,9 @@ class Magi1Decoder3d(nn.Module):
         # middle blocks
         self.mid_block = Magi1MidBlock(dims[0], dropout, non_linearity, num_layers=1)
 
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, embed_dim))
+        self.pos_drop = nn.Dropout(p=0.0)
+
         # upsample blocks
         self.up_blocks = nn.ModuleList([])
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
@@ -544,6 +548,8 @@ class Magi1Decoder3d(nn.Module):
         out_dim = self.unpatch_channels
         self.conv_out = nn.Conv3d(out_dim, 3, 3, padding=1)
 
+        trunc_normal_(self.pos_embed, std=0.02)
+
         self.gradient_checkpointing = False
 
     def forward(self, x):
@@ -553,12 +559,16 @@ class Magi1Decoder3d(nn.Module):
         ## middle
         x = self.mid_block(x)
 
+        x = x + self.pos_embed
+        x = self.pos_drop(x)
+
         ## upsamples
         for up_block in self.up_blocks:
             x = up_block(x)
 
         ## head
         x = self.norm_out(x)
+        x = x[:, 1:]  # remove cls_token
         x = self.nonlinearity(x)
 
         x = self.conv_out(x)
@@ -632,16 +642,14 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.encoder = Magi1Encoder3d(
             base_dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales, self.temperal_downsample, dropout
         )
-        self.quant_conv = nn.Linear(base_dim, z_dim)
+        self.quant_linear = nn.Linear(base_dim, z_dim)
         self.post_quant_linear = nn.Linear(z_dim, base_dim)
 
         num_patches = self.latent_size * self.latent_size * self.latent_length
 
         self.cls_token_nums = 1
         self.cls_token = nn.Parameter(torch.zeros(1, 1, base_dim))
-
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, embed_dim))
-        self.pos_drop = nn.Dropout(p=0.0)
+        trunc_normal_(self.cls_token, std=0.02)
 
         self.decoder = Magi1Decoder3d(
             base_dim, z_dim, dim_mult, num_res_blocks, attn_scales, self.temperal_upsample, dropout
