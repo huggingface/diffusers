@@ -349,9 +349,10 @@ class PeftAdapterMixin:
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             else:
-                for component in _pipeline.components.items():
-                    if isinstance(component, torch.nn.Module):
-                        _maybe_remove_and_reapply_group_offloading(component)
+                if _pipeline is not None:
+                    for component in _pipeline.components.values():
+                        if isinstance(component, torch.nn.Module):
+                            _maybe_remove_and_reapply_group_offloading(component)
             # Unsafe code />
 
         if prefix is not None and not state_dict:

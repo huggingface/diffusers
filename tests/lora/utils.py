@@ -2355,3 +2355,68 @@ class PeftLoraLoaderMixinTests:
                 pipe.load_lora_weights(tmpdirname)
                 output_lora_loaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
                 self.assertTrue(np.allclose(output_adapter_1, output_lora_loaded, atol=1e-3, rtol=1e-3))
+
+    @parameterized.expand([("block_level", True), ("leaf_level", False), ("leaf_level", True)])
+    def test_group_offloading_inference_denoiser(self, offload_type, use_stream):
+        from diffusers.hooks.group_offloading import _GROUP_OFFLOADING
+
+        onload_device = torch_device
+        offload_device = torch.device("cpu")
+        dtype = torch.float32
+
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device, dtype=dtype)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            self.pipeline_class.save_lora_weights(
+                save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+
+            components, _, _ = self.get_dummy_components(self.scheduler_classes[0])
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device, dtype=dtype)
+            pipe.set_progress_bar_config(disable=None)
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+            check_if_lora_correctly_set(denoiser)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            # Test group offloading with load_lora_weights
+            denoiser.enable_group_offload(
+                onload_device=onload_device,
+                offload_device=offload_device,
+                offload_type=offload_type,
+                num_blocks_per_group=1,
+                use_stream=use_stream,
+            )
+            denoiser_hook_registry = getattr(denoiser, "_diffusers_hook", None)
+            self.assertTrue(denoiser_hook_registry is not None)
+            group_offload_hook = denoiser_hook_registry.get_hook(_GROUP_OFFLOADING)
+            self.assertTrue(group_offload_hook is not None)
+            pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            # Test group offloading after removing the lora
+            pipe.unload_lora_weights()
+            group_offload_hook_2 = denoiser_hook_registry.get_hook(_GROUP_OFFLOADING)
+            self.assertTrue(group_offload_hook_2 is not None)
+            self.assertNotEqual(group_offload_hook, group_offload_hook_2)
+            pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            # Add the lora again and check if group offloading works
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+            check_if_lora_correctly_set(denoiser)
+            group_offload_hook_3 = denoiser_hook_registry.get_hook(_GROUP_OFFLOADING)
+            self.assertTrue(group_offload_hook_3 is not None)
+            self.assertNotEqual(group_offload_hook, group_offload_hook_3)
+            self.assertNotEqual(group_offload_hook_2, group_offload_hook_3)
+            pipe(**inputs, generator=torch.manual_seed(0))[0]
