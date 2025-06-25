@@ -675,7 +675,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         kwargs["return_lora_metadata"] = True
         state_dict, network_alphas, metadata = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
-            unet_config=self.unet.config if hasattr(self, "unet") else None,
+            unet_config=self.unet.config,
             **kwargs,
         )
 
