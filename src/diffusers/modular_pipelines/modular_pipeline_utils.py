@@ -117,7 +117,7 @@ class ComponentSpec:
         type_hint = component.__class__
         default_creation_method = "from_config" if component._diffusers_load_id == "null" else "from_pretrained"
         
-        if isinstance(component, ConfigMixin):
+        if isinstance(component, ConfigMixin) and default_creation_method == "from_config":
             config = component.config
         else:
             config = None
