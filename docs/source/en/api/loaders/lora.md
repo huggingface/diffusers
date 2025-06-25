@@ -38,6 +38,10 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 </Tip>
 
+## LoraBaseMixin
+
+[[autodoc]] loaders.lora_base.LoraBaseMixin
+
 ## StableDiffusionLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.StableDiffusionLoraLoaderMixin
