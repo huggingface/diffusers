@@ -91,6 +91,7 @@
     title: Developer Guide
   - local: modular_diffusers/quicktour
     title: Quicktour
+  title: Modular Diffusers
 - sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
