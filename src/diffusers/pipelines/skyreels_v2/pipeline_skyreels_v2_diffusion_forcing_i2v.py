@@ -882,7 +882,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         # Loop through iterations (multiple iterations only for long videos)
         for iter_idx in range(n_iter):
             if is_long_video:
-                print(f"Processing iteration {iter_idx + 1}/{n_iter} for long video generation...")
+                logger.debug(f"Processing iteration {iter_idx + 1}/{n_iter} for long video generation...")
 
             num_channels_latents = self.vae.config.z_dim
             latents, current_num_latent_frames, condition, prefix_video_latents_frames = self.prepare_latents(

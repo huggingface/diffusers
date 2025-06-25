@@ -903,7 +903,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             + 1
         )
         for long_video_iter in range(n_iter):
-            print(f"Processing iteration {long_video_iter + 1}/{n_iter} for long video generation...")
+            logger.debug(f"Processing iteration {long_video_iter + 1}/{n_iter} for long video generation...")
 
             # 5. Prepare latent variables
             num_channels_latents = self.transformer.config.in_channels
