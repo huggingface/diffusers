@@ -299,6 +299,21 @@ image = pipe(
 image.save("flux-kontext.png")
 ```
 
+Flux Kontext comes with an integrity safety checker, which should be run after the image generation step. To run the safety checker, install the official repository from [black-forest-labs/Flux-Kontext](https://github.com/black-forest-labs/Flux-Kontext) and add the following code:
+
+```python
+from flux.safety import PixtralIntegrity
+
+# ... pipeline invocation to generate images
+
+integrity_checker = PixtralIntegrity(torch.device("cuda"))
+image_ = np.array(image) / 255.0
+image_ = 2 * image_ - 1
+image_ = torch.from_numpy(image_).to("cuda", dtype=torch.float32).unsqueeze(0).permute(0, 3, 1, 2)
+if integrity_checker.test_image(image_):
+    raise ValueError("Your image has been flagged. Choose another prompt/image or try again.")
+```
+
 ## Combining Flux Turbo LoRAs with Flux Control, Fill, and Redux
 
 We can combine Flux Turbo LoRAs with Flux Control and other pipelines like Fill and Redux to enable few-steps' inference. The example below shows how to do that for Flux Control LoRA for depth and turbo LoRA from [`ByteDance/Hyper-SD`](https://hf.co/ByteDance/Hyper-SD).
