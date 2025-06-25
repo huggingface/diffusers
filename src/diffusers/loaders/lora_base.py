@@ -1022,15 +1022,3 @@ class LoraBaseMixin:
     @classmethod
     def _optionally_disable_offloading(cls, _pipeline):
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
-
-    @classmethod
-    def _fetch_state_dict(cls, *args, **kwargs):
-        deprecation_message = f"Using the `_fetch_state_dict()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _fetch_state_dict`."
-        deprecate("_fetch_state_dict", "0.35.0", deprecation_message)
-        return _fetch_state_dict(*args, **kwargs)
-
-    @classmethod
-    def _best_guess_weight_name(cls, *args, **kwargs):
-        deprecation_message = f"Using the `_best_guess_weight_name()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _best_guess_weight_name`."
-        deprecate("_best_guess_weight_name", "0.35.0", deprecation_message)
-        return _best_guess_weight_name(*args, **kwargs)
