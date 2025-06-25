@@ -3093,6 +3093,16 @@ def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
         "img_emb.proj.1": "condition_embedder.image_embedder.ff.net.0.proj",
         "img_emb.proj.3": "condition_embedder.image_embedder.ff.net.2",
         "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
+        # For the VACE model
+        "vace_blocks.0.before_proj" : "vace_blocks.0.proj_in",
+        "vace_blocks.0.after_proj" : "vace_blocks.0.proj_out",
+        "vace_blocks.1.after_proj" : "vace_blocks.1.proj_out",
+        "vace_blocks.2.after_proj" : "vace_blocks.2.proj_out",
+        "vace_blocks.3.after_proj" : "vace_blocks.3.proj_out",
+        "vace_blocks.4.after_proj" : "vace_blocks.4.proj_out",
+        "vace_blocks.5.after_proj" : "vace_blocks.5.proj_out",
+        "vace_blocks.6.after_proj" : "vace_blocks.6.proj_out",
+        "vace_blocks.7.after_proj" : "vace_blocks.7.proj_out",
     }
 
     for key in list(checkpoint.keys()):
