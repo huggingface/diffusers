@@ -39,7 +39,7 @@ Flux comes in the following variants:
 | Canny Control (LoRA) | [`black-forest-labs/FLUX.1-Canny-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev-lora) |
 | Depth Control (LoRA) | [`black-forest-labs/FLUX.1-Depth-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Depth-dev-lora) |
 | Redux (Adapter) | [`black-forest-labs/FLUX.1-Redux-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Redux-dev) |
-| Kontext | [`black-forest-labs/FLUX.1-Kontext`](https://huggingface.co/black-forest-labs/FLUX.1-Kontext) |
+| Kontext | [`black-forest-labs/FLUX.1-kontext`](https://huggingface.co/black-forest-labs/FLUX.1-kontext) |
 
 All checkpoints have different usage which we detail below.
 
@@ -288,7 +288,7 @@ pipe = FluxKontextPipeline.from_pretrained(
 )
 pipe.to("cuda")
 
-image = load_image("inputs/yarn-art-pikachu.png").convert("RGB")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png").convert("RGB")
 prompt = "Make Pikachu hold a sign that says 'Black Forest Labs is awesome', yarn art style, detailed, vibrant colors"
 image = pipe(
     image=image,

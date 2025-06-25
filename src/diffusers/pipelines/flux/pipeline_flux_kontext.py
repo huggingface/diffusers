@@ -66,7 +66,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> image = load_image("inputs/yarn-art-pikachu.png").convert("RGB")
-        >>> prompt = "Make Pikachu hold a sign that says 'Hugging Face is awesome', yarn art style, detailed, vibrant colors"
+        >>> prompt = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
         >>> image = pipe(
         ...     image=image,
         ...     prompt=prompt,
@@ -587,12 +587,12 @@ class FluxKontextPipeline(
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
-                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i], sample_mode="argmax")
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator, sample_mode="argmax")
 
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
@@ -629,7 +629,7 @@ class FluxKontextPipeline(
 
     def prepare_latents(
         self,
-        image: torch.Tensor,
+        image: Optional[torch.Tensor],
         batch_size: int,
         num_channels_latents: int,
         height: int,
@@ -651,33 +651,35 @@ class FluxKontextPipeline(
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
         shape = (batch_size, num_channels_latents, height, width)
 
-        image = image.to(device=device, dtype=dtype)
-        if image.shape[1] != self.latent_channels:
-            image_latents = self._encode_vae_image(image=image, generator=generator)
-        else:
-            image_latents = image
-        if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            additional_image_per_prompt = batch_size // image_latents.shape[0]
-            image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
-            )
-        else:
-            image_latents = torch.cat([image_latents], dim=0)
+        image_latents = image_ids = None
+        if image is not None:
+            image = image.to(device=device, dtype=dtype)
+            if image.shape[1] != self.latent_channels:
+                image_latents = self._encode_vae_image(image=image, generator=generator)
+            else:
+                image_latents = image
+            if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
+                # expand init_latents for batch_size
+                additional_image_per_prompt = batch_size // image_latents.shape[0]
+                image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
+            elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
+                raise ValueError(
+                    f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
+                )
+            else:
+                image_latents = torch.cat([image_latents], dim=0)
 
-        image_latent_height, image_latent_width = image_latents.shape[2:]
-        image_latents = self._pack_latents(
-            image_latents, batch_size, num_channels_latents, image_latent_height, image_latent_width
-        )
+            image_latent_height, image_latent_width = image_latents.shape[2:]
+            image_latents = self._pack_latents(
+                image_latents, batch_size, num_channels_latents, image_latent_height, image_latent_width
+            )
+            image_ids = self._prepare_latent_image_ids(
+                batch_size, image_latent_height // 2, image_latent_width // 2, device, dtype
+            )
+            # image ids are the same as latent ids with the first dimension set to 1 instead of 0
+            image_ids[..., 0] = 1
 
         latent_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-        image_ids = self._prepare_latent_image_ids(
-            batch_size, image_latent_height // 2, image_latent_width // 2, device, dtype
-        )
-        # image ids are the same as latent ids with the first dimension set to 1 instead of 0
-        image_ids[..., 0] = 1
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -937,11 +939,9 @@ class FluxKontextPipeline(
             )
 
         # 3. Preprocess image
-        if not torch.is_tensor(image) or image.size(1) == self.latent_channels:
-            if isinstance(image, list):
-                image_width, image_height = self.image_processor.get_default_height_width(image[0])
-            else:
-                image_width, image_height = self.image_processor.get_default_height_width(image)
+        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
+            img = image[0] if isinstance(image, list) else image
+            image_height, image_width = self.image_processor.get_default_height_width(img)
             aspect_ratio = image_width / image_height
             if _auto_resize:
                 # Kontext is trained on specific resolutions, using one of them is recommended
@@ -966,7 +966,8 @@ class FluxKontextPipeline(
             generator,
             latents,
         )
-        latent_ids = torch.cat([latent_ids, image_ids], dim=0)  # dim 0 is sequence dimension
+        if image_ids is not None:
+            latent_ids = torch.cat([latent_ids, image_ids], dim=0)  # dim 0 is sequence dimension
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
@@ -1037,7 +1038,9 @@ class FluxKontextPipeline(
                 if image_embeds is not None:
                     self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
 
-                latent_model_input = torch.cat([latents, image_latents], dim=1)
+                latent_model_input = latents
+                if image_latents is not None:
+                    latent_model_input = torch.cat([latents, image_latents], dim=1)
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
                 noise_pred = self.transformer(
