@@ -1351,8 +1351,8 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 input_param.required = False
         return combined_inputs
 
-    # Copied from SequentialPipelineBlocks
     @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks.inputs
     def inputs(self):
         return self.get_inputs()
 
@@ -1366,7 +1366,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 intermediates.append(loop_intermediate_input)
         return intermediates
 
-    # Copied from SequentialPipelineBlocks
+    # modified from SequentialPipelineBlocks
     def get_intermediates_inputs(self):
         inputs = []
         outputs = set()
@@ -1429,7 +1429,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return combined_outputs
 
     # YiYi TODO: this need to be thought about more
-    # copied from SequentialPipelineBlocks
     @property
     def outputs(self) -> List[str]:
         return next(reversed(self.blocks.values())).intermediates_outputs

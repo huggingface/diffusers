@@ -80,7 +80,7 @@ class ComponentSpec:
     name: Optional[str] = None
     type_hint: Optional[Type] = None
     description: Optional[str] = None
-    config: Optional[FrozenDict[str, Any]] = None
+    config: Optional[FrozenDict] = None
     # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
     repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
     subfolder: Optional[str] = field(default=None, metadata={"loading": True})
