@@ -2270,9 +2270,10 @@ class PipelineTesterMixin:
                         if hasattr(module, "_diffusers_hook")
                     )
                 )
-            for component_name in ["vae", "vqvae"]:
-                if hasattr(pipe, component_name):
-                    getattr(pipe, component_name).to(torch_device)
+            for component_name in ["vae", "vqvae", "image_encoder"]:
+                component = getattr(pipe, component_name, None)
+                if isinstance(component, torch.nn.Module):
+                    component.to(torch_device)
 
         def run_forward(pipe):
             torch.manual_seed(0)
