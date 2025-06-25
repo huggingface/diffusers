@@ -28,19 +28,24 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class StableDiffusionXLAutoPipeline(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLTextEncoderStep, StableDiffusionXLAutoIPAdapterStep, StableDiffusionXLAutoVaeEncoderStep, StableDiffusionXLAutoBeforeDenoiseStep, StableDiffusionXLAutoDenoiseStep, StableDiffusionXLAutoDecodeStep]
+    block_classes = [
+        StableDiffusionXLTextEncoderStep,
+        StableDiffusionXLAutoIPAdapterStep,
+        StableDiffusionXLAutoVaeEncoderStep,
+        StableDiffusionXLAutoBeforeDenoiseStep,
+        StableDiffusionXLAutoDenoiseStep,
+        StableDiffusionXLAutoDecodeStep,
+    ]
     block_names = ["text_encoder", "ip_adapter", "image_encoder", "before_denoise", "denoise", "decoder"]
 
     @property
     def description(self):
-        return "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL.\n" + \
-               "- for image-to-image generation, you need to provide either `image` or `image_latents`\n" + \
-               "- for inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop` \n" + \
-               "- to run the controlnet workflow, you need to provide `control_image`\n" + \
-               "- to run the controlnet_union workflow, you need to provide `control_image` and `control_mode`\n" + \
-               "- to run the ip_adapter workflow, you need to provide `ip_adapter_image`\n" + \
-               "- for text-to-image generation, all you need to provide is `prompt`"
-
-
-
-
+        return (
+            "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL.\n"
+            + "- for image-to-image generation, you need to provide either `image` or `image_latents`\n"
+            + "- for inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop` \n"
+            + "- to run the controlnet workflow, you need to provide `control_image`\n"
+            + "- to run the controlnet_union workflow, you need to provide `control_image` and `control_mode`\n"
+            + "- to run the ip_adapter workflow, you need to provide `ip_adapter_image`\n"
+            + "- for text-to-image generation, all you need to provide is `prompt`"
+        )

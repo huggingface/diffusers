@@ -60,7 +60,6 @@ def retrieve_latents(
 class StableDiffusionXLIPAdapterStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
-
     @property
     def description(self) -> str:
         return (
@@ -73,13 +72,19 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("image_encoder", CLIPVisionModelWithProjection),
-            ComponentSpec("feature_extractor", CLIPImageProcessor, config=FrozenDict({"size": 224, "crop_size": 224}), default_creation_method="from_config"),
+            ComponentSpec(
+                "feature_extractor",
+                CLIPImageProcessor,
+                config=FrozenDict({"size": 224, "crop_size": 224}),
+                default_creation_method="from_config",
+            ),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
                 config=FrozenDict({"guidance_scale": 7.5}),
-                default_creation_method="from_config"),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -89,16 +94,19 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
                 "ip_adapter_image",
                 PipelineImageInput,
                 required=True,
-                description="The image(s) to be used as ip adapter"
+                description="The image(s) to be used as ip adapter",
             )
         ]
-
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
         return [
             OutputParam("ip_adapter_embeds", type_hint=torch.Tensor, description="IP adapter image embeddings"),
-            OutputParam("negative_ip_adapter_embeds", type_hint=torch.Tensor, description="Negative IP adapter image embeddings")
+            OutputParam(
+                "negative_ip_adapter_embeds",
+                type_hint=torch.Tensor,
+                description="Negative IP adapter image embeddings",
+            ),
         ]
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image with self -> components
@@ -129,7 +137,13 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
 
     # modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, components, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, prepare_unconditional_embeds
+        self,
+        components,
+        ip_adapter_image,
+        ip_adapter_image_embeds,
+        device,
+        num_images_per_prompt,
+        prepare_unconditional_embeds,
     ):
         image_embeds = []
         if prepare_unconditional_embeds:
@@ -200,14 +214,11 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
 
 
 class StableDiffusionXLTextEncoderStep(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
     def description(self) -> str:
-        return(
-            "Text Encoder step that generate text_embeddings to guide the image generation"
-        )
+        return "Text Encoder step that generate text_embeddings to guide the image generation"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -220,7 +231,8 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
                 "guider",
                 ClassifierFreeGuidance,
                 config=FrozenDict({"guidance_scale": 7.5}),
-                default_creation_method="from_config"),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -238,22 +250,44 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             InputParam("clip_skip"),
         ]
 
-
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam("prompt_embeds", type_hint=torch.Tensor, kwargs_type="guider_input_fields",description="text embeddings used to guide the image generation"),
-            OutputParam("negative_prompt_embeds", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="negative text embeddings used to guide the image generation"),
-            OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="pooled text embeddings used to guide the image generation"),
-            OutputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="negative pooled text embeddings used to guide the image generation"),
+            OutputParam(
+                "prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="negative text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="pooled text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "negative_pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="negative pooled text embeddings used to guide the image generation",
+            ),
         ]
 
     @staticmethod
     def check_inputs(block_state):
-
-        if block_state.prompt is not None and (not isinstance(block_state.prompt, str) and not isinstance(block_state.prompt, list)):
+        if block_state.prompt is not None and (
+            not isinstance(block_state.prompt, str) and not isinstance(block_state.prompt, list)
+        ):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
-        elif block_state.prompt_2 is not None and (not isinstance(block_state.prompt_2, str) and not isinstance(block_state.prompt_2, list)):
+        elif block_state.prompt_2 is not None and (
+            not isinstance(block_state.prompt_2, str) and not isinstance(block_state.prompt_2, list)
+        ):
             raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(block_state.prompt_2)}")
 
     @staticmethod
@@ -343,9 +377,15 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             batch_size = prompt_embeds.shape[0]
 
         # Define tokenizers and text encoders
-        tokenizers = [components.tokenizer, components.tokenizer_2] if components.tokenizer is not None else [components.tokenizer_2]
+        tokenizers = (
+            [components.tokenizer, components.tokenizer_2]
+            if components.tokenizer is not None
+            else [components.tokenizer_2]
+        )
         text_encoders = (
-            [components.text_encoder, components.text_encoder_2] if components.text_encoder is not None else [components.text_encoder_2]
+            [components.text_encoder, components.text_encoder_2]
+            if components.text_encoder is not None
+            else [components.text_encoder_2]
         )
 
         if prompt_embeds is None:
@@ -464,7 +504,9 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             seq_len = negative_prompt_embeds.shape[1]
 
             if components.text_encoder_2 is not None:
-                negative_prompt_embeds = negative_prompt_embeds.to(dtype=components.text_encoder_2.dtype, device=device)
+                negative_prompt_embeds = negative_prompt_embeds.to(
+                    dtype=components.text_encoder_2.dtype, device=device
+                )
             else:
                 negative_prompt_embeds = negative_prompt_embeds.to(dtype=components.unet.dtype, device=device)
 
@@ -491,7 +533,6 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
         # Get inputs and intermediates
@@ -503,7 +544,9 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
 
         # Encode input prompt
         block_state.text_encoder_lora_scale = (
-            block_state.cross_attention_kwargs.get("scale", None) if block_state.cross_attention_kwargs is not None else None
+            block_state.cross_attention_kwargs.get("scale", None)
+            if block_state.cross_attention_kwargs is not None
+            else None
         )
         (
             block_state.prompt_embeds,
@@ -532,15 +575,11 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
 
 
 class StableDiffusionXLVaeEncoderStep(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
-
 
     @property
     def description(self) -> str:
-        return (
-            "Vae Encoder step that encode the input image into a latent representation"
-        )
+        return "Vae Encoder step that encode the input image into a latent representation"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -550,7 +589,8 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
                 "image_processor",
                 VaeImageProcessor,
                 config=FrozenDict({"vae_scale_factor": 8}),
-                default_creation_method="from_config"),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -566,16 +606,26 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         return [
             InputParam("generator"),
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
-            InputParam("preprocess_kwargs", type_hint=Optional[dict], description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]")]
+            InputParam(
+                "preprocess_kwargs",
+                type_hint=Optional[dict],
+                description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]",
+            ),
+        ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("image_latents", type_hint=torch.Tensor, description="The latents representing the reference image for image-to-image/inpainting generation")]
+        return [
+            OutputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="The latents representing the reference image for image-to-image/inpainting generation",
+            )
+        ]
 
     # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image with self -> components
     # YiYi TODO: update the _encode_vae_image so that we can use #Coped from
     def _encode_vae_image(self, components, image: torch.Tensor, generator: torch.Generator):
-
         latents_mean = latents_std = None
         if hasattr(components.vae.config, "latents_mean") and components.vae.config.latents_mean is not None:
             latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, 4, 1, 1)
@@ -609,8 +659,6 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
 
         return image_latents
 
-
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -618,7 +666,9 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         block_state.device = components._execution_device
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
 
-        block_state.image = components.image_processor.preprocess(block_state.image, height=block_state.height, width=block_state.width, **block_state.preprocess_kwargs)
+        block_state.image = components.image_processor.preprocess(
+            block_state.image, height=block_state.height, width=block_state.width, **block_state.preprocess_kwargs
+        )
         block_state.image = block_state.image.to(device=block_state.device, dtype=block_state.dtype)
 
         block_state.batch_size = block_state.image.shape[0]
@@ -630,8 +680,9 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
                 f" size of {block_state.batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-
-        block_state.image_latents = self._encode_vae_image(components, image=block_state.image, generator=block_state.generator)
+        block_state.image_latents = self._encode_vae_image(
+            components, image=block_state.image, generator=block_state.generator
+        )
 
         self.add_block_state(state, block_state)
 
@@ -649,20 +700,21 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
                 "image_processor",
                 VaeImageProcessor,
                 config=FrozenDict({"vae_scale_factor": 8}),
-                default_creation_method="from_config"),
+                default_creation_method="from_config",
+            ),
             ComponentSpec(
                 "mask_processor",
                 VaeImageProcessor,
-                config=FrozenDict({"do_normalize": False, "vae_scale_factor": 8, "do_binarize": True, "do_convert_grayscale": True}),
-                default_creation_method="from_config"),
+                config=FrozenDict(
+                    {"do_normalize": False, "vae_scale_factor": 8, "do_binarize": True, "do_convert_grayscale": True}
+                ),
+                default_creation_method="from_config",
+            ),
         ]
-
 
     @property
     def description(self) -> str:
-        return (
-            "Vae encoder step that prepares the image and mask for the inpainting process"
-        )
+        return "Vae encoder step that prepares the image and mask for the inpainting process"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -683,15 +735,26 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("image_latents", type_hint=torch.Tensor, description="The latents representation of the input image"),
-                OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for the inpainting process"),
-                OutputParam("masked_image_latents", type_hint=torch.Tensor, description="The masked image latents to use for the inpainting process (only for inpainting-specifid unet)"),
-                OutputParam("crops_coords", type_hint=Optional[Tuple[int, int]], description="The crop coordinates to use for the preprocess/postprocess of the image and mask")]
+        return [
+            OutputParam(
+                "image_latents", type_hint=torch.Tensor, description="The latents representation of the input image"
+            ),
+            OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for the inpainting process"),
+            OutputParam(
+                "masked_image_latents",
+                type_hint=torch.Tensor,
+                description="The masked image latents to use for the inpainting process (only for inpainting-specifid unet)",
+            ),
+            OutputParam(
+                "crops_coords",
+                type_hint=Optional[Tuple[int, int]],
+                description="The crop coordinates to use for the preprocess/postprocess of the image and mask",
+            ),
+        ]
 
     # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image with self -> components
     # YiYi TODO: update the _encode_vae_image so that we can use #Coped from
     def _encode_vae_image(self, components, image: torch.Tensor, generator: torch.Generator):
-
         latents_mean = latents_std = None
         if hasattr(components.vae.config, "latents_mean") and components.vae.config.latents_mean is not None:
             latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, 4, 1, 1)
@@ -774,32 +837,45 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
 
         return mask, masked_image_latents
 
-
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
-
         block_state = self.get_block_state(state)
 
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
         block_state.device = components._execution_device
 
         if block_state.padding_mask_crop is not None:
-            block_state.crops_coords = components.mask_processor.get_crop_region(block_state.mask_image, block_state.width, block_state.height, pad=block_state.padding_mask_crop)
+            block_state.crops_coords = components.mask_processor.get_crop_region(
+                block_state.mask_image, block_state.width, block_state.height, pad=block_state.padding_mask_crop
+            )
             block_state.resize_mode = "fill"
         else:
             block_state.crops_coords = None
             block_state.resize_mode = "default"
 
-        block_state.image = components.image_processor.preprocess(block_state.image, height=block_state.height, width=block_state.width, crops_coords=block_state.crops_coords, resize_mode=block_state.resize_mode)
+        block_state.image = components.image_processor.preprocess(
+            block_state.image,
+            height=block_state.height,
+            width=block_state.width,
+            crops_coords=block_state.crops_coords,
+            resize_mode=block_state.resize_mode,
+        )
         block_state.image = block_state.image.to(dtype=torch.float32)
 
-        block_state.mask = components.mask_processor.preprocess(block_state.mask_image, height=block_state.height, width=block_state.width, resize_mode=block_state.resize_mode, crops_coords=block_state.crops_coords)
+        block_state.mask = components.mask_processor.preprocess(
+            block_state.mask_image,
+            height=block_state.height,
+            width=block_state.width,
+            resize_mode=block_state.resize_mode,
+            crops_coords=block_state.crops_coords,
+        )
         block_state.masked_image = block_state.image * (block_state.mask < 0.5)
 
         block_state.batch_size = block_state.image.shape[0]
         block_state.image = block_state.image.to(device=block_state.device, dtype=block_state.dtype)
-        block_state.image_latents = self._encode_vae_image(components, image=block_state.image, generator=block_state.generator)
+        block_state.image_latents = self._encode_vae_image(
+            components, image=block_state.image, generator=block_state.generator
+        )
 
         # 7. Prepare mask latent variables
         block_state.mask, block_state.masked_image_latents = self.prepare_mask_latents(
@@ -816,9 +892,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
 
         self.add_block_state(state, block_state)
 
-
         return components, state
-
 
 
 # auto blocks (YiYi TODO: maybe move all the auto blocks to a separate file)
@@ -830,10 +904,12 @@ class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks):
 
     @property
     def description(self):
-        return "Vae encoder step that encode the image inputs into their latent representations.\n" + \
-               "This is an auto pipeline block that works for both inpainting and img2img tasks.\n" + \
-               " - `StableDiffusionXLInpaintVaeEncoderStep` (inpaint) is used when both `mask_image` and `image` are provided.\n" + \
-               " - `StableDiffusionXLVaeEncoderStep` (img2img) is used when only `image` is provided."
+        return (
+            "Vae encoder step that encode the image inputs into their latent representations.\n"
+            + "This is an auto pipeline block that works for both inpainting and img2img tasks.\n"
+            + " - `StableDiffusionXLInpaintVaeEncoderStep` (inpaint) is used when both `mask_image` and `image` are provided.\n"
+            + " - `StableDiffusionXLVaeEncoderStep` (img2img) is used when only `image` is provided."
+        )
 
 
 class StableDiffusionXLAutoIPAdapterStep(AutoPipelineBlocks, ModularIPAdapterMixin):
@@ -844,4 +920,3 @@ class StableDiffusionXLAutoIPAdapterStep(AutoPipelineBlocks, ModularIPAdapterMix
     @property
     def description(self):
         return "Run IP Adapter step if `ip_adapter_image` is provided."
-

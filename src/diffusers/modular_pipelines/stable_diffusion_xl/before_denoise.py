@@ -38,14 +38,10 @@ from .modular_loader import StableDiffusionXLModularLoader
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-
-
-
 # TODO(yiyi, aryan): We need another step before text encoder to set the `num_inference_steps` attribute for guider so that
 # things like when to do guidance and how many conditions to be prepared can be determined. Currently, this is done by
 # always assuming you want to do guidance in the Guiders. So, negative embeddings are prepared regardless of what the
 # configuration of guider is.
-
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -122,12 +118,11 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-def prepare_latents_img2img(vae, scheduler, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True):
-
+def prepare_latents_img2img(
+    vae, scheduler, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
+):
     if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
-        raise ValueError(
-            f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
-        )
+        raise ValueError(f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}")
 
     image = image.to(device=device, dtype=dtype)
 
@@ -162,8 +157,7 @@ def prepare_latents_img2img(vae, scheduler, image, timestep, batch_size, num_ima
                 )
 
             init_latents = [
-                retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i])
-                for i in range(batch_size)
+                retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i]) for i in range(batch_size)
             ]
             init_latents = torch.cat(init_latents, dim=0)
         else:
@@ -225,29 +219,91 @@ class StableDiffusionXLInputStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor, description="Pre-generated text embeddings. Can be generated from text_encoder step."),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative text embeddings. Can be generated from text_encoder step."),
-            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor, description="Pre-generated pooled text embeddings. Can be generated from text_encoder step."),
-            InputParam("negative_pooled_prompt_embeds", description="Pre-generated negative pooled text embeddings. Can be generated from text_encoder step."),
-            InputParam("ip_adapter_embeds", type_hint=List[torch.Tensor], description="Pre-generated image embeddings for IP-Adapter. Can be generated from ip_adapter step."),
-            InputParam("negative_ip_adapter_embeds", type_hint=List[torch.Tensor], description="Pre-generated negative image embeddings for IP-Adapter. Can be generated from ip_adapter step."),
+            InputParam(
+                "prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Pre-generated text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Pre-generated negative text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "pooled_prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Pre-generated pooled text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "negative_pooled_prompt_embeds",
+                description="Pre-generated negative pooled text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "ip_adapter_embeds",
+                type_hint=List[torch.Tensor],
+                description="Pre-generated image embeddings for IP-Adapter. Can be generated from ip_adapter step.",
+            ),
+            InputParam(
+                "negative_ip_adapter_embeds",
+                type_hint=List[torch.Tensor],
+                description="Pre-generated negative image embeddings for IP-Adapter. Can be generated from ip_adapter step.",
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
         return [
-            OutputParam("batch_size", type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt"),
-            OutputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs (determined by `prompt_embeds`)"),
-            OutputParam("prompt_embeds", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="text embeddings used to guide the image generation"),
-            OutputParam("negative_prompt_embeds", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="negative text embeddings used to guide the image generation"),
-            OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="pooled text embeddings used to guide the image generation"),
-            OutputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="negative pooled text embeddings used to guide the image generation"),
-            OutputParam("ip_adapter_embeds", type_hint=List[torch.Tensor], kwargs_type="guider_input_fields", description="image embeddings for IP-Adapter"),
-            OutputParam("negative_ip_adapter_embeds", type_hint=List[torch.Tensor], kwargs_type="guider_input_fields", description="negative image embeddings for IP-Adapter"),
+            OutputParam(
+                "batch_size",
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
+            ),
+            OutputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="Data type of model tensor inputs (determined by `prompt_embeds`)",
+            ),
+            OutputParam(
+                "prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="negative text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="pooled text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "negative_pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="negative pooled text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "ip_adapter_embeds",
+                type_hint=List[torch.Tensor],
+                kwargs_type="guider_input_fields",
+                description="image embeddings for IP-Adapter",
+            ),
+            OutputParam(
+                "negative_ip_adapter_embeds",
+                type_hint=List[torch.Tensor],
+                kwargs_type="guider_input_fields",
+                description="negative image embeddings for IP-Adapter",
+            ),
         ]
 
     def check_inputs(self, components, block_state):
-
         if block_state.prompt_embeds is not None and block_state.negative_prompt_embeds is not None:
             if block_state.prompt_embeds.shape != block_state.negative_prompt_embeds.shape:
                 raise ValueError(
@@ -269,7 +325,9 @@ class StableDiffusionXLInputStep(PipelineBlock):
         if block_state.ip_adapter_embeds is not None and not isinstance(block_state.ip_adapter_embeds, list):
             raise ValueError("`ip_adapter_embeds` must be a list")
 
-        if block_state.negative_ip_adapter_embeds is not None and not isinstance(block_state.negative_ip_adapter_embeds, list):
+        if block_state.negative_ip_adapter_embeds is not None and not isinstance(
+            block_state.negative_ip_adapter_embeds, list
+        ):
             raise ValueError("`negative_ip_adapter_embeds` must be a list")
 
         if block_state.ip_adapter_embeds is not None and block_state.negative_ip_adapter_embeds is not None:
@@ -292,27 +350,45 @@ class StableDiffusionXLInputStep(PipelineBlock):
         _, seq_len, _ = block_state.prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
-        block_state.prompt_embeds = block_state.prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1)
+        block_state.prompt_embeds = block_state.prompt_embeds.view(
+            block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+        )
 
         if block_state.negative_prompt_embeds is not None:
             _, seq_len, _ = block_state.negative_prompt_embeds.shape
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1)
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(
+                1, block_state.num_images_per_prompt, 1
+            )
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.view(
+                block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+            )
 
-        block_state.pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
-        block_state.pooled_prompt_embeds = block_state.pooled_prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, -1)
+        block_state.pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(
+            1, block_state.num_images_per_prompt, 1
+        )
+        block_state.pooled_prompt_embeds = block_state.pooled_prompt_embeds.view(
+            block_state.batch_size * block_state.num_images_per_prompt, -1
+        )
 
         if block_state.negative_pooled_prompt_embeds is not None:
-            block_state.negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
-            block_state.negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, -1)
+            block_state.negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.repeat(
+                1, block_state.num_images_per_prompt, 1
+            )
+            block_state.negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.view(
+                block_state.batch_size * block_state.num_images_per_prompt, -1
+            )
 
         if block_state.ip_adapter_embeds is not None:
             for i, ip_adapter_embed in enumerate(block_state.ip_adapter_embeds):
-                block_state.ip_adapter_embeds[i] = torch.cat([ip_adapter_embed] * block_state.num_images_per_prompt, dim=0)
+                block_state.ip_adapter_embeds[i] = torch.cat(
+                    [ip_adapter_embed] * block_state.num_images_per_prompt, dim=0
+                )
 
         if block_state.negative_ip_adapter_embeds is not None:
             for i, negative_ip_adapter_embed in enumerate(block_state.negative_ip_adapter_embeds):
-                block_state.negative_ip_adapter_embeds[i] = torch.cat([negative_ip_adapter_embed] * block_state.num_images_per_prompt, dim=0)
+                block_state.negative_ip_adapter_embeds[i] = torch.cat(
+                    [negative_ip_adapter_embed] * block_state.num_images_per_prompt, dim=0
+                )
 
         self.add_block_state(state, block_state)
 
@@ -331,8 +407,8 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     @property
     def description(self) -> str:
         return (
-            "Step that sets the timesteps for the scheduler and determines the initial noise level (latent_timestep) for image-to-image/inpainting generation.\n" + \
-            "The latent_timestep is calculated from the `strength` parameter - higher strength means starting from a noisier version of the input image."
+            "Step that sets the timesteps for the scheduler and determines the initial noise level (latent_timestep) for image-to-image/inpainting generation.\n"
+            + "The latent_timestep is calculated from the `strength` parameter - higher strength means starting from a noisier version of the input image."
         )
 
     @property
@@ -351,15 +427,28 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam("batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt"),
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
         return [
             OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
-            OutputParam("num_inference_steps", type_hint=int, description="The number of denoising steps to perform at inference time"),
-            OutputParam("latent_timestep", type_hint=torch.Tensor, description="The timestep that represents the initial noise level for image-to-image generation")
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="The number of denoising steps to perform at inference time",
+            ),
+            OutputParam(
+                "latent_timestep",
+                type_hint=torch.Tensor,
+                description="The timestep that represents the initial noise level for image-to-image generation",
+            ),
         ]
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.get_timesteps with self -> components
@@ -402,8 +491,6 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
                 components.scheduler.set_begin_index(t_start)
             return timesteps, num_inference_steps
 
-
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -411,7 +498,11 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
         block_state.device = components._execution_device
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            components.scheduler, block_state.num_inference_steps, block_state.device, block_state.timesteps, block_state.sigmas
+            components.scheduler,
+            block_state.num_inference_steps,
+            block_state.device,
+            block_state.timesteps,
+            block_state.sigmas,
         )
 
         def denoising_value_valid(dnv):
@@ -422,19 +513,30 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
             block_state.num_inference_steps,
             block_state.strength,
             block_state.device,
-            denoising_start=block_state.denoising_start if denoising_value_valid(block_state.denoising_start) else None,
+            denoising_start=block_state.denoising_start
+            if denoising_value_valid(block_state.denoising_start)
+            else None,
         )
-        block_state.latent_timestep = block_state.timesteps[:1].repeat(block_state.batch_size * block_state.num_images_per_prompt)
+        block_state.latent_timestep = block_state.timesteps[:1].repeat(
+            block_state.batch_size * block_state.num_images_per_prompt
+        )
 
-        if block_state.denoising_end is not None and isinstance(block_state.denoising_end, float) and block_state.denoising_end > 0 and block_state.denoising_end < 1:
+        if (
+            block_state.denoising_end is not None
+            and isinstance(block_state.denoising_end, float)
+            and block_state.denoising_end > 0
+            and block_state.denoising_end < 1
+        ):
             block_state.discrete_timestep_cutoff = int(
                 round(
                     components.scheduler.config.num_train_timesteps
                     - (block_state.denoising_end * components.scheduler.config.num_train_timesteps)
                 )
             )
-            block_state.num_inference_steps = len(list(filter(lambda ts: ts >= block_state.discrete_timestep_cutoff, block_state.timesteps)))
-            block_state.timesteps = block_state.timesteps[:block_state.num_inference_steps]
+            block_state.num_inference_steps = len(
+                list(filter(lambda ts: ts >= block_state.discrete_timestep_cutoff, block_state.timesteps))
+            )
+            block_state.timesteps = block_state.timesteps[: block_state.num_inference_steps]
 
         self.add_block_state(state, block_state)
 
@@ -442,7 +544,6 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
 
 
 class StableDiffusionXLSetTimestepsStep(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -453,9 +554,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return (
-            "Step that sets the scheduler's timesteps for inference"
-        )
+        return "Step that sets the scheduler's timesteps for inference"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -468,9 +567,14 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
-                OutputParam("num_inference_steps", type_hint=int, description="The number of denoising steps to perform at inference time")]
-
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="The number of denoising steps to perform at inference time",
+            ),
+        ]
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
@@ -479,25 +583,35 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         block_state.device = components._execution_device
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            components.scheduler, block_state.num_inference_steps, block_state.device, block_state.timesteps, block_state.sigmas
+            components.scheduler,
+            block_state.num_inference_steps,
+            block_state.device,
+            block_state.timesteps,
+            block_state.sigmas,
         )
 
-        if block_state.denoising_end is not None and isinstance(block_state.denoising_end, float) and block_state.denoising_end > 0 and block_state.denoising_end < 1:
+        if (
+            block_state.denoising_end is not None
+            and isinstance(block_state.denoising_end, float)
+            and block_state.denoising_end > 0
+            and block_state.denoising_end < 1
+        ):
             block_state.discrete_timestep_cutoff = int(
                 round(
                     components.scheduler.config.num_train_timesteps
                     - (block_state.denoising_end * components.scheduler.config.num_train_timesteps)
                 )
             )
-            block_state.num_inference_steps = len(list(filter(lambda ts: ts >= block_state.discrete_timestep_cutoff, block_state.timesteps)))
-            block_state.timesteps = block_state.timesteps[:block_state.num_inference_steps]
+            block_state.num_inference_steps = len(
+                list(filter(lambda ts: ts >= block_state.discrete_timestep_cutoff, block_state.timesteps))
+            )
+            block_state.timesteps = block_state.timesteps[: block_state.num_inference_steps]
 
         self.add_block_state(state, block_state)
         return components, state
 
 
 class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -508,9 +622,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return (
-            "Step that prepares the latents for the inpainting process"
-        )
+        return "Step that prepares the latents for the inpainting process"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -526,7 +638,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
                 "denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will "
                 "be maximum and the denoising process will run for the full number of iterations specified in "
                 "`num_inference_steps`. A value of 1, therefore, essentially ignores `image`. Note that in the case of "
-                "`denoising_start` being declared as an integer, the value of `strength` will be ignored."
+                "`denoising_start` being declared as an integer, the value of `strength` will be ignored.",
             ),
         ]
 
@@ -538,51 +650,57 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
                 "batch_size",
                 required=True,
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
             InputParam(
                 "latent_timestep",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step."
+                description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step.",
             ),
             InputParam(
                 "image_latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step."
+                description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step.",
             ),
             InputParam(
                 "mask",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The mask for the inpainting generation. Can be generated in vae_encode step."
+                description="The mask for the inpainting generation. Can be generated in vae_encode step.",
             ),
             InputParam(
                 "masked_image_latents",
                 type_hint=torch.Tensor,
-                description="The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be generated in vae_encode step."
+                description="The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be generated in vae_encode step.",
             ),
-            InputParam(
-                "dtype",
-                type_hint=torch.dtype,
-                description="The dtype of the model inputs"
-            )
+            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
         ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"),
-                OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for inpainting generation"),
-                OutputParam("masked_image_latents", type_hint=torch.Tensor, description="The masked image latents to use for the inpainting generation (only for inpainting-specific unet)"),
-                OutputParam("noise", type_hint=torch.Tensor, description="The noise added to the image latents, used for inpainting generation")]
-
+        return [
+            OutputParam(
+                "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
+            ),
+            OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for inpainting generation"),
+            OutputParam(
+                "masked_image_latents",
+                type_hint=torch.Tensor,
+                description="The masked image latents to use for the inpainting generation (only for inpainting-specific unet)",
+            ),
+            OutputParam(
+                "noise",
+                type_hint=torch.Tensor,
+                description="The noise added to the image latents, used for inpainting generation",
+            ),
+        ]
 
     # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image with self -> components
     # YiYi TODO: update the _encode_vae_image so that we can use #Coped from
     @staticmethod
     def _encode_vae_image(components, image: torch.Tensor, generator: torch.Generator):
-
         latents_mean = latents_std = None
         if hasattr(components.vae.config, "latents_mean") and components.vae.config.latents_mean is not None:
             latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, 4, 1, 1)
@@ -733,7 +851,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
 
         return mask, masked_image_latents
 
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -744,7 +861,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         block_state.is_strength_max = block_state.strength == 1.0
 
         # for non-inpainting specific unet, we do not need masked_image_latents
-        if hasattr(components,"unet") and components.unet is not None:
+        if hasattr(components, "unet") and components.unet is not None:
             if components.unet.config.in_channels == 4:
                 block_state.masked_image_latents = None
 
@@ -801,9 +918,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return (
-            "Step that prepares the latents for the image-to-image generation process"
-        )
+        return "Step that prepares the latents for the image-to-image generation process"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -817,14 +932,34 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     def intermediates_inputs(self) -> List[InputParam]:
         return [
             InputParam("generator"),
-            InputParam("latent_timestep", required=True, type_hint=torch.Tensor, description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step."),
-            InputParam("image_latents", required=True, type_hint=torch.Tensor, description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step."),
-            InputParam("batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."),
-            InputParam("dtype", required=True, type_hint=torch.dtype, description="The dtype of the model inputs")]
+            InputParam(
+                "latent_timestep",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step.",
+            ),
+            InputParam(
+                "image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step.",
+            ),
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
+            ),
+            InputParam("dtype", required=True, type_hint=torch.dtype, description="The dtype of the model inputs"),
+        ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process")]
+        return [
+            OutputParam(
+                "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
+            )
+        ]
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
@@ -863,9 +998,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return (
-            "Prepare latents step that prepares the latents for the text-to-image generation process"
-        )
+        return "Prepare latents step that prepares the latents for the text-to-image generation process"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -884,25 +1017,18 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
                 "batch_size",
                 required=True,
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
-            InputParam(
-                "dtype",
-                type_hint=torch.dtype,
-                description="The dtype of the model inputs"
-            )
+            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
         ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
-                "latents",
-                type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process"
+                "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
             )
         ]
-
 
     @staticmethod
     def check_inputs(components, block_state):
@@ -918,7 +1044,9 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with self -> components
     @staticmethod
-    def prepare_latents(components, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        components, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None
+    ):
         shape = (
             batch_size,
             num_channels_latents,
@@ -939,7 +1067,6 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * components.scheduler.init_noise_sigma
         return latents
-
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
@@ -973,18 +1100,17 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
 
 
 class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
     def expected_configs(self) -> List[ConfigSpec]:
-        return [ConfigSpec("requires_aesthetics_score", False),]
+        return [
+            ConfigSpec("requires_aesthetics_score", False),
+        ]
 
     @property
     def description(self) -> str:
-        return (
-            "Step that prepares the additional conditioning for the image-to-image/inpainting generation process"
-        )
+        return "Step that prepares the additional conditioning for the image-to-image/inpainting generation process"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1003,16 +1129,43 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor, description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."),
-            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor, description="The pooled prompt embeddings to use for the denoising process (used to determine shapes and dtypes for other additional conditioning inputs). Can be generated in text_encoder step."),
-            InputParam("batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
+            ),
+            InputParam(
+                "pooled_prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The pooled prompt embeddings to use for the denoising process (used to determine shapes and dtypes for other additional conditioning inputs). Can be generated in text_encoder step.",
+            ),
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("add_time_ids", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="The time ids to condition the denoising process"),
-                OutputParam("negative_add_time_ids", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="The negative time ids to condition the denoising process"),
-                OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM")]
+        return [
+            OutputParam(
+                "add_time_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="The time ids to condition the denoising process",
+            ),
+            OutputParam(
+                "negative_add_time_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="The negative time ids to condition the denoising process",
+            ),
+            OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
+        ]
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids with self -> components
     @staticmethod
@@ -1133,8 +1286,12 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
             dtype=block_state.pooled_prompt_embeds.dtype,
             text_encoder_projection_dim=block_state.text_encoder_projection_dim,
         )
-        block_state.add_time_ids = block_state.add_time_ids.repeat(block_state.batch_size * block_state.num_images_per_prompt, 1).to(device=block_state.device)
-        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(block_state.batch_size * block_state.num_images_per_prompt, 1).to(device=block_state.device)
+        block_state.add_time_ids = block_state.add_time_ids.repeat(
+            block_state.batch_size * block_state.num_images_per_prompt, 1
+        ).to(device=block_state.device)
+        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(
+            block_state.batch_size * block_state.num_images_per_prompt, 1
+        ).to(device=block_state.device)
 
         # Optionally get Guidance Scale Embedding for LCM
         block_state.timestep_cond = None
@@ -1144,7 +1301,9 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
             and components.unet.config.time_cond_proj_dim is not None
         ):
             # TODO(yiyi, aryan): Ideally, this should be `embedded_guidance_scale` instead of pulling from guider. Guider scales should be different from this!
-            block_state.guidance_scale_tensor = torch.tensor(components.guider.guidance_scale - 1).repeat(block_state.batch_size * block_state.num_images_per_prompt)
+            block_state.guidance_scale_tensor = torch.tensor(components.guider.guidance_scale - 1).repeat(
+                block_state.batch_size * block_state.num_images_per_prompt
+            )
             block_state.timestep_cond = self.get_guidance_scale_embedding(
                 block_state.guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
             ).to(device=block_state.device, dtype=block_state.latents.dtype)
@@ -1158,9 +1317,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return (
-            "Step that prepares the additional conditioning for the text-to-image generation process"
-        )
+        return "Step that prepares the additional conditioning for the text-to-image generation process"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1181,27 +1338,39 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
             InputParam(
                 "pooled_prompt_embeds",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The pooled prompt embeddings to use for the denoising process (used to determine shapes and dtypes for other additional conditioning inputs). Can be generated in text_encoder step."
+                description="The pooled prompt embeddings to use for the denoising process (used to determine shapes and dtypes for other additional conditioning inputs). Can be generated in text_encoder step.",
             ),
             InputParam(
                 "batch_size",
                 required=True,
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("add_time_ids", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="The time ids to condition the denoising process"),
-                OutputParam("negative_add_time_ids", type_hint=torch.Tensor, kwargs_type="guider_input_fields", description="The negative time ids to condition the denoising process"),
-                OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM")]
+        return [
+            OutputParam(
+                "add_time_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="The time ids to condition the denoising process",
+            ),
+            OutputParam(
+                "negative_add_time_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
+                description="The negative time ids to condition the denoising process",
+            ),
+            OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
+        ]
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids with self -> components
     @staticmethod
@@ -1289,8 +1458,12 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         else:
             block_state.negative_add_time_ids = block_state.add_time_ids
 
-        block_state.add_time_ids = block_state.add_time_ids.repeat(block_state.batch_size * block_state.num_images_per_prompt, 1).to(device=block_state.device)
-        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(block_state.batch_size * block_state.num_images_per_prompt, 1).to(device=block_state.device)
+        block_state.add_time_ids = block_state.add_time_ids.repeat(
+            block_state.batch_size * block_state.num_images_per_prompt, 1
+        ).to(device=block_state.device)
+        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(
+            block_state.batch_size * block_state.num_images_per_prompt, 1
+        ).to(device=block_state.device)
 
         # Optionally get Guidance Scale Embedding for LCM
         block_state.timestep_cond = None
@@ -1300,7 +1473,9 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
             and components.unet.config.time_cond_proj_dim is not None
         ):
             # TODO(yiyi, aryan): Ideally, this should be `embedded_guidance_scale` instead of pulling from guider. Guider scales should be different from this!
-            block_state.guidance_scale_tensor = torch.tensor(components.guider.guidance_scale - 1).repeat(block_state.batch_size * block_state.num_images_per_prompt)
+            block_state.guidance_scale_tensor = torch.tensor(components.guider.guidance_scale - 1).repeat(
+                block_state.batch_size * block_state.num_images_per_prompt
+            )
             block_state.timestep_cond = self.get_guidance_scale_embedding(
                 block_state.guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
             ).to(device=block_state.device, dtype=block_state.latents.dtype)
@@ -1310,14 +1485,18 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
 
 
 class StableDiffusionXLControlNetInputStep(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("controlnet", ControlNetModel),
-            ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}), default_creation_method="from_config"),
+            ComponentSpec(
+                "control_image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -1342,24 +1521,24 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
             InputParam(
                 "batch_size",
                 required=True,
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
             InputParam(
                 "timesteps",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
                 "crops_coords",
                 type_hint=Optional[Tuple[int]],
-                description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step."
+                description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.",
             ),
         ]
 
@@ -1367,14 +1546,18 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
     def intermediates_outputs(self) -> List[OutputParam]:
         return [
             OutputParam("controlnet_cond", type_hint=torch.Tensor, description="The processed control image"),
-            OutputParam("control_guidance_start", type_hint=List[float], description="The controlnet guidance start values"),
-            OutputParam("control_guidance_end", type_hint=List[float], description="The controlnet guidance end values"),
-            OutputParam("conditioning_scale", type_hint=List[float], description="The controlnet conditioning scale values"),
+            OutputParam(
+                "control_guidance_start", type_hint=List[float], description="The controlnet guidance start values"
+            ),
+            OutputParam(
+                "control_guidance_end", type_hint=List[float], description="The controlnet guidance end values"
+            ),
+            OutputParam(
+                "conditioning_scale", type_hint=List[float], description="The controlnet conditioning scale values"
+            ),
             OutputParam("guess_mode", type_hint=bool, description="Whether guess mode is used"),
             OutputParam("controlnet_keep", type_hint=List[float], description="The controlnet keep values"),
         ]
-
-
 
     # Modified from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.prepare_image
     # 1. return image without apply any guidance
@@ -1392,9 +1575,13 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         crops_coords=None,
     ):
         if crops_coords is not None:
-            image = components.control_image_processor.preprocess(image, height=height, width=width, crops_coords=crops_coords, resize_mode="fill").to(dtype=torch.float32)
+            image = components.control_image_processor.preprocess(
+                image, height=height, width=width, crops_coords=crops_coords, resize_mode="fill"
+            ).to(dtype=torch.float32)
         else:
-            image = components.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+            image = components.control_image_processor.preprocess(image, height=height, width=width).to(
+                dtype=torch.float32
+            )
 
         image_batch_size = image.shape[0]
         if image_batch_size == 1:
@@ -1407,11 +1594,8 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         image = image.to(device=device, dtype=dtype)
         return image
 
-
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
-
         block_state = self.get_block_state(state)
 
         # (1) prepare controlnet inputs
@@ -1424,11 +1608,21 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
 
         # (1.1)
         # control_guidance_start/control_guidance_end (align format)
-        if not isinstance(block_state.control_guidance_start, list) and isinstance(block_state.control_guidance_end, list):
-            block_state.control_guidance_start = len(block_state.control_guidance_end) * [block_state.control_guidance_start]
-        elif not isinstance(block_state.control_guidance_end, list) and isinstance(block_state.control_guidance_start, list):
-            block_state.control_guidance_end = len(block_state.control_guidance_start) * [block_state.control_guidance_end]
-        elif not isinstance(block_state.control_guidance_start, list) and not isinstance(block_state.control_guidance_end, list):
+        if not isinstance(block_state.control_guidance_start, list) and isinstance(
+            block_state.control_guidance_end, list
+        ):
+            block_state.control_guidance_start = len(block_state.control_guidance_end) * [
+                block_state.control_guidance_start
+            ]
+        elif not isinstance(block_state.control_guidance_end, list) and isinstance(
+            block_state.control_guidance_start, list
+        ):
+            block_state.control_guidance_end = len(block_state.control_guidance_start) * [
+                block_state.control_guidance_end
+            ]
+        elif not isinstance(block_state.control_guidance_start, list) and not isinstance(
+            block_state.control_guidance_end, list
+        ):
             mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
             block_state.control_guidance_start, block_state.control_guidance_end = (
                 mult * [block_state.control_guidance_start],
@@ -1437,8 +1631,12 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
 
         # (1.2)
         # controlnet_conditioning_scale (align format)
-        if isinstance(controlnet, MultiControlNetModel) and isinstance(block_state.controlnet_conditioning_scale, float):
-            block_state.controlnet_conditioning_scale = [block_state.controlnet_conditioning_scale] * len(controlnet.nets)
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(
+            block_state.controlnet_conditioning_scale, float
+        ):
+            block_state.controlnet_conditioning_scale = [block_state.controlnet_conditioning_scale] * len(
+                controlnet.nets
+            )
 
         # (1.3)
         # global_pool_conditions
@@ -1500,8 +1698,6 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         block_state.controlnet_cond = block_state.control_image
         block_state.conditioning_scale = block_state.controlnet_conditioning_scale
 
-
-
         self.add_block_state(state, block_state)
 
         return components, state
@@ -1514,7 +1710,12 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("controlnet", ControlNetUnionModel),
-            ComponentSpec("control_image_processor", VaeImageProcessor, config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}), default_creation_method="from_config"),
+            ComponentSpec(
+                "control_image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"do_convert_rgb": True, "do_normalize": False}),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -1540,30 +1741,30 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Used to determine the shape of the control images. Can be generated in prepare_latent step."
+                description="The initial latents to use for the denoising process. Used to determine the shape of the control images. Can be generated in prepare_latent step.",
             ),
             InputParam(
                 "batch_size",
                 required=True,
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
-             InputParam(
+            InputParam(
                 "dtype",
                 required=True,
                 type_hint=torch.dtype,
-                description="The dtype of model tensor inputs. Can be generated in input step."
+                description="The dtype of model tensor inputs. Can be generated in input step.",
             ),
             InputParam(
                 "timesteps",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The timesteps to use for the denoising process. Needed to determine `controlnet_keep`. Can be generated in set_timesteps step."
+                description="The timesteps to use for the denoising process. Needed to determine `controlnet_keep`. Can be generated in set_timesteps step.",
             ),
             InputParam(
                 "crops_coords",
                 type_hint=Optional[Tuple[int]],
-                description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step."
+                description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.",
             ),
         ]
 
@@ -1571,11 +1772,23 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
     def intermediates_outputs(self) -> List[OutputParam]:
         return [
             OutputParam("controlnet_cond", type_hint=List[torch.Tensor], description="The processed control images"),
-            OutputParam("control_type_idx", type_hint=List[int], description="The control mode indices", kwargs_type="controlnet_kwargs"),
-            OutputParam("control_type", type_hint=torch.Tensor, description="The control type tensor that specifies which control type is active", kwargs_type="controlnet_kwargs"),
+            OutputParam(
+                "control_type_idx",
+                type_hint=List[int],
+                description="The control mode indices",
+                kwargs_type="controlnet_kwargs",
+            ),
+            OutputParam(
+                "control_type",
+                type_hint=torch.Tensor,
+                description="The control type tensor that specifies which control type is active",
+                kwargs_type="controlnet_kwargs",
+            ),
             OutputParam("control_guidance_start", type_hint=float, description="The controlnet guidance start value"),
             OutputParam("control_guidance_end", type_hint=float, description="The controlnet guidance end value"),
-            OutputParam("conditioning_scale", type_hint=List[float], description="The controlnet conditioning scale values"),
+            OutputParam(
+                "conditioning_scale", type_hint=List[float], description="The controlnet conditioning scale values"
+            ),
             OutputParam("guess_mode", type_hint=bool, description="Whether guess mode is used"),
             OutputParam("controlnet_keep", type_hint=List[float], description="The controlnet keep values"),
         ]
@@ -1596,9 +1809,13 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         crops_coords=None,
     ):
         if crops_coords is not None:
-            image = components.control_image_processor.preprocess(image, height=height, width=width, crops_coords=crops_coords, resize_mode="fill").to(dtype=torch.float32)
+            image = components.control_image_processor.preprocess(
+                image, height=height, width=width, crops_coords=crops_coords, resize_mode="fill"
+            ).to(dtype=torch.float32)
         else:
-            image = components.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+            image = components.control_image_processor.preprocess(image, height=height, width=width).to(
+                dtype=torch.float32
+            )
 
         image_batch_size = image.shape[0]
         if image_batch_size == 1:
@@ -1613,7 +1830,6 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
-
         block_state = self.get_block_state(state)
 
         controlnet = unwrap_module(components.controlnet)
@@ -1625,12 +1841,19 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         block_state.height = block_state.height * components.vae_scale_factor
         block_state.width = block_state.width * components.vae_scale_factor
 
-
         # control_guidance_start/control_guidance_end (align format)
-        if not isinstance(block_state.control_guidance_start, list) and isinstance(block_state.control_guidance_end, list):
-            block_state.control_guidance_start = len(block_state.control_guidance_end) * [block_state.control_guidance_start]
-        elif not isinstance(block_state.control_guidance_end, list) and isinstance(block_state.control_guidance_start, list):
-            block_state.control_guidance_end = len(block_state.control_guidance_start) * [block_state.control_guidance_end]
+        if not isinstance(block_state.control_guidance_start, list) and isinstance(
+            block_state.control_guidance_end, list
+        ):
+            block_state.control_guidance_start = len(block_state.control_guidance_end) * [
+                block_state.control_guidance_start
+            ]
+        elif not isinstance(block_state.control_guidance_end, list) and isinstance(
+            block_state.control_guidance_start, list
+        ):
+            block_state.control_guidance_end = len(block_state.control_guidance_start) * [
+                block_state.control_guidance_end
+            ]
 
         # guess_mode
         block_state.global_pool_conditions = controlnet.config.global_pool_conditions
@@ -1677,7 +1900,10 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         for i in range(len(block_state.timesteps)):
             block_state.controlnet_keep.append(
                 1.0
-                - float(i / len(block_state.timesteps) < block_state.control_guidance_start or (i + 1) / len(block_state.timesteps) > block_state.control_guidance_end)
+                - float(
+                    i / len(block_state.timesteps) < block_state.control_guidance_start
+                    or (i + 1) / len(block_state.timesteps) > block_state.control_guidance_end
+                )
             )
         block_state.control_type_idx = block_state.control_mode
         block_state.controlnet_cond = block_state.control_image
@@ -1689,77 +1915,107 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
 
 
 class StableDiffusionXLControlNetAutoInput(AutoPipelineBlocks):
-
     block_classes = [StableDiffusionXLControlNetUnionInputStep, StableDiffusionXLControlNetInputStep]
     block_names = ["controlnet_union", "controlnet"]
     block_trigger_inputs = ["control_mode", "control_image"]
 
     @property
     def description(self):
-        return "Controlnet Input step that prepare the controlnet input.\n" + \
-               "This is an auto pipeline block that works for both controlnet and controlnet_union.\n" + \
-               " - `StableDiffusionXLControlNetUnionInputStep` is called to prepare the controlnet input when `control_mode` and `control_image` are provided.\n" + \
-               " - `StableDiffusionXLControlNetInputStep` is called to prepare the controlnet input when `control_image` is provided."
+        return (
+            "Controlnet Input step that prepare the controlnet input.\n"
+            + "This is an auto pipeline block that works for both controlnet and controlnet_union.\n"
+            + " - `StableDiffusionXLControlNetUnionInputStep` is called to prepare the controlnet input when `control_mode` and `control_image` are provided.\n"
+            + " - `StableDiffusionXLControlNetInputStep` is called to prepare the controlnet input when `control_image` is provided."
+        )
 
 
 # Before denoise
 class StableDiffusionXLBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLInputStep, StableDiffusionXLSetTimestepsStep, StableDiffusionXLPrepareLatentsStep, StableDiffusionXLPrepareAdditionalConditioningStep, StableDiffusionXLControlNetAutoInput]
+    block_classes = [
+        StableDiffusionXLInputStep,
+        StableDiffusionXLSetTimestepsStep,
+        StableDiffusionXLPrepareLatentsStep,
+        StableDiffusionXLPrepareAdditionalConditioningStep,
+        StableDiffusionXLControlNetAutoInput,
+    ]
     block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond", "controlnet_input"]
 
     @property
     def description(self):
-        return "Before denoise step that prepare the inputs for the denoise step.\n" + \
-               "This is a sequential pipeline blocks:\n" + \
-               " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n" + \
-               " - `StableDiffusionXLSetTimestepsStep` is used to set the timesteps\n" + \
-               " - `StableDiffusionXLPrepareLatentsStep` is used to prepare the latents\n" + \
-               " - `StableDiffusionXLPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n" + \
-               " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
+        return (
+            "Before denoise step that prepare the inputs for the denoise step.\n"
+            + "This is a sequential pipeline blocks:\n"
+            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
+            + " - `StableDiffusionXLSetTimestepsStep` is used to set the timesteps\n"
+            + " - `StableDiffusionXLPrepareLatentsStep` is used to prepare the latents\n"
+            + " - `StableDiffusionXLPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
+            + " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
+        )
 
 
 class StableDiffusionXLImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLInputStep, StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLImg2ImgPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep, StableDiffusionXLControlNetAutoInput]
+    block_classes = [
+        StableDiffusionXLInputStep,
+        StableDiffusionXLImg2ImgSetTimestepsStep,
+        StableDiffusionXLImg2ImgPrepareLatentsStep,
+        StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
+        StableDiffusionXLControlNetAutoInput,
+    ]
     block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond", "controlnet_input"]
 
     @property
     def description(self):
-        return "Before denoise step that prepare the inputs for the denoise step for img2img task.\n" + \
-               "This is a sequential pipeline blocks:\n" + \
-               " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n" + \
-               " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n" + \
-               " - `StableDiffusionXLImg2ImgPrepareLatentsStep` is used to prepare the latents\n" + \
-               " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n" + \
-               " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
+        return (
+            "Before denoise step that prepare the inputs for the denoise step for img2img task.\n"
+            + "This is a sequential pipeline blocks:\n"
+            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
+            + " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n"
+            + " - `StableDiffusionXLImg2ImgPrepareLatentsStep` is used to prepare the latents\n"
+            + " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
+            + " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
+        )
 
 
 class StableDiffusionXLInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLInputStep, StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLInpaintPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep, StableDiffusionXLControlNetAutoInput]
+    block_classes = [
+        StableDiffusionXLInputStep,
+        StableDiffusionXLImg2ImgSetTimestepsStep,
+        StableDiffusionXLInpaintPrepareLatentsStep,
+        StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
+        StableDiffusionXLControlNetAutoInput,
+    ]
     block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond", "controlnet_input"]
 
     @property
     def description(self):
-        return "Before denoise step that prepare the inputs for the denoise step for inpainting task.\n" + \
-               "This is a sequential pipeline blocks:\n" + \
-               " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n" + \
-               " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n" + \
-               " - `StableDiffusionXLInpaintPrepareLatentsStep` is used to prepare the latents\n" + \
-               " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n" + \
-               " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
+        return (
+            "Before denoise step that prepare the inputs for the denoise step for inpainting task.\n"
+            + "This is a sequential pipeline blocks:\n"
+            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
+            + " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n"
+            + " - `StableDiffusionXLInpaintPrepareLatentsStep` is used to prepare the latents\n"
+            + " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
+            + " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
+        )
 
 
 class StableDiffusionXLAutoBeforeDenoiseStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLInpaintBeforeDenoiseStep, StableDiffusionXLImg2ImgBeforeDenoiseStep, StableDiffusionXLBeforeDenoiseStep]
+    block_classes = [
+        StableDiffusionXLInpaintBeforeDenoiseStep,
+        StableDiffusionXLImg2ImgBeforeDenoiseStep,
+        StableDiffusionXLBeforeDenoiseStep,
+    ]
     block_names = ["inpaint", "img2img", "text2img"]
     block_trigger_inputs = ["mask", "image_latents", None]
 
     @property
     def description(self):
-        return "Before denoise step that prepare the inputs for the denoise step.\n" + \
-               "This is an auto pipeline block that works for text2img, img2img and inpainting tasks as well as controlnet, controlnet_union.\n" + \
-               " - `StableDiffusionXLInpaintBeforeDenoiseStep` (inpaint) is used when both `mask` and `image_latents` are provided.\n" + \
-               " - `StableDiffusionXLImg2ImgBeforeDenoiseStep` (img2img) is used when only `image_latents` is provided.\n" + \
-               " - `StableDiffusionXLBeforeDenoiseStep` (text2img) is used when both `image_latents` and `mask` are not provided.\n" + \
-               " - `StableDiffusionXLControlNetUnionInputStep` is called to prepare the controlnet input when `control_mode` and `control_image` are provided.\n" + \
-               " - `StableDiffusionXLControlNetInputStep` is called to prepare the controlnet input when `control_image` is provided."
-
+        return (
+            "Before denoise step that prepare the inputs for the denoise step.\n"
+            + "This is an auto pipeline block that works for text2img, img2img and inpainting tasks as well as controlnet, controlnet_union.\n"
+            + " - `StableDiffusionXLInpaintBeforeDenoiseStep` (inpaint) is used when both `mask` and `image_latents` are provided.\n"
+            + " - `StableDiffusionXLImg2ImgBeforeDenoiseStep` (img2img) is used when only `image_latents` is provided.\n"
+            + " - `StableDiffusionXLBeforeDenoiseStep` (text2img) is used when both `image_latents` and `mask` are not provided.\n"
+            + " - `StableDiffusionXLControlNetUnionInputStep` is called to prepare the controlnet input when `control_mode` and `control_image` are provided.\n"
+            + " - `StableDiffusionXLControlNetInputStep` is called to prepare the controlnet input when `control_image` is provided."
+        )

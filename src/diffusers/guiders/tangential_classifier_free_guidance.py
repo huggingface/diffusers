@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class TangentialClassifierFreeGuidance(BaseGuidance):
     """
     Tangential Classifier Free Guidance (TCFG): https://huggingface.co/papers/2503.18137
-    
+
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
@@ -63,8 +63,9 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
-
+    def prepare_inputs(
+        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
+    ) -> List["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 
@@ -118,7 +119,9 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
         return is_within_range and not is_close
 
 
-def normalized_guidance(pred_cond: torch.Tensor, pred_uncond: torch.Tensor, guidance_scale: float, use_original_formulation: bool = False) -> torch.Tensor:
+def normalized_guidance(
+    pred_cond: torch.Tensor, pred_uncond: torch.Tensor, guidance_scale: float, use_original_formulation: bool = False
+) -> torch.Tensor:
     cond_dtype = pred_cond.dtype
     preds = torch.stack([pred_cond, pred_uncond], dim=1).float()
     preds = preds.flatten(2)

@@ -27,14 +27,14 @@ if TYPE_CHECKING:
 class ClassifierFreeZeroStarGuidance(BaseGuidance):
     """
     Classifier-free Zero* (CFG-Zero*): https://huggingface.co/papers/2503.18886
-    
+
     This is an implementation of the Classifier-Free Zero* guidance technique, which is a variant of classifier-free
     guidance. It proposes zero initialization of the noise predictions for the first few steps of the diffusion
     process, and also introduces an optimal rescaling factor for the noise predictions, which can help in improving the
     quality of generated images.
-    
+
     The authors of the paper suggest setting zero initialization in the first 4% of the inference steps.
-    
+
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
@@ -74,8 +74,9 @@ class ClassifierFreeZeroStarGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
-
+    def prepare_inputs(
+        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
+    ) -> List["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class AdaptiveProjectedGuidance(BaseGuidance):
     """
     Adaptive Projected Guidance (APG): https://huggingface.co/papers/2410.02416
-    
+
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
@@ -74,8 +74,9 @@ class AdaptiveProjectedGuidance(BaseGuidance):
         self.use_original_formulation = use_original_formulation
         self.momentum_buffer = None
 
-    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
-
+    def prepare_inputs(
+        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
+    ) -> List["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 

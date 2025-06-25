@@ -60,11 +60,11 @@ class InsertableOrderedDict(OrderedDict):
 @dataclass
 class ComponentSpec:
     """Specification for a pipeline component.
-    
+
     A component can be created in two ways:
     1. From scratch using __init__ with a config dict
     2. using `from_pretrained`
-    
+
     Attributes:
         name: Name of the component
         type_hint: Type of the component (e.g. UNet2DConditionModel)
@@ -76,6 +76,7 @@ class ComponentSpec:
         revision: Optional revision in repo
         default_creation_method: Preferred creation method - "from_config" or "from_pretrained"
     """
+
     name: Optional[str] = None
     type_hint: Optional[Type] = None
     description: Optional[str] = None
@@ -87,7 +88,6 @@ class ComponentSpec:
     revision: Optional[str] = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
 
-
     def __hash__(self):
         """Make ComponentSpec hashable, using load_id as the hash value."""
         return hash((self.name, self.load_id, self.default_creation_method))
@@ -96,9 +96,11 @@ class ComponentSpec:
         """Compare ComponentSpec objects based on name and load_id."""
         if not isinstance(other, ComponentSpec):
             return False
-        return (self.name == other.name and
-                self.load_id == other.load_id and
-                self.default_creation_method == other.default_creation_method)
+        return (
+            self.name == other.name
+            and self.load_id == other.load_id
+            and self.default_creation_method == other.default_creation_method
+        )
 
     @classmethod
     def from_component(cls, name: str, component: Any) -> Any:
@@ -125,22 +127,22 @@ class ComponentSpec:
 
         load_spec = cls.decode_load_id(component._diffusers_load_id)
 
-        return cls(name=name, type_hint=type_hint, config=config, default_creation_method=default_creation_method, **load_spec)
+        return cls(
+            name=name, type_hint=type_hint, config=config, default_creation_method=default_creation_method, **load_spec
+        )
 
     @classmethod
     def loading_fields(cls) -> List[str]:
         """
-        Return the names of all loading‐related fields
-        (i.e. those whose field.metadata["loading"] is True).
+        Return the names of all loading‐related fields (i.e. those whose field.metadata["loading"] is True).
         """
         return [f.name for f in fields(cls) if f.metadata.get("loading", False)]
-
 
     @property
     def load_id(self) -> str:
         """
-        Unique identifier for this spec's pretrained load,
-        composed of repo|subfolder|variant|revision (no empty segments).
+        Unique identifier for this spec's pretrained load, composed of repo|subfolder|variant|revision (no empty
+        segments).
         """
         parts = [getattr(self, k) for k in self.loading_fields()]
         parts = ["null" if p is None else p for p in parts]
@@ -150,21 +152,16 @@ class ComponentSpec:
     def decode_load_id(cls, load_id: str) -> Dict[str, Optional[str]]:
         """
         Decode a load_id string back into a dictionary of loading fields and values.
-        
+
         Args:
             load_id: The load_id string to decode, format: "repo|subfolder|variant|revision"
                      where None values are represented as "null"
-        
+
         Returns:
-            Dict mapping loading field names to their values. e.g.
-            {
-                "repo": "path/to/repo",
-                "subfolder": "subfolder",
-                "variant": "variant",
-                "revision": "revision"
-            }
-            If a segment value is "null", it's replaced with None.
-            Returns None if load_id is "null" (indicating component not created with `load` method).
+            Dict mapping loading field names to their values. e.g. {
+                "repo": "path/to/repo", "subfolder": "subfolder", "variant": "variant", "revision": "revision"
+            } If a segment value is "null", it's replaced with None. Returns None if load_id is "null" (indicating
+            component not created with `load` method).
         """
 
         # Get all loading fields in order
@@ -185,7 +182,6 @@ class ComponentSpec:
 
         return result
 
-
     # YiYi TODO: I think we should only support ConfigMixin for this method (after we make guider and image_processors config mixin)
     # otherwise we cannot do spec -> spec.create() -> component -> ComponentSpec.from_component(component)
     # the config info is lost in the process
@@ -194,9 +190,7 @@ class ComponentSpec:
         """Create component using from_config with config."""
 
         if self.type_hint is None or not isinstance(self.type_hint, type):
-            raise ValueError(
-                "`type_hint` is required when using from_config creation method."
-            )
+            raise ValueError("`type_hint` is required when using from_config creation method.")
 
         config = config or self.config or {}
 
@@ -230,11 +224,14 @@ class ComponentSpec:
         # repo is a required argument for from_pretrained, a.k.a. pretrained_model_name_or_path
         repo = load_kwargs.pop("repo", None)
         if repo is None:
-            raise ValueError("`repo` info is required when using `load` method (you can directly set it in `repo` field of the ComponentSpec or pass it as an argument)")
+            raise ValueError(
+                "`repo` info is required when using `load` method (you can directly set it in `repo` field of the ComponentSpec or pass it as an argument)"
+            )
 
         if self.type_hint is None:
             try:
                 from diffusers import AutoModel
+
                 component = AutoModel.from_pretrained(repo, **load_kwargs, **kwargs)
             except Exception as e:
                 raise ValueError(f"Unable to load {self.name} without `type_hint`: {e}")
@@ -254,10 +251,10 @@ class ComponentSpec:
         return component
 
 
-
 @dataclass
 class ConfigSpec:
     """Specification for a pipeline configuration parameter."""
+
     name: str
     default: Any
     description: Optional[str] = None
@@ -271,12 +268,13 @@ class ConfigSpec:
 @dataclass
 class InputParam:
     """Specification for an input parameter."""
+
     name: str = None
     type_hint: Any = None
     default: Any = None
     required: bool = False
     description: str = ""
-    kwargs_type: str = None # YiYi Notes: remove this feature (maybe)
+    kwargs_type: str = None  # YiYi Notes: remove this feature (maybe)
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -285,34 +283,33 @@ class InputParam:
 @dataclass
 class OutputParam:
     """Specification for an output parameter."""
+
     name: str
     type_hint: Any = None
     description: str = ""
-    kwargs_type: str = None # YiYi notes: remove this feature (maybe)
+    kwargs_type: str = None  # YiYi notes: remove this feature (maybe)
 
     def __repr__(self):
-        return f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
+        return (
+            f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
+        )
 
 
 def format_inputs_short(inputs):
     """
     Format input parameters into a string representation, with required params first followed by optional ones.
-    
+
     Args:
         inputs: List of input parameters with 'required' and 'name' attributes, and 'default' for optional params
-        
+
     Returns:
         str: Formatted string of input parameters
-    
+
     Example:
-        >>> inputs = [
-        ...     InputParam(name="prompt", required=True),
-        ...     InputParam(name="image", required=True),
-        ...     InputParam(name="guidance_scale", required=False, default=7.5),
-        ...     InputParam(name="num_inference_steps", required=False, default=50)
-        ... ]
-        >>> format_inputs_short(inputs)
-        'prompt, image, guidance_scale=7.5, num_inference_steps=50'
+        >>> inputs = [ ... InputParam(name="prompt", required=True), ... InputParam(name="image", required=True), ...
+        InputParam(name="guidance_scale", required=False, default=7.5), ... InputParam(name="num_inference_steps",
+        required=False, default=50) ... ] >>> format_inputs_short(inputs) 'prompt, image, guidance_scale=7.5,
+        num_inference_steps=50'
     """
     required_inputs = [param for param in inputs if param.required]
     optional_inputs = [param for param in inputs if not param.required]
@@ -330,18 +327,18 @@ def format_inputs_short(inputs):
 def format_intermediates_short(intermediates_inputs, required_intermediates_inputs, intermediates_outputs):
     """
     Formats intermediate inputs and outputs of a block into a string representation.
-    
+
     Args:
         intermediates_inputs: List of intermediate input parameters
         required_intermediates_inputs: List of required intermediate input names
         intermediates_outputs: List of intermediate output parameters
-    
+
     Returns:
         str: Formatted string like:
             Intermediates:
                 - inputs: Required(latents), dtype
-                - modified: latents  # variables that appear in both inputs and outputs
-                - outputs: images    # new outputs only
+                - modified: latents # variables that appear in both inputs and outputs
+                - outputs: images # new outputs only
     """
     # Handle inputs
     input_parts = []
@@ -433,7 +430,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
         # Format parameter name and type
         type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
         # YiYi Notes: remove this line if we remove kwargs_type
-        name = f'**{param.kwargs_type}' if param.name is None and param.kwargs_type is not None else param.name
+        name = f"**{param.kwargs_type}" if param.name is None and param.kwargs_type is not None else param.name
         param_str = f"{param_indent}{name} (`{type_str}`"
 
         # Add optional tag and default value if parameter is an InputParam and optional
@@ -446,11 +443,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
 
         # Add description on a new line with additional indentation and wrapping
         if param.description:
-            desc = re.sub(
-                r'\[(.*?)\]\((https?://[^\s\)]+)\)',
-                r'[\1](\2)',
-                param.description
-            )
+            desc = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", r"[\1](\2)", param.description)
             wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
             param_str += f"\n{desc_indent}{wrapped_desc}"
 
@@ -514,7 +507,9 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
     # Add each component with optional empty lines between them
     for i, component in enumerate(components):
         # Get type name, handling special cases
-        type_name = component.type_hint.__name__ if hasattr(component.type_hint, "__name__") else str(component.type_hint)
+        type_name = (
+            component.type_hint.__name__ if hasattr(component.type_hint, "__name__") else str(component.type_hint)
+        )
 
         component_desc = f"{component_indent}{component.name} (`{type_name}`)"
         if component.description:
@@ -578,10 +573,18 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
     return "\n".join(formatted_configs)
 
 
-def make_doc_string(inputs, intermediates_inputs, outputs, description="", class_name=None, expected_components=None, expected_configs=None):
+def make_doc_string(
+    inputs,
+    intermediates_inputs,
+    outputs,
+    description="",
+    class_name=None,
+    expected_components=None,
+    expected_configs=None,
+):
     """
     Generates a formatted documentation string describing the pipeline block's parameters and structure.
-    
+
     Args:
         inputs: List of input parameters
         intermediates_inputs: List of intermediate input parameters
@@ -590,9 +593,9 @@ def make_doc_string(inputs, intermediates_inputs, outputs, description="", class
         class_name (str, *optional*): Name of the class to include in the documentation
         expected_components (List[ComponentSpec], *optional*): List of expected components
         expected_configs (List[ConfigSpec], *optional*): List of expected configurations
-    
+
     Returns:
-        str: A formatted string containing information about components, configs, call parameters, 
+        str: A formatted string containing information about components, configs, call parameters,
             intermediate inputs/outputs, and final outputs.
     """
     output = ""
@@ -603,8 +606,8 @@ def make_doc_string(inputs, intermediates_inputs, outputs, description="", class
 
     # Add description
     if description:
-        desc_lines = description.strip().split('\n')
-        aligned_desc = '\n'.join('  ' + line for line in desc_lines)
+        desc_lines = description.strip().split("\n")
+        aligned_desc = "\n".join("  " + line for line in desc_lines)
         output += aligned_desc + "\n\n"
 
     # Add components section if provided

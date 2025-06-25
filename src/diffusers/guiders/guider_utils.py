@@ -43,13 +43,9 @@ class BaseGuidance:
         self._enabled = True
 
         if not (0.0 <= start < 1.0):
-            raise ValueError(
-                f"Expected `start` to be between 0.0 and 1.0, but got {start}."
-            )
+            raise ValueError(f"Expected `start` to be between 0.0 and 1.0, but got {start}.")
         if not (start <= stop <= 1.0):
-            raise ValueError(
-                f"Expected `stop` to be between {start} and 1.0, but got {stop}."
-            )
+            raise ValueError(f"Expected `stop` to be between {start} and 1.0, but got {stop}.")
 
         if self._input_predictions is None or not isinstance(self._input_predictions, list):
             raise ValueError(
@@ -70,23 +66,21 @@ class BaseGuidance:
 
     def set_input_fields(self, **kwargs: Dict[str, Union[str, Tuple[str, str]]]) -> None:
         """
-        Set the input fields for the guidance technique. The input fields are used to specify the names of the
-        returned attributes containing the prepared data after `prepare_inputs` is called. The prepared data is
-        obtained from the values of the provided keyword arguments to this method.
+        Set the input fields for the guidance technique. The input fields are used to specify the names of the returned
+        attributes containing the prepared data after `prepare_inputs` is called. The prepared data is obtained from
+        the values of the provided keyword arguments to this method.
 
         Args:
             **kwargs (`Dict[str, Union[str, Tuple[str, str]]]`):
-                A dictionary where the keys are the names of the fields that will be used to store the data once
-                it is prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2,
-                which is used to look up the required data provided for preparation.
+                A dictionary where the keys are the names of the fields that will be used to store the data once it is
+                prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
+                to look up the required data provided for preparation.
 
-                If a string is provided, it will be used as the conditional data (or unconditional if used with
-                a guidance method that requires it). If a tuple of length 2 is provided, the first element must
-                be the conditional data identifier and the second element must be the unconditional data identifier
-                or None.
+                If a string is provided, it will be used as the conditional data (or unconditional if used with a
+                guidance method that requires it). If a tuple of length 2 is provided, the first element must be the
+                conditional data identifier and the second element must be the unconditional data identifier or None.
 
                 Example:
-                
                 ```
                 data = {"prompt_embeds": <some tensor>, "negative_prompt_embeds": <some tensor>, "latents": <some tensor>}
 
@@ -98,7 +92,9 @@ class BaseGuidance:
         """
         for key, value in kwargs.items():
             is_string = isinstance(value, str)
-            is_tuple_of_str_with_len_2 = isinstance(value, tuple) and len(value) == 2 and all(isinstance(v, str) for v in value)
+            is_tuple_of_str_with_len_2 = (
+                isinstance(value, tuple) and len(value) == 2 and all(isinstance(v, str) for v in value)
+            )
             if not (is_string or is_tuple_of_str_with_len_2):
                 raise ValueError(
                     f"Expected `set_input_fields` to be called with a string or a tuple of string with length 2, but got {type(value)} for key {key}."
@@ -114,8 +110,8 @@ class BaseGuidance:
 
     def cleanup_models(self, denoiser: torch.nn.Module) -> None:
         """
-        Cleans up the models for the guidance technique after a given batch of data. This method should be overridden in
-        subclasses to implement specific model cleanup logic. It is useful for removing any hooks or other stateful
+        Cleans up the models for the guidance technique after a given batch of data. This method should be overridden
+        in subclasses to implement specific model cleanup logic. It is useful for removing any hooks or other stateful
         modifications made during `prepare_models`.
         """
         pass
@@ -149,32 +145,39 @@ class BaseGuidance:
         raise NotImplementedError("BaseGuidance::num_conditions must be implemented in subclasses.")
 
     @classmethod
-    def _prepare_batch(cls, input_fields: Dict[str, Union[str, Tuple[str, str]]], data: "BlockState", tuple_index: int, identifier: str) -> "BlockState":
+    def _prepare_batch(
+        cls,
+        input_fields: Dict[str, Union[str, Tuple[str, str]]],
+        data: "BlockState",
+        tuple_index: int,
+        identifier: str,
+    ) -> "BlockState":
         """
-        Prepares a batch of data for the guidance technique. This method is used in the `prepare_inputs` method of
-        the `BaseGuidance` class. It prepares the batch based on the provided tuple index.
+        Prepares a batch of data for the guidance technique. This method is used in the `prepare_inputs` method of the
+        `BaseGuidance` class. It prepares the batch based on the provided tuple index.
 
         Args:
             input_fields (`Dict[str, Union[str, Tuple[str, str]]]`):
-                A dictionary where the keys are the names of the fields that will be used to store the data once
-                it is prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2,
-                which is used to look up the required data provided for preparation.
-                If a string is provided, it will be used as the conditional data (or unconditional if used with
-                a guidance method that requires it). If a tuple of length 2 is provided, the first element must
-                be the conditional data identifier and the second element must be the unconditional data identifier
-                or None.
+                A dictionary where the keys are the names of the fields that will be used to store the data once it is
+                prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
+                to look up the required data provided for preparation. If a string is provided, it will be used as the
+                conditional data (or unconditional if used with a guidance method that requires it). If a tuple of
+                length 2 is provided, the first element must be the conditional data identifier and the second element
+                must be the unconditional data identifier or None.
             data (`BlockState`):
                 The input data to be prepared.
             tuple_index (`int`):
                 The index to use when accessing input fields that are tuples.
-        
+
         Returns:
             `BlockState`: The prepared batch of data.
         """
         from ..modular_pipelines.modular_pipeline import BlockState
 
         if input_fields is None:
-            raise ValueError("Input fields cannot be None. Please pass `input_fields` to `prepare_inputs` or call `set_input_fields` before preparing inputs.")
+            raise ValueError(
+                "Input fields cannot be None. Please pass `input_fields` to `prepare_inputs` or call `set_input_fields` before preparing inputs."
+            )
         data_batch = {}
         for key, value in input_fields.items():
             try:
@@ -196,6 +199,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
     Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
     Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+
     Args:
         noise_cfg (`torch.Tensor`):
             The predicted noise tensor for the guided diffusion process.

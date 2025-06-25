@@ -41,15 +41,15 @@ _LAYER_SKIP_HOOK = "layer_skip_hook"
 class LayerSkipConfig:
     r"""
     Configuration for skipping internal transformer blocks when executing a transformer model.
-    
+
     Args:
         indices (`List[int]`):
             The indices of the layer to skip. This is typically the first layer in the transformer block.
         fqn (`str`, defaults to `"auto"`):
             The fully qualified name identifying the stack of transformer blocks. Typically, this is
             `transformer_blocks`, `single_transformer_blocks`, `blocks`, `layers`, or `temporal_transformer_blocks`.
-            For automatic detection, set this to `"auto"`.
-            "auto" only works on DiT models. For UNet models, you must provide the correct fqn.
+            For automatic detection, set this to `"auto"`. "auto" only works on DiT models. For UNet models, you must
+            provide the correct fqn.
         skip_attention (`bool`, defaults to `True`):
             Whether to skip attention blocks.
         skip_ff (`bool`, defaults to `True`):
@@ -149,20 +149,22 @@ class TransformerBlockSkipHook(ModelHook):
             output = torch.nn.functional.dropout(output, p=self.dropout)
         return output
 
+
 def apply_layer_skip(module: torch.nn.Module, config: LayerSkipConfig) -> None:
     r"""
     Apply layer skipping to internal layers of a transformer.
-    
+
     Args:
         module (`torch.nn.Module`):
             The transformer model to which the layer skip hook should be applied.
         config (`LayerSkipConfig`):
             The configuration for the layer skip hook.
-    
+
     Example:
-    
+
     ```python
     >>> from diffusers import apply_layer_skip_hook, CogVideoXTransformer3DModel, LayerSkipConfig
+
     >>> transformer = CogVideoXTransformer3DModel.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
     >>> config = LayerSkipConfig(layer_index=[10, 20], fqn="transformer_blocks")
     >>> apply_layer_skip_hook(transformer, config)
@@ -177,7 +179,9 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
     if config.skip_attention and config.skip_attention_scores:
         raise ValueError("Cannot set both `skip_attention` and `skip_attention_scores` to True. Please choose one.")
     if not math.isclose(config.dropout, 1.0) and config.skip_attention_scores:
-        raise ValueError("Cannot set `skip_attention_scores` to True when `dropout` is not 1.0. Please set `dropout` to 1.0.")
+        raise ValueError(
+            "Cannot set `skip_attention_scores` to True when `dropout` is not 1.0. Please set `dropout` to 1.0."
+        )
 
     if config.fqn == "auto":
         for identifier in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS:

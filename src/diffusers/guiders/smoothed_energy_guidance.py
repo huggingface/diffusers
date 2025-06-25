@@ -30,12 +30,12 @@ class SmoothedEnergyGuidance(BaseGuidance):
     """
     Smoothed Energy Guidance (SEG): https://huggingface.co/papers/2408.00760
 
-    SEG is only supported as an experimental prototype feature for now, so the implementation may be modified
-    in the future without warning or guarantee of reproducibility. This implementation assumes:
+    SEG is only supported as an experimental prototype feature for now, so the implementation may be modified in the
+    future without warning or guarantee of reproducibility. This implementation assumes:
     - Generated images are square (height == width)
-    - The model does not combine different modalities together (e.g., text and image latent streams are
-      not combined together such as Flux)
-    
+    - The model does not combine different modalities together (e.g., text and image latent streams are not combined
+      together such as Flux)
+
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
@@ -54,12 +54,12 @@ class SmoothedEnergyGuidance(BaseGuidance):
         seg_guidance_stop (`float`, defaults to `1.0`):
             The fraction of the total number of denoising steps after which smoothed energy guidance stops.
         seg_guidance_layers (`int` or `List[int]`, *optional*):
-            The layer indices to apply smoothed energy guidance to. Can be a single integer or a list of integers. If not
-            provided, `seg_guidance_config` must be provided. The recommended values are `[7, 8, 9]` for Stable Diffusion
-            3.5 Medium.
+            The layer indices to apply smoothed energy guidance to. Can be a single integer or a list of integers. If
+            not provided, `seg_guidance_config` must be provided. The recommended values are `[7, 8, 9]` for Stable
+            Diffusion 3.5 Medium.
         seg_guidance_config (`SmoothedEnergyGuidanceConfig` or `List[SmoothedEnergyGuidanceConfig]`, *optional*):
-            The configuration for the smoothed energy layer guidance. Can be a single `SmoothedEnergyGuidanceConfig` or a list of
-            `SmoothedEnergyGuidanceConfig`. If not provided, `seg_guidance_layers` must be provided.
+            The configuration for the smoothed energy layer guidance. Can be a single `SmoothedEnergyGuidanceConfig` or
+            a list of `SmoothedEnergyGuidanceConfig`. If not provided, `seg_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
@@ -103,13 +103,9 @@ class SmoothedEnergyGuidance(BaseGuidance):
         self.use_original_formulation = use_original_formulation
 
         if not (0.0 <= seg_guidance_start < 1.0):
-            raise ValueError(
-                f"Expected `seg_guidance_start` to be between 0.0 and 1.0, but got {seg_guidance_start}."
-            )
+            raise ValueError(f"Expected `seg_guidance_start` to be between 0.0 and 1.0, but got {seg_guidance_start}.")
         if not (seg_guidance_start <= seg_guidance_stop <= 1.0):
-            raise ValueError(
-                f"Expected `seg_guidance_stop` to be between 0.0 and 1.0, but got {seg_guidance_stop}."
-            )
+            raise ValueError(f"Expected `seg_guidance_stop` to be between 0.0 and 1.0, but got {seg_guidance_stop}.")
 
         if seg_guidance_layers is None and seg_guidance_config is None:
             raise ValueError(
@@ -150,8 +146,9 @@ class SmoothedEnergyGuidance(BaseGuidance):
             for hook_name in self._seg_layer_hook_names:
                 registry.remove_hook(hook_name, recurse=True)
 
-    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
-
+    def prepare_inputs(
+        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
+    ) -> List["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 
@@ -160,7 +157,9 @@ class SmoothedEnergyGuidance(BaseGuidance):
             input_predictions = ["pred_cond"]
         elif self.num_conditions == 2:
             tuple_indices = [0, 1]
-            input_predictions = ["pred_cond", "pred_uncond"] if self._is_cfg_enabled() else ["pred_cond", "pred_cond_seg"]
+            input_predictions = (
+                ["pred_cond", "pred_uncond"] if self._is_cfg_enabled() else ["pred_cond", "pred_cond_seg"]
+            )
         else:
             tuple_indices = [0, 1, 0]
             input_predictions = ["pred_cond", "pred_uncond", "pred_cond_seg"]

@@ -38,8 +38,8 @@ _import_structure = {
     "hooks": [],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
-    "pipelines": [],
     "modular_pipelines": [],
+    "pipelines": [],
     "quantizers.quantization_config": [],
     "schedulers": [],
     "utils": [
@@ -147,8 +147,8 @@ else:
         [
             "FasterCacheConfig",
             "HookRegistry",
-            "PyramidAttentionBroadcastConfig",
             "LayerSkipConfig",
+            "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
             "apply_faster_cache",
             "apply_layer_skip",
@@ -235,6 +235,15 @@ else:
             "WanVACETransformer3DModel",
         ]
     )
+    _import_structure["modular_pipelines"].extend(
+        [
+            "ComponentsManager",
+            "ComponentSpec",
+            "ModularLoader",
+            "ModularPipeline",
+            "ModularPipelineBlocks",
+        ]
+    )
     _import_structure["optimization"] = [
         "get_constant_schedule",
         "get_constant_schedule_with_warmup",
@@ -264,15 +273,6 @@ else:
             "RePaintPipeline",
             "ScoreSdeVePipeline",
             "StableDiffusionMixin",
-        ]
-    )
-    _import_structure["modular_pipelines"].extend(
-        [
-            "ModularLoader",
-            "ModularPipeline",
-            "ModularPipelineBlocks",
-            "ComponentSpec",
-            "ComponentsManager",
         ]
     )
     _import_structure["quantizers"] = ["DiffusersQuantizer"]
@@ -356,6 +356,12 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
+    _import_structure["modular_pipelines"].extend(
+        [
+            "StableDiffusionXLAutoPipeline",
+            "StableDiffusionXLModularLoader",
+        ]
+    )
     _import_structure["pipelines"].extend(
         [
             "AllegroPipeline",
@@ -563,12 +569,6 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
-        ]
-    )
-    _import_structure["modular_pipelines"].extend(
-        [
-            "StableDiffusionXLAutoPipeline",
-            "StableDiffusionXLModularLoader",
         ]
     )
 

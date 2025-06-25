@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class AutoGuidance(BaseGuidance):
     """
     AutoGuidance: https://huggingface.co/papers/2406.02507
-    
+
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
@@ -86,7 +86,9 @@ class AutoGuidance(BaseGuidance):
             )
         if auto_guidance_layers is not None and auto_guidance_config is not None:
             raise ValueError("Only one of `auto_guidance_layers` or `auto_guidance_config` can be provided.")
-        if (dropout is None and auto_guidance_layers is not None) or (dropout is not None and auto_guidance_layers is None):
+        if (dropout is None and auto_guidance_layers is not None) or (
+            dropout is not None and auto_guidance_layers is None
+        ):
             raise ValueError("`dropout` must be provided if `auto_guidance_layers` is provided.")
 
         if auto_guidance_layers is not None:
@@ -96,7 +98,9 @@ class AutoGuidance(BaseGuidance):
                 raise ValueError(
                     f"Expected `auto_guidance_layers` to be an int or a list of ints, but got {type(auto_guidance_layers)}."
                 )
-            auto_guidance_config = [LayerSkipConfig(layer, fqn="auto", dropout=dropout) for layer in auto_guidance_layers]
+            auto_guidance_config = [
+                LayerSkipConfig(layer, fqn="auto", dropout=dropout) for layer in auto_guidance_layers
+            ]
 
         if isinstance(auto_guidance_config, LayerSkipConfig):
             auto_guidance_config = [auto_guidance_config]
@@ -121,8 +125,9 @@ class AutoGuidance(BaseGuidance):
                 registry = HookRegistry.check_if_exists_or_initialize(denoiser)
                 registry.remove_hook(name, recurse=True)
 
-    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
-
+    def prepare_inputs(
+        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
+    ) -> List["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 

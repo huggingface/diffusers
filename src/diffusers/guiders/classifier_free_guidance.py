@@ -27,25 +27,25 @@ if TYPE_CHECKING:
 class ClassifierFreeGuidance(BaseGuidance):
     """
     Classifier-free guidance (CFG): https://huggingface.co/papers/2207.12598
-    
+
     CFG is a technique used to improve generation quality and condition-following in diffusion models. It works by
     jointly training a model on both conditional and unconditional data, and using a weighted sum of the two during
-    inference. This allows the model to tradeoff between generation quality and sample diversity.
-    The original paper proposes scaling and shifting the conditional distribution based on the difference between
-    conditional and unconditional predictions. [x_pred = x_cond + scale * (x_cond - x_uncond)]
-    
+    inference. This allows the model to tradeoff between generation quality and sample diversity. The original paper
+    proposes scaling and shifting the conditional distribution based on the difference between conditional and
+    unconditional predictions. [x_pred = x_cond + scale * (x_cond - x_uncond)]
+
     Diffusers implemented the scaling and shifting on the unconditional prediction instead based on the [Imagen
     paper](https://huggingface.co/papers/2205.11487), which is equivalent to what the original paper proposed in
     theory. [x_pred = x_uncond + scale * (x_cond - x_uncond)]
-    
+
     The intution behind the original formulation can be thought of as moving the conditional distribution estimates
     further away from the unconditional distribution estimates, while the diffusers-native implementation can be
     thought of as moving the unconditional distribution towards the conditional distribution estimates to get rid of
     the unconditional predictions (usually negative features like "bad quality, bad anotomy, watermarks", etc.)
-    
+
     The `use_original_formulation` argument can be set to `True` to use the original CFG formulation mentioned in the
     paper. By default, we use the diffusers-native implementation that has been in the codebase for a long time.
-    
+
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
@@ -68,7 +68,12 @@ class ClassifierFreeGuidance(BaseGuidance):
     _input_predictions = ["pred_cond", "pred_uncond"]
 
     def __init__(
-        self, guidance_scale: float = 7.5, guidance_rescale: float = 0.0, use_original_formulation: bool = False, start: float = 0.0, stop: float = 1.0
+        self,
+        guidance_scale: float = 7.5,
+        guidance_rescale: float = 0.0,
+        use_original_formulation: bool = False,
+        start: float = 0.0,
+        stop: float = 1.0,
     ):
         super().__init__(start, stop)
 
@@ -76,8 +81,9 @@ class ClassifierFreeGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
-
+    def prepare_inputs(
+        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
+    ) -> List["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 

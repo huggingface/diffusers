@@ -353,6 +353,7 @@ class IPAdapterMixin:
             )
         self.unet.set_attn_processor(attn_procs)
 
+
 class ModularIPAdapterMixin:
     """Mixin for handling IP Adapters."""
 
@@ -491,15 +492,6 @@ class ModularIPAdapterMixin:
 
             state_dicts.append(state_dict)
 
-            # create feature extractor if it has not been registered to the pipeline yet
-            if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
-                # FaceID IP adapters don't need the image encoder so it's not present, in this case we default to 224
-                default_clip_size = 224
-                clip_image_size = (
-                    self.image_encoder.config.image_size if self.image_encoder is not None else default_clip_size
-                )
-                feature_extractor = CLIPImageProcessor(size=clip_image_size, crop_size=clip_image_size)
-
         unet_name = getattr(self, "unet_name", "unet")
         unet = getattr(self, unet_name)
         unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
@@ -558,8 +550,7 @@ class ModularIPAdapterMixin:
             ):
                 if len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
-                        f"Cannot assign {len(scale_configs)} scale_configs to "
-                        f"{len(attn_processor.scale)} IP-Adapter."
+                        f"Cannot assign {len(scale_configs)} scale_configs to {len(attn_processor.scale)} IP-Adapter."
                     )
                 elif len(scale_configs) == 1:
                     scale_configs = scale_configs * len(attn_processor.scale)

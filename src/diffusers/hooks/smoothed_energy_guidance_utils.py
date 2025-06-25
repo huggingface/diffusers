@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as F
 
 from ..utils import get_logger
-from ._common import _ATTENTION_CLASSES, _get_submodule_from_fqn
+from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS, _ATTENTION_CLASSES, _get_submodule_from_fqn
 from .hooks import HookRegistry, ModelHook
 
 
@@ -33,18 +33,18 @@ _SMOOTHED_ENERGY_GUIDANCE_HOOK = "smoothed_energy_guidance_hook"
 class SmoothedEnergyGuidanceConfig:
     r"""
     Configuration for skipping internal transformer blocks when executing a transformer model.
-    
+
     Args:
         indices (`List[int]`):
             The indices of the layer to skip. This is typically the first layer in the transformer block.
         fqn (`str`, defaults to `"auto"`):
             The fully qualified name identifying the stack of transformer blocks. Typically, this is
             `transformer_blocks`, `single_transformer_blocks`, `blocks`, `layers`, or `temporal_transformer_blocks`.
-            For automatic detection, set this to `"auto"`.
-            "auto" only works on DiT models. For UNet models, you must provide the correct fqn.
+            For automatic detection, set this to `"auto"`. "auto" only works on DiT models. For UNet models, you must
+            provide the correct fqn.
         _query_proj_identifiers (`List[str]`, defaults to `None`):
-            The identifiers for the query projection layers. Typically, these are `to_q`, `query`, or `q_proj`.
-            If `None`, `to_q` is used by default.
+            The identifiers for the query projection layers. Typically, these are `to_q`, `query`, or `q_proj`. If
+            `None`, `to_q` is used by default.
     """
 
     indices: List[int]
@@ -65,7 +65,9 @@ class SmoothedEnergyGuidanceHook(ModelHook):
         return smoothed_output
 
 
-def _apply_smoothed_energy_guidance_hook(module: torch.nn.Module, config: SmoothedEnergyGuidanceConfig, blur_sigma: float, name: Optional[str] = None) -> None:
+def _apply_smoothed_energy_guidance_hook(
+    module: torch.nn.Module, config: SmoothedEnergyGuidanceConfig, blur_sigma: float, name: Optional[str] = None
+) -> None:
     name = name or _SMOOTHED_ENERGY_GUIDANCE_HOOK
 
     if config.fqn == "auto":
@@ -114,14 +116,14 @@ def _apply_smoothed_energy_guidance_hook(module: torch.nn.Module, config: Smooth
 # Modified from https://github.com/SusungHong/SEG-SDXL/blob/cf8256d640d5373541cfea3b3b6caf93272cf986/pipeline_seg.py#L71
 def _gaussian_blur_2d(query: torch.Tensor, kernel_size: int, sigma: float, sigma_threshold_inf: float) -> torch.Tensor:
     """
-    This implementation assumes that the input query is for visual (image/videos) tokens to apply the 2D gaussian
-    blur. However, some models use joint text-visual token attention for which this may not be suitable. Additionally,
-    this implementation also assumes that the visual tokens come from a square image/video. In practice, despite
-    these assumptions, applying the 2D square gaussian blur on the query projections generates reasonable results
-    for Smoothed Energy Guidance.
+    This implementation assumes that the input query is for visual (image/videos) tokens to apply the 2D gaussian blur.
+    However, some models use joint text-visual token attention for which this may not be suitable. Additionally, this
+    implementation also assumes that the visual tokens come from a square image/video. In practice, despite these
+    assumptions, applying the 2D square gaussian blur on the query projections generates reasonable results for
+    Smoothed Energy Guidance.
 
-    SEG is only supported as an experimental prototype feature for now, so the implementation may be modified
-    in the future without warning or guarantee of reproducibility.
+    SEG is only supported as an experimental prototype feature for now, so the implementation may be modified in the
+    future without warning or guarantee of reproducibility.
     """
     assert query.ndim == 3
 

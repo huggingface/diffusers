@@ -35,10 +35,7 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-
-
 class StableDiffusionXLDecodeStep(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -49,7 +46,8 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
                 "image_processor",
                 VaeImageProcessor,
                 config=FrozenDict({"vae_scale_factor": 8}),
-                default_creation_method="from_config"),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -64,11 +62,24 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return [InputParam("latents", required=True, type_hint=torch.Tensor, description="The denoised latents from the denoising step")]
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents from the denoising step",
+            )
+        ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("images", type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]], description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array")]
+        return [
+            OutputParam(
+                "images",
+                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
+                description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array",
+            )
+        ]
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae with self -> components
     @staticmethod
@@ -121,7 +132,9 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
                 block_state.latents_std = (
                     torch.tensor(components.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
                 )
-                latents = latents * block_state.latents_std / components.vae.config.scaling_factor + block_state.latents_mean
+                latents = (
+                    latents * block_state.latents_std / components.vae.config.scaling_factor + block_state.latents_mean
+                )
             else:
                 latents = latents / components.vae.config.scaling_factor
 
@@ -137,7 +150,9 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
         if hasattr(components, "watermark") and components.watermark is not None:
             block_state.images = components.watermark.apply_watermark(block_state.images)
 
-        block_state.images = components.image_processor.postprocess(block_state.images, output_type=block_state.output_type)
+        block_state.images = components.image_processor.postprocess(
+            block_state.images, output_type=block_state.output_type
+        )
 
         self.add_block_state(state, block_state)
 
@@ -149,8 +164,10 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "A post-processing step that overlays the mask on the image (inpainting task only).\n" + \
-               "only needed when you are using the `padding_mask_crop` option when pre-processing the image and mask"
+        return (
+            "A post-processing step that overlays the mask on the image (inpainting task only).\n"
+            + "only needed when you are using the `padding_mask_crop` option when pre-processing the image and mask"
+        )
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -163,25 +180,45 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam("images", required=True, type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]], description="The generated images from the decode step"),
-            InputParam("crops_coords", required=True, type_hint=Tuple[int, int], description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.")
+            InputParam(
+                "images",
+                required=True,
+                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
+                description="The generated images from the decode step",
+            ),
+            InputParam(
+                "crops_coords",
+                required=True,
+                type_hint=Tuple[int, int],
+                description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.",
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("images", type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]], description="The generated images with the mask overlayed")]
+        return [
+            OutputParam(
+                "images",
+                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
+                description="The generated images with the mask overlayed",
+            )
+        ]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         if block_state.padding_mask_crop is not None and block_state.crops_coords is not None:
-            block_state.images = [components.image_processor.apply_overlay(block_state.mask_image, block_state.image, i, block_state.crops_coords) for i in block_state.images]
+            block_state.images = [
+                components.image_processor.apply_overlay(
+                    block_state.mask_image, block_state.image, i, block_state.crops_coords
+                )
+                for i in block_state.images
+            ]
 
         self.add_block_state(state, block_state)
 
         return components, state
-
 
 
 class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
@@ -190,10 +227,12 @@ class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return "Inpaint decode step that decode the denoised latents into images outputs.\n" + \
-               "This is a sequential pipeline blocks:\n" + \
-               " - `StableDiffusionXLDecodeStep` is used to decode the denoised latents into images\n" + \
-               " - `StableDiffusionXLInpaintOverlayMaskStep` is used to overlay the mask on the image"
+        return (
+            "Inpaint decode step that decode the denoised latents into images outputs.\n"
+            + "This is a sequential pipeline blocks:\n"
+            + " - `StableDiffusionXLDecodeStep` is used to decode the denoised latents into images\n"
+            + " - `StableDiffusionXLInpaintOverlayMaskStep` is used to overlay the mask on the image"
+        )
 
 
 class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
@@ -203,9 +242,9 @@ class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
 
     @property
     def description(self):
-        return "Decode step that decode the denoised latents into images outputs.\n" + \
-               "This is an auto pipeline block that works for inpainting and non-inpainting tasks.\n" + \
-               " - `StableDiffusionXLInpaintDecodeStep` (inpaint) is used when `padding_mask_crop` is provided.\n" + \
-               " - `StableDiffusionXLDecodeStep` (non-inpaint) is used when `padding_mask_crop` is not provided."
-
-
+        return (
+            "Decode step that decode the denoised latents into images outputs.\n"
+            + "This is an auto pipeline block that works for inpainting and non-inpainting tasks.\n"
+            + " - `StableDiffusionXLInpaintDecodeStep` (inpaint) is used when `padding_mask_crop` is provided.\n"
+            + " - `StableDiffusionXLDecodeStep` (non-inpaint) is used when `padding_mask_crop` is not provided."
+        )

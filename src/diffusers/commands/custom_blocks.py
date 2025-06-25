@@ -30,6 +30,7 @@ from . import BaseDiffusersCLICommand
 EXPECTED_PARENT_CLASSES = ["PipelineBlock"]
 CONFIG = "config.json"
 
+
 def conversion_command_factory(args: Namespace):
     return CustomBlocksCommand(args.block_module_name, args.block_class_name)
 
@@ -45,7 +46,10 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
             help="Module filename in which the custom block will be implemented.",
         )
         conversion_parser.add_argument(
-            "--block_class_name", type=str, default=None, help="Name of the custom block. If provided None, we will try to infer it."
+            "--block_class_name",
+            type=str,
+            default=None,
+            help="Name of the custom block. If provided None, we will try to infer it.",
         )
         conversion_parser.set_defaults(func=conversion_command_factory)
 
@@ -71,7 +75,7 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
                 f"Found classes: {classes_found} will be using {classes_found[0]}. "
                 "If this needs to be changed, re-run the command specifying `block_class_name`."
             )
-            child_class, parent_class =  out[0][0], out[0][1]
+            child_class, parent_class = out[0][0], out[0][1]
 
         # dynamically get the custom block and initialize it to call `save_pretrained` in the current directory.
         # the user is responsible for running it, so I guess that is safe?
@@ -107,10 +111,7 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
                 continue
 
             # extract all base names for this class
-            base_names = [
-                bname for b in node.bases
-                if (bname := self._get_base_name(b)) is not None
-            ]
+            base_names = [bname for b in node.bases if (bname := self._get_base_name(b)) is not None]
 
             # for each allowed base that appears in the class's bases, emit a tuple
             for allowed in EXPECTED_PARENT_CLASSES:
@@ -131,4 +132,3 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
         module = str(self.block_module_name).replace(".py", "").rsplit(".", 1)[-1]
         auto_map = {f"{parent_class}": f"{module}.{child_class}"}
         return {"auto_map": auto_map}
-

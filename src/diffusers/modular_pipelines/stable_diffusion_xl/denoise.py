@@ -36,11 +36,9 @@ from .modular_loader import StableDiffusionXLModularLoader
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-
 # YiYi experimenting composible denoise loop
 # loop step (1): prepare latent input for denoiser
 class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -53,7 +51,6 @@ class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
     def description(self) -> str:
         return "step within the denoising loop that prepare the latent input for the denoiser. This block should be used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)"
 
-
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
@@ -61,20 +58,19 @@ class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
-
         block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
 
         return components, block_state
 
+
 # loop step (1): prepare latent input for denoiser (with inpainting)
 class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -88,7 +84,6 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
     def description(self) -> str:
         return "step within the denoising loop that prepare the latent input for the denoiser (for inpainting workflow only). This block should be used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object"
 
-
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
@@ -96,24 +91,22 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
             InputParam(
                 "mask",
                 type_hint=Optional[torch.Tensor],
-                description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+                description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step.",
             ),
             InputParam(
                 "masked_image_latents",
                 type_hint=Optional[torch.Tensor],
-                description="The masked image latents to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+                description="The masked image latents to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step.",
             ),
         ]
 
-
     @staticmethod
     def check_inputs(components, block_state):
-
         num_channels_unet = components.num_channels_unet
         if num_channels_unet == 9:
             # default case for runwayml/stable-diffusion-inpainting
@@ -127,25 +120,25 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
                     f"Incorrect configuration settings! The config of `components.unet`: {components.unet.config} expects"
                     f" {components.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
                     f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    f" = {num_channels_latents + num_channels_masked_image + num_channels_mask}. Please verify the config of"
                     " `components.unet` or your `mask_image` or `image` input."
                 )
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
-
         self.check_inputs(components, block_state)
 
         block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
         if components.num_channels_unet == 9:
-            block_state.scaled_latents = torch.cat([block_state.scaled_latents, block_state.mask, block_state.masked_image_latents], dim=1)
-
+            block_state.scaled_latents = torch.cat(
+                [block_state.scaled_latents, block_state.mask, block_state.masked_image_latents], dim=1
+            )
 
         return components, block_state
 
+
 # loop step (2): denoise the latents with guidance
 class StableDiffusionXLLoopDenoiser(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -155,15 +148,14 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
                 "guider",
                 ClassifierFreeGuidance,
                 config=FrozenDict({"guidance_scale": 7.5}),
-                default_creation_method="from_config"),
+                default_creation_method="from_config",
+            ),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
 
     @property
     def description(self) -> str:
-        return (
-            "Step within the denoising loop that denoise the latents with guidance. This block should be used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)"
-        )
+        return "Step within the denoising loop that denoise the latents with guidance. This block should be used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -178,12 +170,12 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
                 "num_inference_steps",
                 required=True,
                 type_hint=int,
-                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
+                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
                 "timestep_cond",
                 type_hint=Optional[torch.Tensor],
-                description="The guidance scale embedding to use for Latent Consistency Models(LCMs). Can be generated in prepare_additional_conditioning step."
+                description="The guidance scale embedding to use for Latent Consistency Models(LCMs). Can be generated in prepare_additional_conditioning step.",
             ),
             InputParam(
                 kwargs_type="guider_input_fields",
@@ -194,24 +186,22 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
                     "pooled_prompt_embeds/negative_pooled_prompt_embeds, "
                     "and ip_adapter_embeds/negative_ip_adapter_embeds (optional)."
                     "please add `kwargs_type=guider_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
-                )
+                ),
             ),
-
         ]
 
-
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int) -> PipelineState:
-
+    def __call__(
+        self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int
+    ) -> PipelineState:
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
-        guider_input_fields ={
+        guider_input_fields = {
             "prompt_embeds": ("prompt_embeds", "negative_prompt_embeds"),
             "time_ids": ("add_time_ids", "negative_add_time_ids"),
             "text_embeds": ("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
             "image_embeds": ("ip_adapter_embeds", "negative_ip_adapter_embeds"),
         }
-
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
@@ -226,7 +216,7 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.unet)
             cond_kwargs = guider_state_batch.as_dict()
-            cond_kwargs = {k:v for k,v in cond_kwargs.items() if k in guider_input_fields}
+            cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in guider_input_fields}
             prompt_embeds = cond_kwargs.pop("prompt_embeds")
 
             # Predict the noise residual
@@ -247,9 +237,9 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
 
         return components, block_state
 
+
 # loop step (2): denoise the latents with guidance (with controlnet)
 class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -259,7 +249,8 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
                 "guider",
                 ClassifierFreeGuidance,
                 config=FrozenDict({"guidance_scale": 7.5}),
-                default_creation_method="from_config"),
+                default_creation_method="from_config",
+            ),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetModel),
         ]
@@ -281,35 +272,35 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
                 "controlnet_cond",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
+                description="The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
             ),
             InputParam(
                 "conditioning_scale",
                 type_hint=float,
-                description="The controlnet conditioning scale value to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
+                description="The controlnet conditioning scale value to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
             ),
             InputParam(
                 "guess_mode",
                 required=True,
                 type_hint=bool,
-                description="The guess mode value to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
+                description="The guess mode value to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
             ),
             InputParam(
                 "controlnet_keep",
                 required=True,
                 type_hint=List[float],
-                description="The controlnet keep values to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
+                description="The controlnet keep values to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
             ),
             InputParam(
                 "timestep_cond",
                 type_hint=Optional[torch.Tensor],
-                description="The guidance scale embedding to use for Latent Consistency Models(LCMs), can be generated by prepare_additional_conditioning step"
+                description="The guidance scale embedding to use for Latent Consistency Models(LCMs), can be generated by prepare_additional_conditioning step",
             ),
             InputParam(
                 "num_inference_steps",
                 required=True,
                 type_hint=int,
-                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
+                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
                 kwargs_type="guider_input_fields",
@@ -320,20 +311,19 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
                     "pooled_prompt_embeds/negative_pooled_prompt_embeds, "
                     "and ip_adapter_embeds/negative_ip_adapter_embeds (optional)."
                     "please add `kwargs_type=guider_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
-                )
+                ),
             ),
             InputParam(
                 kwargs_type="controlnet_kwargs",
                 description=(
                     "additional kwargs for controlnet (e.g. control_type_idx and control_type from the controlnet union input step )"
                     "please add `kwargs_type=controlnet_kwargs` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
-                )
-            )
+                ),
+            ),
         ]
 
     @staticmethod
     def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
-
         accepted_kwargs = set(inspect.signature(func).parameters.keys())
         extra_kwargs = {}
         for key, value in kwargs.items():
@@ -342,25 +332,26 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
 
         return extra_kwargs
 
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
-
-        extra_controlnet_kwargs = self.prepare_extra_kwargs(components.controlnet.forward, **block_state.controlnet_kwargs)
+        extra_controlnet_kwargs = self.prepare_extra_kwargs(
+            components.controlnet.forward, **block_state.controlnet_kwargs
+        )
 
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
-        guider_input_fields ={
+        guider_input_fields = {
             "prompt_embeds": ("prompt_embeds", "negative_prompt_embeds"),
             "time_ids": ("add_time_ids", "negative_add_time_ids"),
             "text_embeds": ("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
             "image_embeds": ("ip_adapter_embeds", "negative_ip_adapter_embeds"),
         }
 
-
         # cond_scale for the timestep (controlnet input)
         if isinstance(block_state.controlnet_keep[i], list):
-            block_state.cond_scale = [c * s for c, s in zip(block_state.conditioning_scale, block_state.controlnet_keep[i])]
+            block_state.cond_scale = [
+                c * s for c, s in zip(block_state.conditioning_scale, block_state.controlnet_keep[i])
+            ]
         else:
             controlnet_cond_scale = block_state.conditioning_scale
             if isinstance(controlnet_cond_scale, list):
@@ -374,7 +365,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
         # guided denoiser step
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
-         # Prepare mini‐batches according to guidance method and `guider_input_fields`
+        # Prepare mini‐batches according to guidance method and `guider_input_fields`
         # Each guider_state_batch will have .prompt_embeds, .time_ids, text_embeds, image_embeds.
         # e.g. for CFG, we prepare two batches: one for uncond, one for cond
         # for first batch, guider_state_batch.prompt_embeds correspond to block_state.prompt_embeds
@@ -442,9 +433,9 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
 
         return components, block_state
 
+
 # loop step (3): scheduler step to update latents
 class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -473,10 +464,9 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
     def intermediates_outputs(self) -> List[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
-    #YiYi TODO: move this out of here
+    # YiYi TODO: move this out of here
     @staticmethod
     def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
-
         accepted_kwargs = set(inspect.signature(func).parameters.keys())
         extra_kwargs = {}
         for key, value in kwargs.items():
@@ -485,17 +475,23 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
 
         return extra_kwargs
 
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
-
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        block_state.extra_step_kwargs = self.prepare_extra_kwargs(components.scheduler.step, generator=block_state.generator, eta=block_state.eta)
-
+        block_state.extra_step_kwargs = self.prepare_extra_kwargs(
+            components.scheduler.step, generator=block_state.generator, eta=block_state.eta
+        )
 
         # Perform scheduler step using the predicted output
         block_state.latents_dtype = block_state.latents.dtype
-        block_state.latents = components.scheduler.step(block_state.noise_pred, t, block_state.latents, **block_state.extra_step_kwargs, **block_state.scheduler_step_kwargs, return_dict=False)[0]
+        block_state.latents = components.scheduler.step(
+            block_state.noise_pred,
+            t,
+            block_state.latents,
+            **block_state.extra_step_kwargs,
+            **block_state.scheduler_step_kwargs,
+            return_dict=False,
+        )[0]
 
         if block_state.latents.dtype != block_state.latents_dtype:
             if torch.backends.mps.is_available():
@@ -504,9 +500,9 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
 
         return components, block_state
 
+
 # loop step (3): scheduler step to update latents (with inpainting)
 class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
-
     model_name = "stable-diffusion-xl"
 
     @property
@@ -534,22 +530,22 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
                 "timesteps",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
                 "mask",
                 type_hint=Optional[torch.Tensor],
-                description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+                description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step.",
             ),
             InputParam(
                 "noise",
                 type_hint=Optional[torch.Tensor],
-                description="The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step."
+                description="The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step.",
             ),
             InputParam(
                 "image_latents",
                 type_hint=Optional[torch.Tensor],
-                description="The image latents to use for the denoising process, for inpainting/image-to-image task only. Can be generated in vae_encode or prepare_latent step."
+                description="The image latents to use for the denoising process, for inpainting/image-to-image task only. Can be generated in vae_encode or prepare_latent step.",
             ),
         ]
 
@@ -559,7 +555,6 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
 
     @staticmethod
     def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
-
         accepted_kwargs = set(inspect.signature(func).parameters.keys())
         extra_kwargs = {}
         for key, value in kwargs.items():
@@ -579,16 +574,23 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
-
         self.check_inputs(components, block_state)
 
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        block_state.extra_step_kwargs = self.prepare_extra_kwargs(components.scheduler.step, generator=block_state.generator, eta=block_state.eta)
-
+        block_state.extra_step_kwargs = self.prepare_extra_kwargs(
+            components.scheduler.step, generator=block_state.generator, eta=block_state.eta
+        )
 
         # Perform scheduler step using the predicted output
         block_state.latents_dtype = block_state.latents.dtype
-        block_state.latents = components.scheduler.step(block_state.noise_pred, t, block_state.latents, **block_state.extra_step_kwargs, **block_state.scheduler_step_kwargs, return_dict=False)[0]
+        block_state.latents = components.scheduler.step(
+            block_state.noise_pred,
+            t,
+            block_state.latents,
+            **block_state.extra_step_kwargs,
+            **block_state.scheduler_step_kwargs,
+            return_dict=False,
+        )[0]
 
         if block_state.latents.dtype != block_state.latents_dtype:
             if torch.backends.mps.is_available():
@@ -604,23 +606,20 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
                     block_state.init_latents_proper, block_state.noise, torch.tensor([block_state.noise_timestep])
                 )
 
-            block_state.latents = (1 - block_state.mask) * block_state.init_latents_proper + block_state.mask * block_state.latents
-
-
+            block_state.latents = (
+                1 - block_state.mask
+            ) * block_state.init_latents_proper + block_state.mask * block_state.latents
 
         return components, block_state
 
 
 # the loop wrapper that iterates over the timesteps
 class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
-
     model_name = "stable-diffusion-xl"
 
     @property
     def description(self) -> str:
-        return (
-            "Pipeline block that iteratively denoise the latents over `timesteps`. The specific steps with each iteration can be customized with `blocks` attributes"
-        )
+        return "Pipeline block that iteratively denoise the latents over `timesteps`. The specific steps with each iteration can be customized with `blocks` attributes"
 
     @property
     def loop_expected_components(self) -> List[ComponentSpec]:
@@ -629,7 +628,8 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 "guider",
                 ClassifierFreeGuidance,
                 config=FrozenDict({"guidance_scale": 7.5}),
-                default_creation_method="from_config"),
+                default_creation_method="from_config",
+            ),
             ComponentSpec("scheduler", EulerDiscreteScheduler),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
@@ -641,16 +641,15 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 "timesteps",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
                 "num_inference_steps",
                 required=True,
                 type_hint=int,
-                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
+                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
         ]
-
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
@@ -662,12 +661,16 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         else:
             components.guider.enable()
 
-        block_state.num_warmup_steps = max(len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0)
+        block_state.num_warmup_steps = max(
+            len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
+        )
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
-                if i == len(block_state.timesteps) - 1 or ((i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0):
+                if i == len(block_state.timesteps) - 1 or (
+                    (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
+                ):
                     progress_bar.update()
 
         self.add_block_state(state, block_state)
@@ -677,7 +680,11 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
 # composing the denoising loops
 class StableDiffusionXLDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [StableDiffusionXLLoopBeforeDenoiser, StableDiffusionXLLoopDenoiser, StableDiffusionXLLoopAfterDenoiser]
+    block_classes = [
+        StableDiffusionXLLoopBeforeDenoiser,
+        StableDiffusionXLLoopDenoiser,
+        StableDiffusionXLLoopAfterDenoiser,
+    ]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
 
     @property
@@ -691,10 +698,16 @@ class StableDiffusionXLDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
             " - `StableDiffusionXLLoopAfterDenoiser`\n"
         )
 
+
 # control_cond
 class StableDiffusionXLControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [StableDiffusionXLLoopBeforeDenoiser, StableDiffusionXLControlNetLoopDenoiser, StableDiffusionXLLoopAfterDenoiser]
+    block_classes = [
+        StableDiffusionXLLoopBeforeDenoiser,
+        StableDiffusionXLControlNetLoopDenoiser,
+        StableDiffusionXLLoopAfterDenoiser,
+    ]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
     @property
     def description(self) -> str:
         return (
@@ -706,10 +719,16 @@ class StableDiffusionXLControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper
             " - `StableDiffusionXLLoopAfterDenoiser`\n"
         )
 
+
 # mask
 class StableDiffusionXLInpaintDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [StableDiffusionXLInpaintLoopBeforeDenoiser, StableDiffusionXLLoopDenoiser, StableDiffusionXLInpaintLoopAfterDenoiser]
+    block_classes = [
+        StableDiffusionXLInpaintLoopBeforeDenoiser,
+        StableDiffusionXLLoopDenoiser,
+        StableDiffusionXLInpaintLoopAfterDenoiser,
+    ]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
     @property
     def description(self) -> str:
         return (
@@ -720,10 +739,17 @@ class StableDiffusionXLInpaintDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
             " - `StableDiffusionXLLoopDenoiser`\n"
             " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"
         )
+
+
 # control_cond + mask
 class StableDiffusionXLInpaintControlNetDenoiseLoop(StableDiffusionXLDenoiseLoopWrapper):
-    block_classes = [StableDiffusionXLInpaintLoopBeforeDenoiser, StableDiffusionXLControlNetLoopDenoiser, StableDiffusionXLInpaintLoopAfterDenoiser]
+    block_classes = [
+        StableDiffusionXLInpaintLoopBeforeDenoiser,
+        StableDiffusionXLControlNetLoopDenoiser,
+        StableDiffusionXLInpaintLoopAfterDenoiser,
+    ]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
     @property
     def description(self) -> str:
         return (
@@ -751,6 +777,7 @@ class StableDiffusionXLDenoiseStep(AutoPipelineBlocks):
             " - `StableDiffusionXLInpaintDenoiseStep` (inpaint_denoise) is used when mask is provided."
         )
 
+
 # all task with controlnet
 class StableDiffusionXLControlNetDenoiseStep(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLInpaintControlNetDenoiseLoop, StableDiffusionXLControlNetDenoiseLoop]
@@ -765,6 +792,7 @@ class StableDiffusionXLControlNetDenoiseStep(AutoPipelineBlocks):
             " - `StableDiffusionXLControlNetDenoiseStep` (controlnet_denoise) is used when no mask is provided."
             " - `StableDiffusionXLInpaintControlNetDenoiseStep` (inpaint_controlnet_denoise) is used when mask is provided."
         )
+
 
 # all task with or without controlnet
 class StableDiffusionXLAutoDenoiseStep(AutoPipelineBlocks):

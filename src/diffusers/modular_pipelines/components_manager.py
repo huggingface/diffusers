@@ -228,15 +228,13 @@ class AutoOffloadStrategy:
         return hooks_to_offload
 
 
-
 class ComponentsManager:
     def __init__(self):
         self.components = OrderedDict()
         self.added_time = OrderedDict()  # Store when components were added
-        self.collections = OrderedDict() # collection_name -> set of component_names
+        self.collections = OrderedDict()  # collection_name -> set of component_names
         self.model_hooks = None
         self._auto_offload_enabled = False
-
 
     def _lookup_ids(self, name=None, collection=None, load_id=None, components: OrderedDict = None):
         """
@@ -276,7 +274,6 @@ class ComponentsManager:
         return "_".join(component_id.split("_")[:-1])
 
     def add(self, name, component, collection: Optional[str] = None):
-
         component_id = f"{name}_{uuid.uuid4()}"
 
         # check for duplicated components
@@ -284,17 +281,14 @@ class ComponentsManager:
             if comp == component:
                 comp_name = self._id_to_name(comp_id)
                 if comp_name == name:
-                    logger.warning(
-                        f"component '{name}' already exists as '{comp_id}'"
-                    )
+                    logger.warning(f"component '{name}' already exists as '{comp_id}'")
                     component_id = comp_id
                     break
                 else:
                     logger.warning(
                         f"Adding component '{name}' as '{component_id}', but it is duplicate of '{comp_id}'"
                         f"To remove a duplicate, call `components_manager.remove('<component_id>')`."
-                        )
-
+                    )
 
         # check for duplicated load_id and warn (we do not delete for you)
         if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id != "null":
@@ -330,9 +324,7 @@ class ComponentsManager:
 
         return component_id
 
-
     def remove(self, component_id: str = None):
-
         if component_id not in self.components:
             logger.warning(f"Component '{component_id}' not found in ComponentsManager")
             return
@@ -351,15 +343,21 @@ class ComponentsManager:
                 component.to("cpu")
             del component
             import gc
+
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-    def get(self, names: Union[str, List[str]] = None, collection: Optional[str] = None, load_id: Optional[str] = None,
-             as_name_component_tuples: bool = False):
+    def get(
+        self,
+        names: Union[str, List[str]] = None,
+        collection: Optional[str] = None,
+        load_id: Optional[str] = None,
+        as_name_component_tuples: bool = False,
+    ):
         """
         Select components by name with simple pattern matching.
-        
+
         Args:
             names: Component name(s) or pattern(s)
                 Patterns:
@@ -376,10 +374,10 @@ class ComponentsManager:
             load_id: Optional load_id to filter by
             as_name_component_tuples: If True, returns a list of (name, component) tuples using base names
                                      instead of a dictionary with component IDs as keys
-        
+
         Returns:
-            Dictionary mapping component IDs to components, 
-            or list of (base_name, component) tuples if as_name_component_tuples=True
+            Dictionary mapping component IDs to components or list of (base_name, component) tuples if
+            as_name_component_tuples=True
         """
 
         selected_ids = self._lookup_ids(collection=collection, load_id=load_id)
@@ -387,10 +385,10 @@ class ComponentsManager:
 
         # Helper to extract base name from component_id
         def get_base_name(component_id):
-            parts = component_id.split('_')
+            parts = component_id.split("_")
             # If the last part looks like a UUID, remove it
-            if len(parts) > 1 and len(parts[-1]) >= 8 and '-' in parts[-1]:
-                return '_'.join(parts[:-1])
+            if len(parts) > 1 and len(parts[-1]) >= 8 and "-" in parts[-1]:
+                return "_".join(parts[:-1])
             return component_id
 
         if names is None:
@@ -405,7 +403,7 @@ class ComponentsManager:
         def matches_pattern(component_id, pattern, exact_match=False):
             """
             Helper function to check if a component matches a pattern based on its base name.
-            
+
             Args:
                 component_id: The component ID to check
                 pattern: The pattern to match against
@@ -418,13 +416,13 @@ class ComponentsManager:
                 return pattern == base_name
 
             # Prefix match (ends with *)
-            elif pattern.endswith('*'):
+            elif pattern.endswith("*"):
                 prefix = pattern[:-1]
                 return base_name.startswith(prefix)
 
             # Contains match (starts with *)
-            elif pattern.startswith('*'):
-                search = pattern[1:-1] if pattern.endswith('*') else pattern[1:]
+            elif pattern.startswith("*"):
+                search = pattern[1:-1] if pattern.endswith("*") else pattern[1:]
                 return search in base_name
 
             # Exact match (no wildcards)
@@ -433,18 +431,18 @@ class ComponentsManager:
 
         if isinstance(names, str):
             # Check if this is a "not" pattern
-            is_not_pattern = names.startswith('!')
+            is_not_pattern = names.startswith("!")
             if is_not_pattern:
                 names = names[1:]  # Remove the ! prefix
 
             # Handle OR patterns (containing |)
-            if '|' in names:
-                terms = names.split('|')
+            if "|" in names:
+                terms = names.split("|")
                 matches = {}
 
                 for comp_id, comp in components.items():
                     # For OR patterns with exact names (no wildcards), we do exact matching on base names
-                    exact_match = all(not (term.startswith('*') or term.endswith('*')) for term in terms)
+                    exact_match = all(not (term.startswith("*") or term.endswith("*")) for term in terms)
 
                     # Check if any of the terms match this component
                     should_include = any(matches_pattern(comp_id, term, exact_match) for term in terms)
@@ -464,20 +462,24 @@ class ComponentsManager:
             elif any(names == base_name for base_name in base_names.values()):
                 # Find all components with this base name
                 matches = {
-                    comp_id: comp for comp_id, comp in components.items()
+                    comp_id: comp
+                    for comp_id, comp in components.items()
                     if (base_names[comp_id] == names) != is_not_pattern
                 }
 
                 if is_not_pattern:
-                    logger.info(f"Getting all components except those with base name '{names}': {list(matches.keys())}")
+                    logger.info(
+                        f"Getting all components except those with base name '{names}': {list(matches.keys())}"
+                    )
                 else:
                     logger.info(f"Getting components with base name '{names}': {list(matches.keys())}")
 
             # Prefix match (ends with *)
-            elif names.endswith('*'):
+            elif names.endswith("*"):
                 prefix = names[:-1]
                 matches = {
-                    comp_id: comp for comp_id, comp in components.items()
+                    comp_id: comp
+                    for comp_id, comp in components.items()
                     if base_names[comp_id].startswith(prefix) != is_not_pattern
                 }
                 if is_not_pattern:
@@ -486,10 +488,11 @@ class ComponentsManager:
                     logger.info(f"Getting components starting with '{prefix}': {list(matches.keys())}")
 
             # Contains match (starts with *)
-            elif names.startswith('*'):
-                search = names[1:-1] if names.endswith('*') else names[1:]
+            elif names.startswith("*"):
+                search = names[1:-1] if names.endswith("*") else names[1:]
                 matches = {
-                    comp_id: comp for comp_id, comp in components.items()
+                    comp_id: comp
+                    for comp_id, comp in components.items()
                     if (search in base_names[comp_id]) != is_not_pattern
                 }
                 if is_not_pattern:
@@ -500,7 +503,8 @@ class ComponentsManager:
             # Substring match (no wildcards, but not an exact component name)
             elif any(names in base_name for base_name in base_names.values()):
                 matches = {
-                    comp_id: comp for comp_id, comp in components.items()
+                    comp_id: comp
+                    for comp_id, comp in components.items()
                     if (names in base_names[comp_id]) != is_not_pattern
                 }
                 if is_not_pattern:
@@ -533,7 +537,7 @@ class ComponentsManager:
         else:
             raise ValueError(f"Invalid type for names: {type(names)}")
 
-    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device]="cuda", memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = "cuda", memory_reserve_margin="3GB"):
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "_hf_hook"):
                 remove_hook_from_module(component, recurse=True)
@@ -573,18 +577,19 @@ class ComponentsManager:
         self._auto_offload_enabled = False
 
     # YiYi TODO: add quantization info
-    def get_model_info(self, component_id: str, fields: Optional[Union[str, List[str]]] = None) -> Optional[Dict[str, Any]]:
+    def get_model_info(
+        self, component_id: str, fields: Optional[Union[str, List[str]]] = None
+    ) -> Optional[Dict[str, Any]]:
         """Get comprehensive information about a component.
-        
+
         Args:
             component_id: Name of the component to get info for
             fields: Optional field(s) to return. Can be a string for single field or list of fields.
                    If None, returns all fields.
-                   
+
         Returns:
-            Dictionary containing requested component metadata.
-            If fields is specified, returns only those fields.
-            If a single field is requested as string, returns just that field's value.
+            Dictionary containing requested component metadata. If fields is specified, returns only those fields. If a
+            single field is requested as string, returns just that field's value.
         """
         if component_id not in self.components:
             raise ValueError(f"Component '{component_id}' not found in ComponentsManager")
@@ -595,7 +600,8 @@ class ComponentsManager:
         info = {
             "model_id": component_id,
             "added_time": self.added_time[component_id],
-            "collection": ", ".join([coll for coll, comps in self.collections.items() if component_id in comps]) or None,
+            "collection": ", ".join([coll for coll, comps in self.collections.items() if component_id in comps])
+            or None,
         }
 
         # Additional info for torch.nn.Module components
@@ -606,13 +612,15 @@ class ComponentsManager:
             if has_hook and hasattr(component._hf_hook, "execution_device"):
                 execution_device = component._hf_hook.execution_device
 
-            info.update({
-                "class_name": component.__class__.__name__,
-                "size_gb": get_memory_footprint(component) / (1024**3),
-                "adapters": None,  # Default to None
-                "has_hook": has_hook,
-                "execution_device": execution_device,
-            })
+            info.update(
+                {
+                    "class_name": component.__class__.__name__,
+                    "size_gb": get_memory_footprint(component) / (1024**3),
+                    "adapters": None,  # Default to None
+                    "has_hook": has_hook,
+                    "execution_device": execution_device,
+                }
+            )
 
             # Get adapters if applicable
             if hasattr(component, "peft_config"):
@@ -649,10 +657,10 @@ class ComponentsManager:
         def get_simple_name(name):
             # Extract the base name by splitting on underscore and taking first part
             # This assumes names are in format "name_uuid"
-            parts = name.split('_')
+            parts = name.split("_")
             # If we have at least 2 parts and the last part looks like a UUID, remove it
-            if len(parts) > 1 and len(parts[-1]) >= 8 and '-' in parts[-1]:
-                return '_'.join(parts[:-1])
+            if len(parts) > 1 and len(parts[-1]) >= 8 and "-" in parts[-1]:
+                return "_".join(parts[:-1])
             return name
 
         # Extract load_id if available
@@ -664,10 +672,10 @@ class ComponentsManager:
         # Format device info compactly
         def format_device(component, info):
             if not info["has_hook"]:
-                return str(getattr(component, 'device', 'N/A'))
+                return str(getattr(component, "device", "N/A"))
             else:
-                device = str(getattr(component, 'device', 'N/A'))
-                exec_device = str(info['execution_device'] or 'N/A')
+                device = str(getattr(component, "device", "N/A"))
+                exec_device = str(info["execution_device"] or "N/A")
                 return f"{device}({exec_device})"
 
         # Get all simple names to calculate width
@@ -702,7 +710,7 @@ class ComponentsManager:
             "dtype": 15,
             "size": 10,
             "load_id": max_load_id_len,
-            "collection": max_collection_len
+            "collection": max_collection_len,
         }
 
         # Create the header lines
@@ -791,7 +799,7 @@ class ComponentsManager:
     def from_pretrained(self, pretrained_model_name_or_path, prefix: Optional[str] = None, **kwargs):
         """
         Load components from a pretrained model and add them to the manager.
-        
+
         Args:
             pretrained_model_name_or_path (str): The path or identifier of the pretrained model
             prefix (str, optional): Prefix to add to all component names loaded from this model.
@@ -802,6 +810,7 @@ class ComponentsManager:
         # YiYi TODO: extend AutoModel to support non-diffusers models
         if subfolder:
             from ..models import AutoModel
+
             component = AutoModel.from_pretrained(pretrained_model_name_or_path, subfolder=subfolder, **kwargs)
             component_name = f"{prefix}_{subfolder}" if prefix else subfolder
             if component_name not in self.components:
@@ -814,9 +823,9 @@ class ComponentsManager:
                 )
         else:
             from ..pipelines.pipeline_utils import DiffusionPipeline
+
             pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, **kwargs)
             for name, component in pipe.components.items():
-
                 if component is None:
                     continue
 
@@ -832,18 +841,24 @@ class ComponentsManager:
                         f"2. Use a different prefix: add_from_pretrained(..., prefix='{prefix}_2')"
                     )
 
-    def get_one(self, component_id: Optional[str] = None, name: Optional[str] = None, collection: Optional[str] = None, load_id: Optional[str] = None) -> Any:
+    def get_one(
+        self,
+        component_id: Optional[str] = None,
+        name: Optional[str] = None,
+        collection: Optional[str] = None,
+        load_id: Optional[str] = None,
+    ) -> Any:
         """
         Get a single component by name. Raises an error if multiple components match or none are found.
-        
+
         Args:
             name: Component name or pattern
             collection: Optional collection to filter by
             load_id: Optional load_id to filter by
-            
+
         Returns:
             A single component
-            
+
         Raises:
             ValueError: If no components match or multiple components match
         """
@@ -866,20 +881,18 @@ class ComponentsManager:
 
         return next(iter(results.values()))
 
+
 def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
     """Summarizes a dictionary by finding common prefixes that share the same value.
-    
-    For a dictionary with dot-separated keys like:
-    {
+
+    For a dictionary with dot-separated keys like: {
         'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor': [0.6],
         'down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor': [0.6],
         'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor': [0.3],
     }
-    
-    Returns a dictionary where keys are the shortest common prefixes and values are their shared values:
-    {
-        'down_blocks': [0.6],
-        'up_blocks': [0.3]
+
+    Returns a dictionary where keys are the shortest common prefixes and values are their shared values: {
+        'down_blocks': [0.6], 'up_blocks': [0.3]
     }
     """
     # First group by values - convert lists to tuples to make them hashable
@@ -898,7 +911,7 @@ def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
             return keys[0]
 
         # Split all keys into parts
-        key_parts = [k.split('.') for k in keys]
+        key_parts = [k.split(".") for k in keys]
 
         # Find how many initial parts are common
         common_length = 0
@@ -912,7 +925,7 @@ def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
             return ""
 
         # Return the common prefix
-        return '.'.join(key_parts[0][:common_length])
+        return ".".join(key_parts[0][:common_length])
 
     # Create summary by finding common prefixes for each value group
     summary = {}

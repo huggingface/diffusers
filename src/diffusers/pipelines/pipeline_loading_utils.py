@@ -374,6 +374,7 @@ def maybe_raise_or_warn(
 # a simpler version of get_class_obj_and_candidates, it won't work with custom code
 def simple_get_class_obj(library_name, class_name):
     from diffusers import pipelines
+
     is_pipeline_module = hasattr(pipelines, library_name)
 
     if is_pipeline_module:
@@ -384,6 +385,7 @@ def simple_get_class_obj(library_name, class_name):
         class_obj = getattr(library, class_name)
 
     return class_obj
+
 
 def get_class_obj_and_candidates(
     library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None

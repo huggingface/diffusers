@@ -21,11 +21,24 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modular_pipeline_presets"] = ["StableDiffusionXLAutoPipeline"]
-    _import_structure["modular_loader"] = ["StableDiffusionXLModularLoader"]
-    _import_structure["encoders"] = ["StableDiffusionXLAutoIPAdapterStep", "StableDiffusionXLTextEncoderStep", "StableDiffusionXLAutoVaeEncoderStep"]
     _import_structure["decoders"] = ["StableDiffusionXLAutoDecodeStep"]
-    _import_structure["modular_block_mappings"] = ["TEXT2IMAGE_BLOCKS", "IMAGE2IMAGE_BLOCKS", "INPAINT_BLOCKS", "CONTROLNET_BLOCKS", "CONTROLNET_UNION_BLOCKS", "IP_ADAPTER_BLOCKS", "AUTO_BLOCKS", "SDXL_SUPPORTED_BLOCKS"]
+    _import_structure["encoders"] = [
+        "StableDiffusionXLAutoIPAdapterStep",
+        "StableDiffusionXLAutoVaeEncoderStep",
+        "StableDiffusionXLTextEncoderStep",
+    ]
+    _import_structure["modular_block_mappings"] = [
+        "AUTO_BLOCKS",
+        "CONTROLNET_BLOCKS",
+        "CONTROLNET_UNION_BLOCKS",
+        "IMAGE2IMAGE_BLOCKS",
+        "INPAINT_BLOCKS",
+        "IP_ADAPTER_BLOCKS",
+        "SDXL_SUPPORTED_BLOCKS",
+        "TEXT2IMAGE_BLOCKS",
+    ]
+    _import_structure["modular_loader"] = ["StableDiffusionXLModularLoader"]
+    _import_structure["modular_pipeline_presets"] = ["StableDiffusionXLAutoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
