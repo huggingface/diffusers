@@ -3103,6 +3103,13 @@ def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
         "vace_blocks.5.after_proj" : "vace_blocks.5.proj_out",
         "vace_blocks.6.after_proj" : "vace_blocks.6.proj_out",
         "vace_blocks.7.after_proj" : "vace_blocks.7.proj_out",
+        "vace_blocks.8.after_proj" : "vace_blocks.8.proj_out",
+        "vace_blocks.9.after_proj" : "vace_blocks.9.proj_out",
+        "vace_blocks.10.after_proj" : "vace_blocks.10.proj_out",
+        "vace_blocks.11.after_proj" : "vace_blocks.11.proj_out",
+        "vace_blocks.12.after_proj" : "vace_blocks.12.proj_out",
+        "vace_blocks.13.after_proj" : "vace_blocks.13.proj_out",
+        "vace_blocks.14.after_proj" : "vace_blocks.14.proj_out",
     }
 
     for key in list(checkpoint.keys()):
