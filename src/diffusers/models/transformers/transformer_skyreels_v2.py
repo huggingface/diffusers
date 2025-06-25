@@ -27,6 +27,7 @@ from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import (
     PixArtAlphaTextProjection,
+    SkyReelsV2Timesteps,
     TimestepEmbedding,
     get_1d_rotary_pos_embed,
     get_1d_sincos_pos_embed_from_grid,
@@ -159,8 +160,7 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
     ):
         super().__init__()
 
-        self.time_freq_dim = time_freq_dim
-        self.timesteps_proj = get_1d_sincos_pos_embed_from_grid
+        self.timesteps_proj = SkyReelsV2Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True)
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
         self.act_fn = nn.SiLU()
         self.time_proj = nn.Linear(dim, time_proj_dim)
@@ -176,7 +176,7 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
     ):
-        timestep = self.timesteps_proj(self.time_freq_dim, timestep, output_type="pt", flip_sin_to_cos=True)
+        timestep = self.timesteps_proj(timestep)
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
