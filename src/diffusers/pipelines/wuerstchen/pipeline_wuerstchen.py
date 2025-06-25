@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 
@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class WuerstchenDecoderPipeline(DiffusionPipeline):
+class WuerstchenDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Pipeline for generating images from the Wuerstchen model.
 

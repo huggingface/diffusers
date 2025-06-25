@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ...utils.torch_utils import empty_device_cache, is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
@@ -921,7 +921,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         # Offload text encoder if `enable_model_cpu_offload` was enabled
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.text_encoder_2.to("cpu")
-            torch.cuda.empty_cache()
+            empty_device_cache()
 
         image = image.to(device=device, dtype=dtype)
 
@@ -1632,7 +1632,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
             self.controlnet.to("cpu")
-            torch.cuda.empty_cache()
+            empty_device_cache()
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16

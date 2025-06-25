@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -254,7 +254,7 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             assert_mean_pixel_difference(to_np(output_with_slicing1[0]), to_np(output_without_slicing[0]))
             assert_mean_pixel_difference(to_np(output_with_slicing2[0]), to_np(output_without_slicing[0]))
 
-    # Because we have `pag_applied_layers` we cannot direcly apply
+    # Because we have `pag_applied_layers` we cannot directly apply
     # `set_default_attn_processor`
     def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=1e-4):
         components = self.get_dummy_components()

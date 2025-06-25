@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,6 +36,22 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
   - all
   - __call__
 
+## Cosmos2TextToImagePipeline
+
+[[autodoc]] Cosmos2TextToImagePipeline
+  - all
+  - __call__
+
+## Cosmos2VideoToWorldPipeline
+
+[[autodoc]] Cosmos2VideoToWorldPipeline
+  - all
+  - __call__
+
 ## CosmosPipelineOutput
 
 [[autodoc]] pipelines.cosmos.pipeline_output.CosmosPipelineOutput
+
+## CosmosImagePipelineOutput
+
+[[autodoc]] pipelines.cosmos.pipeline_output.CosmosImagePipelineOutput

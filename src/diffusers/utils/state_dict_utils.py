@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ State dict utilities: utility methods for converting state dicts easily
 """
 
 import enum
+import json
 
 from .import_utils import is_torch_available
 from .logging import get_logger
@@ -347,3 +348,19 @@ def state_dict_all_zero(state_dict, filter_str=None):
         state_dict = {k: v for k, v in state_dict.items() if any(f in k for f in filter_str)}
 
     return all(torch.all(param == 0).item() for param in state_dict.values())
+
+
+def _load_sft_state_dict_metadata(model_file: str):
+    import safetensors.torch
+
+    from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
+
+    with safetensors.torch.safe_open(model_file, framework="pt", device="cpu") as f:
+        metadata = f.metadata() or {}
+
+    metadata.pop("format", None)
+    if metadata:
+        raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
+        return json.loads(raw) if raw else None
+    else:
+        return None
