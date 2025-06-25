@@ -15,9 +15,9 @@
 
 from argparse import ArgumentParser
 
+from .custom_blocks import CustomBlocksCommand
 from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
-from .custom_blocks import CustomBlocksCommand
 
 
 def main():

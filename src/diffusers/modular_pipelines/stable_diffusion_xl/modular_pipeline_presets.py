@@ -12,14 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Optional, Tuple, Union, Dict
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
-
-from .denoise import StableDiffusionXLAutoDenoiseStep
 from .before_denoise import StableDiffusionXLAutoBeforeDenoiseStep
 from .decoders import StableDiffusionXLAutoDecodeStep
-from .encoders import StableDiffusionXLTextEncoderStep, StableDiffusionXLAutoIPAdapterStep, StableDiffusionXLAutoVaeEncoderStep
+from .denoise import StableDiffusionXLAutoDenoiseStep
+from .encoders import (
+    StableDiffusionXLAutoIPAdapterStep,
+    StableDiffusionXLAutoVaeEncoderStep,
+    StableDiffusionXLTextEncoderStep,
+)
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

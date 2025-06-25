@@ -20,7 +20,12 @@ import torch
 
 from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
-from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS, _ATTENTION_CLASSES, _FEEDFORWARD_CLASSES, _get_submodule_from_fqn
+from ._common import (
+    _ALL_TRANSFORMER_BLOCK_IDENTIFIERS,
+    _ATTENTION_CLASSES,
+    _FEEDFORWARD_CLASSES,
+    _get_submodule_from_fqn,
+)
 from ._helpers import AttentionProcessorRegistry, TransformerBlockRegistry
 from .hooks import HookRegistry, ModelHook
 
@@ -198,15 +203,15 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
     for i, block in enumerate(transformer_blocks):
         if i not in config.indices:
             continue
-        
+
         blocks_found = True
-        
+
         if config.skip_attention and config.skip_ff:
             logger.debug(f"Applying TransformerBlockSkipHook to '{config.fqn}.{i}'")
             registry = HookRegistry.check_if_exists_or_initialize(block)
             hook = TransformerBlockSkipHook(config.dropout)
             registry.register_hook(hook, name)
-        
+
         elif config.skip_attention or config.skip_attention_scores:
             for submodule_name, submodule in block.named_modules():
                 if isinstance(submodule, _ATTENTION_CLASSES) and not submodule.is_cross_attention:
@@ -215,7 +220,7 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
                     registry = HookRegistry.check_if_exists_or_initialize(submodule)
                     hook = AttentionProcessorSkipHook(output_fn, config.skip_attention_scores, config.dropout)
                     registry.register_hook(hook, name)
-        
+
         if config.skip_ff:
             for submodule_name, submodule in block.named_modules():
                 if isinstance(submodule, _FEEDFORWARD_CLASSES):

@@ -58,10 +58,10 @@ class BaseGuidance:
 
     def disable(self):
         self._enabled = False
-    
+
     def enable(self):
         self._enabled = True
-    
+
     def set_state(self, step: int, num_inference_steps: int, timestep: torch.LongTensor) -> None:
         self._step = step
         self._num_inference_steps = num_inference_steps
@@ -104,14 +104,14 @@ class BaseGuidance:
                     f"Expected `set_input_fields` to be called with a string or a tuple of string with length 2, but got {type(value)} for key {key}."
                 )
         self._input_fields = kwargs
-    
+
     def prepare_models(self, denoiser: torch.nn.Module) -> None:
         """
         Prepares the models for the guidance technique on a given batch of data. This method should be overridden in
         subclasses to implement specific model preparation logic.
         """
         self._count_prepared += 1
-    
+
     def cleanup_models(self, denoiser: torch.nn.Module) -> None:
         """
         Cleans up the models for the guidance technique after a given batch of data. This method should be overridden in
@@ -119,7 +119,7 @@ class BaseGuidance:
         modifications made during `prepare_models`.
         """
         pass
-    
+
     def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
         raise NotImplementedError("BaseGuidance::prepare_inputs must be implemented in subclasses.")
 
@@ -139,15 +139,15 @@ class BaseGuidance:
     @property
     def is_conditional(self) -> bool:
         raise NotImplementedError("BaseGuidance::is_conditional must be implemented in subclasses.")
-    
+
     @property
     def is_unconditional(self) -> bool:
         return not self.is_conditional
-    
+
     @property
     def num_conditions(self) -> int:
         raise NotImplementedError("BaseGuidance::num_conditions must be implemented in subclasses.")
-    
+
     @classmethod
     def _prepare_batch(cls, input_fields: Dict[str, Union[str, Tuple[str, str]]], data: "BlockState", tuple_index: int, identifier: str) -> "BlockState":
         """

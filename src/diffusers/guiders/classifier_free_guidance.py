@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import math
-from typing import Optional, List, TYPE_CHECKING, Dict, Union, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from .guider_utils import BaseGuidance, rescale_noise_cfg
+
 
 if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
@@ -74,12 +75,12 @@ class ClassifierFreeGuidance(BaseGuidance):
         self.guidance_scale = guidance_scale
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
-    
+
     def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
-        
+
         if input_fields is None:
             input_fields = self._input_fields
-        
+
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
         for i in range(self.num_conditions):
@@ -116,17 +117,17 @@ class ClassifierFreeGuidance(BaseGuidance):
     def _is_cfg_enabled(self) -> bool:
         if not self._enabled:
             return False
-        
+
         is_within_range = True
         if self._num_inference_steps is not None:
             skip_start_step = int(self._start * self._num_inference_steps)
             skip_stop_step = int(self._stop * self._num_inference_steps)
             is_within_range = skip_start_step <= self._step < skip_stop_step
-        
+
         is_close = False
         if self.use_original_formulation:
             is_close = math.isclose(self.guidance_scale, 0.0)
         else:
             is_close = math.isclose(self.guidance_scale, 1.0)
-        
+
         return is_within_range and not is_close

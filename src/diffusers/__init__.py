@@ -794,8 +794,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
-            apply_layer_skip,
             apply_faster_cache,
+            apply_layer_skip,
             apply_pyramid_attention_broadcast,
         )
         from .models import (
@@ -875,6 +875,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanTransformer3DModel,
             WanVACETransformer3DModel,
         )
+        from .modular_pipelines import (
+            ComponentsManager,
+            ComponentSpec,
+            ModularLoader,
+            ModularPipeline,
+            ModularPipelineBlocks,
+        )
         from .optimization import (
             get_constant_schedule,
             get_constant_schedule_with_warmup,
@@ -906,13 +913,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             RePaintPipeline,
             ScoreSdeVePipeline,
             StableDiffusionMixin,
-        )
-        from .modular_pipelines import (
-            ModularLoader,
-            ModularPipeline,
-            ModularPipelineBlocks,
-            ComponentSpec,
-            ComponentsManager,
         )
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
@@ -978,6 +978,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
+        from .modular_pipelines import (
+            StableDiffusionXLAutoPipeline,
+            StableDiffusionXLModularLoader,
+        )
         from .pipelines import (
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
@@ -1181,10 +1185,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-        )
-        from .modular_pipelines import (
-            StableDiffusionXLAutoPipeline,
-            StableDiffusionXLModularLoader,
         )
 
     try:

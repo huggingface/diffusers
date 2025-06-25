@@ -49,13 +49,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .components_manager import ComponentsManager
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
             LoopSequentialPipelineBlocks,
             ModularLoader,
-            ModularPipelineBlocks,
             ModularPipeline,
+            ModularPipelineBlocks,
             PipelineBlock,
             PipelineState,
             SequentialPipelineBlocks,
@@ -70,7 +71,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLAutoPipeline,
             StableDiffusionXLModularLoader,
         )
-        from .components_manager import ComponentsManager
 else:
     import sys
 

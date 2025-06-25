@@ -18,10 +18,11 @@ Usage example:
 """
 
 import ast
-from argparse import ArgumentParser, Namespace
-from pathlib import Path
 import importlib.util
 import os
+from argparse import ArgumentParser, Namespace
+from pathlib import Path
+
 from ..utils import logging
 from . import BaseDiffusersCLICommand
 
@@ -57,7 +58,7 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
         # determine the block to be saved.
         out = self._get_class_names(self.block_module_name)
         classes_found = list({cls for cls, _ in out})
-        
+
         if self.block_class_name is not None:
             child_class, parent_class = self._choose_block(out, self.block_class_name)
             if child_class is None and parent_class is None:
@@ -125,9 +126,9 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
             val = self._get_base_name(node.value)
             return f"{val}.{node.attr}" if val else node.attr
         return None
-    
+
     def _create_automap(self, parent_class, child_class):
         module = str(self.block_module_name).replace(".py", "").rsplit(".", 1)[-1]
         auto_map = {f"{parent_class}": f"{module}.{child_class}"}
         return {"auto_map": auto_map}
-    
+

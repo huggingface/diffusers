@@ -15,12 +15,12 @@
 """Utilities to dynamically load objects from the Hub."""
 
 import importlib
-import signal
 import inspect
 import json
 import os
 import re
 import shutil
+import signal
 import sys
 import threading
 from pathlib import Path

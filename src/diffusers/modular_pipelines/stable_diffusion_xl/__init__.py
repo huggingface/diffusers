@@ -34,11 +34,24 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_pipeline_presets import StableDiffusionXLAutoPipeline
-        from .modular_loader import StableDiffusionXLModularLoader
-        from .encoders import StableDiffusionXLAutoIPAdapterStep, StableDiffusionXLTextEncoderStep, StableDiffusionXLAutoVaeEncoderStep
         from .decoders import StableDiffusionXLAutoDecodeStep
-        from .modular_block_mappings import SDXL_SUPPORTED_BLOCKS, TEXT2IMAGE_BLOCKS, IMAGE2IMAGE_BLOCKS, INPAINT_BLOCKS, CONTROLNET_BLOCKS, CONTROLNET_UNION_BLOCKS, IP_ADAPTER_BLOCKS, AUTO_BLOCKS
+        from .encoders import (
+            StableDiffusionXLAutoIPAdapterStep,
+            StableDiffusionXLAutoVaeEncoderStep,
+            StableDiffusionXLTextEncoderStep,
+        )
+        from .modular_block_mappings import (
+            AUTO_BLOCKS,
+            CONTROLNET_BLOCKS,
+            CONTROLNET_UNION_BLOCKS,
+            IMAGE2IMAGE_BLOCKS,
+            INPAINT_BLOCKS,
+            IP_ADAPTER_BLOCKS,
+            SDXL_SUPPORTED_BLOCKS,
+            TEXT2IMAGE_BLOCKS,
+        )
+        from .modular_loader import StableDiffusionXLModularLoader
+        from .modular_pipeline_presets import StableDiffusionXLAutoPipeline
 else:
     import sys
 

@@ -1,16 +1,19 @@
-from ..configuration_utils import ConfigMixin
-from .modular_pipeline import SequentialPipelineBlocks, ModularPipelineBlocks
-from .modular_pipeline_utils import InputParam, OutputParam
-from ..image_processor import PipelineImageInput
-from pathlib import Path
 import json
-import os
-
-from typing import Union, List, Optional, Tuple
-import torch
-import PIL
-import numpy as np
 import logging
+import os
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
+
+import numpy as np
+import PIL
+import torch
+
+from ..configuration_utils import ConfigMixin
+from ..image_processor import PipelineImageInput
+from .modular_pipeline import ModularPipelineBlocks, SequentialPipelineBlocks
+from .modular_pipeline_utils import InputParam
+
+
 logger = logging.getLogger(__name__)
 
 # YiYi Notes: this is actually for SDXL, put it here for now
@@ -189,8 +192,8 @@ def get_group_name(name, group_params_keys=DEFAULT_PARAMS_GROUPS_KEYS):
             if group_key in name:
                 return group_name
     return None
-            
-            
+
+
 class ModularNode(ConfigMixin):
 
     config_name = "node_config.json"
@@ -214,15 +217,15 @@ class ModularNode(ConfigMixin):
         self.name_mapping = {}
 
         input_params = {}
-        # pass or create a default param dict for each input 
+        # pass or create a default param dict for each input
         # e.g. for prompt,
         #       prompt = {
         #               "name": "text_input", # the name of the input in node defination, could be different from the input name in diffusers
-        #               "label": "Prompt", 
-        #               "type": "string", 
-        #               "default": "a bear sitting in a chair drinking a milkshake", 
-        #               "display": "textarea"}  
-        # if type is not specified, it'll be a "custom" param of its own type 
+        #               "label": "Prompt",
+        #               "type": "string",
+        #               "default": "a bear sitting in a chair drinking a milkshake",
+        #               "display": "textarea"}
+        # if type is not specified, it'll be a "custom" param of its own type
         # e.g. you can pass ModularNode(scheduler = {name :"scheduler"})
         #  it will get this spec in node defination {"scheduler": {"label": "Scheduler", "type": "scheduler", "display": "input"}}
         #  name can be a dict, in that case, it is part of a "dict" input in mellon nodes, e.g. text_encoder= {name: {"text_encoders": "text_encoder"}}
@@ -236,10 +239,10 @@ class ModularNode(ConfigMixin):
                 if mellon_name != inp.name:
                     self.name_mapping[inp.name] = mellon_name
                 continue
-    
-            if not inp.name in DEFAULT_PARAM_MAPS and not inp.required and not get_group_name(inp.name):
+
+            if inp.name not in DEFAULT_PARAM_MAPS and not inp.required and not get_group_name(inp.name):
                 continue
-            
+
             if inp.name in DEFAULT_PARAM_MAPS:
                 # first check if it's in the default param map, if so, directly use that
                 param = DEFAULT_PARAM_MAPS[inp.name].copy()
@@ -248,7 +251,7 @@ class ModularNode(ConfigMixin):
                 if inp.name not in self.name_mapping:
                     self.name_mapping[inp.name] = param
             else:
-                # if not, check if it's in the SDXL input schema, if so, 
+                # if not, check if it's in the SDXL input schema, if so,
                     # 1. use the type hint to determine the type
                     # 2. use the default param dict for the type e.g. if "steps" is a "int" type, {"steps": {"type": "int", "default": 0, "min": 0}}
                 if inp.type_hint is not None:
@@ -285,7 +288,7 @@ class ModularNode(ConfigMixin):
                     break
             if to_exclude:
                 continue
-            
+
             if get_group_name(comp.name):
                 param = get_group_name(comp.name)
                 if comp.name not in self.name_mapping:
@@ -303,7 +306,7 @@ class ModularNode(ConfigMixin):
             outputs = self.blocks.blocks[last_block_name].intermediates_outputs
         else:
             outputs = self.blocks.intermediates_outputs
-    
+
         for out in outputs:
             param = kwargs.pop(out.name, None)
             if param:
@@ -326,10 +329,10 @@ class ModularNode(ConfigMixin):
                     param = out.name
             # add the param dict to the outputs dict
             output_params[out.name] = param
-        
+
         if len(kwargs) > 0:
             logger.warning(f"Unused kwargs: {kwargs}")
-        
+
         register_dict = {
             "category": category,
             "label": label,
@@ -339,7 +342,7 @@ class ModularNode(ConfigMixin):
             "name_mapping": self.name_mapping,
         }
         self.register_to_config(**register_dict)
-    
+
     def setup(self, components, collection=None):
         self.blocks.setup_loader(component_manager=components, collection=collection)
         self._components_manager = components
@@ -347,7 +350,7 @@ class ModularNode(ConfigMixin):
     @property
     def mellon_config(self):
         return self._convert_to_mellon_config()
-    
+
     def _convert_to_mellon_config(self):
 
         node = {}
@@ -368,13 +371,13 @@ class ModularNode(ConfigMixin):
                 }
             else:
                 param = inp_param
-            
+
             if mellon_name not in node_param:
                 node_param[mellon_name] = param
             else:
                 logger.debug(f"Input param {mellon_name} already exists in node_param, skipping {inp_name}")
 
-        
+
         for comp_name, comp_param in self.config.component_params.items():
             if comp_name in self.name_mapping:
                 mellon_name = self.name_mapping[comp_name]
@@ -388,13 +391,13 @@ class ModularNode(ConfigMixin):
                 }
             else:
                 param = comp_param
-            
+
             if mellon_name not in node_param:
                 node_param[mellon_name] = param
             else:
                 logger.debug(f"Component param {comp_param} already exists in node_param, skipping {comp_name}")
 
-        
+
         for out_name, out_param in self.config.output_params.items():
             if out_name in self.name_mapping:
                 mellon_name = self.name_mapping[out_name]
@@ -408,7 +411,7 @@ class ModularNode(ConfigMixin):
                 }
             else:
                 param = out_param
-            
+
             if mellon_name not in node_param:
                 node_param[mellon_name] = param
             else:
@@ -427,22 +430,22 @@ class ModularNode(ConfigMixin):
             Path: Path to the saved config file
         """
         file_path = Path(file_path)
-        
+
         # Create directory if it doesn't exist
         os.makedirs(file_path.parent, exist_ok=True)
-        
+
         # Create a combined dictionary with module definition and name mapping
         config = {
             "module": self.mellon_config,
             "name_mapping": self.name_mapping
         }
-        
+
         # Save the config to file
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
-            
+
         logger.info(f"Mellon config and name mapping saved to {file_path}")
-        
+
         return file_path
 
     @classmethod
@@ -457,16 +460,16 @@ class ModularNode(ConfigMixin):
             dict: The loaded combined configuration containing 'module' and 'name_mapping'
         """
         file_path = Path(file_path)
-        
+
         if not file_path.exists():
             raise FileNotFoundError(f"Config file not found: {file_path}")
-        
+
         with open(file_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
-            
+
         logger.info(f"Mellon config loaded from {file_path}")
-        
-        
+
+
         return config
 
     def process_inputs(self, **kwargs):
@@ -483,7 +486,7 @@ class ModularNode(ConfigMixin):
                 if comp:
                     params_components[comp_name] = self._components_manager.get_one(comp["model_id"])
 
-        
+
         params_run = {}
         for inp_name, inp_param in self.config.input_params.items():
             logger.debug(f"input: {inp_name}")
@@ -495,14 +498,14 @@ class ModularNode(ConfigMixin):
                     inp = kwargs.pop(mellon_inp_name)
                 if inp is not None:
                     params_run[inp_name] = inp
-        
+
         return_output_names = list(self.config.output_params.keys())
 
         return params_components, params_run, return_output_names
 
     def execute(self, **kwargs):
         params_components, params_run, return_output_names = self.process_inputs(**kwargs)
-        
+
         self.blocks.loader.update(**params_components)
         output = self.blocks.run(**params_run, output=return_output_names)
         return output

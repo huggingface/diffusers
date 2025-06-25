@@ -13,13 +13,14 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Union, TYPE_CHECKING, Dict, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from ..hooks import HookRegistry
 from ..hooks.smoothed_energy_guidance_utils import SmoothedEnergyGuidanceConfig, _apply_smoothed_energy_guidance_hook
 from .guider_utils import BaseGuidance, rescale_noise_cfg
+
 
 if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
@@ -141,19 +142,19 @@ class SmoothedEnergyGuidance(BaseGuidance):
         if self._is_seg_enabled() and self.is_conditional and self._count_prepared > 1:
             for name, config in zip(self._seg_layer_hook_names, self.seg_guidance_config):
                 _apply_smoothed_energy_guidance_hook(denoiser, config, self.seg_blur_sigma, name=name)
-    
+
     def cleanup_models(self, denoiser: torch.nn.Module):
         if self._is_seg_enabled() and self.is_conditional and self._count_prepared > 1:
             registry = HookRegistry.check_if_exists_or_initialize(denoiser)
             # Remove the hooks after inference
             for hook_name in self._seg_layer_hook_names:
                 registry.remove_hook(hook_name, recurse=True)
-    
+
     def prepare_inputs(self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None) -> List["BlockState"]:
-        
+
         if input_fields is None:
             input_fields = self._input_fields
-        
+
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]
@@ -197,7 +198,7 @@ class SmoothedEnergyGuidance(BaseGuidance):
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
         return pred, {}
-    
+
     @property
     def is_conditional(self) -> bool:
         return self._count_prepared == 1 or self._count_prepared == 3
@@ -214,31 +215,31 @@ class SmoothedEnergyGuidance(BaseGuidance):
     def _is_cfg_enabled(self) -> bool:
         if not self._enabled:
             return False
-        
+
         is_within_range = True
         if self._num_inference_steps is not None:
             skip_start_step = int(self._start * self._num_inference_steps)
             skip_stop_step = int(self._stop * self._num_inference_steps)
             is_within_range = skip_start_step <= self._step < skip_stop_step
-        
+
         is_close = False
         if self.use_original_formulation:
             is_close = math.isclose(self.guidance_scale, 0.0)
         else:
             is_close = math.isclose(self.guidance_scale, 1.0)
-        
+
         return is_within_range and not is_close
 
     def _is_seg_enabled(self) -> bool:
         if not self._enabled:
             return False
-        
+
         is_within_range = True
         if self._num_inference_steps is not None:
             skip_start_step = int(self.seg_guidance_start * self._num_inference_steps)
             skip_stop_step = int(self.seg_guidance_stop * self._num_inference_steps)
             is_within_range = skip_start_step < self._step < skip_stop_step
-        
+
         is_zero = math.isclose(self.seg_guidance_scale, 0.0)
-        
+
         return is_within_range and not is_zero

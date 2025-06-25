@@ -13,28 +13,25 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple
 
 import torch
-from tqdm.auto import tqdm
 
 from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
 from ...models import ControlNetModel, UNet2DConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging
-from ...utils.torch_utils import unwrap_module       
-
-from ...guiders import ClassifierFreeGuidance
-from .modular_loader import StableDiffusionXLModularLoader
-from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from ..modular_pipeline import (
+    AutoPipelineBlocks,
+    BlockState,
+    LoopSequentialPipelineBlocks,
     PipelineBlock,
     PipelineState,
-    AutoPipelineBlocks,
-    LoopSequentialPipelineBlocks,
-    BlockState,
 )
-from dataclasses import asdict
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_loader import StableDiffusionXLModularLoader
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -61,9 +58,9 @@ class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
     def intermediates_inputs(self) -> List[str]:
         return [
             InputParam(
-                "latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
             ),
         ]
@@ -96,19 +93,19 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
     def intermediates_inputs(self) -> List[str]:
         return [
             InputParam(
-                "latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
             ),
             InputParam(
-                "mask", 
-                type_hint=Optional[torch.Tensor], 
+                "mask",
+                type_hint=Optional[torch.Tensor],
                 description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
             ),
             InputParam(
-                "masked_image_latents", 
-                type_hint=Optional[torch.Tensor], 
+                "masked_image_latents",
+                type_hint=Optional[torch.Tensor],
                 description="The masked image latents to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
             ),
         ]
@@ -133,7 +130,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
                     f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
                     " `components.unet` or your `mask_image` or `image` input."
                 )
-   
+
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
 
@@ -155,9 +152,9 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec(
-                "guider", 
-                ClassifierFreeGuidance, 
-                config=FrozenDict({"guidance_scale": 7.5}), 
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config"),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
@@ -178,18 +175,18 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
     def intermediates_inputs(self) -> List[str]:
         return [
             InputParam(
-                "num_inference_steps", 
-                required=True, 
-                type_hint=int, 
+                "num_inference_steps",
+                required=True,
+                type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
             ),
             InputParam(
-                "timestep_cond", 
-                type_hint=Optional[torch.Tensor], 
+                "timestep_cond",
+                type_hint=Optional[torch.Tensor],
                 description="The guidance scale embedding to use for Latent Consistency Models(LCMs). Can be generated in prepare_additional_conditioning step."
             ),
             InputParam(
-                kwargs_type="guider_input_fields", 
+                kwargs_type="guider_input_fields",
                 description=(
                     "All conditional model inputs that need to be prepared with guider. "
                     "It should contain prompt_embeds/negative_prompt_embeds, "
@@ -202,10 +199,10 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
 
         ]
 
-    
+
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int) -> PipelineState:
-        
+
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
         guider_input_fields ={
@@ -231,7 +228,7 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
             cond_kwargs = guider_state_batch.as_dict()
             cond_kwargs = {k:v for k,v in cond_kwargs.items() if k in guider_input_fields}
             prompt_embeds = cond_kwargs.pop("prompt_embeds")
-            
+
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
             guider_state_batch.noise_pred = components.unet(
@@ -259,9 +256,9 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec(
-                "guider", 
-                ClassifierFreeGuidance, 
-                config=FrozenDict({"guidance_scale": 7.5}), 
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config"),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetModel),
@@ -281,18 +278,18 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
     def intermediates_inputs(self) -> List[str]:
         return [
             InputParam(
-                "controlnet_cond", 
+                "controlnet_cond",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
             ),
             InputParam(
-                "conditioning_scale", 
+                "conditioning_scale",
                 type_hint=float,
                 description="The controlnet conditioning scale value to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
             ),
             InputParam(
-                "guess_mode", 
+                "guess_mode",
                 required=True,
                 type_hint=bool,
                 description="The guess mode value to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
@@ -304,18 +301,18 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
                 description="The controlnet keep values to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
             ),
             InputParam(
-                "timestep_cond", 
-                type_hint=Optional[torch.Tensor], 
+                "timestep_cond",
+                type_hint=Optional[torch.Tensor],
                 description="The guidance scale embedding to use for Latent Consistency Models(LCMs), can be generated by prepare_additional_conditioning step"
             ),
             InputParam(
-                "num_inference_steps", 
-                required=True, 
-                type_hint=int, 
+                "num_inference_steps",
+                required=True,
+                type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
             ),
             InputParam(
-                kwargs_type="guider_input_fields", 
+                kwargs_type="guider_input_fields",
                 description=(
                     "All conditional model inputs that need to be prepared with guider. "
                     "It should contain prompt_embeds/negative_prompt_embeds, "
@@ -326,7 +323,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
                 )
             ),
             InputParam(
-                kwargs_type="controlnet_kwargs", 
+                kwargs_type="controlnet_kwargs",
                 description=(
                     "additional kwargs for controlnet (e.g. control_type_idx and control_type from the controlnet union input step )"
                     "please add `kwargs_type=controlnet_kwargs` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
@@ -369,14 +366,14 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
             if isinstance(controlnet_cond_scale, list):
                 controlnet_cond_scale = controlnet_cond_scale[0]
             block_state.cond_scale = controlnet_cond_scale * block_state.controlnet_keep[i]
-        
+
         # default controlnet output/unet input for guess mode + conditional path
         block_state.down_block_res_samples_zeros = None
         block_state.mid_block_res_sample_zeros = None
-        
+
         # guided denoiser step
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
-        
+
          # Prepare mini‐batches according to guidance method and `guider_input_fields`
         # Each guider_state_batch will have .prompt_embeds, .time_ids, text_embeds, image_embeds.
         # e.g. for CFG, we prepare two batches: one for uncond, one for cond
@@ -387,7 +384,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
         # run the denoiser for each guidance batch
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.unet)
-            
+
             # Prepare additional conditionings
             added_cond_kwargs = {
                 "text_embeds": guider_state_batch.text_embeds,
@@ -395,7 +392,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
             }
             if hasattr(guider_state_batch, "image_embeds") and guider_state_batch.image_embeds is not None:
                 added_cond_kwargs["image_embeds"] = guider_state_batch.image_embeds
-            
+
             # Prepare controlnet additional conditionings
             controlnet_added_cond_kwargs = {
                 "text_embeds": guider_state_batch.text_embeds,
@@ -418,13 +415,13 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
                     return_dict=False,
                     **extra_controlnet_kwargs,
                 )
-            
+
                 # assign it to block_state so it will be available for the uncond guidance batch
                 if block_state.down_block_res_samples_zeros is None:
                     block_state.down_block_res_samples_zeros = [torch.zeros_like(d) for d in down_block_res_samples]
                 if block_state.mid_block_res_sample_zeros is None:
                     block_state.mid_block_res_sample_zeros = torch.zeros_like(mid_block_res_sample)
-            
+
             # Predict the noise
             # store the noise_pred in guider_state_batch so we can apply guidance across all batches
             guider_state_batch.noise_pred = components.unet(
@@ -439,7 +436,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
                 return_dict=False,
             )[0]
             components.guider.cleanup_models(components.unet)
-        
+
         # Perform guidance
         block_state.noise_pred, block_state.scheduler_step_kwargs = components.guider(guider_state)
 
@@ -475,7 +472,7 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
-    
+
     #YiYi TODO: move this out of here
     @staticmethod
     def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
@@ -499,7 +496,7 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
         # Perform scheduler step using the predicted output
         block_state.latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(block_state.noise_pred, t, block_state.latents, **block_state.extra_step_kwargs, **block_state.scheduler_step_kwargs, return_dict=False)[0]
-        
+
         if block_state.latents.dtype != block_state.latents_dtype:
             if torch.backends.mps.is_available():
                 # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
@@ -534,24 +531,24 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
         return [
             InputParam("generator"),
             InputParam(
-                "timesteps", 
-                required=True, 
-                type_hint=torch.Tensor, 
+                "timesteps",
+                required=True,
+                type_hint=torch.Tensor,
                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
             ),
             InputParam(
-                "mask", 
-                type_hint=Optional[torch.Tensor], 
+                "mask",
+                type_hint=Optional[torch.Tensor],
                 description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
             ),
             InputParam(
-                "noise", 
-                type_hint=Optional[torch.Tensor], 
+                "noise",
+                type_hint=Optional[torch.Tensor],
                 description="The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step."
             ),
             InputParam(
-                "image_latents", 
-                type_hint=Optional[torch.Tensor], 
+                "image_latents",
+                type_hint=Optional[torch.Tensor],
                 description="The image latents to use for the denoising process, for inpainting/image-to-image task only. Can be generated in vae_encode or prepare_latent step."
             ),
         ]
@@ -559,7 +556,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
-    
+
     @staticmethod
     def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
 
@@ -570,7 +567,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
                 extra_kwargs[key] = value
 
         return extra_kwargs
-    
+
     def check_inputs(self, components, block_state):
         if components.num_channels_unet == 4:
             if block_state.image_latents is None:
@@ -582,9 +579,9 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
-        
+
         self.check_inputs(components, block_state)
-        
+
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         block_state.extra_step_kwargs = self.prepare_extra_kwargs(components.scheduler.step, generator=block_state.generator, eta=block_state.eta)
 
@@ -592,12 +589,12 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
         # Perform scheduler step using the predicted output
         block_state.latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(block_state.noise_pred, t, block_state.latents, **block_state.extra_step_kwargs, **block_state.scheduler_step_kwargs, return_dict=False)[0]
-        
+
         if block_state.latents.dtype != block_state.latents_dtype:
             if torch.backends.mps.is_available():
                 # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                 block_state.latents = block_state.latents.to(block_state.latents_dtype)
-        
+
         # adjust latent for inpainting
         if components.num_channels_unet == 4:
             block_state.init_latents_proper = block_state.image_latents
@@ -629,32 +626,32 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     def loop_expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec(
-                "guider", 
-                ClassifierFreeGuidance, 
-                config=FrozenDict({"guidance_scale": 7.5}), 
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config"),
             ComponentSpec("scheduler", EulerDiscreteScheduler),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
-    
+
     @property
     def loop_intermediates_inputs(self) -> List[InputParam]:
         return [
             InputParam(
-                "timesteps", 
-                required=True, 
-                type_hint=torch.Tensor, 
+                "timesteps",
+                required=True,
+                type_hint=torch.Tensor,
                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
             ),
             InputParam(
-                "num_inference_steps", 
-                required=True, 
-                type_hint=int, 
+                "num_inference_steps",
+                required=True,
+                type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
             ),
         ]
-    
-    
+
+
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -783,618 +780,3 @@ class StableDiffusionXLAutoDenoiseStep(AutoPipelineBlocks):
             " - `StableDiffusionXLDenoiseStep` (denoise) is used when no controlnet_cond is provided (work for text2img, img2img and inpainting tasks)."
             " - `StableDiffusionXLControlNetDenoiseStep` (controlnet_denoise) is used when controlnet_cond is provided (work for text2img, img2img and inpainting tasks)."
         )
-
-
-
-
-
-
-
-#  YiYi Notes: alternatively, this is you can just write the denoise loop using a pipeline block, easier but not composible
-# class StableDiffusionXLDenoiseStep(PipelineBlock):
-
-#     model_name = "stable-diffusion-xl"
-
-#     @property
-#     def expected_components(self) -> List[ComponentSpec]:
-#         return [
-#             ComponentSpec(
-#                 "guider", 
-#                 ClassifierFreeGuidance, 
-#                 config=FrozenDict({"guidance_scale": 7.5}), 
-#                 default_creation_method="from_config"),
-#             ComponentSpec("scheduler", EulerDiscreteScheduler),
-#             ComponentSpec("unet", UNet2DConditionModel),
-#         ]
-
-#     @property
-#     def description(self) -> str:
-#         return (
-#             "Step that iteratively denoise the latents for the text-to-image/image-to-image/inpainting generation process"
-#         )
-
-#     @property
-#     def inputs(self) -> List[Tuple[str, Any]]:
-#         return [
-#             InputParam("cross_attention_kwargs"),
-#             InputParam("generator"),
-#             InputParam("eta", default=0.0),
-#             InputParam("num_images_per_prompt", default=1),
-#         ]
-
-#     @property
-#     def intermediates_inputs(self) -> List[str]:
-#         return [
-#             InputParam(
-#                 "latents", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
-#             ),
-#             InputParam(
-#                 "batch_size", 
-#                 required=True, 
-#                 type_hint=int, 
-#                 description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
-#             ),
-#             InputParam(
-#                 "timesteps", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
-#             ),
-#             InputParam(
-#                 "num_inference_steps", 
-#                 required=True, 
-#                 type_hint=int, 
-#                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
-#             ),
-#             InputParam(
-#                 "pooled_prompt_embeds", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The pooled prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step."
-#             ),
-#             InputParam(
-#                 "negative_pooled_prompt_embeds", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The negative pooled prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step.    "
-#             ),
-#             InputParam(
-#                 "add_time_ids", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The time ids to use as additional conditioning for the denoising process. Can be generated in prepare_additional_conditioning step."
-#             ),
-#             InputParam(
-#                 "negative_add_time_ids", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The negative time ids to use as additional conditioning for the denoising process. Can be generated in prepare_additional_conditioning step."
-#             ),
-#             InputParam(
-#                 "prompt_embeds", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step."
-#             ),
-#             InputParam(
-#                 "negative_prompt_embeds", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The negative prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step.   "
-#             ),
-#             InputParam(
-#                 "timestep_cond", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The guidance scale embedding to use for Latent Consistency Models(LCMs). Can be generated in prepare_additional_conditioning step."
-#             ),
-#             InputParam(
-#                 "mask", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
-#             ),
-#             InputParam(
-#                 "masked_image_latents", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The masked image latents to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
-#             ),
-#             InputParam(
-#                 "noise", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step."
-#             ),
-#             InputParam(
-#                 "image_latents", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The image latents to use for the denoising process, for inpainting/image-to-image task only. Can be generated in vae_encode or prepare_latent step."
-#             ),
-#             InputParam(
-#                 "ip_adapter_embeds", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
-#             ),
-#             InputParam(
-#                 "negative_ip_adapter_embeds", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The negative ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
-#             ),
-#         ]
-
-#     @property
-#     def intermediates_outputs(self) -> List[OutputParam]:
-#         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
-
-
-#     @staticmethod
-#     def check_inputs(components, block_state):
-
-#         num_channels_unet = components.unet.config.in_channels
-#         if num_channels_unet == 9:
-#             # default case for runwayml/stable-diffusion-inpainting
-#             if block_state.mask is None or block_state.masked_image_latents is None:
-#                 raise ValueError("mask and masked_image_latents must be provided for inpainting-specific Unet")
-#             num_channels_latents = block_state.latents.shape[1]
-#             num_channels_mask = block_state.mask.shape[1]
-#             num_channels_masked_image = block_state.masked_image_latents.shape[1]
-#             if num_channels_latents + num_channels_mask + num_channels_masked_image != num_channels_unet:
-#                 raise ValueError(
-#                     f"Incorrect configuration settings! The config of `components.unet`: {components.unet.config} expects"
-#                     f" {components.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-#                     f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-#                     f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-#                     " `components.unet` or your `mask_image` or `image` input."
-#                 )
-
-#     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs with self -> components
-#     @staticmethod
-#     def prepare_extra_step_kwargs(components, generator, eta):
-#         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-#         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-#         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-#         # and should be between [0, 1]
-
-#         accepts_eta = "eta" in set(inspect.signature(components.scheduler.step).parameters.keys())
-#         extra_step_kwargs = {}
-#         if accepts_eta:
-#             extra_step_kwargs["eta"] = eta
-
-#         # check if the scheduler accepts generator
-#         accepts_generator = "generator" in set(inspect.signature(components.scheduler.step).parameters.keys())
-#         if accepts_generator:
-#             extra_step_kwargs["generator"] = generator
-#         return extra_step_kwargs
-    
-#     @torch.no_grad()
-#     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
-
-#         block_state = self.get_block_state(state)
-#         self.check_inputs(components, block_state)
-
-#         block_state.num_channels_unet = components.unet.config.in_channels
-#         block_state.disable_guidance = True if components.unet.config.time_cond_proj_dim is not None else False
-#         if block_state.disable_guidance:
-#             components.guider.disable()
-#         else:
-#             components.guider.enable()
-
-#         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-#         block_state.extra_step_kwargs = self.prepare_extra_step_kwargs(components, block_state.generator, block_state.eta)
-#         block_state.num_warmup_steps = max(len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0)
-
-#         components.guider.set_input_fields(
-#             prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
-#             add_time_ids=("add_time_ids", "negative_add_time_ids"),
-#             pooled_prompt_embeds=("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
-#             ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
-#         )
-
-#         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-#             for i, t in enumerate(block_state.timesteps):
-#                 components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
-#                 guider_data = components.guider.prepare_inputs(block_state)
-
-#                 block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
-                
-#                 # Prepare for inpainting
-#                 if block_state.num_channels_unet == 9:
-#                     block_state.scaled_latents = torch.cat([block_state.scaled_latents, block_state.mask, block_state.masked_image_latents], dim=1)
-                
-#                 for batch in guider_data:
-#                     components.guider.prepare_models(components.unet)
-                    
-#                     # Prepare additional conditionings
-#                     batch.added_cond_kwargs = {
-#                         "text_embeds": batch.pooled_prompt_embeds,
-#                         "time_ids": batch.add_time_ids,
-#                     }
-#                     if batch.ip_adapter_embeds is not None:
-#                         batch.added_cond_kwargs["image_embeds"] = batch.ip_adapter_embeds
-                    
-#                     # Predict the noise residual
-#                     batch.noise_pred = components.unet(
-#                         block_state.scaled_latents,
-#                         t,
-#                         encoder_hidden_states=batch.prompt_embeds,
-#                         timestep_cond=block_state.timestep_cond,
-#                         cross_attention_kwargs=block_state.cross_attention_kwargs,
-#                         added_cond_kwargs=batch.added_cond_kwargs,
-#                         return_dict=False,
-#                     )[0]
-#                     components.guider.cleanup_models(components.unet)
-
-#                 # Perform guidance
-#                 block_state.noise_pred, scheduler_step_kwargs = components.guider(guider_data)
-                
-#                 # Perform scheduler step using the predicted output
-#                 block_state.latents_dtype = block_state.latents.dtype
-#                 block_state.latents = components.scheduler.step(block_state.noise_pred, t, block_state.latents, **block_state.extra_step_kwargs, **scheduler_step_kwargs, return_dict=False)[0]
-
-#                 if block_state.latents.dtype != block_state.latents_dtype:
-#                     if torch.backends.mps.is_available():
-#                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-#                         block_state.latents = block_state.latents.to(block_state.latents_dtype)
-                
-#                 if block_state.num_channels_unet == 4 and block_state.mask is not None and block_state.image_latents is not None:
-#                     block_state.init_latents_proper = block_state.image_latents
-#                     if i < len(block_state.timesteps) - 1:
-#                         block_state.noise_timestep = block_state.timesteps[i + 1]
-#                         block_state.init_latents_proper = components.scheduler.add_noise(
-#                             block_state.init_latents_proper, block_state.noise, torch.tensor([block_state.noise_timestep])
-#                         )
-
-#                     block_state.latents = (1 - block_state.mask) * block_state.init_latents_proper + block_state.mask * block_state.latents
-
-#                 if i == len(block_state.timesteps) - 1 or ((i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0):
-#                     progress_bar.update()
-
-#         self.add_block_state(state, block_state)
-
-#         return components, state
-
-
-
-# class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
-
-#     model_name = "stable-diffusion-xl"
-
-#     @property
-#     def expected_components(self) -> List[ComponentSpec]:
-#         return [
-#             ComponentSpec(
-#                 "guider", 
-#                 ClassifierFreeGuidance, 
-#                 config=FrozenDict({"guidance_scale": 7.5}), 
-#                 default_creation_method="from_config"),
-#             ComponentSpec("scheduler", EulerDiscreteScheduler),
-#             ComponentSpec("unet", UNet2DConditionModel),
-#             ComponentSpec("controlnet", ControlNetModel),
-#         ]
-
-#     @property
-#     def description(self) -> str:
-#         return "step that iteratively denoise the latents for the text-to-image/image-to-image/inpainting generation process. Using ControlNet to condition the denoising process"
-
-#     @property
-#     def inputs(self) -> List[Tuple[str, Any]]:
-#         return [
-#             InputParam("num_images_per_prompt", default=1),
-#             InputParam("cross_attention_kwargs"),
-#             InputParam("generator"),
-#             InputParam("eta", default=0.0),
-#             InputParam("controlnet_conditioning_scale", type_hint=float, default=1.0), # can expect either input or intermediate input, (intermediate input if both are passed)
-#         ]
-
-#     @property
-#     def intermediates_inputs(self) -> List[str]:
-#         return [
-#             InputParam(
-#                 "controlnet_cond", 
-#                 required=True,
-#                 type_hint=torch.Tensor,
-#                 description="The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
-#             ),
-#             InputParam(
-#                 "control_guidance_start", 
-#                 required=True,
-#                 type_hint=float,
-#                 description="The control guidance start value to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
-#             ),
-#             InputParam(
-#                 "control_guidance_end", 
-#                 required=True,
-#                 type_hint=float,
-#                 description="The control guidance end value to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
-#             ),
-#             InputParam(
-#                 "conditioning_scale", 
-#                 type_hint=float,
-#                 description="The controlnet conditioning scale value to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
-#             ),
-#             InputParam(
-#                 "guess_mode", 
-#                 required=True,
-#                 type_hint=bool,
-#                 description="The guess mode value to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
-#             ),
-#             InputParam(
-#                 "controlnet_keep",
-#                 required=True,
-#                 type_hint=List[float],
-#                 description="The controlnet keep values to use for the denoising process. Can be generated in prepare_controlnet_inputs step."
-#             ),
-#             InputParam(
-#                 "latents", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
-#             ),
-#             InputParam(
-#                 "batch_size", 
-#                 required=True, 
-#                 type_hint=int, 
-#                 description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
-#             ),
-#             InputParam(
-#                 "timesteps", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
-#             ),
-#             InputParam(
-#                 "prompt_embeds", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The prompt embeddings used to condition the denoising process. Can be generated in text_encoder step."
-#             ),
-#             InputParam(
-#                 "negative_prompt_embeds", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The negative prompt embeddings used to condition the denoising process. Can be generated in text_encoder step."
-#             ),
-#             InputParam(
-#                 "add_time_ids", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The time ids used to condition the denoising process. Can be generated in parepare_additional_conditioning step."
-#             ),
-#             InputParam(
-#                 "negative_add_time_ids", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The negative time ids used to condition the denoising process. Can be generated in parepare_additional_conditioning step."
-#             ),
-#             InputParam(
-#                 "pooled_prompt_embeds", 
-#                 required=True, 
-#                 type_hint=torch.Tensor, 
-#                 description="The pooled prompt embeddings used to condition the denoising process. Can be generated in text_encoder step."
-#             ),
-#             InputParam(
-#                 "negative_pooled_prompt_embeds", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The negative pooled prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step."
-#             ),
-#             InputParam(
-#                 "timestep_cond", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The guidance scale embedding to use for Latent Consistency Models(LCMs), can be generated by prepare_additional_conditioning step"
-#             ),
-#             InputParam(
-#                 "mask", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
-#             ),
-#             InputParam(
-#                 "masked_image_latents", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The masked image latents to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
-#             ),
-#             InputParam(
-#                 "noise", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step."
-#             ),
-#             InputParam(
-#                 "image_latents", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The image latents to use for the denoising process, for inpainting/image-to-image task only. Can be generated in vae_encode or prepare_latent step."
-#             ),
-#             InputParam(
-#                 "crops_coords", 
-#                 type_hint=Optional[Tuple[int]], 
-#                 description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step."
-#             ),
-#             InputParam(
-#                 "ip_adapter_embeds", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
-#             ),
-#             InputParam(
-#                 "negative_ip_adapter_embeds", 
-#                 type_hint=Optional[torch.Tensor], 
-#                 description="The negative ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
-#             ),
-#             InputParam(
-#                 "num_inference_steps", 
-#                 required=True, 
-#                 type_hint=int, 
-#                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
-#             ),
-#             InputParam(kwargs_type="controlnet_kwargs", description="additional kwargs for controlnet")
-#         ]
-
-#     @property
-#     def intermediates_outputs(self) -> List[OutputParam]:
-#         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
-
-#     @staticmethod
-#     def check_inputs(components, block_state):
-
-#         num_channels_unet = components.unet.config.in_channels
-#         if num_channels_unet == 9:
-#             # default case for runwayml/stable-diffusion-inpainting
-#             if block_state.mask is None or block_state.masked_image_latents is None:
-#                 raise ValueError("mask and masked_image_latents must be provided for inpainting-specific Unet")
-#             num_channels_latents = block_state.latents.shape[1]
-#             num_channels_mask = block_state.mask.shape[1]
-#             num_channels_masked_image = block_state.masked_image_latents.shape[1]
-#             if num_channels_latents + num_channels_mask + num_channels_masked_image != num_channels_unet:
-#                 raise ValueError(
-#                     f"Incorrect configuration settings! The config of `components.unet`: {components.unet.config} expects"
-#                     f" {components.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-#                     f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-#                     f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-#                     " `components.unet` or your `mask_image` or `image` input."
-#                 )
-#     @staticmethod
-#     def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
-
-#         accepted_kwargs = set(inspect.signature(func).parameters.keys())
-#         extra_kwargs = {}
-#         for key, value in kwargs.items():
-#             if key in accepted_kwargs and key not in exclude_kwargs:
-#                 extra_kwargs[key] = value
-
-#         return extra_kwargs
-
-
-#     @torch.no_grad()
-#     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
-        
-#         block_state = self.get_block_state(state)
-#         self.check_inputs(components, block_state)
-#         block_state.device = components._execution_device
-#         print(f" block_state: {block_state}")
-
-#         controlnet = unwrap_module(components.controlnet)
-
-#         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-#         block_state.extra_step_kwargs = self.prepare_extra_kwargs(components.scheduler.step, generator=block_state.generator, eta=block_state.eta)
-#         block_state.extra_controlnet_kwargs = self.prepare_extra_kwargs(controlnet.forward, exclude_kwargs=["controlnet_cond", "conditioning_scale", "guess_mode"], **block_state.controlnet_kwargs)
-
-#         block_state.num_warmup_steps = max(len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0)
-        
-#         # (1) setup guider
-#         # disable for LCMs
-#         block_state.disable_guidance = True if components.unet.config.time_cond_proj_dim is not None else False
-#         if block_state.disable_guidance:
-#             components.guider.disable()
-#         else:
-#             components.guider.enable()
-#         components.guider.set_input_fields(
-#             prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
-#             add_time_ids=("add_time_ids", "negative_add_time_ids"),
-#             pooled_prompt_embeds=("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
-#             ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
-#         )
-
-#         # (5) Denoise loop
-#         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-#             for i, t in enumerate(block_state.timesteps):
-
-#                 # prepare latent input for unet
-#                 block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
-#                 # adjust latent input for inpainting
-#                 block_state.num_channels_unet = components.unet.config.in_channels
-#                 if block_state.num_channels_unet == 9:
-#                     block_state.scaled_latents = torch.cat([block_state.scaled_latents, block_state.mask, block_state.masked_image_latents], dim=1)
-
-
-#                 # cond_scale (controlnet input)
-#                 if isinstance(block_state.controlnet_keep[i], list):
-#                     block_state.cond_scale = [c * s for c, s in zip(block_state.conditioning_scale, block_state.controlnet_keep[i])]
-#                 else:
-#                     block_state.controlnet_cond_scale = block_state.conditioning_scale
-#                     if isinstance(block_state.controlnet_cond_scale, list):
-#                         block_state.controlnet_cond_scale = block_state.controlnet_cond_scale[0]
-#                     block_state.cond_scale = block_state.controlnet_cond_scale * block_state.controlnet_keep[i]
-                
-#                 # default controlnet output/unet input for guess mode + conditional path
-#                 block_state.down_block_res_samples_zeros = None
-#                 block_state.mid_block_res_sample_zeros = None
-                
-#                 # guided denoiser step
-#                 components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
-#                 guider_state = components.guider.prepare_inputs(block_state)
-
-#                 for guider_state_batch in guider_state:
-#                     components.guider.prepare_models(components.unet)
-                    
-#                     # Prepare additional conditionings
-#                     guider_state_batch.added_cond_kwargs = {
-#                         "text_embeds": guider_state_batch.pooled_prompt_embeds,
-#                         "time_ids": guider_state_batch.add_time_ids,
-#                     }
-#                     if guider_state_batch.ip_adapter_embeds is not None:
-#                         guider_state_batch.added_cond_kwargs["image_embeds"] = guider_state_batch.ip_adapter_embeds
-                    
-#                     # Prepare controlnet additional conditionings
-#                     guider_state_batch.controlnet_added_cond_kwargs = {
-#                         "text_embeds": guider_state_batch.pooled_prompt_embeds,
-#                         "time_ids": guider_state_batch.add_time_ids,
-#                     }
-
-#                     if block_state.guess_mode and not components.guider.is_conditional:
-#                         # guider always run uncond batch first, so these tensors should be set already
-#                         guider_state_batch.down_block_res_samples = block_state.down_block_res_samples_zeros
-#                         guider_state_batch.mid_block_res_sample = block_state.mid_block_res_sample_zeros
-#                     else:
-#                         guider_state_batch.down_block_res_samples, guider_state_batch.mid_block_res_sample = components.controlnet(
-#                             block_state.scaled_latents,
-#                             t,
-#                             encoder_hidden_states=guider_state_batch.prompt_embeds,
-#                             controlnet_cond=block_state.controlnet_cond,
-#                             conditioning_scale=block_state.conditioning_scale,
-#                             guess_mode=block_state.guess_mode,
-#                             added_cond_kwargs=guider_state_batch.controlnet_added_cond_kwargs,
-#                             return_dict=False,
-#                             **block_state.extra_controlnet_kwargs,
-#                         )
-                    
-#                         if block_state.down_block_res_samples_zeros is None:
-#                             block_state.down_block_res_samples_zeros = [torch.zeros_like(d) for d in guider_state_batch.down_block_res_samples]
-#                         if block_state.mid_block_res_sample_zeros is None:
-#                             block_state.mid_block_res_sample_zeros = torch.zeros_like(guider_state_batch.mid_block_res_sample)
-                    
-                    
-                    
-#                     guider_state_batch.noise_pred = components.unet(
-#                         block_state.scaled_latents,
-#                         t,
-#                         encoder_hidden_states=guider_state_batch.prompt_embeds,
-#                         timestep_cond=block_state.timestep_cond,
-#                         cross_attention_kwargs=block_state.cross_attention_kwargs,
-#                         added_cond_kwargs=guider_state_batch.added_cond_kwargs,
-#                         down_block_additional_residuals=guider_state_batch.down_block_res_samples,
-#                         mid_block_additional_residual=guider_state_batch.mid_block_res_sample,
-#                         return_dict=False,
-#                     )[0]
-#                     components.guider.cleanup_models(components.unet)
-                
-#                 # Perform guidance
-#                 block_state.noise_pred, scheduler_step_kwargs = components.guider(guider_state)
-
-#                 # Perform scheduler step using the predicted output
-#                 block_state.latents_dtype = block_state.latents.dtype
-#                 block_state.latents = components.scheduler.step(block_state.noise_pred, t, block_state.latents, **block_state.extra_step_kwargs, **scheduler_step_kwargs, return_dict=False)[0]
-                
-#                 if block_state.latents.dtype != block_state.latents_dtype:
-#                     if torch.backends.mps.is_available():
-#                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-#                         block_state.latents = block_state.latents.to(block_state.latents_dtype)
-                
-#                 # adjust latent for inpainting
-#                 if block_state.num_channels_unet == 4 and block_state.mask is not None and block_state.image_latents is not None:
-#                     block_state.init_latents_proper = block_state.image_latents
-#                     if i < len(block_state.timesteps) - 1:
-#                         block_state.noise_timestep = block_state.timesteps[i + 1]
-#                         block_state.init_latents_proper = components.scheduler.add_noise(
-#                             block_state.init_latents_proper, block_state.noise, torch.tensor([block_state.noise_timestep])
-#                         )
-
-#                     block_state.latents = (1 - block_state.mask) * block_state.init_latents_proper + block_state.mask * block_state.latents
-
-#                 if i == len(block_state.timesteps) - 1 or ((i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0):
-#                     progress_bar.update()
-        
-#         self.add_block_state(state, block_state)
-
-#         return components, state

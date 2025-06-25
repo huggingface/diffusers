@@ -13,44 +13,40 @@
 # limitations under the License.
 
 from ..modular_pipeline_utils import InsertableOrderedDict
+from .before_denoise import (
+    StableDiffusionXLAutoBeforeDenoiseStep,
+    StableDiffusionXLControlNetInputStep,
+    StableDiffusionXLControlNetUnionInputStep,
+    StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
+    StableDiffusionXLImg2ImgPrepareLatentsStep,
+    StableDiffusionXLImg2ImgSetTimestepsStep,
+    StableDiffusionXLInpaintPrepareLatentsStep,
+    StableDiffusionXLInputStep,
+    StableDiffusionXLPrepareAdditionalConditioningStep,
+    StableDiffusionXLPrepareLatentsStep,
+    StableDiffusionXLSetTimestepsStep,
+)
+from .decoders import StableDiffusionXLAutoDecodeStep, StableDiffusionXLDecodeStep, StableDiffusionXLInpaintDecodeStep
 
 # Import all the necessary block classes
 from .denoise import (
     StableDiffusionXLAutoDenoiseStep,
     StableDiffusionXLControlNetDenoiseStep,
     StableDiffusionXLDenoiseLoop,
-    StableDiffusionXLInpaintDenoiseLoop
-)
-from .before_denoise import (
-    StableDiffusionXLAutoBeforeDenoiseStep,
-    StableDiffusionXLInputStep,
-    StableDiffusionXLSetTimestepsStep,
-    StableDiffusionXLPrepareLatentsStep,
-    StableDiffusionXLPrepareAdditionalConditioningStep,
-    StableDiffusionXLImg2ImgSetTimestepsStep,
-    StableDiffusionXLImg2ImgPrepareLatentsStep,
-    StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
-    StableDiffusionXLInpaintPrepareLatentsStep,
-    StableDiffusionXLControlNetInputStep,
-    StableDiffusionXLControlNetUnionInputStep
+    StableDiffusionXLInpaintDenoiseLoop,
 )
 from .encoders import (
-    StableDiffusionXLTextEncoderStep,
     StableDiffusionXLAutoIPAdapterStep,
     StableDiffusionXLAutoVaeEncoderStep,
-    StableDiffusionXLVaeEncoderStep,
     StableDiffusionXLInpaintVaeEncoderStep,
-    StableDiffusionXLIPAdapterStep
-)
-from .decoders import (
-    StableDiffusionXLDecodeStep,
-    StableDiffusionXLInpaintDecodeStep,
-    StableDiffusionXLAutoDecodeStep
+    StableDiffusionXLIPAdapterStep,
+    StableDiffusionXLTextEncoderStep,
+    StableDiffusionXLVaeEncoderStep,
 )
 
 
 # YiYi notes: comment out for now, work on this later
-# block mapping 
+# block mapping
 TEXT2IMAGE_BLOCKS = InsertableOrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
     ("input", StableDiffusionXLInputStep),

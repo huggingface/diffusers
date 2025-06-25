@@ -12,29 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from typing import Any, List, Optional, Tuple, Union, Dict
+from typing import Any, List, Tuple, Union
 
+import numpy as np
 import PIL
 import torch
-import numpy as np
-from collections import OrderedDict
 
-from ...image_processor import VaeImageProcessor, PipelineImageInput
+from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from ...utils import logging
-
-from ...pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
-from ...configuration_utils import FrozenDict
-
-from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from ..modular_pipeline import (
     AutoPipelineBlocks,
     PipelineBlock,
     PipelineState,
     SequentialPipelineBlocks,
 )
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -44,15 +40,15 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class StableDiffusionXLDecodeStep(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
-                "image_processor", 
-                VaeImageProcessor, 
-                config=FrozenDict({"vae_scale_factor": 8}), 
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
                 default_creation_method="from_config"),
         ]
 
@@ -160,10 +156,10 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("image", required=True),
-            InputParam("mask_image", required=True), 
+            InputParam("mask_image", required=True),
             InputParam("padding_mask_crop"),
         ]
-    
+
     @property
     def intermediates_inputs(self) -> List[str]:
         return [

@@ -12,44 +12,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import re
 import inspect
-from dataclasses import dataclass, asdict, field, fields
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, Literal
-
-from ..utils.import_utils import is_torch_available
-from ..configuration_utils import FrozenDict, ConfigMixin
+import re
 from collections import OrderedDict
+from dataclasses import dataclass, field, fields
+from typing import Any, Dict, List, Literal, Optional, Type, Union
+
+from ..configuration_utils import ConfigMixin, FrozenDict
+from ..utils.import_utils import is_torch_available
+
 
 if is_torch_available():
-    import torch
+    pass
 
 
 class InsertableOrderedDict(OrderedDict):
     def insert(self, key, value, index):
         items = list(self.items())
-        
+
         # Remove key if it already exists to avoid duplicates
         items = [(k, v) for k, v in items if k != key]
-        
+
         # Insert at the specified index
         items.insert(index, (key, value))
-        
+
         # Clear and update self
         self.clear()
         self.update(items)
-        
+
         # Return self for method chaining
         return self
-    
+
     def __repr__(self):
         if not self:
             return "InsertableOrderedDict()"
-        
+
         items = []
         for i, (key, value) in enumerate(self.items()):
             items.append(f"{i}: ({repr(key)}, {repr(value)})")
-        
+
         return "InsertableOrderedDict([\n  " + ",\n  ".join(items) + "\n])"
 
 
@@ -85,24 +86,24 @@ class ComponentSpec:
     variant: Optional[str] = field(default=None, metadata={"loading": True})
     revision: Optional[str] = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
-    
-    
+
+
     def __hash__(self):
         """Make ComponentSpec hashable, using load_id as the hash value."""
         return hash((self.name, self.load_id, self.default_creation_method))
-    
+
     def __eq__(self, other):
         """Compare ComponentSpec objects based on name and load_id."""
         if not isinstance(other, ComponentSpec):
             return False
-        return (self.name == other.name and 
-                self.load_id == other.load_id and 
+        return (self.name == other.name and
+                self.load_id == other.load_id and
                 self.default_creation_method == other.default_creation_method)
-    
+
     @classmethod
     def from_component(cls, name: str, component: Any) -> Any:
         """Create a ComponentSpec from a Component created by `create` or `load` method."""
-        
+
         if not hasattr(component, "_diffusers_load_id"):
             raise ValueError("Component is not created by `create` or `load` method")
         # throw a error if component is created with `create` method but not a subclass of ConfigMixin
@@ -113,19 +114,19 @@ class ComponentSpec:
                 "created with `ComponentSpec.load` method"
                 "or created with `ComponentSpec.create` and a subclass of ConfigMixin"
             )
-        
+
         type_hint = component.__class__
         default_creation_method = "from_config" if component._diffusers_load_id == "null" else "from_pretrained"
-        
+
         if isinstance(component, ConfigMixin) and default_creation_method == "from_config":
             config = component.config
         else:
             config = None
-     
+
         load_spec = cls.decode_load_id(component._diffusers_load_id)
-    
+
         return cls(name=name, type_hint=type_hint, config=config, default_creation_method=default_creation_method, **load_spec)
-        
+
     @classmethod
     def loading_fields(cls) -> List[str]:
         """
@@ -133,8 +134,8 @@ class ComponentSpec:
         (i.e. those whose field.metadata["loading"] is True).
         """
         return [f.name for f in fields(cls) if f.metadata.get("loading", False)]
-    
-    
+
+
     @property
     def load_id(self) -> str:
         """
@@ -144,7 +145,7 @@ class ComponentSpec:
         parts = [getattr(self, k) for k in self.loading_fields()]
         parts = ["null" if p is None else p for p in parts]
         return "|".join(p for p in parts if p)
-    
+
     @classmethod
     def decode_load_id(cls, load_id: str) -> Dict[str, Optional[str]]:
         """
@@ -165,26 +166,26 @@ class ComponentSpec:
             If a segment value is "null", it's replaced with None.
             Returns None if load_id is "null" (indicating component not created with `load` method).
         """
-            
+
         # Get all loading fields in order
         loading_fields = cls.loading_fields()
         result = {f: None for f in loading_fields}
 
         if load_id == "null":
             return result
-        
+
         # Split the load_id
         parts = load_id.split("|")
-        
+
         # Map parts to loading fields by position
         for i, part in enumerate(parts):
             if i < len(loading_fields):
                 # Convert "null" string back to None
                 result[loading_fields[i]] = None if part == "null" else part
-        
+
         return result
-    
-    
+
+
     # YiYi TODO: I think we should only support ConfigMixin for this method (after we make guider and image_processors config mixin)
     # otherwise we cannot do spec -> spec.create() -> component -> ComponentSpec.from_component(component)
     # the config info is lost in the process
@@ -194,11 +195,11 @@ class ComponentSpec:
 
         if self.type_hint is None or not isinstance(self.type_hint, type):
             raise ValueError(
-                f"`type_hint` is required when using from_config creation method."
+                "`type_hint` is required when using from_config creation method."
             )
-    
+
         config = config or self.config or {}
-    
+
         if issubclass(self.type_hint, ConfigMixin):
             component = self.type_hint.from_config(config, **kwargs)
         else:
@@ -211,17 +212,17 @@ class ComponentSpec:
                 if k in signature_params:
                     init_kwargs[k] = v
             component = self.type_hint(**init_kwargs)
-        
+
         component._diffusers_load_id = "null"
         if hasattr(component, "config"):
             self.config = component.config
-        
+
         return component
-    
+
     # YiYi TODO: add guard for type of model, if it is supported by from_pretrained
     def load(self, **kwargs) -> Any:
         """Load component using from_pretrained."""
-        
+
         # select loading fields from kwargs passed from user: e.g. repo, subfolder, variant, revision, note the list could change
         passed_loading_kwargs = {key: kwargs.pop(key) for key in self.loading_fields() if key in kwargs}
         # merge loading field value in the spec with user passed values to create load_kwargs
@@ -229,8 +230,8 @@ class ComponentSpec:
         # repo is a required argument for from_pretrained, a.k.a. pretrained_model_name_or_path
         repo = load_kwargs.pop("repo", None)
         if repo is None:
-            raise ValueError(f"`repo` info is required when using `load` method (you can directly set it in `repo` field of the ComponentSpec or pass it as an argument)")
-        
+            raise ValueError("`repo` info is required when using `load` method (you can directly set it in `repo` field of the ComponentSpec or pass it as an argument)")
+
         if self.type_hint is None:
             try:
                 from diffusers import AutoModel
@@ -244,17 +245,17 @@ class ComponentSpec:
                 component = self.type_hint.from_pretrained(repo, **load_kwargs, **kwargs)
             except Exception as e:
                 raise ValueError(f"Unable to load {self.name} using load method: {e}")
-        
+
         self.repo = repo
         for k, v in load_kwargs.items():
             setattr(self, k, v)
         component._diffusers_load_id = self.load_id
-            
+
         return component
-    
 
 
-@dataclass 
+
+@dataclass
 class ConfigSpec:
     """Specification for a pipeline configuration parameter."""
     name: str
@@ -281,7 +282,7 @@ class InputParam:
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
 
 
-@dataclass 
+@dataclass
 class OutputParam:
     """Specification for an output parameter."""
     name: str
@@ -315,14 +316,14 @@ def format_inputs_short(inputs):
     """
     required_inputs = [param for param in inputs if param.required]
     optional_inputs = [param for param in inputs if not param.required]
-    
+
     required_str = ", ".join(param.name for param in required_inputs)
     optional_str = ", ".join(f"{param.name}={param.default}" for param in optional_inputs)
-    
+
     inputs_str = required_str
     if optional_str:
         inputs_str = f"{inputs_str}, {optional_str}" if required_str else optional_str
-        
+
     return inputs_str
 
 
@@ -353,18 +354,18 @@ def format_intermediates_short(intermediates_inputs, required_intermediates_inpu
             else:
                 inp_name = inp.name
             input_parts.append(inp_name)
-    
+
     # Handle modified variables (appear in both inputs and outputs)
     inputs_set = {inp.name for inp in intermediates_inputs}
     modified_parts = []
     new_output_parts = []
-    
+
     for out in intermediates_outputs:
         if out.name in inputs_set:
             modified_parts.append(out.name)
         else:
             new_output_parts.append(out.name)
-    
+
     result = []
     if input_parts:
         result.append(f"    - inputs: {', '.join(input_parts)}")
@@ -372,7 +373,7 @@ def format_intermediates_short(intermediates_inputs, required_intermediates_inpu
         result.append(f"    - modified: {', '.join(modified_parts)}")
     if new_output_parts:
         result.append(f"    - outputs: {', '.join(new_output_parts)}")
-        
+
     return "\n".join(result) if result else "    (none)"
 
 
@@ -390,18 +391,18 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
     """
     if not params:
         return ""
-        
+
     base_indent = " " * indent_level
     param_indent = " " * (indent_level + 4)
     desc_indent = " " * (indent_level + 8)
     formatted_params = []
-    
+
     def get_type_str(type_hint):
         if hasattr(type_hint, "__origin__") and type_hint.__origin__ is Union:
             types = [t.__name__ if hasattr(t, "__name__") else str(t) for t in type_hint.__args__]
             return f"Union[{', '.join(types)}]"
         return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
-    
+
     def wrap_text(text, indent, max_length):
         """Wrap text while preserving markdown links and maintaining indentation."""
         words = text.split()
@@ -411,7 +412,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
 
         for word in words:
             word_length = len(word) + (1 if current_line else 0)
-            
+
             if current_line and current_length + word_length > max_length:
                 lines.append(" ".join(current_line))
                 current_line = [word]
@@ -419,22 +420,22 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
             else:
                 current_line.append(word)
                 current_length += word_length
-        
+
         if current_line:
             lines.append(" ".join(current_line))
-            
+
         return f"\n{indent}".join(lines)
-    
+
     # Add the header
     formatted_params.append(f"{base_indent}{header}:")
-    
+
     for param in params:
         # Format parameter name and type
         type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
         # YiYi Notes: remove this line if we remove kwargs_type
         name = f'**{param.kwargs_type}' if param.name is None and param.kwargs_type is not None else param.name
         param_str = f"{param_indent}{name} (`{type_str}`"
-        
+
         # Add optional tag and default value if parameter is an InputParam and optional
         if hasattr(param, "required"):
             if not param.required:
@@ -442,7 +443,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
                 if param.default is not None:
                     param_str += f", defaults to {param.default}"
         param_str += "):"
-            
+
         # Add description on a new line with additional indentation and wrapping
         if param.description:
             desc = re.sub(
@@ -452,9 +453,9 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
             )
             wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
             param_str += f"\n{desc_indent}{wrapped_desc}"
-            
+
         formatted_params.append(param_str)
-    
+
     return "\n\n".join(formatted_params)
 
 
@@ -500,42 +501,42 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
     """
     if not components:
         return ""
-        
+
     base_indent = " " * indent_level
     component_indent = " " * (indent_level + 4)
     formatted_components = []
-    
+
     # Add the header
     formatted_components.append(f"{base_indent}Components:")
     if add_empty_lines:
         formatted_components.append("")
-    
+
     # Add each component with optional empty lines between them
     for i, component in enumerate(components):
         # Get type name, handling special cases
         type_name = component.type_hint.__name__ if hasattr(component.type_hint, "__name__") else str(component.type_hint)
-        
+
         component_desc = f"{component_indent}{component.name} (`{type_name}`)"
         if component.description:
             component_desc += f": {component.description}"
-        
+
         # Get the loading fields dynamically
         loading_field_values = []
         for field_name in component.loading_fields():
             field_value = getattr(component, field_name)
             if field_value is not None:
                 loading_field_values.append(f"{field_name}={field_value}")
-        
+
         # Add loading field information if available
         if loading_field_values:
             component_desc += f" [{', '.join(loading_field_values)}]"
-            
+
         formatted_components.append(component_desc)
-        
+
         # Add an empty line after each component except the last one
         if add_empty_lines and i < len(components) - 1:
             formatted_components.append("")
-    
+
     return "\n".join(formatted_components)
 
 
@@ -553,27 +554,27 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
     """
     if not configs:
         return ""
-        
+
     base_indent = " " * indent_level
     config_indent = " " * (indent_level + 4)
     formatted_configs = []
-    
+
     # Add the header
     formatted_configs.append(f"{base_indent}Configs:")
     if add_empty_lines:
         formatted_configs.append("")
-    
+
     # Add each config with optional empty lines between them
     for i, config in enumerate(configs):
         config_desc = f"{config_indent}{config.name} (default: {config.default})"
         if config.description:
             config_desc += f": {config.description}"
         formatted_configs.append(config_desc)
-        
+
         # Add an empty line after each config except the last one
         if add_empty_lines and i < len(configs) - 1:
             formatted_configs.append("")
-    
+
     return "\n".join(formatted_configs)
 
 
@@ -618,9 +619,9 @@ def make_doc_string(inputs, intermediates_inputs, outputs, description="", class
 
     # Add inputs section
     output += format_input_params(inputs + intermediates_inputs, indent_level=2)
-    
+
     # Add outputs section
     output += "\n\n"
     output += format_output_params(outputs, indent_level=2)
 
-    return output 
+    return output

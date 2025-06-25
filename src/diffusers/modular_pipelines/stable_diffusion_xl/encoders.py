@@ -12,17 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from typing import Any, List, Optional, Tuple, Union, Dict
+from typing import List, Optional, Tuple
 
-import PIL
 import torch
-from collections import OrderedDict
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
-from ...image_processor import VaeImageProcessor, PipelineImageInput
-from ...loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin, ModularIPAdapterMixin
-from ...models import ControlNetModel, ImageProjection, UNet2DConditionModel, AutoencoderKL, ControlNetUnionModel
-from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
+from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
+from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import ModularIPAdapterMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -30,26 +35,10 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor, unwrap_module
-from ...pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from ...configuration_utils import FrozenDict
-
-from transformers import (
-    CLIPTextModel,
-    CLIPImageProcessor,
-    CLIPTextModelWithProjection,
-    CLIPTokenizer,
-    CLIPVisionModelWithProjection,
-)
-
-from ...schedulers import EulerDiscreteScheduler
-from ...guiders import ClassifierFreeGuidance
-
+from ..modular_pipeline import AutoPipelineBlocks, PipelineBlock, PipelineState
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_loader import StableDiffusionXLModularLoader
-from ..modular_pipeline import PipelineBlock, PipelineState, AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam, ConfigSpec
 
-import numpy as np
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -71,7 +60,7 @@ def retrieve_latents(
 class StableDiffusionXLIPAdapterStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
-    
+
     @property
     def description(self) -> str:
         return (
@@ -79,7 +68,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
             " See [ModularIPAdapterMixin](https://huggingface.co/docs/diffusers/api/loaders/ip_adapter#diffusers.loaders.ModularIPAdapterMixin)"
             " for more details"
         )
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
@@ -87,8 +76,8 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
             ComponentSpec("feature_extractor", CLIPImageProcessor, config=FrozenDict({"size": 224, "crop_size": 224}), default_creation_method="from_config"),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec(
-                "guider", 
-                ClassifierFreeGuidance, 
+                "guider",
+                ClassifierFreeGuidance,
                 config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config"),
         ]
@@ -97,8 +86,8 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(
-                "ip_adapter_image", 
-                PipelineImageInput, 
+                "ip_adapter_image",
+                PipelineImageInput,
                 required=True,
                 description="The image(s) to be used as ip adapter"
             )
@@ -111,7 +100,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
             OutputParam("ip_adapter_embeds", type_hint=torch.Tensor, description="IP adapter image embeddings"),
             OutputParam("negative_ip_adapter_embeds", type_hint=torch.Tensor, description="Negative IP adapter image embeddings")
         ]
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image with self -> components
     @staticmethod
     def encode_image(components, image, device, num_images_per_prompt, output_hidden_states=None):
@@ -137,7 +126,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
             uncond_image_embeds = torch.zeros_like(image_embeds)
 
             return image_embeds, uncond_image_embeds
-    
+
     # modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
         self, components, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, prepare_unconditional_embeds
@@ -219,7 +208,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         return(
             "Text Encoder step that generate text_embeddings to guide the image generation"
         )
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
@@ -228,9 +217,9 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             ComponentSpec("tokenizer", CLIPTokenizer),
             ComponentSpec("tokenizer_2", CLIPTokenizer),
             ComponentSpec(
-                "guider", 
-                ClassifierFreeGuidance, 
-                config=FrozenDict({"guidance_scale": 7.5}), 
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config"),
         ]
 
@@ -546,7 +535,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
 
     model_name = "stable-diffusion-xl"
 
-    
+
     @property
     def description(self) -> str:
         return (
@@ -558,9 +547,9 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
-                "image_processor", 
-                VaeImageProcessor, 
-                config=FrozenDict({"vae_scale_factor": 8}), 
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
                 default_creation_method="from_config"),
         ]
 
@@ -576,7 +565,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
     def intermediates_inputs(self) -> List[InputParam]:
         return [
             InputParam("generator"),
-            InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"), 
+            InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
             InputParam("preprocess_kwargs", type_hint=Optional[dict], description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]")]
 
     @property
@@ -586,13 +575,13 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
     # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image with self -> components
     # YiYi TODO: update the _encode_vae_image so that we can use #Coped from
     def _encode_vae_image(self, components, image: torch.Tensor, generator: torch.Generator):
-        
+
         latents_mean = latents_std = None
         if hasattr(components.vae.config, "latents_mean") and components.vae.config.latents_mean is not None:
             latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, 4, 1, 1)
         if hasattr(components.vae.config, "latents_std") and components.vae.config.latents_std is not None:
             latents_std = torch.tensor(components.vae.config.latents_std).view(1, 4, 1, 1)
-        
+
         dtype = image.dtype
         if components.vae.config.force_upcast:
             image = image.float()
@@ -618,8 +607,8 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         else:
             image_latents = components.vae.config.scaling_factor * image_latents
 
-        return image_latents 
-    
+        return image_latents
+
 
 
     @torch.no_grad()
@@ -628,7 +617,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         block_state.preprocess_kwargs = block_state.preprocess_kwargs or {}
         block_state.device = components._execution_device
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
-        
+
         block_state.image = components.image_processor.preprocess(block_state.image, height=block_state.height, width=block_state.width, **block_state.preprocess_kwargs)
         block_state.image = block_state.image.to(device=block_state.device, dtype=block_state.dtype)
 
@@ -651,23 +640,23 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
 
 class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
-                "image_processor", 
-                VaeImageProcessor, 
-                config=FrozenDict({"vae_scale_factor": 8}), 
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
                 default_creation_method="from_config"),
             ComponentSpec(
-                "mask_processor", 
-                VaeImageProcessor, 
+                "mask_processor",
+                VaeImageProcessor,
                 config=FrozenDict({"do_normalize": False, "vae_scale_factor": 8, "do_binarize": True, "do_convert_grayscale": True}),
                 default_creation_method="from_config"),
         ]
-        
+
 
     @property
     def description(self) -> str:
@@ -694,21 +683,21 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("image_latents", type_hint=torch.Tensor, description="The latents representation of the input image"), 
-                OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for the inpainting process"), 
-                OutputParam("masked_image_latents", type_hint=torch.Tensor, description="The masked image latents to use for the inpainting process (only for inpainting-specifid unet)"), 
+        return [OutputParam("image_latents", type_hint=torch.Tensor, description="The latents representation of the input image"),
+                OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for the inpainting process"),
+                OutputParam("masked_image_latents", type_hint=torch.Tensor, description="The masked image latents to use for the inpainting process (only for inpainting-specifid unet)"),
                 OutputParam("crops_coords", type_hint=Optional[Tuple[int, int]], description="The crop coordinates to use for the preprocess/postprocess of the image and mask")]
 
     # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image with self -> components
     # YiYi TODO: update the _encode_vae_image so that we can use #Coped from
     def _encode_vae_image(self, components, image: torch.Tensor, generator: torch.Generator):
-        
+
         latents_mean = latents_std = None
         if hasattr(components.vae.config, "latents_mean") and components.vae.config.latents_mean is not None:
             latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, 4, 1, 1)
         if hasattr(components.vae.config, "latents_std") and components.vae.config.latents_std is not None:
             latents_std = torch.tensor(components.vae.config.latents_std).view(1, 4, 1, 1)
-        
+
         dtype = image.dtype
         if components.vae.config.force_upcast:
             image = image.float()
@@ -734,7 +723,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         else:
             image_latents = components.vae.config.scaling_factor * image_latents
 
-        return image_latents 
+        return image_latents
 
     # modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.prepare_mask_latents
     # do not accept do_classifier_free_guidance
@@ -784,8 +773,8 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
             masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
 
         return mask, masked_image_latents
-    
-     
+
+
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
@@ -801,7 +790,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         else:
             block_state.crops_coords = None
             block_state.resize_mode = "default"
-        
+
         block_state.image = components.image_processor.preprocess(block_state.image, height=block_state.height, width=block_state.width, crops_coords=block_state.crops_coords, resize_mode=block_state.resize_mode)
         block_state.image = block_state.image.to(dtype=torch.float32)
 
@@ -834,7 +823,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
 
 # auto blocks (YiYi TODO: maybe move all the auto blocks to a separate file)
 # Encode
-class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks): 
+class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLInpaintVaeEncoderStep, StableDiffusionXLVaeEncoderStep]
     block_names = ["inpaint", "img2img"]
     block_trigger_inputs = ["mask_image", "image"]

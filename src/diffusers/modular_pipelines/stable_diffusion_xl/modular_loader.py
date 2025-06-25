@@ -12,19 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Optional, Tuple, Union, Dict
+from typing import List, Optional, Tuple, Union
+
+import numpy as np
 import PIL
 import torch
-import numpy as np
 
-from ...loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin, ModularIPAdapterMixin
 from ...image_processor import PipelineImageInput
+from ...loaders import ModularIPAdapterMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...pipelines.pipeline_utils import StableDiffusionMixin
 from ...pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from ...utils import logging
-
 from ..modular_pipeline import ModularLoader
 from ..modular_pipeline_utils import InputParam, OutputParam
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
