@@ -29,6 +29,7 @@ from huggingface_hub import DDUFEntry
 from huggingface_hub.utils import EntryNotFoundError
 
 from ..quantizers import DiffusersQuantizer
+from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     GGUF_FILE_EXTENSION,
     SAFE_WEIGHTS_INDEX_NAME,
@@ -229,6 +230,7 @@ def load_model_dict_into_meta(
     """
 
     is_quantized = hf_quantizer is not None
+    is_higgs = is_quantized and hf_quantizer.quantization_config.quant_method == QuantizationMethod.HIGGS
     empty_state_dict = model.state_dict()
 
     for param_name, param in state_dict.items():
@@ -274,7 +276,8 @@ def load_model_dict_into_meta(
 
         # bnb params are flattened.
         # gguf quants have a different shape based on the type of quantization applied
-        if empty_state_dict[param_name].shape != param.shape:
+        # higgs quants repack the weights so they will have different shapes
+        if empty_state_dict[param_name].shape != param.shape and not is_higgs:
             if (
                 is_quantized
                 and hf_quantizer.pre_quantized
@@ -298,7 +301,7 @@ def load_model_dict_into_meta(
             hf_quantizer.create_quantized_param(
                 model, param, param_name, param_device, state_dict, unexpected_keys, dtype=dtype
             )
-        else:
+        elif hf_quantizer is not None:
             set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
 
     return offload_index, state_dict_index
