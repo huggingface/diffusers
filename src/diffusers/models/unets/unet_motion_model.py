@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1873,7 +1873,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float) -> None:
-        r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
+        r"""Enables the FreeU mechanism from https://huggingface.co/papers/2309.11497.
 
         The suffixes after the scaling factors represent the stage blocks where they are being applied.
 

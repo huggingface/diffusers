@@ -120,11 +120,11 @@ if __name__ == "__main__":
     parser.add_argument("--schnell", action="store_true", help="run flux schnell instead of dev")
     parser.add_argument("--width", type=int, default=1024, help="width of the image to generate")
     parser.add_argument("--height", type=int, default=1024, help="height of the image to generate")
-    parser.add_argument("--guidance", type=float, default=3.5, help="gauidance strentgh for dev")
+    parser.add_argument("--guidance", type=float, default=3.5, help="guidance strength for dev")
     parser.add_argument("--seed", type=int, default=None, help="seed for inference")
     parser.add_argument("--profile", action="store_true", help="enable profiling")
     parser.add_argument("--profile-duration", type=int, default=10000, help="duration for profiling in msec.")
-    parser.add_argument("--itters", type=int, default=15, help="tiems to run inference and get avg time in sec.")
+    parser.add_argument("--itters", type=int, default=15, help="items to run inference and get avg time in sec.")
     args = parser.parse_args()
     if args.schnell:
         ckpt_id = "black-forest-labs/FLUX.1-schnell"

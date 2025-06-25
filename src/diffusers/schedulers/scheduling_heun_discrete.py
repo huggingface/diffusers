@@ -1,4 +1,4 @@
-# Copyright 2024 Katherine Crowson, The HuggingFace Team and hlky. All rights reserved.
+# Copyright 2025 Katherine Crowson, The HuggingFace Team and hlky. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -301,7 +301,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if timesteps is not None:
             timesteps = np.array(timesteps, dtype=np.float32)
         else:
-            # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+            # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
             if self.config.timestep_spacing == "linspace":
                 timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[::-1].copy()
             elif self.config.timestep_spacing == "leading":

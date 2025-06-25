@@ -17,12 +17,6 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - local: tutorials/using_peft_for_inference
-    title: Load LoRAs for inference
-  - local: tutorials/fast_diffusion
-    title: Accelerate inference of text-to-image diffusion models
-  - local: tutorials/inference_with_big_models
-    title: Working with big models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
@@ -33,11 +27,24 @@
     title: Load schedulers and models
   - local: using-diffusers/other-formats
     title: Model files and layouts
-  - local: using-diffusers/loading_adapters
-    title: Load adapters
   - local: using-diffusers/push_to_hub
     title: Push files to the Hub
   title: Load pipelines and adapters
+- sections:
+  - local: tutorials/using_peft_for_inference
+    title: LoRA
+  - local: using-diffusers/ip_adapter
+    title: IP-Adapter
+  - local: using-diffusers/controlnet
+    title: ControlNet
+  - local: using-diffusers/t2i_adapter
+    title: T2I-Adapter
+  - local: using-diffusers/dreambooth
+    title: DreamBooth
+  - local: using-diffusers/textual_inversion_inference
+    title: Textual inversion
+  title: Adapters
+  isExpanded: false
 - sections:
   - local: using-diffusers/unconditional_image_generation
     title: Unconditional image generation
@@ -59,8 +66,6 @@
     title: Create a server
   - local: training/distributed_inference
     title: Distributed inference
-  - local: using-diffusers/merge_loras
-    title: Merge LoRAs
   - local: using-diffusers/scheduler_features
     title: Scheduler features
   - local: using-diffusers/callback
@@ -93,8 +98,6 @@
     title: Quicktour
   title: Modular Diffusers
 - sections:
-  - local: using-diffusers/cogvideox
-    title: CogVideoX
   - local: using-diffusers/consisid
     title: ConsisID
   - local: using-diffusers/sdxl
@@ -103,20 +106,12 @@
     title: SDXL Turbo
   - local: using-diffusers/kandinsky
     title: Kandinsky
-  - local: using-diffusers/ip_adapter
-    title: IP-Adapter
   - local: using-diffusers/omnigen
     title: OmniGen
   - local: using-diffusers/pag
     title: PAG
-  - local: using-diffusers/controlnet
-    title: ControlNet
-  - local: using-diffusers/t2i_adapter
-    title: T2I-Adapter
   - local: using-diffusers/inference_with_lcm
     title: Latent Consistency Model
-  - local: using-diffusers/textual_inversion_inference
-    title: Textual inversion
   - local: using-diffusers/shap-e
     title: Shap-E
   - local: using-diffusers/diffedit
@@ -186,11 +181,15 @@
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
-    title: Speed up inference
+    title: Accelerate inference
+  - local: optimization/cache
+    title: Caching
   - local: optimization/memory
     title: Reduce memory usage
-  - local: optimization/torch2.0
-    title: PyTorch 2.0
+  - local: optimization/speed-memory-optims
+    title: Compile and offloading quantized models
+  - local: optimization/pruna
+    title: Pruna
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome
@@ -217,7 +216,7 @@
     - local: optimization/mps
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
-      title: Habana Gaudi
+      title: Intel Gaudi
     - local: optimization/neuron
       title: AWS Neuron
     title: Optimized hardware
@@ -294,6 +293,8 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/chroma_transformer
+        title: ChromaTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
@@ -302,6 +303,8 @@
         title: CogView4Transformer2DModel
       - local: api/models/consisid_transformer3d
         title: ConsisIDTransformer3DModel
+      - local: api/models/cosmos_transformer3d
+        title: CosmosTransformer3DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
@@ -370,6 +373,8 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoderkl_cosmos
+        title: AutoencoderKLCosmos
       - local: api/models/autoencoder_kl_hunyuan_video
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
@@ -412,6 +417,8 @@
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
       title: BLIP-Diffusion
+    - local: api/pipelines/chroma
+      title: Chroma
     - local: api/pipelines/cogvideox
       title: CogVideoX
     - local: api/pipelines/cogview3
@@ -440,6 +447,8 @@
       title: ControlNet-XS with Stable Diffusion XL
     - local: api/pipelines/controlnet_union
       title: ControlNetUnion
+    - local: api/pipelines/cosmos
+      title: Cosmos
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -458,6 +467,8 @@
       title: Flux
     - local: api/pipelines/control_flux_inpaint
       title: FluxControlInpaint
+    - local: api/pipelines/framepack
+      title: Framepack
     - local: api/pipelines/hidream
       title: HiDream-I1
     - local: api/pipelines/hunyuandit
@@ -574,6 +585,8 @@
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
+    - local: api/pipelines/visualcloze
+      title: VisualCloze
     - local: api/pipelines/wan
       title: Wan
     - local: api/pipelines/wuerstchen

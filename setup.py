@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ _deps = [
     "librosa",
     "numpy",
     "parameterized",
-    "peft>=0.6.0",
+    "peft>=0.15.0",
     "protobuf>=3.20.3,<4",
     "pytest",
     "pytest-timeout",

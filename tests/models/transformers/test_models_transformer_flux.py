@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor
 from diffusers.models.embeddings import ImageProjection
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
@@ -57,7 +57,9 @@ def create_flux_ip_adapter_state_dict(model):
 
     image_projection = ImageProjection(
         cross_attention_dim=model.config["joint_attention_dim"],
-        image_embed_dim=model.config["pooled_projection_dim"],
+        image_embed_dim=(
+            model.config["pooled_projection_dim"] if "pooled_projection_dim" in model.config.keys() else 768
+        ),
         num_image_text_embeds=4,
     )
 
@@ -78,7 +80,7 @@ def create_flux_ip_adapter_state_dict(model):
     return ip_state_dict
 
 
-class FluxTransformerTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
+class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = FluxTransformer2DModel
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
@@ -167,3 +169,17 @@ class FluxTransformerTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.T
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"FluxTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = FluxTransformer2DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+
+
+class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = FluxTransformer2DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()

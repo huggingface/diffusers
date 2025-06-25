@@ -548,6 +548,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         use_stream: bool = False,
         record_stream: bool = False,
         low_cpu_mem_usage=False,
+        offload_to_disk_path: Optional[str] = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -588,15 +589,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
         apply_group_offloading(
-            self,
-            onload_device,
-            offload_device,
-            offload_type,
-            num_blocks_per_group,
-            non_blocking,
-            use_stream,
-            record_stream,
+            module=self,
+            onload_device=onload_device,
+            offload_device=offload_device,
+            offload_type=offload_type,
+            num_blocks_per_group=num_blocks_per_group,
+            non_blocking=non_blocking,
+            use_stream=use_stream,
+            record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            offload_to_disk_path=offload_to_disk_path,
         )
 
     def save_pretrained(
@@ -787,9 +789,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
-                dtype is automatically derived from the model's weights.
+            torch_dtype (`torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -815,14 +816,43 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`Union[int, str, torch.device]` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device. Defaults to `None`, meaning that the model will be loaded on CPU.
 
+                Examples:
+
+                ```py
+                >>> from diffusers import AutoModel
+                >>> import torch
+
+                >>> # This works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map="cuda"
+                ... )
+                >>> # This also works (integer accelerator device ID).
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map=0
+                ... )
+                >>> # Specifying a supported offloading strategy like "auto" also works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map="auto"
+                ... )
+                >>> # Specifying a dictionary as `device_map` also works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0",
+                ...     subfolder="unet",
+                ...     device_map={"": torch.device("cuda")},
+                ... )
+                ```
+
                 Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
-                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+                map](https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap). You
+                can also refer to the [Diffusers-specific
+                documentation](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#model-sharding)
+                for more concrete examples.
             max_memory (`Dict`, *optional*):
                 A dictionary device identifier for the maximum memory. Will default to the maximum memory available for
                 each GPU and the available CPU RAM if unset.
@@ -1388,7 +1418,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage: bool = True,
         dtype: Optional[Union[str, torch.dtype]] = None,
         keep_in_fp32_modules: Optional[List[str]] = None,
-        device_map: Dict[str, Union[int, str, torch.device]] = None,
+        device_map: Union[str, int, torch.device, Dict[str, Union[int, str, torch.device]]] = None,
         offload_state_dict: Optional[bool] = None,
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,

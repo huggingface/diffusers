@@ -1,4 +1,4 @@
-# Copyright 2024 the Latte Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 the Latte Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
 
     """
-    A 3D Transformer model for video-like data, paper: https://arxiv.org/abs/2401.03048, offical code:
+    A 3D Transformer model for video-like data, paper: https://huggingface.co/papers/2401.03048, official code:
     https://github.com/Vchitect/Latte
 
     Parameters:
@@ -216,7 +216,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         )
         num_patches = height * width
 
-        hidden_states = self.pos_embed(hidden_states)  # alrady add positional embeddings
+        hidden_states = self.pos_embed(hidden_states)  # already add positional embeddings
 
         added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
         timestep, embedded_timestep = self.adaln_single(

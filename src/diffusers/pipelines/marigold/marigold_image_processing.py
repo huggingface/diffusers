@@ -426,7 +426,7 @@ class MarigoldImageProcessor(ConfigMixin):
                 if isinstance(img, np.ndarray):
                     img = torch.from_numpy(img)
                 if not torch.is_floating_point(img):
-                    raise ValueError(f"{prefix}: unexected dtype={img.dtype}.")
+                    raise ValueError(f"{prefix}: unexpected dtype={img.dtype}.")
             else:
                 raise ValueError(f"{prefix}: unexpected type={type(img)}.")
             if val_min != 0.0 or val_max != 1.0:
@@ -464,7 +464,7 @@ class MarigoldImageProcessor(ConfigMixin):
             if torch.is_tensor(img):
                 img = img.cpu().numpy()
             if not np.issubdtype(img.dtype, np.floating):
-                raise ValueError(f"{prefix}: unexected dtype={img.dtype}.")
+                raise ValueError(f"{prefix}: unexpected dtype={img.dtype}.")
             if val_min != 0.0 or val_max != 1.0:
                 img = (img - val_min) / (val_max - val_min)
             img = (img * (2**16 - 1)).astype(np.uint16)

@@ -1012,7 +1012,7 @@ def main(args):
     unet = get_peft_model(unet, lora_config)
 
     # 9. Handle mixed precision and device placement
-    # For mixed precision training we cast all non-trainable weigths to half-precision
+    # For mixed precision training we cast all non-trainable weights to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":

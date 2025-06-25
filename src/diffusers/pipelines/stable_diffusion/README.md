@@ -10,7 +10,7 @@ The summary of the model is the following:
 
 ## Tips:
 
-- Stable Diffusion has the same architecture as [Latent Diffusion](https://arxiv.org/abs/2112.10752) but uses a frozen CLIP Text Encoder instead of training the text encoder jointly with the diffusion model.
+- Stable Diffusion has the same architecture as [Latent Diffusion](https://huggingface.co/papers/2112.10752) but uses a frozen CLIP Text Encoder instead of training the text encoder jointly with the diffusion model.
 - An in-detail explanation of the Stable Diffusion model can be found under [Stable Diffusion with 🧨 Diffusers](https://huggingface.co/blog/stable_diffusion).
 - If you don't want to rely on the Hugging Face Hub and having to pass a authentication token, you can
 download the weights with `git lfs install; git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5` and instead pass the local path to the cloned folder to `from_pretrained` as shown below.

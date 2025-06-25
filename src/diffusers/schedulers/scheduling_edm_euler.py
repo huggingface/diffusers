@@ -1,4 +1,4 @@
-# Copyright 2024 Katherine Crowson and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Katherine Crowson and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     Implements the Euler scheduler in EDM formulation as presented in Karras et al. 2022 [1].
 
     [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
-    https://arxiv.org/abs/2206.00364
+    https://huggingface.co/papers/2206.00364
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
@@ -67,8 +67,8 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
             The standard deviation of the data distribution. This is set to 0.5 in the EDM paper [1].
         sigma_schedule (`str`, *optional*, defaults to `karras`):
             Sigma schedule to compute the `sigmas`. By default, we the schedule introduced in the EDM paper
-            (https://arxiv.org/abs/2206.00364). Other acceptable value is "exponential". The exponential schedule was
-            incorporated in this model: https://huggingface.co/stabilityai/cosxl.
+            (https://huggingface.co/papers/2206.00364). Other acceptable value is "exponential". The exponential
+            schedule was incorporated in this model: https://huggingface.co/stabilityai/cosxl.
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
@@ -103,11 +103,13 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
 
-        sigmas = torch.arange(num_train_timesteps + 1) / num_train_timesteps
+        sigmas_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
+        sigmas = torch.arange(num_train_timesteps + 1, dtype=sigmas_dtype) / num_train_timesteps
         if sigma_schedule == "karras":
             sigmas = self._compute_karras_sigmas(sigmas)
         elif sigma_schedule == "exponential":
             sigmas = self._compute_exponential_sigmas(sigmas)
+        sigmas = sigmas.to(torch.float32)
 
         self.timesteps = self.precondition_noise(sigmas)
 
@@ -159,7 +161,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = begin_index
 
     def precondition_inputs(self, sample, sigma):
-        c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        c_in = self._get_conditioning_c_in(sigma)
         scaled_sample = sample * c_in
         return scaled_sample
 
@@ -230,18 +232,19 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
 
+        sigmas_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         if sigmas is None:
-            sigmas = torch.linspace(0, 1, self.num_inference_steps)
+            sigmas = torch.linspace(0, 1, self.num_inference_steps, dtype=sigmas_dtype)
         elif isinstance(sigmas, float):
-            sigmas = torch.tensor(sigmas, dtype=torch.float32)
+            sigmas = torch.tensor(sigmas, dtype=sigmas_dtype)
         else:
-            sigmas = sigmas
+            sigmas = sigmas.to(sigmas_dtype)
         if self.config.sigma_schedule == "karras":
             sigmas = self._compute_karras_sigmas(sigmas)
         elif self.config.sigma_schedule == "exponential":
             sigmas = self._compute_exponential_sigmas(sigmas)
-
         sigmas = sigmas.to(dtype=torch.float32, device=device)
+
         self.timesteps = self.precondition_noise(sigmas)
 
         if self.config.final_sigmas_type == "sigma_min":
@@ -315,6 +318,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
+        pred_original_sample: Optional[torch.Tensor] = None,
     ) -> Union[EDMEulerSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
@@ -378,7 +382,8 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        pred_original_sample = self.precondition_outputs(sample, model_output, sigma_hat)
+        if pred_original_sample is None:
+            pred_original_sample = self.precondition_outputs(sample, model_output, sigma_hat)
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat
@@ -434,6 +439,10 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
         noisy_samples = original_samples + noise * sigma
         return noisy_samples
+
+    def _get_conditioning_c_in(self, sigma):
+        c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        return c_in
 
     def __len__(self):
         return self.config.num_train_timesteps

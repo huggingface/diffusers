@@ -38,6 +38,7 @@ from .import_utils import (
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
+    is_optimum_quanto_available,
     is_peft_available,
     is_timm_available,
     is_torch_available,
@@ -130,6 +131,29 @@ def numpy_cosine_similarity_distance(a, b):
     distance = 1.0 - similarity.mean()
 
     return distance
+
+
+def check_if_dicts_are_equal(dict1, dict2):
+    dict1, dict2 = dict1.copy(), dict2.copy()
+
+    for key, value in dict1.items():
+        if isinstance(value, set):
+            dict1[key] = sorted(value)
+    for key, value in dict2.items():
+        if isinstance(value, set):
+            dict2[key] = sorted(value)
+
+    for key in dict1:
+        if key not in dict2:
+            return False
+        if dict1[key] != dict2[key]:
+            return False
+
+    for key in dict2:
+        if key not in dict1:
+            return False
+
+    return True
 
 
 def print_tensor_test(
@@ -290,6 +314,18 @@ def require_torch_version_greater_equal(torch_version):
     return decorator
 
 
+def require_torch_version_greater(torch_version):
+    """Decorator marking a test that requires torch with a specific version greater."""
+
+    def decorator(test_case):
+        correct_torch_version = is_torch_available() and is_torch_version(">", torch_version)
+        return unittest.skipUnless(
+            correct_torch_version, f"test requires torch with the version greater than {torch_version}"
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
@@ -299,9 +335,7 @@ def require_torch_gpu(test_case):
 
 def require_torch_cuda_compatibility(expected_compute_capability):
     def decorator(test_case):
-        if not torch.cuda.is_available():
-            return unittest.skip(test_case)
-        else:
+        if torch.cuda.is_available():
             current_compute_capability = get_torch_cuda_device_capability()
             return unittest.skipUnless(
                 float(current_compute_capability) == float(expected_compute_capability),
@@ -486,6 +520,13 @@ def require_bitsandbytes(test_case):
     return unittest.skipUnless(is_bitsandbytes_available(), "test requires bitsandbytes")(test_case)
 
 
+def require_quanto(test_case):
+    """
+    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
+    """
+    return unittest.skipUnless(is_optimum_quanto_available(), "test requires quanto")(test_case)
+
+
 def require_accelerate(test_case):
     """
     Decorator marking a test that requires accelerate. These tests are skipped when accelerate isn't installed.
@@ -627,10 +668,10 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
     return arry
 
 
-def load_pt(url: str, map_location: str):
+def load_pt(url: str, map_location: Optional[str] = None, weights_only: Optional[bool] = True):
     response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
-    arry = torch.load(BytesIO(response.content), map_location=map_location)
+    arry = torch.load(BytesIO(response.content), map_location=map_location, weights_only=weights_only)
     return arry
 
 
@@ -1204,8 +1245,8 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 
     # Some device agnostic functions return values. Need to guard against 'None' instead at
     # user level
-    if fn is None:
-        return None
+    if not callable(fn):
+        return fn
 
     return fn(*args, **kwargs)
 

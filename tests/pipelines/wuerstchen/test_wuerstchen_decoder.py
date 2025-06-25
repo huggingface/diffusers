@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -187,6 +187,6 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_float16_inference(self):
         super().test_float16_inference()
 
-    @unittest.skip("Test not supoorted.")
+    @unittest.skip("Test not supported.")
     def test_encode_prompt_works_in_isolation(self):
         super().test_encode_prompt_works_in_isolation()
