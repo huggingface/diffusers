@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -159,10 +159,7 @@ class IPAdapterMixin:
                 " `low_cpu_mem_usage=False`."
             )
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
         state_dicts = []
         for pretrained_model_name_or_path_or_dict, weight_name, subfolder in zip(
             pretrained_model_name_or_path_or_dict, weight_name, subfolder
@@ -465,10 +462,7 @@ class FluxIPAdapterMixin:
                 " `low_cpu_mem_usage=False`."
             )
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
         state_dicts = []
         for pretrained_model_name_or_path_or_dict, weight_name, subfolder in zip(
             pretrained_model_name_or_path_or_dict, weight_name, subfolder
@@ -750,10 +744,7 @@ class SD3IPAdapterMixin:
                 " `low_cpu_mem_usage=False`."
             )
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
             model_file = _get_model_file(

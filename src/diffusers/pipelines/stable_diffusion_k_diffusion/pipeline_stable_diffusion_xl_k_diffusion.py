@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -88,6 +88,7 @@ class ModelWrapper:
 
 
 class StableDiffusionXLKDiffusionPipeline(
+    DeprecatedPipelineMixin,
     DiffusionPipeline,
     StableDiffusionMixin,
     FromSingleFileMixin,
@@ -95,6 +96,8 @@ class StableDiffusionXLKDiffusionPipeline(
     TextualInversionLoaderMixin,
     IPAdapterMixin,
 ):
+    _last_supported_version = "0.33.1"
+
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL and k-diffusion.
 

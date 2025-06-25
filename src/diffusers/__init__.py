@@ -159,6 +159,7 @@ else:
             "AutoencoderTiny",
             "AutoModel",
             "CacheMixin",
+            "ChromaTransformer2DModel",
             "CogVideoXTransformer3DModel",
             "CogView3PlusTransformer2DModel",
             "CogView4Transformer2DModel",
@@ -215,6 +216,7 @@ else:
             "UVit2DModel",
             "VQModel",
             "WanTransformer3DModel",
+            "WanVACETransformer3DModel",
         ]
     )
     _import_structure["optimization"] = [
@@ -351,6 +353,8 @@ else:
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
+            "ChromaImg2ImgPipeline",
+            "ChromaPipeline",
             "CLIPImageProjection",
             "CogVideoXFunControlPipeline",
             "CogVideoXImageToVideoPipeline",
@@ -360,6 +364,8 @@ else:
             "CogView4ControlPipeline",
             "CogView4Pipeline",
             "ConsisIDPipeline",
+            "Cosmos2TextToImagePipeline",
+            "Cosmos2VideoToWorldPipeline",
             "CosmosTextToWorldPipeline",
             "CosmosVideoToWorldPipeline",
             "CycleDiffusionPipeline",
@@ -527,6 +533,7 @@ else:
             "VQDiffusionPipeline",
             "WanImageToVideoPipeline",
             "WanPipeline",
+            "WanVACEPipeline",
             "WanVideoToVideoPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
@@ -692,6 +699,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
+    from .quantizers import PipelineQuantizationConfig
 
     try:
         if not is_bitsandbytes_available():
@@ -765,6 +773,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             AutoModel,
             CacheMixin,
+            ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
             CogView4Transformer2DModel,
@@ -820,6 +829,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UVit2DModel,
             VQModel,
             WanTransformer3DModel,
+            WanVACETransformer3DModel,
         )
         from .optimization import (
             get_constant_schedule,
@@ -936,6 +946,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
+            ChromaImg2ImgPipeline,
+            ChromaPipeline,
             CLIPImageProjection,
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
@@ -945,6 +957,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView4ControlPipeline,
             CogView4Pipeline,
             ConsisIDPipeline,
+            Cosmos2TextToImagePipeline,
+            Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
             CycleDiffusionPipeline,
@@ -1111,6 +1125,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionPipeline,
             WanImageToVideoPipeline,
             WanPipeline,
+            WanVACEPipeline,
             WanVideoToVideoPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,

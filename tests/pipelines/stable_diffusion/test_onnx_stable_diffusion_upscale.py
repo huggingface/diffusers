@@ -42,6 +42,10 @@ if is_onnx_available():
     import onnxruntime as ort
 
 
+# TODO: (Dhruv) Update hub_checkpoint repo_id
+@unittest.skip(
+    "There is a potential backdoor vulnerability in the hub_checkpoint. Skip running this test until resolved"
+)
 class OnnxStableDiffusionUpscalePipelineFastTests(OnnxPipelineTesterMixin, unittest.TestCase):
     # TODO: is there an appropriate internal test set?
     hub_checkpoint = "ssube/stable-diffusion-x4-upscaler-onnx"

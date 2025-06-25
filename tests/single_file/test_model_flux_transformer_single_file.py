@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@
 
 import gc
 import unittest
-
-import torch
 
 from diffusers import (
     FluxTransformer2DModel,
@@ -64,9 +62,9 @@ class FluxTransformer2DModelSingleFileTests(unittest.TestCase):
 
     def test_checkpoint_loading(self):
         for ckpt_path in self.alternate_keys_ckpt_paths:
-            torch.cuda.empty_cache()
+            backend_empty_cache(torch_device)
             model = self.model_class.from_single_file(ckpt_path)
 
             del model
             gc.collect()
-            torch.cuda.empty_cache()
+            backend_empty_cache(torch_device)

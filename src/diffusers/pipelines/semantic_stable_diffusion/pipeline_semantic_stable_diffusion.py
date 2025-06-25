@@ -11,7 +11,7 @@ from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyCh
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import SemanticStableDiffusionPipelineOutput
 
 
@@ -25,7 +25,8 @@ else:
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class SemanticStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
+class SemanticStableDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin):
+    _last_supported_version = "0.33.1"
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with latent editing.
 

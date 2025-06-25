@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 enable_full_determinism()
 
 
-class LTXTransformerTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
+class LTXTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = LTXVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -81,3 +81,10 @@ class LTXTransformerTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.Te
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"LTXVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class LTXTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = LTXVideoTransformer3DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return LTXTransformerTests().prepare_init_args_and_inputs_for_common()

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 
 
 if is_torch_xla_available():
@@ -132,6 +132,7 @@ class PIAPipelineOutput(BaseOutput):
 
 
 class PIAPipeline(
+    DeprecatedPipelineMixin,
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
@@ -140,6 +141,7 @@ class PIAPipeline(
     FromSingleFileMixin,
     FreeInitMixin,
 ):
+    _last_supported_version = "0.33.1"
     r"""
     Pipeline for text-to-video generation.
 

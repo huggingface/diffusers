@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ class ModelHook:
 
     def deinitalize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
-        Hook that is executed when a model is deinitalized.
+        Hook that is executed when a model is deinitialized.
 
         Args:
             module (`torch.nn.Module`):

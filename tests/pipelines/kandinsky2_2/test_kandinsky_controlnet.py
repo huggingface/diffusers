@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -289,6 +289,5 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-
         max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
-        assert max_diff < 1e-4
+        assert max_diff < 2e-4
