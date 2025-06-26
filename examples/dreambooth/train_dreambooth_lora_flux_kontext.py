@@ -48,6 +48,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
+    FluxKontextPipeline,
     FluxTransformer2DModel,
 )
 from diffusers.optimization import get_scheduler
@@ -101,7 +102,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# Flux DreamBooth LoRA - {repo_id}
+# Flux Kontext DreamBooth LoRA - {repo_id}
 
 <Gallery />
 
@@ -124,9 +125,9 @@ You should use `{instance_prompt}` to trigger the image generation.
 ## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
 
 ```py
-from diffusers import AutoPipelineForText2Image
+from diffusers import FluxKontextPipeline
 import torch
-pipeline = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to('cuda')
+pipeline = FluxKontextPipeline.from_pretrained("black-forest-labs/KONTEXT.1-dev", torch_dtype=torch.bfloat16).to('cuda')
 pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
@@ -152,7 +153,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         "diffusers",
         "lora",
         "flux",
-        "flux-diffusers",
+        "flux-kontextflux-diffusers",
         "template:sd-lora",
     ]
 
@@ -170,7 +171,6 @@ def load_text_encoders(class_one, class_two):
     return text_encoder_one, text_encoder_two
 
 
-# TODO: needs to be rewritten.
 def log_validation(
     pipeline,
     args,
@@ -225,7 +225,7 @@ def log_validation(
 
 
 def import_model_class_from_model_name_or_path(
-        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
@@ -307,8 +307,8 @@ def parse_args(input_args=None):
         type=str,
         default="image",
         help="The column of the dataset containing the target image. By "
-             "default, the standard Image Dataset maps out 'file_name' "
-             "to 'image'.",
+        "default, the standard Image Dataset maps out 'file_name' "
+        "to 'image'.",
     )
     parser.add_argument(
         "--caption_column",
@@ -1188,9 +1188,11 @@ def main(args):
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
 
+            # TODO: change
             transformer = FluxTransformer2DModel.from_single_file(
                 "https://huggingface.co/diffusers/kontext-v2/blob/main/dev-opt-2-a-3.safetensors",
-                torch_dtype=torch.bfloat16)
+                torch_dtype=torch.bfloat16,
+            )
             pipeline = FluxKontextPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 transformer=transformer,
@@ -1269,7 +1271,8 @@ def main(args):
     #     args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     # )
     transformer = FluxTransformer2DModel.from_single_file(
-        "https://huggingface.co/diffusers/kontext/blob/main/kontext.safetensors", torch_dtype=torch.bfloat16)
+        "https://huggingface.co/diffusers/kontext/blob/main/kontext.safetensors", torch_dtype=torch.bfloat16
+    )
 
     # We only train the additional adapter LoRA layers
     transformer.requires_grad_(False)
@@ -2012,9 +2015,11 @@ def main(args):
 
         # Final inference
         # Load previous pipeline
+        # TODO: change
         transformer = FluxTransformer2DModel.from_single_file(
             "https://huggingface.co/diffusers/kontext-v2/blob/main/dev-opt-2-a-3.safetensors",
-            torch_dtype=torch.bfloat16)
+            torch_dtype=torch.bfloat16,
+        )
         pipeline = FluxKontextPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             transformer=transformer,
