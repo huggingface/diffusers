@@ -17,7 +17,8 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import to_2tuple, trunc_normal_
+from timm.models.layers import trunc_normal_
+from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
@@ -490,6 +491,10 @@ class Magi1Decoder3d(nn.Module):
         attn_scales=[],
         temperal_upsample=[False, True, True],
         dropout=0.0,
+        patch_size: Tuple[int] = (1, 2, 2),
+        num_frames: int = 16,
+        height: int = 256,
+        width: int = 256,
         non_linearity: str = "silu",
     ):
         super().__init__()
@@ -499,18 +504,23 @@ class Magi1Decoder3d(nn.Module):
         self.num_res_blocks = num_res_blocks
         self.attn_scales = attn_scales
         self.temperal_upsample = temperal_upsample
-
-        self.nonlinearity = get_activation(non_linearity)
+        self.patch_size = patch_size
 
         # dimensions
         dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
-        scale = 1.0 / 2 ** (len(dim_mult) - 2)
 
         # init block
-        self.conv_in = Magi1CausalConv3d(z_dim, dims[0], 3, padding=1)
+        self.proj_in = nn.Linear(z_dim, dims[0])
 
-        # middle blocks
-        self.mid_block = Magi1MidBlock(dims[0], dropout, non_linearity, num_layers=1)
+        self.cls_token_nums = 1
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dims[0]))
+        trunc_normal_(self.cls_token, std=0.02)
+
+        p_t, p_h, p_w = patch_size
+        post_patch_num_frames = num_frames // p_t
+        post_patch_height = height // p_h
+        post_patch_width = width // p_w
+        num_patches = post_patch_num_frames * post_patch_height * post_patch_width
 
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, embed_dim))
         self.pos_drop = nn.Dropout(p=0.0)
@@ -538,26 +548,25 @@ class Magi1Decoder3d(nn.Module):
             )
             self.up_blocks.append(up_block)
 
-            # Update scale for next iteration
-            if upsample_mode is not None:
-                scale *= 2.0
-
         # output blocks
-        self.norm_out = nn.LayerNorm(out_dim)
-        self.unpatch_channels = embed_dim // (patch_size * patch_size * patch_length)
-        out_dim = self.unpatch_channels
-        self.conv_out = nn.Conv3d(out_dim, 3, 3, padding=1)
+        self.norm_out = nn.LayerNorm(dims[0])
+        self.unpatch_channels = dims[0] // (patch_size[0] * patch_size[1] * patch_size[2])
+        self.conv_out = nn.Conv3d(self.unpatch_channels, 3, 3, padding=1)
 
         trunc_normal_(self.pos_embed, std=0.02)
 
         self.gradient_checkpointing = False
 
     def forward(self, x):
-        ## conv1
-        x = self.conv_in(x)
+        B, C, latentT, latentH, latentW = x.shape  # x: (B, C, latentT, latentH, latenW)
+        x = x.permute(0, 2, 3, 4, 1)  # x: (B, latentT, latentH, latenW, C)
 
-        ## middle
-        x = self.mid_block(x)
+        x = x.reshape(B, -1, C)
+
+        x = self.proj_in(x)
+
+        cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        x = torch.cat((cls_tokens, x), dim=1)
 
         x = x + self.pos_embed
         x = self.pos_drop(x)
@@ -569,7 +578,9 @@ class Magi1Decoder3d(nn.Module):
         ## head
         x = self.norm_out(x)
         x = x[:, 1:]  # remove cls_token
-        x = self.nonlinearity(x)
+
+        x = x.reshape(B, latentT, latentH, latentW, self.patch_size[0], self.patch_size[1], self.patch_size[2], self.unpatch_channels)
+        x = rearrange(x, 'B lT lH lW pT pH pW C -> B C (lT pT) (lH pH) (lW pW)', C=self.unpatch_channels)
 
         x = self.conv_out(x)
         return x
@@ -592,6 +603,10 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         base_dim: int = 96,
         z_dim: int = 16,
         dim_mult: Tuple[int] = [1, 2, 4, 4],
+        patch_size: Tuple[int] = (1, 2, 2),
+        num_frames: int = 16,
+        height: int = 256,
+        width: int = 256,
         num_res_blocks: int = 2,
         attn_scales: List[float] = [],
         temperal_downsample: List[bool] = [False, True, True],
@@ -645,14 +660,9 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.quant_linear = nn.Linear(base_dim, z_dim)
         self.post_quant_linear = nn.Linear(z_dim, base_dim)
 
-        num_patches = self.latent_size * self.latent_size * self.latent_length
-
-        self.cls_token_nums = 1
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, base_dim))
-        trunc_normal_(self.cls_token, std=0.02)
-
         self.decoder = Magi1Decoder3d(
-            base_dim, z_dim, dim_mult, num_res_blocks, attn_scales, self.temperal_upsample, dropout
+            base_dim, z_dim, dim_mult, num_res_blocks, attn_scales, self.temperal_upsample, dropout,
+            patch_size, num_frames, height, width
         )
 
         self.spatial_compression_ratio = 2 ** len(self.temperal_downsample)
