@@ -92,10 +92,10 @@
     title: API Reference
   title: Hybrid Inference
 - sections:
-  - local: modular_diffusers/developer_guide
-    title: Developer Guide
   - local: modular_diffusers/quicktour
     title: Quicktour
+  - local: modular_diffusers/developer_guide
+    title: Developer Guide
   title: Modular Diffusers
 - sections:
   - local: using-diffusers/consisid
