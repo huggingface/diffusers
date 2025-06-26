@@ -635,9 +635,9 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
             )
         default_blocks = [t for t in self.block_trigger_inputs if t is None]
         # can only have 1 or 0 default block, and has to put in the last
-        # the order of blocksmatters here because the first block with matching trigger will be dispatched
+        # the order of blocks matters here because the first block with matching trigger will be dispatched
         # e.g. blocks = [inpaint, img2img] and block_trigger_inputs = ["mask", "image"]
-        # if both mask and image are provided, it is inpaint; if only image is provided, it is img2img
+        # as long as mask is provided, it is inpaint; if only image is provided, it is img2img
         if len(default_blocks) > 1 or (len(default_blocks) == 1 and self.block_trigger_inputs[-1] is not None):
             raise ValueError(
                 f"In {self.__class__.__name__}, exactly one None must be specified as the last element "
