@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = FluxKontextPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-kontext", transformer=transformer, torch_dtype=torch.bfloat16
+        ...     "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 
@@ -257,6 +257,7 @@ class FluxKontextPipeline(
         )
         self.default_sample_size = 128
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -306,6 +307,7 @@ class FluxKontextPipeline(
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -350,6 +352,7 @@ class FluxKontextPipeline(
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -429,6 +432,7 @@ class FluxKontextPipeline(
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -440,6 +444,7 @@ class FluxKontextPipeline(
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
     ):
@@ -476,6 +481,7 @@ class FluxKontextPipeline(
 
         return ip_adapter_image_embeds
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -546,6 +552,7 @@ class FluxKontextPipeline(
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
         latent_image_ids = torch.zeros(height, width, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
@@ -560,6 +567,7 @@ class FluxKontextPipeline(
         return latent_image_ids.to(device=device, dtype=dtype)
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
@@ -568,6 +576,7 @@ class FluxKontextPipeline(
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
@@ -583,7 +592,6 @@ class FluxKontextPipeline(
 
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_inpaint.StableDiffusion3InpaintPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
@@ -598,6 +606,7 @@ class FluxKontextPipeline(
 
         return image_latents
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -605,6 +614,7 @@ class FluxKontextPipeline(
         """
         self.vae.enable_slicing()
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -612,6 +622,7 @@ class FluxKontextPipeline(
         """
         self.vae.disable_slicing()
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -620,6 +631,7 @@ class FluxKontextPipeline(
         """
         self.vae.enable_tiling()
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to

@@ -1189,7 +1189,10 @@ def main(args):
                 torch_dtype = torch.bfloat16
 
             transformer = FluxTransformer2DModel.from_pretrained(
-                args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
+                args.pretrained_model_name_or_path,
+                subfolder="transformer",
+                revision=args.revision,
+                variant=args.variant,
             )
             pipeline = FluxKontextPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,

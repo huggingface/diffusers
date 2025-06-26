@@ -39,7 +39,7 @@ Flux comes in the following variants:
 | Canny Control (LoRA) | [`black-forest-labs/FLUX.1-Canny-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev-lora) |
 | Depth Control (LoRA) | [`black-forest-labs/FLUX.1-Depth-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Depth-dev-lora) |
 | Redux (Adapter) | [`black-forest-labs/FLUX.1-Redux-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Redux-dev) |
-| Kontext | [`black-forest-labs/FLUX.1-kontext`](https://huggingface.co/black-forest-labs/FLUX.1-kontext) |
+| Kontext | [`black-forest-labs/FLUX.1-kontext`](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) |
 
 All checkpoints have different usage which we detail below.
 
@@ -284,7 +284,7 @@ from diffusers import FluxKontextPipeline
 from diffusers.utils import load_image
 
 pipe = FluxKontextPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-kontext", transformer=transformer, torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -299,7 +299,7 @@ image = pipe(
 image.save("flux-kontext.png")
 ```
 
-Flux Kontext comes with an integrity safety checker, which should be run after the image generation step. To run the safety checker, install the official repository from [black-forest-labs/Flux-Kontext](https://github.com/black-forest-labs/Flux-Kontext) and add the following code:
+Flux Kontext comes with an integrity safety checker, which should be run after the image generation step. To run the safety checker, install the official repository from [black-forest-labs/flux](https://github.com/black-forest-labs/flux) and add the following code:
 
 ```python
 from flux.safety import PixtralIntegrity
