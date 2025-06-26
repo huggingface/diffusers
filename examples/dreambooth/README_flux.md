@@ -297,7 +297,14 @@ perform as expected.
 ### Misc notes
 
 * By default, we use `mode` as the value of `--vae_encode_mode` argument. This is because Kontext uses `mode()` of the distribution predicted by the VAE instead of sampling from it.
-* TODO: add note about aspect ratio bucketing
+### Aspect Ratio Bucketing
+we've added aspect ratio bucketing support which allows training on images with different aspect ratios without cropping them to a single square resolution. This technique helps preserve the original composition of training images and can improve training efficiency.
+
+To enable aspect ratio bucketing, pass `--aspect_ratio_buckets` argument with a semicolon-separated list of height,width pairs, such as:
+
+`--aspect_ratio_buckets="672,1568;688,1504;720,1456;752,1392;800,1328;832,1248;880,1184;944,1104;1024,1024;1104,944;1184,880;1248,832;1328,800;1392,752;1456,720;1504,688;1568,672"
+`
+Since Flux Kontext finetuning is still an experimental phase, we encourage you to explore different settings and share your insights! 🤗 
 
 ## Other notes
 Thanks to `bghira` and `ostris` for their help with reviewing & insight sharing ♥️
