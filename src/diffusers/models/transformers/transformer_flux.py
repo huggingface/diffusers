@@ -485,6 +485,7 @@ class FluxTransformer2DModel(
                     encoder_hidden_states,
                     temb,
                     image_rotary_emb,
+                    joint_attention_kwargs,
                 )
 
             else:
@@ -516,6 +517,7 @@ class FluxTransformer2DModel(
                     hidden_states,
                     temb,
                     image_rotary_emb,
+                    joint_attention_kwargs,
                 )
 
             else:
