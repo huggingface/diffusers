@@ -127,7 +127,7 @@ You should use `{instance_prompt}` to trigger the image generation.
 ```py
 from diffusers import FluxKontextPipeline
 import torch
-pipeline = FluxKontextPipeline.from_pretrained("black-forest-labs/KONTEXT.1-dev", torch_dtype=torch.bfloat16).to('cuda')
+pipeline = FluxKontextPipeline.from_pretrained("black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16).to('cuda')
 pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
