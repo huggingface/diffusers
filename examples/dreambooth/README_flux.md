@@ -292,7 +292,7 @@ accelerate launch train_dreambooth_lora_flux_kontext.py \
 ```
 
 Fine-tuning Kontext on the T2I task can be useful when working with specific styles/subjects where it may not
-perform as expected. TODO: any examples?
+perform as expected.
 
 ### Misc notes
 
