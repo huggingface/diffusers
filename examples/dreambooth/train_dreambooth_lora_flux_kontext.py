@@ -1188,13 +1188,8 @@ def main(args):
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
 
-            # TODO: change
-            # transformer = FluxTransformer2DModel.from_pretrained(
-            #     args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
-            # )
-            transformer = FluxTransformer2DModel.from_single_file(
-                "https://huggingface.co/diffusers/kontext-v2/blob/main/dev-opt-2-a-3.safetensors",
-                torch_dtype=torch.bfloat16,
+            transformer = FluxTransformer2DModel.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
             )
             pipeline = FluxKontextPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
@@ -1270,11 +1265,8 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    # transformer = FluxTransformer2DModel.from_pretrained(
-    #     args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
-    # )
-    transformer = FluxTransformer2DModel.from_single_file(
-        "https://huggingface.co/diffusers/kontext-v2/blob/main/dev-opt-2-a-3.safetensors", torch_dtype=torch.bfloat16
+    transformer = FluxTransformer2DModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     )
 
     # We only train the additional adapter LoRA layers
@@ -2018,13 +2010,8 @@ def main(args):
 
         # Final inference
         # Load previous pipeline
-        # TODO: change
-        # transformer = FluxTransformer2DModel.from_pretrained(
-        #     args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
-        # )
-        transformer = FluxTransformer2DModel.from_single_file(
-            "https://huggingface.co/diffusers/kontext-v2/blob/main/dev-opt-2-a-3.safetensors",
-            torch_dtype=torch.bfloat16,
+        transformer = FluxTransformer2DModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
         )
         pipeline = FluxKontextPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
