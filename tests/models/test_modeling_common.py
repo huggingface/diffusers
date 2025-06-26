@@ -1935,6 +1935,27 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
+    def test_torch_compile_repeated_blocks(self):
+        if self.model_class._repeated_blocks is None:
+            pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model.compile_repeated_blocks(fullgraph=True)
+
+        recompile_limit = 1
+        if self.model_class.__name__ == "UNet2DConditionModel":
+            recompile_limit = 2
+
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(recompile_limit=recompile_limit),
+            torch.no_grad(),
+        ):
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
     def test_compile_with_group_offloading(self):
         torch._dynamo.config.cache_size_limit = 10000
 
