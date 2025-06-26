@@ -302,11 +302,11 @@ image.save("flux-kontext.png")
 Flux Kontext comes with an integrity safety checker, which should be run after the image generation step. To run the safety checker, install the official repository from [black-forest-labs/flux](https://github.com/black-forest-labs/flux) and add the following code:
 
 ```python
-from flux.safety import PixtralIntegrity
+from flux.content_filters import PixtralContentFilter
 
 # ... pipeline invocation to generate images
 
-integrity_checker = PixtralIntegrity(torch.device("cuda"))
+integrity_checker = PixtralContentFilter(torch.device("cuda"))
 image_ = np.array(image) / 255.0
 image_ = 2 * image_ - 1
 image_ = torch.from_numpy(image_).to("cuda", dtype=torch.float32).unsqueeze(0).permute(0, 3, 1, 2)

@@ -65,8 +65,10 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> pipe.to("cuda")
 
-        >>> image = load_image("inputs/yarn-art-pikachu.png").convert("RGB")
-        >>> prompt = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
+        ... ).convert("RGB")
+        >>> prompt = "Make Pikachu hold a sign that says 'Black Forest Labs is awesome', yarn art style, detailed, vibrant colors"
         >>> image = pipe(
         ...     image=image,
         ...     prompt=prompt,
