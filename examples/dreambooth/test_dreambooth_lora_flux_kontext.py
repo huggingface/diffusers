@@ -38,7 +38,7 @@ logger.addHandler(stream_handler)
 class DreamBoothLoRAFluxKontext(ExamplesTestsAccelerate):
     instance_data_dir = "docs/source/en/imgs"
     instance_prompt = "photo"
-    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-pipe"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-kontext-pipe"
     script_path = "examples/dreambooth/train_dreambooth_lora_flux_kontext.py"
     transformer_layer_type = "single_transformer_blocks.0.attn.to_k"
 
