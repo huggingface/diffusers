@@ -29,157 +29,61 @@ from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 from ..normalization import FP32LayerNorm
-from ..embeddings import apply_rotary_emb, get_3d_rotary_pos_embed
 from ..attention import FeedForward
 from ..attention_processor import Attention
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-CACHE_T = 2
-
-# Similar to diffusers.pipelines.hunyuandit.pipeline_hunyuandit.get_resize_crop_region_for_grid
-def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
-    """
-    This function calculates the resize and crop region for an image to fit a target width and height while preserving
-    the aspect ratio.
-
-    Parameters:
-    - src (tuple): A tuple containing the source image's height (h) and width (w).
-    - tgt_width (int): The target width to resize the image.
-    - tgt_height (int): The target height to resize the image.
-
-    Returns:
-    - tuple: Two tuples representing the crop region:
-        1. The top-left coordinates of the crop region.
-        2. The bottom-right coordinates of the crop region.
-    """
-
-    tw = tgt_width
-    th = tgt_height
-    h, w = src
-    r = h / w
-    if r > (th / tw):
-        resize_height = th
-        resize_width = int(round(th / h * w))
-    else:
-        resize_width = tw
-        resize_height = int(round(tw / w * h))
-
-    crop_top = int(round((th - resize_height) / 2.0))
-    crop_left = int(round((tw - resize_width) / 2.0))
-
-    return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
-
-def prepare_rotary_positional_embeddings(
-    grid_height: int,
-    grid_width: int,
-    num_frames: int,
-    attention_head_dim: int = 64,
-    device = None,
-    base_latent_frame: int = 4,
-    base_latent_height: int = 16,
-    base_latent_width: int = 16,
-):
-    grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_latent_width, base_latent_height)
-    freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
-        embed_dim=attention_head_dim,
-        crops_coords=grid_crops_coords,
-        grid_size=(grid_height, grid_width),
-        temporal_size=num_frames,
-        device=device,
-        center_grid_hw_indices=True,
-        equal_split_ratio=3,
-    )
-
-    return freqs_cos, freqs_sin
-
 
 class Magi1AttnProcessor2_0:
-    def __init__(self):
+    def __init__(self, dim, num_heads=8):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
-
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0.0, proj_drop=0.0, ln_in_attn=False, use_rope=False):
-        super().__init__()
-
-        if ln_in_attn:
-            self.qkv_norm = FP32LayerNorm(dim // num_heads, elementwise_affine=False)
-        else:
-            self.qkv_norm = nn.Identity()
+        self.qkv_norm = FP32LayerNorm(dim // num_heads, elementwise_affine=False)
 
     def __call__(
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         identity = hidden_states
-        batch_size, channels, time, height, width = hidden_states.size()
-
-        x = hidden_states.permute(0, 2, 3, 4, 1).reshape(batch_size, time * height * width, channels)
+        batch_size, time_height_width, channels = hidden_states.size()
 
         # compute query, key, value
-        qkv = self.to_qkv(x)
-        qkv = qkv.reshape(batch_size, time * height * width, 3, self.num_heads, channels // self.num_heads)
-        x = self.qkv_norm(qkv)
-        q, k, v = qkv.chunk(3, dim=2)
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
 
-        if self.use_rope:
-            cos_emb, sin_emb = prepare_rotary_positional_embeddings(
-                grid_height=height,
-                grid_width=width,
-                num_frames=time,
-                attention_head_dim=channels // self.num_heads,
-                device=x.device,
-                base_latent_frame=4,
-                base_latent_height=16,
-                base_latent_width=16,
-            )
-            q = q.reshape(batch_size, self.num_heads, time * height * width, channels // self.num_heads)
-            k = k.reshape(batch_size, self.num_heads, time * height * width, channels // self.num_heads)
-            q[:, 1:, :] = apply_rotary_emb(q[:, :, 1:], (cos_emb, sin_emb)).bfloat16()
-            k[:, 1:, :] = apply_rotary_emb(k[:, :, 1:], (cos_emb, sin_emb)).bfloat16()
-            x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop_rate)
-        else:
-            x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop_rate)
+        qkv = torch.cat((query, key, value), dim=2)
+        qkv = qkv.reshape(batch_size, time_height_width, 3, attn.heads, channels // attn.heads)
+        qkv = self.qkv_norm(qkv)
+        query, key, value = qkv.chunk(3, dim=2)
+
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
+
+        hidden_states = F.scaled_dot_product_attention(query, key, value)
 
         # the output of sdpa = (batch, num_heads, seq_len, head_dim)
-        x = x.permute(0, 2, 1, 3).reshape(batch_size, time * height * width, channels)
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
 
-        # output projection
-        x = self.proj(x)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
 
-        # Reshape back: [b, t*h*w, c] -> [b, c, t, h, w]
-        x = x.permute(0, 2, 1).reshape(batch_size, channels, time, height, width)
-
-        return x + identity
+        return hidden_states + identity
 
 
-class Magi1Block(nn.Module):
-    """
-
-    Args:
-        in_dim (int): Input dimension
-        out_dim (int): Output dimension
-        num_res_blocks (int): Number of residual blocks
-        dropout (float): Dropout rate
-        upsample_mode (str, optional): Mode for upsampling ('upsample2d' or 'upsample3d')
-        non_linearity (str): Type of non-linearity to use
-    """
-
+class Magi1TransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
         num_heads: int = 8,
-        qkv_bias=False,
-        qk_scale=None,
-        attn_drop: float = 0.0,
         proj_drop: float = 0.0,
-        ln_in_attn=False,
+        eps: float = 1e-6,
     ):
         super().__init__()
         self.norm1 = nn.Identity()
@@ -188,12 +92,11 @@ class Magi1Block(nn.Module):
             heads=num_heads,
             kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
             bias=True,
             cross_attention_dim=None,
             out_bias=True,
-            processor=Magi1AttnProcessor2_0(),
+            processor=Magi1AttnProcessor2_0(dim, num_heads),
             )
 
         self.drop_path = nn.Identity()
@@ -210,20 +113,6 @@ class Magi1Block(nn.Module):
 
 
 class Magi1Encoder3d(nn.Module):
-    r"""
-    A 3D encoder module.
-
-    Args:
-        dim (int): The base number of channels in the first layer.
-        z_dim (int): The dimensionality of the latent space.
-        dim_mult (list of int): Multipliers for the number of channels in each block.
-        num_res_blocks (int): Number of residual blocks in each block.
-        attn_scales (list of float): Scales at which to apply attention mechanisms.
-        temperal_downsample (list of bool): Whether to downsample temporally in each block.
-        dropout (float): Dropout rate for the dropout layers.
-        non_linearity (str): Type of non-linearity to use.
-    """
-
     def __init__(
         self,
         patch_size: Tuple[int] = (1, 2, 2),
@@ -302,20 +191,6 @@ class Magi1Encoder3d(nn.Module):
 
 
 class Magi1Decoder3d(nn.Module):
-    r"""
-    A 3D decoder module.
-
-    Args:
-        dim (int): The base number of channels in the first layer.
-        z_dim (int): The dimensionality of the latent space.
-        dim_mult (list of int): Multipliers for the number of channels in each block.
-        num_res_blocks (int): Number of residual blocks in each block.
-        attn_scales (list of float): Scales at which to apply attention mechanisms.
-        temperal_upsample (list of bool): Whether to upsample temporally in each block.
-        dropout (float): Dropout rate for the dropout layers.
-        non_linearity (str): Type of non-linearity to use.
-    """
-
     def __init__(
         self,
         dim=128,
@@ -330,6 +205,16 @@ class Magi1Decoder3d(nn.Module):
         height: int = 256,
         width: int = 256,
         non_linearity: str = "silu",
+
+        num_attention_heads: int = 40,
+        attention_head_dim: int = 128,
+        in_channels: int = 16,
+        out_channels: int = 16,
+        freq_dim: int = 256,
+        ffn_dim: int = 13824,
+        num_layers: int = 40,
+        eps: float = 1e-6,
+        pos_embed_seq_len: Optional[int] = None,
     ):
         super().__init__()
         self.dim = dim
@@ -359,29 +244,15 @@ class Magi1Decoder3d(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, embed_dim))
         self.pos_drop = nn.Dropout(p=0.0)
 
-        # upsample blocks
-        self.up_blocks = nn.ModuleList([])
-        for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
-            # residual (+attention) blocks
-            if i > 0:
-                in_dim = in_dim // 2
-
-            # Determine if we need upsampling
-            upsample_mode = None
-            if i != len(dim_mult) - 1:
-                upsample_mode = "upsample3d" if temperal_upsample[i] else "upsample2d"
-                inner_dim, ffn_dim, num_attention_heads,
-                qk_norm, cross_attn_norm, eps, added_kv_proj_dim
-            # Create and add the upsampling block
-            up_block = Magi1Block(
-                dim=in_dim,
-                out_dim=out_dim,
-                num_res_blocks=num_res_blocks,
-                dropout=dropout,
-                upsample_mode=upsample_mode,
-                non_linearity=non_linearity,
-            )
-            self.up_blocks.append(up_block)
+        # 3. Transformer blocks
+        self.blocks = nn.ModuleList(
+            [
+                Magi1TransformerBlock(
+                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         # output blocks
         self.norm_out = nn.LayerNorm(dims[0])
@@ -407,7 +278,7 @@ class Magi1Decoder3d(nn.Module):
         x = self.pos_drop(x)
 
         ## upsamples
-        for up_block in self.up_blocks:
+        for up_block in self.blocks:
             x = up_block(x)
 
         ## head
