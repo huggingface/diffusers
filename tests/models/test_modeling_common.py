@@ -77,6 +77,7 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator_with_training,
     require_torch_gpu,
     require_torch_multi_accelerator,
+    require_torch_version_greater,
     run_test_in_subprocess,
     slow,
     torch_all_close,
@@ -1949,6 +1950,8 @@ class ModelPushToHubTester(unittest.TestCase):
 @is_torch_compile
 @slow
 class TorchCompileTesterMixin:
+    different_shapes_for_compilation = None
+
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
@@ -1977,14 +1980,35 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
+    def test_torch_compile_repeated_blocks(self):
+        if self.model_class._repeated_blocks is None:
+            pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model.compile_repeated_blocks(fullgraph=True)
+
+        recompile_limit = 1
+        if self.model_class.__name__ == "UNet2DConditionModel":
+            recompile_limit = 2
+
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(recompile_limit=recompile_limit),
+            torch.no_grad(),
+        ):
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
     def test_compile_with_group_offloading(self):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         torch._dynamo.config.cache_size_limit = 10000
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
-
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.eval()
         # TODO: Can test for other group offloading kwargs later if needed.
@@ -2001,6 +2025,21 @@ class TorchCompileTesterMixin:
         with torch.no_grad():
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
+
+    @require_torch_version_greater("2.7.1")
+    def test_compile_on_different_shapes(self):
+        if self.different_shapes_for_compilation is None:
+            pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
+        torch.fx.experimental._config.use_duck_shape = False
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True, dynamic=True)
+
+        for height, width in self.different_shapes_for_compilation:
+            with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+                inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                _ = model(**inputs_dict)
 
 
 @slow
