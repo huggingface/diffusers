@@ -288,6 +288,7 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
             + "- for text-to-image generation, all you need to provide is `prompt`"
         )
 
+
 # controlnet (input + denoise step)
 class StableDiffusionXLAutoControlnetStep(SequentialPipelineBlocks):
     block_classes = [
@@ -303,7 +304,6 @@ class StableDiffusionXLAutoControlnetStep(SequentialPipelineBlocks):
             + "It works for both controlnet and controlnet_union and supports text2img, img2img and inpainting tasks."
             + " (it should be replace at 'denoise' step)"
         )
-
 
 
 TEXT2IMAGE_BLOCKS = InsertableOrderedDict(

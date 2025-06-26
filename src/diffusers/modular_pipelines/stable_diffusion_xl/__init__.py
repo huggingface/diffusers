@@ -30,10 +30,10 @@ else:
         "IP_ADAPTER_BLOCKS",
         "SDXL_SUPPORTED_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
+        "StableDiffusionXLAutoBlocks",
         "StableDiffusionXLAutoDecodeStep",
         "StableDiffusionXLAutoIPAdapterStep",
         "StableDiffusionXLAutoVaeEncoderStep",
-        "StableDiffusionXLAutoBlocks",
     ]
     _import_structure["modular_loader"] = ["StableDiffusionXLModularLoader"]
 
@@ -55,10 +55,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             IP_ADAPTER_BLOCKS,
             SDXL_SUPPORTED_BLOCKS,
             TEXT2IMAGE_BLOCKS,
+            StableDiffusionXLAutoBlocks,
             StableDiffusionXLAutoDecodeStep,
             StableDiffusionXLAutoIPAdapterStep,
             StableDiffusionXLAutoVaeEncoderStep,
-            StableDiffusionXLAutoBlocks,
         )
         from .modular_loader import StableDiffusionXLModularLoader
 else:
