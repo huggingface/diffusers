@@ -1189,6 +1189,9 @@ def main(args):
                 torch_dtype = torch.bfloat16
 
             # TODO: change
+            # transformer = FluxTransformer2DModel.from_pretrained(
+            #     args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
+            # )
             transformer = FluxTransformer2DModel.from_single_file(
                 "https://huggingface.co/diffusers/kontext-v2/blob/main/dev-opt-2-a-3.safetensors",
                 torch_dtype=torch.bfloat16,
@@ -1271,7 +1274,7 @@ def main(args):
     #     args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     # )
     transformer = FluxTransformer2DModel.from_single_file(
-        "https://huggingface.co/diffusers/kontext/blob/main/kontext.safetensors", torch_dtype=torch.bfloat16
+        "https://huggingface.co/diffusers/kontext-v2/blob/main/dev-opt-2-a-3.safetensors", torch_dtype=torch.bfloat16
     )
 
     # We only train the additional adapter LoRA layers
@@ -2016,6 +2019,9 @@ def main(args):
         # Final inference
         # Load previous pipeline
         # TODO: change
+        # transformer = FluxTransformer2DModel.from_pretrained(
+        #     args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
+        # )
         transformer = FluxTransformer2DModel.from_single_file(
             "https://huggingface.co/diffusers/kontext-v2/blob/main/dev-opt-2-a-3.safetensors",
             torch_dtype=torch.bfloat16,
