@@ -91,10 +91,20 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def dummy_input(self):
+        return self.prepare_dummy_input()
+
+    @property
+    def input_shape(self):
+        return (16, 4)
+
+    @property
+    def output_shape(self):
+        return (16, 4)
+
+    def prepare_dummy_input(self, height=4, width=4):
         batch_size = 1
         num_latent_channels = 4
         num_image_channels = 3
-        height = width = 4
         sequence_length = 48
         embedding_dim = 32
 
@@ -113,14 +123,6 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
             "pooled_projections": pooled_prompt_embeds,
             "timestep": timestep,
         }
-
-    @property
-    def input_shape(self):
-        return (16, 4)
-
-    @property
-    def output_shape(self):
-        return (16, 4)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
@@ -173,9 +175,13 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
 
 class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     model_class = FluxTransformer2DModel
+    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
     def prepare_init_args_and_inputs_for_common(self):
         return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+
+    def prepare_dummy_input(self, height, width):
+        return FluxTransformerTests().prepare_dummy_input(height=height, width=width)
 
 
 class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
