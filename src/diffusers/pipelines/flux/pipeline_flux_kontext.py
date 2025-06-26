@@ -60,9 +60,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import FluxKontextPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = FluxKontextPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-kontext", torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = FluxKontextPipeline.from_pretrained("black-forest-labs/FLUX.1-kontext", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> image = load_image("inputs/yarn-art-pikachu.png").convert("RGB")
