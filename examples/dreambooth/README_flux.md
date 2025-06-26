@@ -270,8 +270,8 @@ Make sure to follow the [instructions to set up your environment](#running-local
 Below is an example training command:
 
 ```bash
-accelerate launch train_kontext.py \
-  --pretrained_model_name_or_path=black-forest-labs/KONTEXT.1-dev  \
+accelerate launch train_dreambooth_lora_flux_kontext.py \
+  --pretrained_model_name_or_path=black-forest-labs/FLUX.1-Kontext-dev  \
   --instance_data_dir="dog" \
   --output_dir="kontext-dog" \
   --mixed_precision="bf16" \
