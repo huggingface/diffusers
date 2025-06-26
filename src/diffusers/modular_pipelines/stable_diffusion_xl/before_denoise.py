@@ -26,10 +26,8 @@ from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import (
-    AutoPipelineBlocks,
     PipelineBlock,
     PipelineState,
-    SequentialPipelineBlocks,
 )
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_loader import StableDiffusionXLModularLoader
@@ -1909,110 +1907,3 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         self.add_block_state(state, block_state)
 
         return components, state
-
-
-class StableDiffusionXLControlNetAutoInput(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLControlNetUnionInputStep, StableDiffusionXLControlNetInputStep]
-    block_names = ["controlnet_union", "controlnet"]
-    block_trigger_inputs = ["control_mode", "control_image"]
-
-    @property
-    def description(self):
-        return (
-            "Controlnet Input step that prepare the controlnet input.\n"
-            + "This is an auto pipeline block that works for both controlnet and controlnet_union.\n"
-            + " - `StableDiffusionXLControlNetUnionInputStep` is called to prepare the controlnet input when `control_mode` and `control_image` are provided.\n"
-            + " - `StableDiffusionXLControlNetInputStep` is called to prepare the controlnet input when `control_image` is provided."
-        )
-
-
-# Before denoise
-class StableDiffusionXLBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [
-        StableDiffusionXLInputStep,
-        StableDiffusionXLSetTimestepsStep,
-        StableDiffusionXLPrepareLatentsStep,
-        StableDiffusionXLPrepareAdditionalConditioningStep,
-        StableDiffusionXLControlNetAutoInput,
-    ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond", "controlnet_input"]
-
-    @property
-    def description(self):
-        return (
-            "Before denoise step that prepare the inputs for the denoise step.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `StableDiffusionXLSetTimestepsStep` is used to set the timesteps\n"
-            + " - `StableDiffusionXLPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `StableDiffusionXLPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
-            + " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
-        )
-
-
-class StableDiffusionXLImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [
-        StableDiffusionXLInputStep,
-        StableDiffusionXLImg2ImgSetTimestepsStep,
-        StableDiffusionXLImg2ImgPrepareLatentsStep,
-        StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
-        StableDiffusionXLControlNetAutoInput,
-    ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond", "controlnet_input"]
-
-    @property
-    def description(self):
-        return (
-            "Before denoise step that prepare the inputs for the denoise step for img2img task.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n"
-            + " - `StableDiffusionXLImg2ImgPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
-            + " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
-        )
-
-
-class StableDiffusionXLInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [
-        StableDiffusionXLInputStep,
-        StableDiffusionXLImg2ImgSetTimestepsStep,
-        StableDiffusionXLInpaintPrepareLatentsStep,
-        StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
-        StableDiffusionXLControlNetAutoInput,
-    ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond", "controlnet_input"]
-
-    @property
-    def description(self):
-        return (
-            "Before denoise step that prepare the inputs for the denoise step for inpainting task.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n"
-            + " - `StableDiffusionXLInpaintPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
-            + " - `StableDiffusionXLControlNetAutoInput` is used to prepare the controlnet input"
-        )
-
-
-class StableDiffusionXLAutoBeforeDenoiseStep(AutoPipelineBlocks):
-    block_classes = [
-        StableDiffusionXLInpaintBeforeDenoiseStep,
-        StableDiffusionXLImg2ImgBeforeDenoiseStep,
-        StableDiffusionXLBeforeDenoiseStep,
-    ]
-    block_names = ["inpaint", "img2img", "text2img"]
-    block_trigger_inputs = ["mask", "image_latents", None]
-
-    @property
-    def description(self):
-        return (
-            "Before denoise step that prepare the inputs for the denoise step.\n"
-            + "This is an auto pipeline block that works for text2img, img2img and inpainting tasks as well as controlnet, controlnet_union.\n"
-            + " - `StableDiffusionXLInpaintBeforeDenoiseStep` (inpaint) is used when both `mask` and `image_latents` are provided.\n"
-            + " - `StableDiffusionXLImg2ImgBeforeDenoiseStep` (img2img) is used when only `image_latents` is provided.\n"
-            + " - `StableDiffusionXLBeforeDenoiseStep` (text2img) is used when both `image_latents` and `mask` are not provided.\n"
-            + " - `StableDiffusionXLControlNetUnionInputStep` is called to prepare the controlnet input when `control_mode` and `control_image` are provided.\n"
-            + " - `StableDiffusionXLControlNetInputStep` is called to prepare the controlnet input when `control_image` is provided."
-        )

@@ -26,7 +26,7 @@ from transformers import (
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import ModularIPAdapterMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...utils import (
@@ -35,7 +35,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ..modular_pipeline import AutoPipelineBlocks, PipelineBlock, PipelineState
+from ..modular_pipeline import PipelineBlock, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_loader import StableDiffusionXLModularLoader
 
@@ -893,30 +893,3 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         self.add_block_state(state, block_state)
 
         return components, state
-
-
-# auto blocks (YiYi TODO: maybe move all the auto blocks to a separate file)
-# Encode
-class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLInpaintVaeEncoderStep, StableDiffusionXLVaeEncoderStep]
-    block_names = ["inpaint", "img2img"]
-    block_trigger_inputs = ["mask_image", "image"]
-
-    @property
-    def description(self):
-        return (
-            "Vae encoder step that encode the image inputs into their latent representations.\n"
-            + "This is an auto pipeline block that works for both inpainting and img2img tasks.\n"
-            + " - `StableDiffusionXLInpaintVaeEncoderStep` (inpaint) is used when both `mask_image` and `image` are provided.\n"
-            + " - `StableDiffusionXLVaeEncoderStep` (img2img) is used when only `image` is provided."
-        )
-
-
-class StableDiffusionXLAutoIPAdapterStep(AutoPipelineBlocks, ModularIPAdapterMixin):
-    block_classes = [StableDiffusionXLIPAdapterStep]
-    block_names = ["ip_adapter"]
-    block_trigger_inputs = ["ip_adapter_image"]
-
-    @property
-    def description(self):
-        return "Run IP Adapter step if `ip_adapter_image` is provided."

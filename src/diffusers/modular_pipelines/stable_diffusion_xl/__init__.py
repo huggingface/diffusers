@@ -21,24 +21,21 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["decoders"] = ["StableDiffusionXLAutoDecodeStep"]
-    _import_structure["encoders"] = [
-        "StableDiffusionXLAutoIPAdapterStep",
-        "StableDiffusionXLAutoVaeEncoderStep",
-        "StableDiffusionXLTextEncoderStep",
-    ]
-    _import_structure["modular_block_mappings"] = [
+    _import_structure["encoders"] = ["StableDiffusionXLTextEncoderStep"]
+    _import_structure["modular_blocks_presets"] = [
         "AUTO_BLOCKS",
         "CONTROLNET_BLOCKS",
-        "CONTROLNET_UNION_BLOCKS",
         "IMAGE2IMAGE_BLOCKS",
         "INPAINT_BLOCKS",
         "IP_ADAPTER_BLOCKS",
         "SDXL_SUPPORTED_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
+        "StableDiffusionXLAutoDecodeStep",
+        "StableDiffusionXLAutoIPAdapterStep",
+        "StableDiffusionXLAutoVaeEncoderStep",
+        "StableDiffusionXLAutoBlocks",
     ]
     _import_structure["modular_loader"] = ["StableDiffusionXLModularLoader"]
-    _import_structure["modular_pipeline_presets"] = ["StableDiffusionXLAutoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -47,24 +44,23 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .decoders import StableDiffusionXLAutoDecodeStep
         from .encoders import (
-            StableDiffusionXLAutoIPAdapterStep,
-            StableDiffusionXLAutoVaeEncoderStep,
             StableDiffusionXLTextEncoderStep,
         )
-        from .modular_block_mappings import (
+        from .modular_blocks_presets import (
             AUTO_BLOCKS,
             CONTROLNET_BLOCKS,
-            CONTROLNET_UNION_BLOCKS,
             IMAGE2IMAGE_BLOCKS,
             INPAINT_BLOCKS,
             IP_ADAPTER_BLOCKS,
             SDXL_SUPPORTED_BLOCKS,
             TEXT2IMAGE_BLOCKS,
+            StableDiffusionXLAutoDecodeStep,
+            StableDiffusionXLAutoIPAdapterStep,
+            StableDiffusionXLAutoVaeEncoderStep,
+            StableDiffusionXLAutoBlocks,
         )
         from .modular_loader import StableDiffusionXLModularLoader
-        from .modular_pipeline_presets import StableDiffusionXLAutoPipeline
 else:
     import sys
 

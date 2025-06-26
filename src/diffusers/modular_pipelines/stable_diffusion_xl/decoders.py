@@ -24,10 +24,8 @@ from ...models import AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from ...utils import logging
 from ..modular_pipeline import (
-    AutoPipelineBlocks,
     PipelineBlock,
     PipelineState,
-    SequentialPipelineBlocks,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
@@ -219,32 +217,3 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
         self.add_block_state(state, block_state)
 
         return components, state
-
-
-class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLDecodeStep, StableDiffusionXLInpaintOverlayMaskStep]
-    block_names = ["decode", "mask_overlay"]
-
-    @property
-    def description(self):
-        return (
-            "Inpaint decode step that decode the denoised latents into images outputs.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `StableDiffusionXLDecodeStep` is used to decode the denoised latents into images\n"
-            + " - `StableDiffusionXLInpaintOverlayMaskStep` is used to overlay the mask on the image"
-        )
-
-
-class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLInpaintDecodeStep, StableDiffusionXLDecodeStep]
-    block_names = ["inpaint", "non-inpaint"]
-    block_trigger_inputs = ["padding_mask_crop", None]
-
-    @property
-    def description(self):
-        return (
-            "Decode step that decode the denoised latents into images outputs.\n"
-            + "This is an auto pipeline block that works for inpainting and non-inpainting tasks.\n"
-            + " - `StableDiffusionXLInpaintDecodeStep` (inpaint) is used when `padding_mask_crop` is provided.\n"
-            + " - `StableDiffusionXLDecodeStep` (non-inpaint) is used when `padding_mask_crop` is not provided."
-        )

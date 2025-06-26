@@ -39,7 +39,7 @@ else:
         "InputParam",
         "OutputParam",
     ]
-    _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoPipeline", "StableDiffusionXLModularLoader"]
+    _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularLoader"]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -68,7 +68,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OutputParam,
         )
         from .stable_diffusion_xl import (
-            StableDiffusionXLAutoPipeline,
+            StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularLoader,
         )
 else:

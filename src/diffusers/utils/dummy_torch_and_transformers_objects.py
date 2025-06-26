@@ -2,7 +2,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class StableDiffusionXLAutoPipeline(metaclass=DummyObject):
+class StableDiffusionXLAutoBlocks(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
