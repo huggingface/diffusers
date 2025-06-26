@@ -30,6 +30,8 @@ from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 from ..normalization import FP32LayerNorm
 from ..embeddings import apply_rotary_emb, get_3d_rotary_pos_embed
+from ..attention import FeedForward
+from ..attention_processor import Attention
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -93,31 +95,32 @@ def prepare_rotary_positional_embeddings(
     return freqs_cos, freqs_sin
 
 
-class Magi1AttentionBlock(nn.Module):
-    r"""
+class Magi1AttnProcessor2_0:
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
-    Args:
-    """
 
     def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0.0, proj_drop=0.0, ln_in_attn=False, use_rope=False):
         super().__init__()
-        self.use_rope = use_rope
-        self.num_heads = num_heads
-        # layers
-        self.to_qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop_rate = attn_drop
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
+
         if ln_in_attn:
             self.qkv_norm = FP32LayerNorm(dim // num_heads, elementwise_affine=False)
         else:
             self.qkv_norm = nn.Identity()
 
-    def forward(self, x):
-        identity = x
-        batch_size, channels, time, height, width = x.size()
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        identity = hidden_states
+        batch_size, channels, time, height, width = hidden_states.size()
 
-        x = x.permute(0, 2, 3, 4, 1).reshape(batch_size, time * height * width, channels)
+        x = hidden_states.permute(0, 2, 3, 4, 1).reshape(batch_size, time * height * width, channels)
 
         # compute query, key, value
         qkv = self.to_qkv(x)
@@ -158,7 +161,6 @@ class Magi1AttentionBlock(nn.Module):
 
 class Magi1Block(nn.Module):
     """
-    A block that handles upsampling for the Magi1VAE decoder.
 
     Args:
         in_dim (int): Input dimension
@@ -171,50 +173,39 @@ class Magi1Block(nn.Module):
 
     def __init__(
         self,
-        in_dim: int,
-        num_attention_heads: int = 8,
+        dim: int,
+        num_heads: int = 8,
         qkv_bias=False,
         qk_scale=None,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
         ln_in_attn=False,
-        non_linearity: str = "gelu",
     ):
         super().__init__()
-        self.in_dim = in_dim
-        self.num_attention_heads = num_attention_heads
-
         self.norm1 = nn.Identity()
-        self.attn = Magi1AttentionBlock(in_dim,
-                                        num_heads=num_attention_heads,
-                                        qkv_bias=qkv_bias,
-                                        qk_scale=qk_scale,
-                                        attn_drop=attn_drop,
-                                        proj_drop=proj_drop,
-                                        ln_in_attn=ln_in_attn,
-                                        use_rope=True)
+        self.attn = Attention(
+            query_dim=dim,
+            heads=num_heads,
+            kv_heads=num_heads,
+            dim_head=dim // num_heads,
+            qk_norm=qk_norm,
+            eps=eps,
+            bias=True,
+            cross_attention_dim=None,
+            out_bias=True,
+            processor=Magi1AttnProcessor2_0(),
+            )
 
         self.drop_path = nn.Identity()
-        self.norm2 = nn.LayerNorm(in_dim)
-        mlp_hidden_dim = int(in_dim * mlp_ratio)
-        self.mlp = Mlp(in_features=in_dim, hidden_features=mlp_hidden_dim, act_layer=non_linearity, drop=proj_drop)
+        self.norm2 = nn.LayerNorm(dim)
+
+        self.proj_out = FeedForward(dim, activation_fn="gelu", dropout=proj_drop)
 
         self.gradient_checkpointing = False
 
     def forward(self, x):
-        """
-        Forward pass through the upsampling block.
-
-        Args:
-            x (torch.Tensor): Input tensor
-
-        Returns:
-            torch.Tensor: Output tensor
-        """
-        x = self.attn(x)
-
-        if self.upsamplers is not None:
-            x = self.upsamplers[0](x)
+        x = x + self.drop_path(self.attn(self.norm1(x)))
+        x = x + self.drop_path(self.proj_out(self.norm2(x)))
         return x
 
 
@@ -382,8 +373,8 @@ class Magi1Decoder3d(nn.Module):
                 inner_dim, ffn_dim, num_attention_heads,
                 qk_norm, cross_attn_norm, eps, added_kv_proj_dim
             # Create and add the upsampling block
-            up_block = Magi1UpBlock(
-                in_dim=in_dim,
+            up_block = Magi1Block(
+                dim=in_dim,
                 out_dim=out_dim,
                 num_res_blocks=num_res_blocks,
                 dropout=dropout,
