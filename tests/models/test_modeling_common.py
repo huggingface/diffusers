@@ -1936,6 +1936,9 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
 
     def test_torch_compile_repeated_blocks(self):
+        if self.model_class._repeated_blocks is None:
+            pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict).to(torch_device)
