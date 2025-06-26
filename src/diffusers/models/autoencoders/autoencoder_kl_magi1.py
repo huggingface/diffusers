@@ -93,125 +93,6 @@ def prepare_rotary_positional_embeddings(
     return freqs_cos, freqs_sin
 
 
-class Magi1Upsample(nn.Upsample):
-    r"""
-    Perform upsampling while ensuring the output tensor has the same data type as the input.
-
-    Args:
-        x (torch.Tensor): Input tensor to be upsampled.
-
-    Returns:
-        torch.Tensor: Upsampled tensor with the same data type as the input.
-    """
-
-    def forward(self, x):
-        return super().forward(x.float()).type_as(x)
-
-
-class Magi1Resample(nn.Module):
-    r"""
-    A custom resampling module for 2D and 3D data.
-
-    Args:
-        dim (int): The number of input/output channels.
-        mode (str): The resampling mode. Must be one of:
-            - 'none': No resampling (identity operation).
-            - 'upsample2d': 2D upsampling with nearest-exact interpolation and convolution.
-            - 'upsample3d': 3D upsampling with nearest-exact interpolation, convolution, and causal 3D convolution.
-            - 'downsample2d': 2D downsampling with zero-padding and convolution.
-            - 'downsample3d': 3D downsampling with zero-padding, convolution, and causal 3D convolution.
-    """
-
-    def __init__(self, dim: int, mode: str) -> None:
-        super().__init__()
-        self.dim = dim
-        self.mode = mode
-
-        # layers
-        if mode == "upsample2d":
-            self.resample = nn.Sequential(
-                Magi1Upsample(scale_factor=(2.0, 2.0), mode="nearest-exact"), nn.Conv2d(dim, dim // 2, 3, padding=1)
-            )
-        elif mode == "upsample3d":
-            self.resample = nn.Sequential(
-                Magi1Upsample(scale_factor=(2.0, 2.0), mode="nearest-exact"), nn.Conv2d(dim, dim // 2, 3, padding=1)
-            )
-            self.time_conv = Magi1CausalConv3d(dim, dim * 2, (3, 1, 1), padding=(1, 0, 0))
-
-        elif mode == "downsample2d":
-            self.resample = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), nn.Conv2d(dim, dim, 3, stride=(2, 2)))
-        elif mode == "downsample3d":
-            self.resample = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), nn.Conv2d(dim, dim, 3, stride=(2, 2)))
-            self.time_conv = Magi1CausalConv3d(dim, dim, (3, 1, 1), stride=(2, 1, 1), padding=(0, 0, 0))
-
-        else:
-            self.resample = nn.Identity()
-
-    def forward(self, x):
-        b, c, t, h, w = x.size()
-
-        t = x.shape[2]
-        x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-        x = self.resample(x)
-        x = x.view(b, t, x.size(1), x.size(2), x.size(3)).permute(0, 2, 1, 3, 4)
-
-        return x
-
-
-class Magi1ResidualBlock(nn.Module):
-    r"""
-    A custom residual block module.
-
-    Args:
-        in_dim (int): Number of input channels.
-        out_dim (int): Number of output channels.
-        dropout (float, optional): Dropout rate for the dropout layer. Default is 0.0.
-        non_linearity (str, optional): Type of non-linearity to use. Default is "silu".
-    """
-
-    def __init__(
-        self,
-        in_dim: int,
-        out_dim: int,
-        dropout: float = 0.0,
-        non_linearity: str = "silu",
-    ) -> None:
-        super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.nonlinearity = get_activation(non_linearity)
-
-        # layers
-        self.norm1 = Magi1RMS_norm(in_dim, images=False)
-        self.conv1 = Magi1CausalConv3d(in_dim, out_dim, 3, padding=1)
-        self.norm2 = Magi1RMS_norm(out_dim, images=False)
-        self.dropout = nn.Dropout(dropout)
-        self.conv2 = Magi1CausalConv3d(out_dim, out_dim, 3, padding=1)
-        self.conv_shortcut = Magi1CausalConv3d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
-
-    def forward(self, x):
-        # Apply shortcut connection
-        h = self.conv_shortcut(x)
-
-        # First normalization and activation
-        x = self.norm1(x)
-        x = self.nonlinearity(x)
-
-        x = self.conv1(x)
-
-        # Second normalization and activation
-        x = self.norm2(x)
-        x = self.nonlinearity(x)
-
-        # Dropout
-        x = self.dropout(x)
-
-        x = self.conv2(x)
-
-        # Add residual connection
-        return x + h
-
-
 class Magi1AttentionBlock(nn.Module):
     r"""
 
@@ -275,42 +156,65 @@ class Magi1AttentionBlock(nn.Module):
         return x + identity
 
 
-class Magi1MidBlock(nn.Module):
+class Magi1Block(nn.Module):
     """
-    Middle block for Magi1VAE encoder and decoder.
+    A block that handles upsampling for the Magi1VAE decoder.
 
     Args:
-        dim (int): Number of input/output channels.
-        dropout (float): Dropout rate.
-        non_linearity (str): Type of non-linearity to use.
+        in_dim (int): Input dimension
+        out_dim (int): Output dimension
+        num_res_blocks (int): Number of residual blocks
+        dropout (float): Dropout rate
+        upsample_mode (str, optional): Mode for upsampling ('upsample2d' or 'upsample3d')
+        non_linearity (str): Type of non-linearity to use
     """
 
-    def __init__(self, dim: int, dropout: float = 0.0, non_linearity: str = "silu", num_layers: int = 1):
+    def __init__(
+        self,
+        in_dim: int,
+        num_attention_heads: int = 8,
+        qkv_bias=False,
+        qk_scale=None,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
+        ln_in_attn=False,
+        non_linearity: str = "gelu",
+    ):
         super().__init__()
-        self.dim = dim
+        self.in_dim = in_dim
+        self.num_attention_heads = num_attention_heads
 
-        # Create the components
-        resnets = [Magi1ResidualBlock(dim, dim, dropout, non_linearity)]
-        attentions = []
-        for _ in range(num_layers):
-            attentions.append(Magi1AttentionBlock(dim))
-            resnets.append(Magi1ResidualBlock(dim, dim, dropout, non_linearity))
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.norm1 = nn.Identity()
+        self.attn = Magi1AttentionBlock(in_dim,
+                                        num_heads=num_attention_heads,
+                                        qkv_bias=qkv_bias,
+                                        qk_scale=qk_scale,
+                                        attn_drop=attn_drop,
+                                        proj_drop=proj_drop,
+                                        ln_in_attn=ln_in_attn,
+                                        use_rope=True)
+
+        self.drop_path = nn.Identity()
+        self.norm2 = nn.LayerNorm(in_dim)
+        mlp_hidden_dim = int(in_dim * mlp_ratio)
+        self.mlp = Mlp(in_features=in_dim, hidden_features=mlp_hidden_dim, act_layer=non_linearity, drop=proj_drop)
 
         self.gradient_checkpointing = False
 
     def forward(self, x):
-        # First residual block
-        x = self.resnets[0](x)
+        """
+        Forward pass through the upsampling block.
 
-        # Process through attention and residual blocks
-        for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            if attn is not None:
-                x = attn(x)
+        Args:
+            x (torch.Tensor): Input tensor
 
-            x = resnet(x)
+        Returns:
+            torch.Tensor: Output tensor
+        """
+        x = self.attn(x)
 
+        if self.upsamplers is not None:
+            x = self.upsamplers[0](x)
         return x
 
 
@@ -406,67 +310,6 @@ class Magi1Encoder3d(nn.Module):
         return x
 
 
-class Magi1UpBlock(nn.Module):
-    """
-    A block that handles upsampling for the Magi1VAE decoder.
-
-    Args:
-        in_dim (int): Input dimension
-        out_dim (int): Output dimension
-        num_res_blocks (int): Number of residual blocks
-        dropout (float): Dropout rate
-        upsample_mode (str, optional): Mode for upsampling ('upsample2d' or 'upsample3d')
-        non_linearity (str): Type of non-linearity to use
-    """
-
-    def __init__(
-        self,
-        in_dim: int,
-        out_dim: int,
-        num_res_blocks: int,
-        dropout: float = 0.0,
-        upsample_mode: Optional[str] = None,
-        non_linearity: str = "silu",
-    ):
-        super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-
-        # Create layers list
-        resnets = []
-        # Add residual blocks and attention if needed
-        current_dim = in_dim
-        for _ in range(num_res_blocks + 1):
-            resnets.append(Magi1ResidualBlock(current_dim, out_dim, dropout, non_linearity))
-            current_dim = out_dim
-
-        self.resnets = nn.ModuleList(resnets)
-
-        # Add upsampling layer if needed
-        self.upsamplers = None
-        if upsample_mode is not None:
-            self.upsamplers = nn.ModuleList([Magi1Resample(out_dim, mode=upsample_mode)])
-
-        self.gradient_checkpointing = False
-
-    def forward(self, x):
-        """
-        Forward pass through the upsampling block.
-
-        Args:
-            x (torch.Tensor): Input tensor
-
-        Returns:
-            torch.Tensor: Output tensor
-        """
-        for resnet in self.resnets:
-            x = resnet(x)
-
-        if self.upsamplers is not None:
-            x = self.upsamplers[0](x)
-        return x
-
-
 class Magi1Decoder3d(nn.Module):
     r"""
     A 3D decoder module.
@@ -536,7 +379,8 @@ class Magi1Decoder3d(nn.Module):
             upsample_mode = None
             if i != len(dim_mult) - 1:
                 upsample_mode = "upsample3d" if temperal_upsample[i] else "upsample2d"
-
+                inner_dim, ffn_dim, num_attention_heads,
+                qk_norm, cross_attn_norm, eps, added_kv_proj_dim
             # Create and add the upsampling block
             up_block = Magi1UpBlock(
                 in_dim=in_dim,
