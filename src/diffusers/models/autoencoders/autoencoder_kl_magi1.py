@@ -47,6 +47,9 @@ class Magi1AttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         identity = hidden_states
         batch_size, time_height_width, channels = hidden_states.size()
@@ -65,8 +68,9 @@ class Magi1AttnProcessor2_0:
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value)
-
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
         # the output of sdpa = (batch, num_heads, seq_len, head_dim)
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -135,58 +139,81 @@ class Magi1Encoder3d(nn.Module):
         self.dim_mult = dim_mult
         self.num_res_blocks = num_res_blocks
         self.attn_scales = attn_scales
-        self.temperal_downsample = temperal_downsample
-        self.nonlinearity = get_activation(non_linearity)
+        self.temperal_upsample = temperal_upsample
+        self.patch_size = patch_size
 
         # dimensions
-        dims = [dim * u for u in [1] + dim_mult]
-        scale = 1.0
-        inner_dim = num_attention_heads * attention_head_dim
-        out_channels = out_channels or in_channels
-        # 1. Patch embedding
+        dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
+
+        # init block
+        self.proj_in = nn.Linear(z_dim, dims[0])
+
+        self.cls_token_nums = 1
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dims[0]))
+        trunc_normal_(self.cls_token, std=0.02)
+
+        p_t, p_h, p_w = patch_size
+        post_patch_num_frames = num_frames // p_t
+        post_patch_height = height // p_h
+        post_patch_width = width // p_w
+        num_patches = post_patch_num_frames * post_patch_height * post_patch_width
+
+        # 1. Patch & position embedding
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
-        # downsample blocks
-        self.down_blocks = nn.ModuleList([])
-        for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
-            # residual (+attention) blocks
-            for _ in range(num_res_blocks):
-                self.down_blocks.append(Magi1ResidualBlock(in_dim, out_dim, dropout))
-                if scale in attn_scales:
-                    self.down_blocks.append(Magi1AttentionBlock(out_dim))
-                in_dim = out_dim
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, embed_dim))
+        self.pos_drop = nn.Dropout(p=0.0)
 
-            # downsample block
-            if i != len(dim_mult) - 1:
-                mode = "downsample3d" if temperal_downsample[i] else "downsample2d"
-                self.down_blocks.append(Magi1Resample(out_dim, mode=mode))
-                scale /= 2.0
-
-        # middle blocks
-        self.mid_block = Magi1MidBlock(out_dim, dropout, non_linearity, num_layers=1)
+        # 3. Transformer blocks
+        self.blocks = nn.ModuleList(
+            [
+                Magi1TransformerBlock(
+                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         # output blocks
-        self.norm_out = Magi1RMS_norm(out_dim, images=False)
-        self.conv_out = Magi1CausalConv3d(out_dim, z_dim, 3, padding=1)
+        self.norm_out = nn.LayerNorm(dims[0])
+        self.unpatch_channels = dims[0] // (patch_size[0] * patch_size[1] * patch_size[2])
+        self.conv_out = nn.Conv3d(self.unpatch_channels, 3, 3, padding=1)
+
+        trunc_normal_(self.pos_embed, std=0.02)
 
         self.gradient_checkpointing = False
 
     def forward(self, x):
+        B = x.shape[0]
+        # B C T H W -> B C T/pT H/pH W//pW
+        x = self.patch_embed(x)
+        latentT, latentH, latentW = x.shape[2], x.shape[3], x.shape[4]
+        # B C T/pT H/pH W//pW -> B (T/pT H/pH W//pW) C
+        x = x.flatten(2).transpose(1, 2)
 
-        x = self.conv_in(x)
+        cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        x = torch.cat((cls_tokens, x), dim=1)
 
-        ## downsamples
-        for layer in self.down_blocks:
-            x = layer(x)
+        x = x + self.pos_embed
+        x = self.pos_drop(x)
 
-        ## middle
-        x = self.mid_block(x)
+        for block in self.blocks:
+            x = block(x)
 
         ## head
         x = self.norm_out(x)
-        x = self.nonlinearity(x)
+        x = x[:, 1:]  # remove cls_token
 
-        x = self.conv_out(x)
+        # B L C - > B , lT, lH, lW, zC
+        x = x.reshape(B, latentT, latentH, latentW, self.out_channels)
+
+        # B , lT, lH, lW, zC -> B, zC, lT, lH, lW
+        x = x.permute(0, 4, 1, 2, 3)
+        if self.norm_code:
+            prev_dtype = x.dtype
+            x = x.float()
+            x = x / torch.norm(x, dim=1, keepdim=True)
+            x = x.to(prev_dtype)
         return x
 
 
@@ -302,21 +329,27 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
 
     _supports_gradient_checkpointing = False
+    _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
+    _no_split_modules = ["WanTransformerBlock"]
+    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
     def __init__(
         self,
-        base_dim: int = 96,
-        z_dim: int = 16,
-        dim_mult: Tuple[int] = [1, 2, 4, 4],
         patch_size: Tuple[int] = (1, 2, 2),
-        num_frames: int = 16,
-        height: int = 256,
-        width: int = 256,
-        num_res_blocks: int = 2,
-        attn_scales: List[float] = [],
-        temperal_downsample: List[bool] = [False, True, True],
-        dropout: float = 0.0,
+        num_attention_heads: int = 40,
+        attention_head_dim: int = 128,
+        in_channels: int = 16,
+        out_channels: int = 16,
+        freq_dim: int = 256,
+        ffn_dim: int = 13824,
+        num_layers: int = 40,
+        cross_attn_norm: bool = True,
+        qk_norm: Optional[str] = "rms_norm_across_heads",
+        eps: float = 1e-6,
+        rope_max_seq_len: int = 1024,
+        pos_embed_seq_len: Optional[int] = None,
         latents_mean: List[float] = [
             -0.7571,
             -0.7089,
@@ -356,6 +389,8 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     ) -> None:
         super().__init__()
 
+        inner_dim = num_attention_heads * attention_head_dim
+        out_channels = out_channels or in_channels
         self.z_dim = z_dim
         self.temperal_downsample = temperal_downsample
         self.temperal_upsample = temperal_downsample[::-1]
