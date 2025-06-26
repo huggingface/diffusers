@@ -70,8 +70,8 @@ class PipelineState:
 
     inputs: Dict[str, Any] = field(default_factory=dict)
     intermediates: Dict[str, Any] = field(default_factory=dict)
-    input_kwargs: Dict[str, list[str, Any]] = field(default_factory=dict)
-    intermediate_kwargs: Dict[str, list[str, Any]] = field(default_factory=dict)
+    input_kwargs: Dict[str, List[str]] = field(default_factory=dict)
+    intermediate_kwargs: Dict[str, List[str]] = field(default_factory=dict)
 
     def add_input(self, key: str, value: Any, kwargs_type: str = None):
         """
