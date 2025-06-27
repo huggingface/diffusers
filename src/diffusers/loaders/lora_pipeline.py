@@ -41,6 +41,7 @@ from .lora_base import (  # noqa
 )
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
+    _convert_fal_kontext_lora_to_diffusers,
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
@@ -1999,7 +2000,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
         return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
-        print("RESPECTFULLY WTF")
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
