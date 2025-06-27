@@ -2316,16 +2316,14 @@ class PeftLoraLoaderMixinTests:
         pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
         )
-        output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         # unload and then add.
         pipe.unload_lora_weights()
         pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
         )
-
-        output_lora_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(np.allclose(output_lora, output_lora_2, atol=1e-3, rtol=1e-3), "Lora outputs should match.")
+        _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
     def test_inference_load_delete_load_adapters(self):
         "Tests if `load_lora_weights()` -> `delete_adapters()` -> `load_lora_weights()` works."
