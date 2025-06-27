@@ -26,7 +26,7 @@ from safetensors.torch import load_file
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from diffusers import (
-    AutoencoderKLMagi,
+    AutoencoderKLMagi1,
     FlowMatchEulerDiscreteScheduler,
     MagiPipeline,
     MagiTransformer3DModel,
@@ -56,7 +56,7 @@ LAYER_KEYS_RENAME_DICT = {
 
 def convert_magi_vae_checkpoint(checkpoint_path, vae_config_file=None, dtype=None):
     """
-    Convert a MAGI-1 VAE checkpoint to a diffusers AutoencoderKLMagi.
+    Convert a MAGI-1 VAE checkpoint to a diffusers AutoencoderKLMagi1.
 
     Args:
         checkpoint_path: Path to the MAGI-1 VAE checkpoint.
@@ -64,36 +64,39 @@ def convert_magi_vae_checkpoint(checkpoint_path, vae_config_file=None, dtype=Non
         dtype: Optional dtype for the model.
 
     Returns:
-        A diffusers AutoencoderKLMagi model.
+        A diffusers AutoencoderKLMagi1 model.
     """
     if vae_config_file is not None:
         with open(vae_config_file, "r") as f:
             config = json.load(f)
     else:
         # Default config for MAGI-1 VAE based on the checkpoint structure
+        # This is a ViT-based VAE, not a traditional CNN-based VAE
         config = {
-            "in_channels": 3,
-            "out_channels": 3,
-            "latent_channels": 16,  # Based on encoder.last_layer.weight shape [32, 1024] -> 16 channels (32/2)
-            "block_out_channels": [1024],  # Hidden dimension in transformer blocks
-            "layers_per_block": 24,  # 24 transformer blocks in encoder/decoder
-            "act_fn": "gelu",
-            "norm_num_groups": 32,
-            "scaling_factor": 0.18215,
-            "sample_size": 256,  # Typical image size
+            "patch_size": (4, 8, 8),  # Based on encoder.patch_embed.proj.weight shape [1024, 3, 4, 8, 8]
+            "num_attention_heads": 16,  # Typical for 1024 hidden size
+            "attention_head_dim": 64,  # 1024 / 16 = 64
+            "z_dim": 16,  # Based on decoder.proj_in.weight shape [1024, 16]
+            "height": 256,  # Typical video frame height
+            "width": 256,  # Typical video frame width
+            "num_frames": 16,  # Typical number of frames
+            "ffn_dim": 4 * 1024,  # Typical FFN expansion
+            "num_layers": 24,  # 24 transformer blocks in encoder/decoder
+            "eps": 1e-6,
         }
 
     # Create the diffusers VAE model
-    vae = AutoencoderKLMagi(
-        in_channels=config["in_channels"],
-        out_channels=config["out_channels"],
-        latent_channels=config["latent_channels"],
-        layers_per_block=config["layers_per_block"],
-        block_out_channels=config["block_out_channels"],
-        act_fn=config["act_fn"],
-        norm_num_groups=config["norm_num_groups"],
-        scaling_factor=config["scaling_factor"],
-        sample_size=config["sample_size"],
+    vae = AutoencoderKLMagi1(
+        patch_size=config["patch_size"],
+        num_attention_heads=config["num_attention_heads"],
+        attention_head_dim=config["attention_head_dim"],
+        z_dim=config["z_dim"],
+        height=config["height"],
+        width=config["width"],
+        num_frames=config["num_frames"],
+        ffn_dim=config["ffn_dim"],
+        num_layers=config["num_layers"],
+        eps=config["eps"],
     )
 
     # Load the checkpoint
@@ -130,10 +133,10 @@ def convert_vae_state_dict(checkpoint):
     state_dict = {}
 
     # Encoder mappings
-    # Patch embedding
+    # Patch embedding (3D conv for video frames)
     if "encoder.patch_embed.proj.weight" in checkpoint:
-        state_dict["encoder.conv_in.weight"] = checkpoint["encoder.patch_embed.proj.weight"]
-        state_dict["encoder.conv_in.bias"] = checkpoint["encoder.patch_embed.proj.bias"]
+        state_dict["encoder.patch_embedding.weight"] = checkpoint["encoder.patch_embed.proj.weight"]
+        state_dict["encoder.patch_embedding.bias"] = checkpoint["encoder.patch_embed.proj.bias"]
 
     # Position embeddings
     if "encoder.pos_embed" in checkpoint:
@@ -141,43 +144,62 @@ def convert_vae_state_dict(checkpoint):
 
     # Class token
     if "encoder.cls_token" in checkpoint:
-        state_dict["encoder.class_embedding"] = checkpoint["encoder.cls_token"]
+        state_dict["encoder.cls_token"] = checkpoint["encoder.cls_token"]
 
     # Encoder blocks
-    for i in range(24):  # Assuming 24 blocks in the encoder
+    for i in range(24):  # 24 blocks in the encoder
         # Check if this block exists
         if f"encoder.blocks.{i}.attn.qkv.weight" not in checkpoint:
             continue
 
-        # Attention components
-        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_qkv.weight"] = checkpoint[
-            f"encoder.blocks.{i}.attn.qkv.weight"
-        ]
-        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_qkv.bias"] = checkpoint[
-            f"encoder.blocks.{i}.attn.qkv.bias"
-        ]
-        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[
-            f"encoder.blocks.{i}.attn.proj.weight"
-        ]
-        state_dict[f"encoder.transformer_blocks.{i}.attn1.to_out.0.bias"] = checkpoint[
-            f"encoder.blocks.{i}.attn.proj.bias"
-        ]
+        # Attention components - split qkv into separate q, k, v
+        if f"encoder.blocks.{i}.attn.qkv.weight" in checkpoint:
+            qkv_weight = checkpoint[f"encoder.blocks.{i}.attn.qkv.weight"]
+            qkv_bias = checkpoint[f"encoder.blocks.{i}.attn.qkv.bias"]
 
-        # Normalization
-        state_dict[f"encoder.transformer_blocks.{i}.norm2.weight"] = checkpoint[f"encoder.blocks.{i}.norm2.weight"]
-        state_dict[f"encoder.transformer_blocks.{i}.norm2.bias"] = checkpoint[f"encoder.blocks.{i}.norm2.bias"]
+            # Split qkv into q, k, v (assuming equal splits)
+            hidden_size = qkv_weight.shape[1]  # 1024
+            head_dim = qkv_weight.shape[0] // 3  # 3072 // 3 = 1024
 
-        # MLP components
-        state_dict[f"encoder.transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[
-            f"encoder.blocks.{i}.mlp.fc1.weight"
-        ]
-        state_dict[f"encoder.transformer_blocks.{i}.ff.net.0.proj.bias"] = checkpoint[
-            f"encoder.blocks.{i}.mlp.fc1.bias"
-        ]
-        state_dict[f"encoder.transformer_blocks.{i}.ff.net.2.weight"] = checkpoint[
-            f"encoder.blocks.{i}.mlp.fc2.weight"
-        ]
-        state_dict[f"encoder.transformer_blocks.{i}.ff.net.2.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.bias"]
+            q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
+            q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
+
+            state_dict[f"encoder.blocks.{i}.attn.to_q.weight"] = q_weight
+            state_dict[f"encoder.blocks.{i}.attn.to_q.bias"] = q_bias
+            state_dict[f"encoder.blocks.{i}.attn.to_k.weight"] = k_weight
+            state_dict[f"encoder.blocks.{i}.attn.to_k.bias"] = k_bias
+            state_dict[f"encoder.blocks.{i}.attn.to_v.weight"] = v_weight
+            state_dict[f"encoder.blocks.{i}.attn.to_v.bias"] = v_bias
+
+        # Attention output projection
+        if f"encoder.blocks.{i}.attn.proj.weight" in checkpoint:
+            state_dict[f"encoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[
+                f"encoder.blocks.{i}.attn.proj.weight"
+            ]
+            state_dict[f"encoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[
+                f"encoder.blocks.{i}.attn.proj.bias"
+            ]
+
+        # Normalization (pre-MLP norm)
+        if f"encoder.blocks.{i}.norm2.weight" in checkpoint:
+            state_dict[f"encoder.blocks.{i}.norm2.weight"] = checkpoint[f"encoder.blocks.{i}.norm2.weight"]
+            state_dict[f"encoder.blocks.{i}.norm2.bias"] = checkpoint[f"encoder.blocks.{i}.norm2.bias"]
+
+        # MLP components (mapped to proj_out FeedForward)
+        if f"encoder.blocks.{i}.mlp.fc1.weight" in checkpoint:
+            state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[
+                f"encoder.blocks.{i}.mlp.fc1.weight"
+            ]
+            state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[
+                f"encoder.blocks.{i}.mlp.fc1.bias"
+            ]
+        if f"encoder.blocks.{i}.mlp.fc2.weight" in checkpoint:
+            state_dict[f"encoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[
+                f"encoder.blocks.{i}.mlp.fc2.weight"
+            ]
+            # Note: fc2 typically doesn't have bias in FeedForward
+            if f"encoder.blocks.{i}.mlp.fc2.bias" in checkpoint:
+                state_dict[f"encoder.blocks.{i}.proj_out.net.2.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.bias"]
 
     # Encoder norm
     if "encoder.norm.weight" in checkpoint:
@@ -186,14 +208,14 @@ def convert_vae_state_dict(checkpoint):
 
     # Encoder last layer (projection to latent space)
     if "encoder.last_layer.weight" in checkpoint:
-        state_dict["encoder.conv_out.weight"] = checkpoint["encoder.last_layer.weight"]
-        state_dict["encoder.conv_out.bias"] = checkpoint["encoder.last_layer.bias"]
+        state_dict["encoder.linear_out.weight"] = checkpoint["encoder.last_layer.weight"]
+        state_dict["encoder.linear_out.bias"] = checkpoint["encoder.last_layer.bias"]
 
     # Decoder mappings
     # Projection from latent space
     if "decoder.proj_in.weight" in checkpoint:
-        state_dict["decoder.conv_in.weight"] = checkpoint["decoder.proj_in.weight"]
-        state_dict["decoder.conv_in.bias"] = checkpoint["decoder.proj_in.bias"]
+        state_dict["decoder.proj_in.weight"] = checkpoint["decoder.proj_in.weight"]
+        state_dict["decoder.proj_in.bias"] = checkpoint["decoder.proj_in.bias"]
 
     # Position embeddings
     if "decoder.pos_embed" in checkpoint:
@@ -201,63 +223,75 @@ def convert_vae_state_dict(checkpoint):
 
     # Class token
     if "decoder.cls_token" in checkpoint:
-        state_dict["decoder.class_embedding"] = checkpoint["decoder.cls_token"]
+        state_dict["decoder.cls_token"] = checkpoint["decoder.cls_token"]
 
     # Decoder blocks
-    for i in range(24):  # Assuming 24 blocks in the decoder
+    for i in range(24):  # 24 blocks in the decoder
         # Check if this block exists
         if f"decoder.blocks.{i}.attn.qkv.weight" not in checkpoint:
             continue
 
-        # Attention components
-        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_qkv.weight"] = checkpoint[
-            f"decoder.blocks.{i}.attn.qkv.weight"
-        ]
-        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_qkv.bias"] = checkpoint[
-            f"decoder.blocks.{i}.attn.qkv.bias"
-        ]
-        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[
-            f"decoder.blocks.{i}.attn.proj.weight"
-        ]
-        state_dict[f"decoder.transformer_blocks.{i}.attn1.to_out.0.bias"] = checkpoint[
-            f"decoder.blocks.{i}.attn.proj.bias"
-        ]
+        # Attention components - split qkv into separate q, k, v
+        if f"decoder.blocks.{i}.attn.qkv.weight" in checkpoint:
+            qkv_weight = checkpoint[f"decoder.blocks.{i}.attn.qkv.weight"]
+            qkv_bias = checkpoint[f"decoder.blocks.{i}.attn.qkv.bias"]
 
-        # Normalization
-        state_dict[f"decoder.transformer_blocks.{i}.norm2.weight"] = checkpoint[f"decoder.blocks.{i}.norm2.weight"]
-        state_dict[f"decoder.transformer_blocks.{i}.norm2.bias"] = checkpoint[f"decoder.blocks.{i}.norm2.bias"]
+            # Split qkv into q, k, v (assuming equal splits)
+            hidden_size = qkv_weight.shape[1]  # 1024
+            head_dim = qkv_weight.shape[0] // 3  # 3072 // 3 = 1024
 
-        # MLP components
-        state_dict[f"decoder.transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[
-            f"decoder.blocks.{i}.mlp.fc1.weight"
-        ]
-        state_dict[f"decoder.transformer_blocks.{i}.ff.net.0.proj.bias"] = checkpoint[
-            f"decoder.blocks.{i}.mlp.fc1.bias"
-        ]
-        state_dict[f"decoder.transformer_blocks.{i}.ff.net.2.weight"] = checkpoint[
-            f"decoder.blocks.{i}.mlp.fc2.weight"
-        ]
-        state_dict[f"decoder.transformer_blocks.{i}.ff.net.2.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.bias"]
+            q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
+            q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
+
+            state_dict[f"decoder.blocks.{i}.attn.to_q.weight"] = q_weight
+            state_dict[f"decoder.blocks.{i}.attn.to_q.bias"] = q_bias
+            state_dict[f"decoder.blocks.{i}.attn.to_k.weight"] = k_weight
+            state_dict[f"decoder.blocks.{i}.attn.to_k.bias"] = k_bias
+            state_dict[f"decoder.blocks.{i}.attn.to_v.weight"] = v_weight
+            state_dict[f"decoder.blocks.{i}.attn.to_v.bias"] = v_bias
+
+        # Attention output projection
+        if f"decoder.blocks.{i}.attn.proj.weight" in checkpoint:
+            state_dict[f"decoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[
+                f"decoder.blocks.{i}.attn.proj.weight"
+            ]
+            state_dict[f"decoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[
+                f"decoder.blocks.{i}.attn.proj.bias"
+            ]
+
+        # Normalization (pre-MLP norm)
+        if f"decoder.blocks.{i}.norm2.weight" in checkpoint:
+            state_dict[f"decoder.blocks.{i}.norm2.weight"] = checkpoint[f"decoder.blocks.{i}.norm2.weight"]
+            state_dict[f"decoder.blocks.{i}.norm2.bias"] = checkpoint[f"decoder.blocks.{i}.norm2.bias"]
+
+        # MLP components (mapped to proj_out FeedForward)
+        if f"decoder.blocks.{i}.mlp.fc1.weight" in checkpoint:
+            state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[
+                f"decoder.blocks.{i}.mlp.fc1.weight"
+            ]
+            state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[
+                f"decoder.blocks.{i}.mlp.fc1.bias"
+            ]
+        if f"decoder.blocks.{i}.mlp.fc2.weight" in checkpoint:
+            state_dict[f"decoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[
+                f"decoder.blocks.{i}.mlp.fc2.weight"
+            ]
+            # Note: fc2 typically doesn't have bias in FeedForward
+            if f"decoder.blocks.{i}.mlp.fc2.bias" in checkpoint:
+                state_dict[f"decoder.blocks.{i}.proj_out.net.2.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.bias"]
 
     # Decoder norm
     if "decoder.norm.weight" in checkpoint:
         state_dict["decoder.norm_out.weight"] = checkpoint["decoder.norm.weight"]
         state_dict["decoder.norm_out.bias"] = checkpoint["decoder.norm.bias"]
 
-    # Decoder last layer (projection to pixel space)
+    # Decoder last layer (projection to pixel space - 3D conv)
     if "decoder.last_layer.weight" in checkpoint:
         state_dict["decoder.conv_out.weight"] = checkpoint["decoder.last_layer.weight"]
         state_dict["decoder.conv_out.bias"] = checkpoint["decoder.last_layer.bias"]
 
-    # Quant conv (encoder output to latent distribution)
-    if "quant_conv.weight" in checkpoint:
-        state_dict["quant_conv.weight"] = checkpoint["quant_conv.weight"]
-        state_dict["quant_conv.bias"] = checkpoint["quant_conv.bias"]
-
-    # Post quant conv (latent to decoder input)
-    if "post_quant_conv.weight" in checkpoint:
-        state_dict["post_quant_conv.weight"] = checkpoint["post_quant_conv.weight"]
-        state_dict["post_quant_conv.bias"] = checkpoint["post_quant_conv.bias"]
+    # Note: Original MAGI-1 VAE checkpoint does not contain quantization layers
+    # (quant_linear, post_quant_linear, quant_conv, post_quant_conv)
 
     return state_dict
 
