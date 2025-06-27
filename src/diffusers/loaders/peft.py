@@ -686,6 +686,8 @@ class PeftAdapterMixin:
         recurse_remove_peft_layers(self)
         if hasattr(self, "peft_config"):
             del self.peft_config
+        if hasattr(self, "_hf_peft_config_loaded"):
+            self._hf_peft_config_loaded = None
 
     def disable_lora(self):
         """
