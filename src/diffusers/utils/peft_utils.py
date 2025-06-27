@@ -391,6 +391,8 @@ def _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name=None
     `model_state_dict` and `peft_state_dict` and adds a module from `model_state_dict` to the exclusion set if it
     doesn't exist in `peft_state_dict`.
     """
+    if model_state_dict is None:
+        return
     all_modules = set()
     string_to_replace = f"{adapter_name}." if adapter_name else ""
 
@@ -402,6 +404,7 @@ def _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name=None
             all_modules.add(module_name)
 
     target_modules_set = {name.split(".lora")[0] for name in peft_state_dict.keys()}
+    print(f"{target_modules_set=}")
     exclude_modules = list(all_modules - target_modules_set)
 
     return exclude_modules
