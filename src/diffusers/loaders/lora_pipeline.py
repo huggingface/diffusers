@@ -2062,7 +2062,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 return_metadata=return_lora_metadata,
             )
 
-        is_fal_kontext = any("base_model.model" in k for k in state_dict)
+        is_fal_kontext = any("base_model" in k for k in state_dict)
+        print("SANITY CHECK: is_fal_kontext", is_fal_kontext)
         if is_fal_kontext:
             state_dict = _convert_fal_kontext_lora_to_diffusers(state_dict)
             return cls._prepare_outputs(
