@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -359,5 +359,8 @@ def _load_sft_state_dict_metadata(model_file: str):
         metadata = f.metadata() or {}
 
     metadata.pop("format", None)
-    raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
-    return json.loads(raw) if raw else None
+    if metadata:
+        raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
+        return json.loads(raw) if raw else None
+    else:
+        return None

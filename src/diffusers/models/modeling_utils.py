@@ -266,6 +266,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _keep_in_fp32_modules = None
     _skip_layerwise_casting_patterns = None
     _supports_group_offloading = True
+    _repeated_blocks = []
 
     def __init__(self):
         super().__init__()
@@ -548,6 +549,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         use_stream: bool = False,
         record_stream: bool = False,
         low_cpu_mem_usage=False,
+        offload_to_disk_path: Optional[str] = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -588,15 +590,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
         apply_group_offloading(
-            self,
-            onload_device,
-            offload_device,
-            offload_type,
-            num_blocks_per_group,
-            non_blocking,
-            use_stream,
-            record_stream,
+            module=self,
+            onload_device=onload_device,
+            offload_device=offload_device,
+            offload_type=offload_type,
+            num_blocks_per_group=num_blocks_per_group,
+            non_blocking=non_blocking,
+            use_stream=use_stream,
+            record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            offload_to_disk_path=offload_to_disk_path,
         )
 
     def save_pretrained(
@@ -1401,6 +1404,39 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
         else:
             return super().float(*args)
+
+    def compile_repeated_blocks(self, *args, **kwargs):
+        """
+        Compiles *only* the frequently repeated sub-modules of a model (e.g. the Transformer layers) instead of
+        compiling the entire model. This technique—often called **regional compilation** (see the PyTorch recipe
+        https://docs.pytorch.org/tutorials/recipes/regional_compilation.html) can reduce end-to-end compile time
+        substantially, while preserving the runtime speed-ups you would expect from a full `torch.compile`.
+
+        The set of sub-modules to compile is discovered by the presence of **`_repeated_blocks`** attribute in the
+        model definition. Define this attribute on your model subclass as a list/tuple of class names (strings). Every
+        module whose class name matches will be compiled.
+
+        Once discovered, each matching sub-module is compiled by calling `submodule.compile(*args, **kwargs)`. Any
+        positional or keyword arguments you supply to `compile_repeated_blocks` are forwarded verbatim to
+        `torch.compile`.
+        """
+        repeated_blocks = getattr(self, "_repeated_blocks", None)
+
+        if not repeated_blocks:
+            raise ValueError(
+                "`_repeated_blocks` attribute is empty. "
+                f"Set `_repeated_blocks` for the class `{self.__class__.__name__}` to benefit from faster compilation. "
+            )
+        has_compiled_region = False
+        for submod in self.modules():
+            if submod.__class__.__name__ in repeated_blocks:
+                submod.compile(*args, **kwargs)
+                has_compiled_region = True
+
+        if not has_compiled_region:
+            raise ValueError(
+                f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
+            )
 
     @classmethod
     def _load_pretrained_model(

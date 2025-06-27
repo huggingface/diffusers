@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+import safetensors.torch
 import torch
 
 from ..utils import get_logger, is_accelerate_available
@@ -59,6 +61,7 @@ class ModuleGroup:
         record_stream: Optional[bool] = False,
         low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
+        offload_to_disk_path: Optional[str] = None,
     ) -> None:
         self.modules = modules
         self.offload_device = offload_device
@@ -72,10 +75,26 @@ class ModuleGroup:
         self.record_stream = record_stream
         self.onload_self = onload_self
         self.low_cpu_mem_usage = low_cpu_mem_usage
-        self.cpu_param_dict = self._init_cpu_param_dict()
 
-        if self.stream is None and self.record_stream:
-            raise ValueError("`record_stream` cannot be True when `stream` is None.")
+        self.offload_to_disk_path = offload_to_disk_path
+        self._is_offloaded_to_disk = False
+
+        if self.offload_to_disk_path:
+            self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{id(self)}.safetensors")
+
+            all_tensors = []
+            for module in self.modules:
+                all_tensors.extend(list(module.parameters()))
+                all_tensors.extend(list(module.buffers()))
+            all_tensors.extend(self.parameters)
+            all_tensors.extend(self.buffers)
+            all_tensors = list(dict.fromkeys(all_tensors))  # Remove duplicates
+
+            self.tensor_to_key = {tensor: f"tensor_{i}" for i, tensor in enumerate(all_tensors)}
+            self.key_to_tensor = {v: k for k, v in self.tensor_to_key.items()}
+            self.cpu_param_dict = {}
+        else:
+            self.cpu_param_dict = self._init_cpu_param_dict()
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -113,9 +132,58 @@ class ModuleGroup:
         finally:
             pinned_dict = None
 
+    def _transfer_tensor_to_device(self, tensor, source_tensor, current_stream=None):
+        tensor.data = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
+        if self.record_stream and current_stream is not None:
+            tensor.data.record_stream(current_stream)
+
+    def _process_tensors_from_modules(self, pinned_memory=None, current_stream=None):
+        for group_module in self.modules:
+            for param in group_module.parameters():
+                source = pinned_memory[param] if pinned_memory else param.data
+                self._transfer_tensor_to_device(param, source, current_stream)
+            for buffer in group_module.buffers():
+                source = pinned_memory[buffer] if pinned_memory else buffer.data
+                self._transfer_tensor_to_device(buffer, source, current_stream)
+
+        for param in self.parameters:
+            source = pinned_memory[param] if pinned_memory else param.data
+            self._transfer_tensor_to_device(param, source, current_stream)
+
+        for buffer in self.buffers:
+            source = pinned_memory[buffer] if pinned_memory else buffer.data
+            self._transfer_tensor_to_device(buffer, source, current_stream)
+
+    def _onload_from_disk(self, current_stream):
+        if self.stream is not None:
+            loaded_cpu_tensors = safetensors.torch.load_file(self.safetensors_file_path, device="cpu")
+
+            for key, tensor_obj in self.key_to_tensor.items():
+                self.cpu_param_dict[tensor_obj] = loaded_cpu_tensors[key]
+
+            with self._pinned_memory_tensors() as pinned_memory:
+                for key, tensor_obj in self.key_to_tensor.items():
+                    self._transfer_tensor_to_device(tensor_obj, pinned_memory[tensor_obj], current_stream)
+
+            self.cpu_param_dict.clear()
+
+        else:
+            onload_device = (
+                self.onload_device.type if isinstance(self.onload_device, torch.device) else self.onload_device
+            )
+            loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=onload_device)
+            for key, tensor_obj in self.key_to_tensor.items():
+                tensor_obj.data = loaded_tensors[key]
+
+    def _onload_from_memory(self, current_stream):
+        if self.stream is not None:
+            with self._pinned_memory_tensors() as pinned_memory:
+                self._process_tensors_from_modules(pinned_memory, current_stream)
+        else:
+            self._process_tensors_from_modules(None, current_stream)
+
     @torch.compiler.disable()
     def onload_(self):
-        r"""Onloads the group of modules to the onload_device."""
         torch_accelerator_module = (
             getattr(torch, torch.accelerator.current_accelerator().type)
             if hasattr(torch, "accelerator")
@@ -124,52 +192,59 @@ class ModuleGroup:
         context = nullcontext() if self.stream is None else torch_accelerator_module.stream(self.stream)
         current_stream = torch_accelerator_module.current_stream() if self.record_stream else None
 
+        if self.offload_to_disk_path:
+            if self.stream is not None:
+                # Wait for previous Host->Device transfer to complete
+                self.stream.synchronize()
+
+            with context:
+                if self.stream is not None:
+                    # Load to CPU, pin, and async copy to device for overlapping transfer and compute
+                    loaded_cpu_tensors = safetensors.torch.load_file(self.safetensors_file_path, device="cpu")
+                    for key, tensor_obj in self.key_to_tensor.items():
+                        pinned_tensor = loaded_cpu_tensors[key].pin_memory()
+                        tensor_obj.data = pinned_tensor.to(self.onload_device, non_blocking=self.non_blocking)
+                        if self.record_stream:
+                            tensor_obj.data.record_stream(current_stream)
+                else:
+                    # Load directly to the target device (synchronous)
+                    onload_device = (
+                        self.onload_device.type if isinstance(self.onload_device, torch.device) else self.onload_device
+                    )
+                    loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=onload_device)
+                    for key, tensor_obj in self.key_to_tensor.items():
+                        tensor_obj.data = loaded_tensors[key]
+            return
+
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
             self.stream.synchronize()
 
         with context:
-            if self.stream is not None:
-                with self._pinned_memory_tensors() as pinned_memory:
-                    for group_module in self.modules:
-                        for param in group_module.parameters():
-                            param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
-                            if self.record_stream:
-                                param.data.record_stream(current_stream)
-                        for buffer in group_module.buffers():
-                            buffer.data = pinned_memory[buffer].to(self.onload_device, non_blocking=self.non_blocking)
-                            if self.record_stream:
-                                buffer.data.record_stream(current_stream)
-
-                    for param in self.parameters:
-                        param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
-                        if self.record_stream:
-                            param.data.record_stream(current_stream)
-
-                    for buffer in self.buffers:
-                        buffer.data = pinned_memory[buffer].to(self.onload_device, non_blocking=self.non_blocking)
-                        if self.record_stream:
-                            buffer.data.record_stream(current_stream)
-
+            if self.offload_to_disk_path:
+                self._onload_from_disk(current_stream)
             else:
-                for group_module in self.modules:
-                    for param in group_module.parameters():
-                        param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
-                    for buffer in group_module.buffers():
-                        buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+                self._onload_from_memory(current_stream)
 
-                for param in self.parameters:
-                    param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+    def _offload_to_disk(self):
+        # TODO: we can potentially optimize this code path by checking if the _all_ the desired
+        # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
+        # overhead. Currently, we just check if the given `safetensors_file_path` exists and if not
+        # we perform a write.
+        # Check if the file has been saved in this session or if it already exists on disk.
+        if not self._is_offloaded_to_disk and not os.path.exists(self.safetensors_file_path):
+            os.makedirs(os.path.dirname(self.safetensors_file_path), exist_ok=True)
+            tensors_to_save = {key: tensor.data.to(self.offload_device) for tensor, key in self.tensor_to_key.items()}
+            safetensors.torch.save_file(tensors_to_save, self.safetensors_file_path)
 
-                for buffer in self.buffers:
-                    buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
-                    if self.record_stream:
-                        buffer.data.record_stream(current_stream)
+        # The group is now considered offloaded to disk for the rest of the session.
+        self._is_offloaded_to_disk = True
 
-    @torch.compiler.disable()
-    def offload_(self):
-        r"""Offloads the group of modules to the offload_device."""
+        # We do this to free up the RAM which is still holding the up tensor data.
+        for tensor_obj in self.tensor_to_key.keys():
+            tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
 
+    def _offload_to_memory(self):
         torch_accelerator_module = (
             getattr(torch, torch.accelerator.current_accelerator().type)
             if hasattr(torch, "accelerator")
@@ -194,6 +269,14 @@ class ModuleGroup:
             for buffer in self.buffers:
                 buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
 
+    @torch.compiler.disable()
+    def offload_(self):
+        r"""Offloads the group of modules to the offload_device."""
+        if self.offload_to_disk_path:
+            self._offload_to_disk()
+        else:
+            self._offload_to_memory()
+
 
 class GroupOffloadingHook(ModelHook):
     r"""
@@ -205,11 +288,7 @@ class GroupOffloadingHook(ModelHook):
 
     _is_stateful = False
 
-    def __init__(
-        self,
-        group: ModuleGroup,
-        next_group: Optional[ModuleGroup] = None,
-    ) -> None:
+    def __init__(self, group: ModuleGroup, next_group: Optional[ModuleGroup] = None) -> None:
         self.group = group
         self.next_group = next_group
 
@@ -363,6 +442,7 @@ def apply_group_offloading(
     use_stream: bool = False,
     record_stream: bool = False,
     low_cpu_mem_usage: bool = False,
+    offload_to_disk_path: Optional[str] = None,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -401,6 +481,9 @@ def apply_group_offloading(
         offload_type (`str`, defaults to "block_level"):
             The type of offloading to be applied. Can be one of "block_level" or "leaf_level". Default is
             "block_level".
+        offload_to_disk_path (`str`, *optional*, defaults to `None`):
+            The path to the directory where parameters will be offloaded. Setting this option can be useful in limited
+            RAM environment settings where a reasonable speed-memory trade-off is desired.
         num_blocks_per_group (`int`, *optional*):
             The number of blocks per group when using offload_type="block_level". This is required when using
             offload_type="block_level".
@@ -447,6 +530,9 @@ def apply_group_offloading(
         else:
             raise ValueError("Using streams for data transfer requires a CUDA device, or an Intel XPU device.")
 
+    if not use_stream and record_stream:
+        raise ValueError("`record_stream` cannot be True when `use_stream=False`.")
+
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
 
     if offload_type == "block_level":
@@ -458,6 +544,7 @@ def apply_group_offloading(
             num_blocks_per_group=num_blocks_per_group,
             offload_device=offload_device,
             onload_device=onload_device,
+            offload_to_disk_path=offload_to_disk_path,
             non_blocking=non_blocking,
             stream=stream,
             record_stream=record_stream,
@@ -468,6 +555,7 @@ def apply_group_offloading(
             module=module,
             offload_device=offload_device,
             onload_device=onload_device,
+            offload_to_disk_path=offload_to_disk_path,
             non_blocking=non_blocking,
             stream=stream,
             record_stream=record_stream,
@@ -486,6 +574,7 @@ def _apply_group_offloading_block_level(
     stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
     record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
+    offload_to_disk_path: Optional[str] = None,
 ) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
@@ -496,6 +585,9 @@ def _apply_group_offloading_block_level(
             The module to which group offloading is applied.
         offload_device (`torch.device`):
             The device to which the group of modules are offloaded. This should typically be the CPU.
+        offload_to_disk_path (`str`, *optional*, defaults to `None`):
+            The path to the directory where parameters will be offloaded. Setting this option can be useful in limited
+            RAM environment settings where a reasonable speed-memory trade-off is desired.
         onload_device (`torch.device`):
             The device to which the group of modules are onloaded.
         non_blocking (`bool`):
@@ -535,6 +627,7 @@ def _apply_group_offloading_block_level(
                 modules=current_modules,
                 offload_device=offload_device,
                 onload_device=onload_device,
+                offload_to_disk_path=offload_to_disk_path,
                 offload_leader=current_modules[-1],
                 onload_leader=current_modules[0],
                 non_blocking=non_blocking,
@@ -567,6 +660,7 @@ def _apply_group_offloading_block_level(
         modules=unmatched_modules,
         offload_device=offload_device,
         onload_device=onload_device,
+        offload_to_disk_path=offload_to_disk_path,
         offload_leader=module,
         onload_leader=module,
         parameters=parameters,
@@ -590,6 +684,7 @@ def _apply_group_offloading_leaf_level(
     stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
     record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
+    offload_to_disk_path: Optional[str] = None,
 ) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
@@ -604,6 +699,9 @@ def _apply_group_offloading_leaf_level(
             The device to which the group of modules are offloaded. This should typically be the CPU.
         onload_device (`torch.device`):
             The device to which the group of modules are onloaded.
+        offload_to_disk_path (`str`, *optional*, defaults to `None`):
+            The path to the directory where parameters will be offloaded. Setting this option can be useful in limited
+            RAM environment settings where a reasonable speed-memory trade-off is desired.
         non_blocking (`bool`):
             If True, offloading and onloading is done asynchronously. This can be useful for overlapping computation
             and data transfer.
@@ -629,6 +727,7 @@ def _apply_group_offloading_leaf_level(
             modules=[submodule],
             offload_device=offload_device,
             onload_device=onload_device,
+            offload_to_disk_path=offload_to_disk_path,
             offload_leader=submodule,
             onload_leader=submodule,
             non_blocking=non_blocking,
@@ -675,6 +774,7 @@ def _apply_group_offloading_leaf_level(
             onload_device=onload_device,
             offload_leader=parent_module,
             onload_leader=parent_module,
+            offload_to_disk_path=offload_to_disk_path,
             parameters=parameters,
             buffers=buffers,
             non_blocking=non_blocking,
@@ -693,6 +793,7 @@ def _apply_group_offloading_leaf_level(
             modules=[],
             offload_device=offload_device,
             onload_device=onload_device,
+            offload_to_disk_path=offload_to_disk_path,
             offload_leader=module,
             onload_leader=module,
             parameters=None,
