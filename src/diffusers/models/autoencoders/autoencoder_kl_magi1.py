@@ -24,7 +24,6 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
-from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
@@ -86,7 +85,7 @@ class Magi1TransformerBlock(nn.Module):
         self,
         dim: int,
         num_heads: int = 8,
-        proj_drop: float = 0.0,
+        ffn_dim: int = 4 * 1024,
         eps: float = 1e-6,
     ):
         super().__init__()
@@ -106,7 +105,7 @@ class Magi1TransformerBlock(nn.Module):
         self.drop_path = nn.Identity()
         self.norm2 = nn.LayerNorm(dim)
 
-        self.proj_out = FeedForward(dim, activation_fn="gelu", dropout=proj_drop)
+        self.proj_out = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu")
 
         self.gradient_checkpointing = False
 
@@ -121,35 +120,27 @@ class Magi1Encoder3d(nn.Module):
         self,
         patch_size: Tuple[int] = (1, 2, 2),
         num_attention_heads: int = 40,
-        attention_head_dim: int = 128,
-        in_channels: int = 16,
-        out_channels: int = 16,
-        dim=128,
+        in_channels: int = 3,
+        inner_dim=128,
+        height: int = 256,
+        width: int = 256,
+        num_frames: int = 16,
+        ffn_dim: int = 13824,
+        num_layers: int = 24,
         z_dim=4,
-        dim_mult=[1, 2, 4, 4],
-        num_res_blocks=2,
+        eps: float = 1e-6,
         attn_scales=[],
-        temperal_downsample=[True, True, False],
-        dropout=0.0,
-        non_linearity: str = "silu",
     ):
         super().__init__()
-        self.dim = dim
         self.z_dim = z_dim
-        self.dim_mult = dim_mult
-        self.num_res_blocks = num_res_blocks
         self.attn_scales = attn_scales
-        self.temperal_upsample = temperal_upsample
         self.patch_size = patch_size
 
-        # dimensions
-        dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
-
         # init block
-        self.proj_in = nn.Linear(z_dim, dims[0])
+        self.proj_in = nn.Linear(z_dim, inner_dim)
 
         self.cls_token_nums = 1
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, dims[0]))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, inner_dim))
         trunc_normal_(self.cls_token, std=0.02)
 
         p_t, p_h, p_w = patch_size
@@ -161,23 +152,22 @@ class Magi1Encoder3d(nn.Module):
         # 1. Patch & position embedding
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, inner_dim))
         self.pos_drop = nn.Dropout(p=0.0)
 
         # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
                 Magi1TransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
+                    inner_dim, num_attention_heads, ffn_dim, eps,
                 )
                 for _ in range(num_layers)
             ]
         )
 
         # output blocks
-        self.norm_out = nn.LayerNorm(dims[0])
-        self.unpatch_channels = dims[0] // (patch_size[0] * patch_size[1] * patch_size[2])
-        self.conv_out = nn.Conv3d(self.unpatch_channels, 3, 3, padding=1)
+        self.norm_out = nn.LayerNorm(inner_dim)
+        self.linear_out = nn.Linear(inner_dim, z_dim)
 
         trunc_normal_(self.pos_embed, std=0.02)
 
@@ -220,46 +210,26 @@ class Magi1Encoder3d(nn.Module):
 class Magi1Decoder3d(nn.Module):
     def __init__(
         self,
-        dim=128,
+        inner_dim=128,
         z_dim=4,
-        dim_mult=[1, 2, 4, 4],
-        num_res_blocks=2,
-        attn_scales=[],
-        temperal_upsample=[False, True, True],
-        dropout=0.0,
         patch_size: Tuple[int] = (1, 2, 2),
         num_frames: int = 16,
         height: int = 256,
         width: int = 256,
-        non_linearity: str = "silu",
-
         num_attention_heads: int = 40,
-        attention_head_dim: int = 128,
-        in_channels: int = 16,
-        out_channels: int = 16,
-        freq_dim: int = 256,
-        ffn_dim: int = 13824,
+        ffn_dim: int = 4 * 1024,
         num_layers: int = 40,
         eps: float = 1e-6,
-        pos_embed_seq_len: Optional[int] = None,
     ):
         super().__init__()
-        self.dim = dim
         self.z_dim = z_dim
-        self.dim_mult = dim_mult
-        self.num_res_blocks = num_res_blocks
-        self.attn_scales = attn_scales
-        self.temperal_upsample = temperal_upsample
         self.patch_size = patch_size
 
-        # dimensions
-        dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
-
         # init block
-        self.proj_in = nn.Linear(z_dim, dims[0])
+        self.proj_in = nn.Linear(z_dim, inner_dim)
 
         self.cls_token_nums = 1
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, dims[0]))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, inner_dim))
         trunc_normal_(self.cls_token, std=0.02)
 
         p_t, p_h, p_w = patch_size
@@ -268,22 +238,22 @@ class Magi1Decoder3d(nn.Module):
         post_patch_width = width // p_w
         num_patches = post_patch_num_frames * post_patch_height * post_patch_width
 
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, inner_dim))
         self.pos_drop = nn.Dropout(p=0.0)
 
         # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
                 Magi1TransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
+                    inner_dim, num_attention_heads, ffn_dim, eps,
                 )
                 for _ in range(num_layers)
             ]
         )
 
         # output blocks
-        self.norm_out = nn.LayerNorm(dims[0])
-        self.unpatch_channels = dims[0] // (patch_size[0] * patch_size[1] * patch_size[2])
+        self.norm_out = nn.LayerNorm(inner_dim)
+        self.unpatch_channels = inner_dim // (patch_size[0] * patch_size[1] * patch_size[2])
         self.conv_out = nn.Conv3d(self.unpatch_channels, 3, 3, padding=1)
 
         trunc_normal_(self.pos_embed, std=0.02)
@@ -305,8 +275,8 @@ class Magi1Decoder3d(nn.Module):
         x = self.pos_drop(x)
 
         ## upsamples
-        for up_block in self.blocks:
-            x = up_block(x)
+        for block in self.blocks:
+            x = block(x)
 
         ## head
         x = self.norm_out(x)
@@ -329,9 +299,9 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
 
     _supports_gradient_checkpointing = False
-    _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
-    _no_split_modules = ["WanTransformerBlock"]
-    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _skip_layerwise_casting_patterns = ["patch_embedding", "norm"]
+    _no_split_modules = ["Magi1TransformerBlock"]
+    _keep_in_fp32_modules = ["qkv_norm", "norm1", "norm2"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
@@ -340,16 +310,14 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         patch_size: Tuple[int] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
-        in_channels: int = 16,
-        out_channels: int = 16,
-        freq_dim: int = 256,
-        ffn_dim: int = 13824,
-        num_layers: int = 40,
-        cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        out_channels: int = 3,
+        z_dim: int = 16,
+        height: int = 256,
+        width: int = 256,
+        num_frames: int = 16,
+        ffn_dim: int = 4 * 1024,
+        num_layers: int = 24,
         eps: float = 1e-6,
-        rope_max_seq_len: int = 1024,
-        pos_embed_seq_len: Optional[int] = None,
         latents_mean: List[float] = [
             -0.7571,
             -0.7089,
@@ -390,23 +358,23 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
-        out_channels = out_channels or in_channels
+        out_channels = out_channels
         self.z_dim = z_dim
-        self.temperal_downsample = temperal_downsample
-        self.temperal_upsample = temperal_downsample[::-1]
 
         self.encoder = Magi1Encoder3d(
-            base_dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales, self.temperal_downsample, dropout
+            inner_dim, ffn_dim, num_attention_heads, eps, num_layers,
+            height, width, attention_head_dim, patch_size,
         )
-        self.quant_linear = nn.Linear(base_dim, z_dim)
-        self.post_quant_linear = nn.Linear(z_dim, base_dim)
+        self.quant_linear = nn.Linear(inner_dim, z_dim)
+        self.post_quant_linear = nn.Linear(z_dim, inner_dim)
 
         self.decoder = Magi1Decoder3d(
-            base_dim, z_dim, dim_mult, num_res_blocks, attn_scales, self.temperal_upsample, dropout,
-            patch_size, num_frames, height, width
+            inner_dim, z_dim, patch_size, num_frames,
+            height, width, num_attention_heads, attention_head_dim,
+            ffn_dim, eps, num_layers,
         )
 
-        self.spatial_compression_ratio = 2 ** len(self.temperal_downsample)
+        self.spatial_compression_ratio = 8
 
         # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
         # to perform decoding of a single video latent at a time.
