@@ -127,7 +127,16 @@ CHECKPOINT_KEY_NAMES = {
     "wan": ["model.diffusion_model.head.modulation", "head.modulation"],
     "wan_vae": "decoder.middle.0.residual.0.gamma",
     "hidream": "double_stream_blocks.0.block.adaLN_modulation.1.bias",
-    "cosmos-1.0": "net.blocks.block1.blocks.0.block.attn.to_q.0.weight",
+    "cosmos-1.0": [
+        "net.x_embedder.proj.1.weight",
+        "net.blocks.block1.blocks.0.block.attn.to_q.0.weight",
+        "net.extra_pos_embedder.pos_emb_h",
+    ],
+    "cosmos-2.0": [
+        "net.x_embedder.proj.1.weight",
+        "net.blocks.0.self_attn.q_proj.weight",
+        "net.pos_embedder.dim_spatial_range",
+    ],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -194,7 +203,14 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-t2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-14B-Diffusers"},
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
     "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
-    "cosmos-1.0": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-7B-Text2World"},
+    "cosmos-1.0-t2w-7B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-7B-Text2World"},
+    "cosmos-1.0-t2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-14B-Text2World"},
+    "cosmos-1.0-v2w-7B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-7B-Video2World"},
+    "cosmos-1.0-v2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-14B-Video2World"},
+    "cosmos-2.0-t2i-2B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-2B-Text2Image"},
+    "cosmos-2.0-t2i-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-14B-Text2Image"},
+    "cosmos-2.0-v2w-2B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-2B-Video2World"},
+    "cosmos-2.0-v2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-14B-Video2World"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -706,13 +722,32 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "wan-t2v-14B"
         else:
             model_type = "wan-i2v-14B"
+
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
         model_type = "wan-t2v-14B"
+
     elif CHECKPOINT_KEY_NAMES["hidream"] in checkpoint:
         model_type = "hidream"
-    elif CHECKPOINT_KEY_NAMES["cosmos-1.0"] in checkpoint:
-        model_type = "cosmos-1.0"
+
+    elif all(key in checkpoint for key in CHECKPOINT_KEY_NAMES["cosmos-1.0"]):
+        x_embedder_shape = checkpoint[CHECKPOINT_KEY_NAMES["cosmos-1.0"][0]].shape
+        if x_embedder_shape[1] == 68:
+            model_type = "cosmos-1.0-t2w-7B" if x_embedder_shape[0] == 4096 else "cosmos-1.0-t2w-14B"
+        elif x_embedder_shape[1] == 72:
+            model_type = "cosmos-1.0-v2w-7B" if x_embedder_shape[0] == 4096 else "cosmos-1.0-v2w-14B"
+        else:
+            raise ValueError(f"Unexpected x_embedder shape: {x_embedder_shape} when loading Cosmos 1.0 model.")
+
+    elif all(key in checkpoint for key in CHECKPOINT_KEY_NAMES["cosmos-2.0"]):
+        x_embedder_shape = checkpoint[CHECKPOINT_KEY_NAMES["cosmos-2.0"][0]].shape
+        if x_embedder_shape[1] == 68:
+            model_type = "cosmos-2.0-t2i-2B" if x_embedder_shape[0] == 2048 else "cosmos-2.0-t2i-14B"
+        elif x_embedder_shape[1] == 72:
+            model_type = "cosmos-2.0-v2w-2B" if x_embedder_shape[0] == 2048 else "cosmos-2.0-v2w-14B"
+        else:
+            raise ValueError(f"Unexpected x_embedder shape: {x_embedder_shape} when loading Cosmos 2.0 model.")
+
     else:
         model_type = "v1"
 
@@ -3534,9 +3569,50 @@ def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         "pos_embedder.seq": remove_keys_,
     }
 
-    TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0
-    TRANSFORMER_SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_1_0
+    TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0 = {
+        "t_embedder.1": "time_embed.t_embedder",
+        "t_embedding_norm": "time_embed.norm",
+        "blocks": "transformer_blocks",
+        "adaln_modulation_self_attn.1": "norm1.linear_1",
+        "adaln_modulation_self_attn.2": "norm1.linear_2",
+        "adaln_modulation_cross_attn.1": "norm2.linear_1",
+        "adaln_modulation_cross_attn.2": "norm2.linear_2",
+        "adaln_modulation_mlp.1": "norm3.linear_1",
+        "adaln_modulation_mlp.2": "norm3.linear_2",
+        "self_attn": "attn1",
+        "cross_attn": "attn2",
+        "q_proj": "to_q",
+        "k_proj": "to_k",
+        "v_proj": "to_v",
+        "output_proj": "to_out.0",
+        "q_norm": "norm_q",
+        "k_norm": "norm_k",
+        "mlp.layer1": "ff.net.0.proj",
+        "mlp.layer2": "ff.net.2",
+        "x_embedder.proj.1": "patch_embed.proj",
+        "final_layer.adaln_modulation.1": "norm_out.linear_1",
+        "final_layer.adaln_modulation.2": "norm_out.linear_2",
+        "final_layer.linear": "proj_out",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0 = {
+        "accum_video_sample_counter": remove_keys_,
+        "accum_image_sample_counter": remove_keys_,
+        "accum_iteration": remove_keys_,
+        "accum_train_in_hours": remove_keys_,
+        "pos_embedder.seq": remove_keys_,
+        "pos_embedder.dim_spatial_range": remove_keys_,
+        "pos_embedder.dim_temporal_range": remove_keys_,
+        "_extra_state": remove_keys_,
+    }
+
     PREFIX_KEY = "net."
+    if "net.blocks.block1.blocks.0.block.attn.to_q.0.weight" in checkpoint:
+        TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0
+        TRANSFORMER_SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_1_0
+    else:
+        TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0
+        TRANSFORMER_SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0
 
     state_dict_keys = list(converted_state_dict.keys())
     for key in state_dict_keys:
