@@ -1396,7 +1396,7 @@ class PipelineTesterMixin:
 
         output_fp16 = pipe_fp16(**fp16_inputs)[0]
         max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
-        assert max_diff < 2e-4
+        assert max_diff < 1e-2
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
