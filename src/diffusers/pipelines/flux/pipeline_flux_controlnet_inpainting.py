@@ -1463,7 +1463,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         init_latents_proper_ref = image_latents_ref
 
                         if i < len(timesteps) - 1:
-                            noise_timestep = timesteps[i + 1]
+                            noise_timestep = timesteps[i + 2]
                             init_latents_proper_ref = self.scheduler.scale_noise(
                                 init_latents_proper_ref, torch.tensor([noise_timestep]), noise_ref
                             )
