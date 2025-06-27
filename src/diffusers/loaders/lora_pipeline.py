@@ -2062,6 +2062,17 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 return_metadata=return_lora_metadata,
             )
 
+        is_fal_kontext = any("base_model.model" in k for k in state_dict)
+        if is_fal_kontext:
+            state_dict = _convert_fal_kontext_lora_to_diffusers(state_dict)
+            return cls._prepare_outputs(
+                state_dict,
+                metadata=metadata,
+                alphas=None,
+                return_alphas=return_alphas,
+                return_metadata=return_lora_metadata,
+            )
+
         # For state dicts like
         # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA
         keys = list(state_dict.keys())
