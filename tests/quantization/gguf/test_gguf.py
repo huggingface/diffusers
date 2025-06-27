@@ -14,9 +14,9 @@ from diffusers import (
     GGUFQuantizationConfig,
     HiDreamImageTransformer2DModel,
     SD3Transformer2DModel,
-    WanVACETransformer3DModel,
-    WanTransformer3DModel,
     StableDiffusion3Pipeline,
+    WanTransformer3DModel,
+    WanVACETransformer3DModel,
 )
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
