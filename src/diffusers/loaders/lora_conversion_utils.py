@@ -1345,6 +1345,7 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
 
     return converted_state_dict
 
+
 def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
     converted_state_dict = {}
     original_state_dict_keys = list(original_state_dict.keys())
@@ -1374,12 +1375,16 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
 
             # Q, K, V
             if lora_key == "lora_A":
-                sample_lora_weight = original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.weight")
+                sample_lora_weight = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.weight"
+                )
                 converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.weight"] = torch.cat([sample_lora_weight])
                 converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.weight"] = torch.cat([sample_lora_weight])
                 converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.weight"] = torch.cat([sample_lora_weight])
 
-                context_lora_weight = original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.weight")
+                context_lora_weight = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.weight"
+                )
                 converted_state_dict[f"{block_prefix}attn.add_q_proj.{lora_key}.weight"] = torch.cat(
                     [context_lora_weight]
                 )
@@ -1391,14 +1396,22 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
                 )
             else:
                 sample_q, sample_k, sample_v = torch.chunk(
-                    original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.weight"), 3, dim=0
+                    original_state_dict.pop(
+                        f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.weight"
+                    ),
+                    3,
+                    dim=0,
                 )
                 converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.weight"] = torch.cat([sample_q])
                 converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.weight"] = torch.cat([sample_k])
                 converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.weight"] = torch.cat([sample_v])
 
                 context_q, context_k, context_v = torch.chunk(
-                    original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.weight"), 3, dim=0
+                    original_state_dict.pop(
+                        f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.weight"
+                    ),
+                    3,
+                    dim=0,
                 )
                 converted_state_dict[f"{block_prefix}attn.add_q_proj.{lora_key}.weight"] = torch.cat([context_q])
                 converted_state_dict[f"{block_prefix}attn.add_k_proj.{lora_key}.weight"] = torch.cat([context_k])
@@ -1406,7 +1419,9 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
 
             if f"double_blocks.{i}.img_attn.qkv.{lora_key}.bias" in original_state_dict_keys:
                 sample_q_bias, sample_k_bias, sample_v_bias = torch.chunk(
-                    original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.bias"), 3, dim=0
+                    original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.bias"),
+                    3,
+                    dim=0,
                 )
                 converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.bias"] = torch.cat([sample_q_bias])
                 converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.bias"] = torch.cat([sample_k_bias])
@@ -1414,7 +1429,9 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
 
             if f"double_blocks.{i}.txt_attn.qkv.{lora_key}.bias" in original_state_dict_keys:
                 context_q_bias, context_k_bias, context_v_bias = torch.chunk(
-                    original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.bias"), 3, dim=0
+                    original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.bias"),
+                    3,
+                    dim=0,
                 )
                 converted_state_dict[f"{block_prefix}attn.add_q_proj.{lora_key}.bias"] = torch.cat([context_q_bias])
                 converted_state_dict[f"{block_prefix}attn.add_k_proj.{lora_key}.bias"] = torch.cat([context_k_bias])
@@ -1469,7 +1486,6 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
                     f"{original_block_prefix}double_blocks.{i}.txt_attn.proj.{lora_key}.bias"
                 )
 
-
     # single transformer blocks
     for i in range(num_single_layers):
         block_prefix = f"single_transformer_blocks.{i}."
@@ -1489,7 +1505,9 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
             split_size = (inner_dim, inner_dim, inner_dim, mlp_hidden_dim)
 
             if lora_key == "lora_A":
-                lora_weight = original_state_dict.pop(f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.weight")
+                lora_weight = original_state_dict.pop(
+                    f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.weight"
+                )
                 converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.weight"] = torch.cat([lora_weight])
                 converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.weight"] = torch.cat([lora_weight])
                 converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.weight"] = torch.cat([lora_weight])
@@ -1503,7 +1521,9 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
                     converted_state_dict[f"{block_prefix}proj_mlp.{lora_key}.bias"] = torch.cat([lora_bias])
             else:
                 q, k, v, mlp = torch.split(
-                    original_state_dict.pop(f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.weight"), split_size, dim=0
+                    original_state_dict.pop(f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.weight"),
+                    split_size,
+                    dim=0,
                 )
                 converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.weight"] = torch.cat([q])
                 converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.weight"] = torch.cat([k])
@@ -1512,7 +1532,9 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
 
                 if f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.bias" in original_state_dict_keys:
                     q_bias, k_bias, v_bias, mlp_bias = torch.split(
-                        original_state_dict.pop(f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.bias"), split_size, dim=0
+                        original_state_dict.pop(f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.bias"),
+                        split_size,
+                        dim=0,
                     )
                     converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.bias"] = torch.cat([q_bias])
                     converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.bias"] = torch.cat([k_bias])
@@ -1527,7 +1549,6 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
                 converted_state_dict[f"{block_prefix}proj_out.{lora_key}.bias"] = original_state_dict.pop(
                     f"{original_block_prefix}single_blocks.{i}.linear2.{lora_key}.bias"
                 )
-
 
     for lora_key in ["lora_A", "lora_B"]:
         converted_state_dict[f"proj_out.{lora_key}.weight"] = original_state_dict.pop(
