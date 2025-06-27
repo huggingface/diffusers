@@ -1456,7 +1456,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 #        latents_3 = (1.0 - ratio_ref_prod) * init_mask_ref_prod * latents + ratio_ref_prod * init_mask_ref_prod * init_latents_proper_ref
                         
                 #        latents = latents_1 + latents_2 + latents_3 
-
+                
+                """
                 if image_ref_prod is not None:
                     if i < ref_prod_injection_steps:
                         init_mask_ref_prod = mask_original
@@ -1472,8 +1473,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         latents_2 = (1.0 - init_mask_ref_prod) * latents
                         
                         latents = latents_1 + latents_2
-
-                if i > inpainting_starting_step and i < inpainting_ending_step:
+                """
+                if i < ref_prod_injection_steps:
+                    init_mask_ref_prod = mask_original
+                    latents = (1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents
+                else:
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if latents.dtype != latents_dtype:
