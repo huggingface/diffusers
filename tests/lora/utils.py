@@ -2306,12 +2306,10 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(output_lora, output_lora_pretrained, atol=1e-3, rtol=1e-3), "Lora outputs should match."
             )
 
-    def test_lora_unload_add_adapter(self, lora_alpha):
+    def test_lora_unload_add_adapter(self):
         """Tests if `unload_lora_weights()` -> `add_adapter()` works."""
         scheduler_cls = self.scheduler_classes[0]
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
-            scheduler_cls, lora_alpha=lora_alpha
-        )
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
         pipe = self.pipeline_class(**components).to(torch_device)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
