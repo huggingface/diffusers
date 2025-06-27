@@ -2357,9 +2357,7 @@ class PeftLoraLoaderMixinTests:
                 output_lora_loaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
                 self.assertTrue(np.allclose(output_adapter_1, output_lora_loaded, atol=1e-3, rtol=1e-3))
 
-    @parameterized.expand([("block_level", True), ("leaf_level", False), ("leaf_level", True)])
-    @require_torch_accelerator
-    def test_group_offloading_inference_denoiser(self, offload_type, use_stream):
+    def _test_group_offloading_inference_denoiser(self, offload_type, use_stream):
         from diffusers.hooks.group_offloading import _get_top_level_group_offload_hook
 
         onload_device = torch_device
@@ -2418,3 +2416,13 @@ class PeftLoraLoaderMixinTests:
             output_3 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(np.allclose(output_1, output_3, atol=1e-3, rtol=1e-3))
+
+    @parameterized.expand([("block_level", True), ("leaf_level", False), ("leaf_level", True)])
+    @require_torch_accelerator
+    def test_group_offloading_inference_denoiser(self, offload_type, use_stream):
+        for cls in inspect.getmro(self.__class__):
+            if "test_group_offloading_inference_denoiser" in cls.__dict__ and cls is not PeftLoraLoaderMixinTests:
+                # Skip this test if it is overwritten by child class. We need to do this because parameterized
+                # materializes the test methods on invocation which cannot be overridden.
+                return
+        self._test_group_offloading_inference_denoiser(offload_type, use_stream)
