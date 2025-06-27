@@ -24,7 +24,11 @@ from diffusers.utils.testing_utils import backend_empty_cache, require_torch_gpu
 @require_torch_gpu
 @slow
 class QuantCompileTests(unittest.TestCase):
-    quantization_config = None
+    @property
+    def quantization_config(self):
+        raise NotImplementedError(
+            "This property should be implemented in the subclass to return the appropriate quantization config."
+        )
 
     def setUp(self):
         super().setUp()

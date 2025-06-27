@@ -631,11 +631,13 @@ class TorchAoSerializationTest(unittest.TestCase):
 
 @require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoCompileTest(QuantCompileTests):
-    quantization_config = PipelineQuantizationConfig(
-        quant_mapping={
-            "transformer": TorchAoConfig(quant_type="int8_weight_only"),
-        },
-    )
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_mapping={
+                "transformer": TorchAoConfig(quant_type="int8_weight_only"),
+            },
+        )
 
     def test_torch_compile(self):
         super()._test_torch_compile(quantization_config=self.quantization_config)

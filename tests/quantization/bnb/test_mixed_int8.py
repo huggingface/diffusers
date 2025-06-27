@@ -831,11 +831,13 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
 
 @require_torch_version_greater_equal("2.6.0")
 class Bnb8BitCompileTests(QuantCompileTests):
-    quantization_config = PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_8bit",
-        quant_kwargs={"load_in_8bit": True},
-        components_to_quantize=["transformer", "text_encoder_2"],
-    )
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_8bit",
+            quant_kwargs={"load_in_8bit": True},
+            components_to_quantize=["transformer", "text_encoder_2"],
+        )
 
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
