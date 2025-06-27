@@ -25,7 +25,7 @@ import torch.nn as nn
 from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
-from ..hooks.group_offloading import _is_group_offload_enabled
+from ..hooks.group_offloading import _is_group_offload_enabled, _maybe_remove_and_reapply_group_offloading
 from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -392,7 +392,9 @@ def _load_lora_into_text_encoder(
             adapter_name = get_adapter_name(text_encoder)
 
         # <Unsafe code
-        is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
+        is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = _func_optionally_disable_offloading(
+            _pipeline
+        )
         # inject LoRA layers and load the state dict
         # in transformers we automatically check whether the adapter name is already in use or not
         text_encoder.load_adapter(
@@ -411,6 +413,10 @@ def _load_lora_into_text_encoder(
             _pipeline.enable_model_cpu_offload()
         elif is_sequential_cpu_offload:
             _pipeline.enable_sequential_cpu_offload()
+        elif is_group_offload:
+            for component in _pipeline.components.values():
+                if isinstance(component, torch.nn.Module):
+                    _maybe_remove_and_reapply_group_offloading(component)
         # Unsafe code />
 
     if prefix is not None and not state_dict:
