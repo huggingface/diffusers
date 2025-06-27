@@ -118,23 +118,19 @@ class Magi1TransformerBlock(nn.Module):
 class Magi1Encoder3d(nn.Module):
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
-        num_attention_heads: int = 40,
-        in_channels: int = 3,
         inner_dim=128,
+        z_dim=4,
+        patch_size: Tuple[int] = (1, 2, 2),
+        num_frames: int = 16,
         height: int = 256,
         width: int = 256,
-        num_frames: int = 16,
-        ffn_dim: int = 13824,
+        num_attention_heads: int = 40,
+        ffn_dim: int = 4 * 1024,
         num_layers: int = 24,
-        z_dim=4,
         eps: float = 1e-6,
-        attn_scales=[],
     ):
         super().__init__()
         self.z_dim = z_dim
-        self.attn_scales = attn_scales
-        self.patch_size = patch_size
 
         # init block
         self.proj_in = nn.Linear(z_dim, inner_dim)
@@ -150,7 +146,7 @@ class Magi1Encoder3d(nn.Module):
         num_patches = post_patch_num_frames * post_patch_height * post_patch_width
 
         # 1. Patch & position embedding
-        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
+        self.patch_embedding = nn.Conv3d(3, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, inner_dim))
         self.pos_drop = nn.Dropout(p=0.0)
@@ -202,26 +198,22 @@ class Magi1Encoder3d(nn.Module):
 
         # B , lT, lH, lW, zC -> B, zC, lT, lH, lW
         x = x.permute(0, 4, 1, 2, 3)
-        if self.norm_code:
-            prev_dtype = x.dtype
-            x = x.float()
-            x = x / torch.norm(x, dim=1, keepdim=True)
-            x = x.to(prev_dtype)
+
         return x
 
 
 class Magi1Decoder3d(nn.Module):
     def __init__(
         self,
-        inner_dim=128,
-        z_dim=4,
-        patch_size: Tuple[int] = (1, 2, 2),
+        inner_dim=1024,
+        z_dim=16,
+        patch_size: Tuple[int] = (4, 8, 8),
         num_frames: int = 16,
         height: int = 256,
         width: int = 256,
-        num_attention_heads: int = 40,
+        num_attention_heads: int = 16,
         ffn_dim: int = 4 * 1024,
-        num_layers: int = 40,
+        num_layers: int = 24,
         eps: float = 1e-6,
     ):
         super().__init__()
@@ -322,10 +314,9 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
-        num_attention_heads: int = 40,
-        attention_head_dim: int = 128,
-        out_channels: int = 3,
+        patch_size: Tuple[int] = (4, 8, 8),
+        num_attention_heads: int = 16,
+        attention_head_dim: int = 64,
         z_dim: int = 16,
         height: int = 256,
         width: int = 256,
@@ -373,19 +364,19 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
-        out_channels = out_channels
         self.z_dim = z_dim
 
         self.encoder = Magi1Encoder3d(
             inner_dim,
-            ffn_dim,
-            num_attention_heads,
-            eps,
-            num_layers,
+            z_dim,
+            patch_size,
+            num_frames,
             height,
             width,
-            attention_head_dim,
-            patch_size,
+            num_attention_heads,
+            ffn_dim,
+            num_layers,
+            eps,
         )
         self.quant_linear = nn.Linear(inner_dim, z_dim)
         self.post_quant_linear = nn.Linear(z_dim, inner_dim)
@@ -398,13 +389,13 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             height,
             width,
             num_attention_heads,
-            attention_head_dim,
             ffn_dim,
-            eps,
             num_layers,
+            eps,
         )
 
-        self.spatial_compression_ratio = 8
+        self.spatial_compression_ratio = patch_size[1] or patch_size[2]
+        self.temporal_compression_ratio = patch_size[0]
 
         # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
         # to perform decoding of a single video latent at a time.
