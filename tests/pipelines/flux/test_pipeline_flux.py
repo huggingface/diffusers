@@ -2,7 +2,6 @@ import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
@@ -224,7 +223,6 @@ class FluxPipelineFastTests(
 
 @nightly
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
@@ -312,7 +310,6 @@ class FluxPipelineSlowTests(unittest.TestCase):
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-dev"
