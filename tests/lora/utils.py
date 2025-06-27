@@ -2325,6 +2325,14 @@ class PeftLoraLoaderMixinTests:
 
     @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules(self):
+        """
+        Test to check if `exclude_modules` works or not. It works in the following way:
+        we first create a pipeline and insert LoRA config into it. We then derive a `set`
+        of modules to exclude by investigating its denoiser state dict and denoiser LoRA
+        state dict.
+
+        We then create a new LoRA config to include the `exclude_modules` and perform tests.
+        """
         scheduler_cls = self.scheduler_classes[0]
         components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
         pipe = self.pipeline_class(**components).to(torch_device)
