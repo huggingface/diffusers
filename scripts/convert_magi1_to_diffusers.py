@@ -28,8 +28,8 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 from diffusers import (
     AutoencoderKLMagi1,
     FlowMatchEulerDiscreteScheduler,
-    MagiPipeline,
     Magi1Transformer3DModel,
+    MagiPipeline,
 )
 
 
@@ -158,8 +158,8 @@ def convert_vae_state_dict(checkpoint):
             qkv_bias = checkpoint[f"encoder.blocks.{i}.attn.qkv.bias"]
 
             # Split qkv into q, k, v (assuming equal splits)
-            hidden_size = qkv_weight.shape[1]  # 1024
-            head_dim = qkv_weight.shape[0] // 3  # 3072 // 3 = 1024
+            # hidden_size = qkv_weight.shape[1]  # 1024
+            # head_dim = qkv_weight.shape[0] // 3  # 3072 // 3 = 1024
 
             q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
             q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
@@ -173,12 +173,8 @@ def convert_vae_state_dict(checkpoint):
 
         # Attention output projection
         if f"encoder.blocks.{i}.attn.proj.weight" in checkpoint:
-            state_dict[f"encoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[
-                f"encoder.blocks.{i}.attn.proj.weight"
-            ]
-            state_dict[f"encoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[
-                f"encoder.blocks.{i}.attn.proj.bias"
-            ]
+            state_dict[f"encoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[f"encoder.blocks.{i}.attn.proj.weight"]
+            state_dict[f"encoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[f"encoder.blocks.{i}.attn.proj.bias"]
 
         # Normalization (pre-MLP norm)
         if f"encoder.blocks.{i}.norm2.weight" in checkpoint:
@@ -190,13 +186,9 @@ def convert_vae_state_dict(checkpoint):
             state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[
                 f"encoder.blocks.{i}.mlp.fc1.weight"
             ]
-            state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[
-                f"encoder.blocks.{i}.mlp.fc1.bias"
-            ]
+            state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc1.bias"]
         if f"encoder.blocks.{i}.mlp.fc2.weight" in checkpoint:
-            state_dict[f"encoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[
-                f"encoder.blocks.{i}.mlp.fc2.weight"
-            ]
+            state_dict[f"encoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.weight"]
             # Note: fc2 typically doesn't have bias in FeedForward
             if f"encoder.blocks.{i}.mlp.fc2.bias" in checkpoint:
                 state_dict[f"encoder.blocks.{i}.proj_out.net.2.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.bias"]
@@ -237,8 +229,8 @@ def convert_vae_state_dict(checkpoint):
             qkv_bias = checkpoint[f"decoder.blocks.{i}.attn.qkv.bias"]
 
             # Split qkv into q, k, v (assuming equal splits)
-            hidden_size = qkv_weight.shape[1]  # 1024
-            head_dim = qkv_weight.shape[0] // 3  # 3072 // 3 = 1024
+            # hidden_size = qkv_weight.shape[1]  # 1024
+            # head_dim = qkv_weight.shape[0] // 3  # 3072 // 3 = 1024
 
             q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
             q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
@@ -252,12 +244,8 @@ def convert_vae_state_dict(checkpoint):
 
         # Attention output projection
         if f"decoder.blocks.{i}.attn.proj.weight" in checkpoint:
-            state_dict[f"decoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[
-                f"decoder.blocks.{i}.attn.proj.weight"
-            ]
-            state_dict[f"decoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[
-                f"decoder.blocks.{i}.attn.proj.bias"
-            ]
+            state_dict[f"decoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[f"decoder.blocks.{i}.attn.proj.weight"]
+            state_dict[f"decoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[f"decoder.blocks.{i}.attn.proj.bias"]
 
         # Normalization (pre-MLP norm)
         if f"decoder.blocks.{i}.norm2.weight" in checkpoint:
@@ -269,13 +257,9 @@ def convert_vae_state_dict(checkpoint):
             state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[
                 f"decoder.blocks.{i}.mlp.fc1.weight"
             ]
-            state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[
-                f"decoder.blocks.{i}.mlp.fc1.bias"
-            ]
+            state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc1.bias"]
         if f"decoder.blocks.{i}.mlp.fc2.weight" in checkpoint:
-            state_dict[f"decoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[
-                f"decoder.blocks.{i}.mlp.fc2.weight"
-            ]
+            state_dict[f"decoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.weight"]
             # Note: fc2 typically doesn't have bias in FeedForward
             if f"decoder.blocks.{i}.mlp.fc2.bias" in checkpoint:
                 state_dict[f"decoder.blocks.{i}.proj_out.net.2.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.bias"]

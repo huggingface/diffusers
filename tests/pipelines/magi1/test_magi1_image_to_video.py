@@ -22,8 +22,8 @@ from transformers import AutoTokenizer, CLIPVisionModel, T5EncoderModel
 from diffusers import (
     AutoencoderKLMagi1,
     FlowMatchEulerDiscreteScheduler,
-    MagiImageToVideoPipeline,
     Magi1Transformer3DModel,
+    MagiImageToVideoPipeline,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
