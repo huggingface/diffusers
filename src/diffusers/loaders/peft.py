@@ -244,12 +244,19 @@ class PeftAdapterMixin:
                     k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
                 }
 
-            # create LoraConfig
-            lora_config = _create_lora_config(state_dict, network_alphas, metadata, rank)
-
             # adapter_name
             if adapter_name is None:
                 adapter_name = get_adapter_name(self)
+
+            # create LoraConfig
+            lora_config = _create_lora_config(
+                state_dict,
+                network_alphas,
+                metadata,
+                rank,
+                model_state_dict=self.state_dict(),
+                adapter_name=adapter_name,
+            )
 
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
