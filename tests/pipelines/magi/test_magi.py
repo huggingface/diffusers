@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLMagi, FlowMatchEulerDiscreteScheduler, MagiPipeline, MagiTransformer3DModel
+from diffusers import AutoencoderKLMagi1, FlowMatchEulerDiscreteScheduler, MagiPipeline, MagiTransformer3DModel
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
@@ -58,7 +58,7 @@ class MagiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        vae = AutoencoderKLMagi(
+        vae = AutoencoderKLMagi1(
             base_dim=3,
             z_dim=16,
             dim_mult=[1, 1, 1, 1],

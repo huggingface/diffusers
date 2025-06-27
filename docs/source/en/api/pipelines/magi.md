@@ -166,13 +166,13 @@ The example below demonstrates how to use the image-to-video pipeline to generat
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLMagi, MagiImageToVideoPipeline
+from diffusers import AutoencoderKLMagi1, MagiImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 
 model_id = "sand-ai/MAGI-1"
 image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
-vae = AutoencoderKLMagi.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipe = MagiImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
 )
@@ -212,13 +212,13 @@ The example below demonstrates how to use the image-to-video pipeline to generat
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLMagi, MagiImageToVideoPipeline
+from diffusers import AutoencoderKLMagi1, MagiImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 
 model_id = "sand-ai/MAGI-1"
 image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
-vae = AutoencoderKLMagi.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipe = MagiImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
 )
@@ -272,13 +272,13 @@ The example below demonstrates how to use the video-to-video pipeline to generat
 ```python
 import torch
 import numpy as np
-from diffusers import AutoencoderKLMagi, MagiVideoToVideoPipeline
+from diffusers import AutoencoderKLMagi1, MagiVideoToVideoPipeline
 from diffusers.utils import export_to_video, load_video
 from transformers import T5EncoderModel
 
 model_id = "sand-ai/MAGI-1"
 text_encoder = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoencoderKLMagi.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipe = MagiVideoToVideoPipeline.from_pretrained(
     model_id, vae=vae, text_encoder=text_encoder, torch_dtype=torch.bfloat16
 )

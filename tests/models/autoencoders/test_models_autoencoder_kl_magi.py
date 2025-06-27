@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import AutoencoderKLMagi
+from diffusers import AutoencoderKLMagi1
 from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
 
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
@@ -27,7 +27,7 @@ enable_full_determinism()
 
 
 class AutoencoderKLMagiTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLMagi
+    model_class = AutoencoderKLMagi1
     main_input_name = "sample"
     base_precision = 1e-2
 

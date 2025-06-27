@@ -9,7 +9,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# AutoencoderKLMagi
+# AutoencoderKLMagi1
 
 The 3D variational autoencoder (VAE) model with KL loss used in [MAGI-1: Autoregressive Video Generation at Scale](https://arxiv.org/abs/2505.13211) by Sand.ai.
 
@@ -18,14 +18,14 @@ MAGI-1 uses a transformer-based VAE with 8x spatial and 4x temporal compression,
 The model can be loaded with the following code snippet.
 
 ```python
-from diffusers import AutoencoderKLMagi
+from diffusers import AutoencoderKLMagi1
 
-vae = AutoencoderKLMagi.from_pretrained("sand-ai/MAGI-1", subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLMagi1.from_pretrained("sand-ai/MAGI-1", subfolder="vae", torch_dtype=torch.float32)
 ```
 
-## AutoencoderKLMagi
+## AutoencoderKLMagi1
 
-[[autodoc]] AutoencoderKLMagi
+[[autodoc]] AutoencoderKLMagi1
   - decode
   - all
 

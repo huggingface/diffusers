@@ -6,7 +6,7 @@ from .autoencoder_kl_cogvideox import AutoencoderKLCogVideoX
 from .autoencoder_kl_cosmos import AutoencoderKLCosmos
 from .autoencoder_kl_hunyuan_video import AutoencoderKLHunyuanVideo
 from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
-from .autoencoder_kl_magi1 import AutoencoderKLMagi
+from .autoencoder_kl_magi1 import AutoencoderKLMagi1
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder

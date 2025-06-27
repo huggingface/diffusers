@@ -35,7 +35,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_cosmos"] = ["AutoencoderKLCosmos"]
     _import_structure["autoencoders.autoencoder_kl_hunyuan_video"] = ["AutoencoderKLHunyuanVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
-    _import_structure["autoencoders.autoencoder_kl_magi"] = ["AutoencoderKLMagi"]
+    _import_structure["autoencoders.autoencoder_kl_magi"] = ["AutoencoderKLMagi1"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
@@ -123,7 +123,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLCosmos,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLLTXVideo,
-            AutoencoderKLMagi,
+            AutoencoderKLMagi1,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,

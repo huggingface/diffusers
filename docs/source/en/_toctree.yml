@@ -376,7 +376,7 @@
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
       - local: api/models/autoencoder_kl_magi
-        title: AutoencoderKLMagi
+        title: AutoencoderKLMagi1
       - local: api/models/autoencoderkl_magvit
         title: AutoencoderKLMagvit
       - local: api/models/autoencoderkl_mochi

@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLMagi, MagiTransformer3DModel, MagiVideoToVideoPipeline, UniPCMultistepScheduler
+from diffusers import AutoencoderKLMagi1, MagiTransformer3DModel, MagiVideoToVideoPipeline, UniPCMultistepScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
 )
@@ -53,7 +53,7 @@ class MagiVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        vae = AutoencoderKLMagi(
+        vae = AutoencoderKLMagi1(
             base_dim=3,
             z_dim=16,
             dim_mult=[1, 1, 1, 1],
