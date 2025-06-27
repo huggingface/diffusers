@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
 import os
 from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -35,7 +36,7 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 _GROUP_OFFLOADING = "group_offloading"
 _LAYER_EXECUTION_TRACKER = "layer_execution_tracker"
 _LAZY_PREFETCH_GROUP_OFFLOADING = "lazy_prefetch_group_offloading"
-
+_GROUP_ID_LAZY_LEAF = "lazy_leafs"
 _SUPPORTED_PYTORCH_LAYERS = (
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
     torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
@@ -62,6 +63,7 @@ class ModuleGroup:
         low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
         offload_to_disk_path: Optional[str] = None,
+        group_id: Optional[int] = None,
     ) -> None:
         self.modules = modules
         self.offload_device = offload_device
@@ -80,7 +82,10 @@ class ModuleGroup:
         self._is_offloaded_to_disk = False
 
         if self.offload_to_disk_path:
-            self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{id(self)}.safetensors")
+            # Instead of `group_id or str(id(self))` we do this because `group_id` can be "" as well.
+            self.group_id = group_id if group_id is not None else str(id(self))
+            short_hash = _compute_group_hash(self.group_id)
+            self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{short_hash}.safetensors")
 
             all_tensors = []
             for module in self.modules:
@@ -623,6 +628,7 @@ def _apply_group_offloading_block_level(
 
         for i in range(0, len(submodule), num_blocks_per_group):
             current_modules = submodule[i : i + num_blocks_per_group]
+            group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
             group = ModuleGroup(
                 modules=current_modules,
                 offload_device=offload_device,
@@ -635,6 +641,7 @@ def _apply_group_offloading_block_level(
                 record_stream=record_stream,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 onload_self=True,
+                group_id=group_id,
             )
             matched_module_groups.append(group)
             for j in range(i, i + len(current_modules)):
@@ -669,6 +676,7 @@ def _apply_group_offloading_block_level(
         stream=None,
         record_stream=False,
         onload_self=True,
+        group_id=f"{module.__class__.__name__}_unmatched_group",
     )
     if stream is None:
         _apply_group_offloading_hook(module, unmatched_group, None)
@@ -735,6 +743,7 @@ def _apply_group_offloading_leaf_level(
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
+            group_id=name,
         )
         _apply_group_offloading_hook(submodule, group, None)
         modules_with_group_offloading.add(name)
@@ -782,6 +791,7 @@ def _apply_group_offloading_leaf_level(
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
+            group_id=name,
         )
         _apply_group_offloading_hook(parent_module, group, None)
 
@@ -803,6 +813,7 @@ def _apply_group_offloading_leaf_level(
             record_stream=False,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
+            group_id=_GROUP_ID_LAZY_LEAF,
         )
         _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 
@@ -910,3 +921,9 @@ def _get_group_onload_device(module: torch.nn.Module) -> torch.device:
         if hasattr(submodule, "_diffusers_hook") and submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING) is not None:
             return submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING).group.onload_device
     raise ValueError("Group offloading is not enabled for the provided module.")
+
+
+def _compute_group_hash(group_id):
+    hashed_id = hashlib.sha256(group_id.encode("utf-8")).hexdigest()
+    # first 16 characters for a reasonably short but unique name
+    return hashed_id[:16]
