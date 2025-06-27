@@ -1999,6 +1999,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
         return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
+        print("RESPECTFULLY WTF")
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
