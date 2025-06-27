@@ -9,7 +9,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# MagiTransformer3DModel
+# Magi1Transformer3DModel
 
 A Diffusion Transformer model for 3D video-like data was introduced in [MAGI-1: Autoregressive Video Generation at Scale](https://arxiv.org/abs/2505.13211) by Sand.ai.
 
@@ -18,14 +18,14 @@ MAGI-1 is an autoregressive denoising video generation model that generates vide
 The model can be loaded with the following code snippet.
 
 ```python
-from diffusers import MagiTransformer3DModel
+from diffusers import Magi1Transformer3DModel
 
-transformer = MagiTransformer3DModel.from_pretrained("sand-ai/MAGI-1", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = Magi1Transformer3DModel.from_pretrained("sand-ai/MAGI-1", subfolder="transformer", torch_dtype=torch.bfloat16)
 ```
 
-## MagiTransformer3DModel
+## Magi1Transformer3DModel
 
-[[autodoc]] MagiTransformer3DModel
+[[autodoc]] Magi1Transformer3DModel
 
 ## Transformer2DModelOutput
 

@@ -23,7 +23,7 @@ from diffusers import (
     AutoencoderKLMagi1,
     FlowMatchEulerDiscreteScheduler,
     MagiImageToVideoPipeline,
-    MagiTransformer3DModel,
+    Magi1Transformer3DModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -79,7 +79,7 @@ class MagiImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_encoder = CLIPVisionModel.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         torch.manual_seed(0)
-        transformer = MagiTransformer3DModel(
+        transformer = Magi1Transformer3DModel(
             patch_size=(1, 2, 2),
             num_attention_heads=2,
             attention_head_dim=12,
@@ -165,7 +165,7 @@ class MagiFLFToVideoPipelineFastTests(MagiImageToVideoPipelineFastTests):
         image_encoder = CLIPVisionModel.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         torch.manual_seed(0)
-        transformer = MagiTransformer3DModel(
+        transformer = Magi1Transformer3DModel(
             patch_size=(1, 2, 2),
             num_attention_heads=2,
             attention_head_dim=12,

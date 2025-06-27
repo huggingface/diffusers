@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLMagi1, MagiTransformer3DModel, MagiVideoToVideoPipeline, UniPCMultistepScheduler
+from diffusers import AutoencoderKLMagi1, Magi1Transformer3DModel, MagiVideoToVideoPipeline, UniPCMultistepScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
 )
@@ -69,7 +69,7 @@ class MagiVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
-        transformer = MagiTransformer3DModel(
+        transformer = Magi1Transformer3DModel(
             patch_size=(1, 2, 2),
             num_attention_heads=2,
             attention_head_dim=12,

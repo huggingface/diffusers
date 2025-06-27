@@ -16,7 +16,7 @@ import unittest
 
 import torch
 
-from diffusers import MagiTransformer3DModel
+from diffusers import Magi1Transformer3DModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     torch_device,
@@ -29,7 +29,7 @@ enable_full_determinism()
 
 
 class MagiTransformer3DTests(ModelTesterMixin, unittest.TestCase):
-    model_class = MagiTransformer3DModel
+    model_class = Magi1Transformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
 
@@ -80,12 +80,12 @@ class MagiTransformer3DTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"MagiTransformer3DModel"}
+        expected_set = {"Magi1Transformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class MagiTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = MagiTransformer3DModel
+    model_class = Magi1Transformer3DModel
 
     def prepare_init_args_and_inputs_for_common(self):
         return MagiTransformer3DTests().prepare_init_args_and_inputs_for_common()

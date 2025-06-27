@@ -29,7 +29,7 @@ from diffusers import (
     AutoencoderKLMagi1,
     FlowMatchEulerDiscreteScheduler,
     MagiPipeline,
-    MagiTransformer3DModel,
+    Magi1Transformer3DModel,
 )
 
 
@@ -337,7 +337,7 @@ def load_magi_transformer_checkpoint(checkpoint_path):
 
 def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file=None, dtype=None):
     """
-    Convert a MAGI-1 transformer checkpoint to a diffusers MagiTransformer3DModel.
+    Convert a MAGI-1 transformer checkpoint to a diffusers Magi1Transformer3DModel.
 
     Args:
         checkpoint_path: Path to the MAGI-1 transformer checkpoint.
@@ -345,7 +345,7 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
         dtype: Optional dtype for the model.
 
     Returns:
-        A diffusers MagiTransformer3DModel model.
+        A diffusers Magi1Transformer3DModel model.
     """
     if transformer_config_file is not None:
         with open(transformer_config_file, "r") as f:
@@ -365,7 +365,7 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
         }
 
     # Create the diffusers transformer model
-    transformer = MagiTransformer3DModel(
+    transformer = Magi1Transformer3DModel(
         in_channels=config["in_channels"],
         out_channels=config["out_channels"],
         num_layers=config["num_layers"],

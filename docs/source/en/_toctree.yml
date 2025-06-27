@@ -320,7 +320,7 @@
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
       - local: api/models/magi_transformer_3d
-        title: MagiTransformer3DModel
+        title: Magi1Transformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
       - local: api/models/omnigen_transformer
