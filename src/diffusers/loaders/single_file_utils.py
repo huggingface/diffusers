@@ -126,6 +126,7 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "wan": ["model.diffusion_model.head.modulation", "head.modulation"],
     "wan_vae": "decoder.middle.0.residual.0.gamma",
+    "wan_vace": "vace_blocks.0.after_proj.bias",
     "hidream": "double_stream_blocks.0.block.adaLN_modulation.1.bias",
 }
 
@@ -192,6 +193,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-t2v-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"},
     "wan-t2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-14B-Diffusers"},
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
+    "wan-vace-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-1.3B-diffusers"},
+    "wan-vace-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-14B-diffusers"},
     "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
 }
 
@@ -698,12 +701,19 @@ def infer_diffusers_model_type(checkpoint):
         else:
             target_key = "patch_embedding.weight"
 
-        if checkpoint[target_key].shape[0] == 1536:
+        if CHECKPOINT_KEY_NAMES["wan_vace"] in checkpoint:
+            if checkpoint[target_key].shape[0] == 1536:
+                model_type = "wan-vace-1.3B"
+            elif checkpoint[target_key].shape[0] == 5120:
+                model_type = "wan-vace-14B"
+
+        elif checkpoint[target_key].shape[0] == 1536:
             model_type = "wan-t2v-1.3B"
         elif checkpoint[target_key].shape[0] == 5120 and checkpoint[target_key].shape[1] == 16:
             model_type = "wan-t2v-14B"
         else:
             model_type = "wan-i2v-14B"
+
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
         model_type = "wan-t2v-14B"
@@ -3094,22 +3104,8 @@ def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
         "img_emb.proj.3": "condition_embedder.image_embedder.ff.net.2",
         "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
         # For the VACE model
-        "vace_blocks.0.before_proj" : "vace_blocks.0.proj_in",
-        "vace_blocks.0.after_proj" : "vace_blocks.0.proj_out",
-        "vace_blocks.1.after_proj" : "vace_blocks.1.proj_out",
-        "vace_blocks.2.after_proj" : "vace_blocks.2.proj_out",
-        "vace_blocks.3.after_proj" : "vace_blocks.3.proj_out",
-        "vace_blocks.4.after_proj" : "vace_blocks.4.proj_out",
-        "vace_blocks.5.after_proj" : "vace_blocks.5.proj_out",
-        "vace_blocks.6.after_proj" : "vace_blocks.6.proj_out",
-        "vace_blocks.7.after_proj" : "vace_blocks.7.proj_out",
-        "vace_blocks.8.after_proj" : "vace_blocks.8.proj_out",
-        "vace_blocks.9.after_proj" : "vace_blocks.9.proj_out",
-        "vace_blocks.10.after_proj" : "vace_blocks.10.proj_out",
-        "vace_blocks.11.after_proj" : "vace_blocks.11.proj_out",
-        "vace_blocks.12.after_proj" : "vace_blocks.12.proj_out",
-        "vace_blocks.13.after_proj" : "vace_blocks.13.proj_out",
-        "vace_blocks.14.after_proj" : "vace_blocks.14.proj_out",
+        "before_proj": "proj_in",
+        "after_proj": "proj_out",
     }
 
     for key in list(checkpoint.keys()):
