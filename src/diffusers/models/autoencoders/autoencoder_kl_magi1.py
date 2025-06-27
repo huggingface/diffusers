@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from timm.models.layers import trunc_normal_
+from timm.layers import trunc_normal_
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
@@ -175,7 +175,7 @@ class Magi1Encoder3d(nn.Module):
     def forward(self, x):
         B = x.shape[0]
         # B C T H W -> B C T/pT H/pH W//pW
-        x = self.patch_embed(x)
+        x = self.patch_embedding(x)
         latentT, latentH, latentW = x.shape[2], x.shape[3], x.shape[4]
         # B C T/pT H/pH W//pW -> B (T/pT H/pH W//pW) C
         x = x.flatten(2).transpose(1, 2)
@@ -186,15 +186,17 @@ class Magi1Encoder3d(nn.Module):
         x = x + self.pos_embed
         x = self.pos_drop(x)
 
+        ## transformer blocks
         for block in self.blocks:
             x = block(x)
 
         ## head
         x = self.norm_out(x)
         x = x[:, 1:]  # remove cls_token
+        x = self.linear_out(x)
 
         # B L C - > B , lT, lH, lW, zC
-        x = x.reshape(B, latentT, latentH, latentW, self.out_channels)
+        x = x.reshape(B, latentT, latentH, latentW, self.z_dim)
 
         # B , lT, lH, lW, zC -> B, zC, lT, lH, lW
         x = x.permute(0, 4, 1, 2, 3)
@@ -259,8 +261,8 @@ class Magi1Decoder3d(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, x):
-        B, C, latentT, latentH, latentW = x.shape  # x: (B, C, latentT, latentH, latenW)
-        x = x.permute(0, 2, 3, 4, 1)  # x: (B, latentT, latentH, latenW, C)
+        B, C, latentT, latentH, latentW = x.shape
+        x = x.permute(0, 2, 3, 4, 1)
 
         x = x.reshape(B, -1, C)
 
@@ -272,7 +274,7 @@ class Magi1Decoder3d(nn.Module):
         x = x + self.pos_embed
         x = self.pos_drop(x)
 
-        ## upsamples
+        ## transformer blocks
         for block in self.blocks:
             x = block(x)
 
@@ -378,8 +380,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             num_layers,
             eps,
         )
-        self.quant_linear = nn.Linear(inner_dim, z_dim)
-        self.post_quant_linear = nn.Linear(z_dim, inner_dim)
 
         self.decoder = Magi1Decoder3d(
             inner_dim,
@@ -482,8 +482,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 )
                 out = torch.cat([out, out_], 2)
 
-        enc = self.quant_conv(out)
-        return enc
+        return out
 
     @apply_forward_hook
     def encode(
@@ -520,13 +519,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        x = self.post_quant_linear(z)
-        for i in range(num_frame):
-            if i == 0:
-                out = self.decoder(x[:, :, i : i + 1, :, :])
-            else:
-                out_ = self.decoder(x[:, :, i : i + 1, :, :])
-                out = torch.cat([out, out_], 2)
+        out = self.decoder(z)
 
         out = torch.clamp(out, min=-1.0, max=1.0)
         if not return_dict:
@@ -618,7 +611,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                             j : j + self.tile_sample_min_width,
                         ]
                     tile = self.encoder(tile)
-                    tile = self.quant_conv(tile)
                     time.append(tile)
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
@@ -675,7 +667,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 for k in range(num_frames):
                     self._conv_idx = [0]
                     tile = z[:, :, k : k + 1, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
-                    tile = self.post_quant_conv(tile)
                     decoded = self.decoder(tile)
                     time.append(decoded)
                 row.append(torch.cat(time, dim=2))
