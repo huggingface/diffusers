@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLMagi1, FlowMatchEulerDiscreteScheduler, Magi1Transformer3DModel, MagiPipeline
+from diffusers import AutoencoderKLMagi1, FlowMatchEulerDiscreteScheduler, Magi1Transformer3DModel, Magi1Pipeline
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
@@ -38,7 +38,7 @@ enable_full_determinism()
 
 
 class MagiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = MagiPipeline
+    pipeline_class = Magi1Pipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS

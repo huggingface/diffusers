@@ -29,7 +29,7 @@ from diffusers import (
     AutoencoderKLMagi1,
     FlowMatchEulerDiscreteScheduler,
     Magi1Transformer3DModel,
-    MagiPipeline,
+    Magi1Pipeline,
 )
 
 
@@ -574,7 +574,7 @@ def convert_magi_checkpoint(
         dtype: Optional dtype for the models.
 
     Returns:
-        A diffusers MagiPipeline.
+        A diffusers Magi1Pipeline.
     """
     # Load or convert the VAE
     if vae_checkpoint_path is None:
@@ -599,7 +599,7 @@ def convert_magi_checkpoint(
     scheduler = FlowMatchEulerDiscreteScheduler()
 
     # Create the pipeline
-    pipeline = MagiPipeline(
+    pipeline = Magi1Pipeline(
         vae=vae,
         text_encoder=text_encoder,
         tokenizer=tokenizer,
@@ -711,7 +711,7 @@ def main():
 
         # Create the pipeline
         print("Creating MAGI pipeline...")
-        pipeline = MagiPipeline(
+        pipeline = Magi1Pipeline(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,

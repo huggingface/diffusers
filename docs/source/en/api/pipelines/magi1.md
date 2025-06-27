@@ -49,7 +49,7 @@ The MAGI-1 text-to-video model below requires ~13GB of VRAM.
 ```py
 import torch
 import numpy as np
-from diffusers import AutoModel, MagiPipeline
+from diffusers import AutoModel, Magi1Pipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video
 from transformers import T5EncoderModel
@@ -74,7 +74,7 @@ transformer.enable_group_offload(
     use_stream=True
 )
 
-pipeline = MagiPipeline.from_pretrained(
+pipeline = Magi1Pipeline.from_pretrained(
     "sand-ai/MAGI-1",
     vae=vae,
     transformer=transformer,
@@ -110,7 +110,7 @@ export_to_video(output, "output.mp4", fps=8)
 ```py
 import torch
 import numpy as np
-from diffusers import AutoModel, MagiPipeline
+from diffusers import AutoModel, Magi1Pipeline
 from diffusers.utils import export_to_video
 from transformers import T5EncoderModel
 
@@ -118,7 +118,7 @@ text_encoder = T5EncoderModel.from_pretrained("sand-ai/MAGI-1", subfolder="text_
 vae = AutoModel.from_pretrained("sand-ai/MAGI-1", subfolder="vae", torch_dtype=torch.float32)
 transformer = AutoModel.from_pretrained("sand-ai/MAGI-1", subfolder="transformer", torch_dtype=torch.bfloat16)
 
-pipeline = MagiPipeline.from_pretrained(
+pipeline = Magi1Pipeline.from_pretrained(
     "sand-ai/MAGI-1",
     vae=vae,
     transformer=transformer,
