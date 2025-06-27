@@ -17,19 +17,19 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import trunc_normal_
 from einops import rearrange
+from timm.models.layers import trunc_normal_
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
-from ..modeling_outputs import AutoencoderKLOutput
-from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution
-from ..normalization import FP32LayerNorm
 from ..attention import FeedForward
 from ..attention_processor import Attention
+from ..modeling_outputs import AutoencoderKLOutput
+from ..modeling_utils import ModelMixin
+from ..normalization import FP32LayerNorm
+from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -100,7 +100,7 @@ class Magi1TransformerBlock(nn.Module):
             cross_attention_dim=None,
             out_bias=True,
             processor=Magi1AttnProcessor2_0(dim, num_heads),
-            )
+        )
 
         self.drop_path = nn.Identity()
         self.norm2 = nn.LayerNorm(dim)
@@ -159,7 +159,10 @@ class Magi1Encoder3d(nn.Module):
         self.blocks = nn.ModuleList(
             [
                 Magi1TransformerBlock(
-                    inner_dim, num_attention_heads, ffn_dim, eps,
+                    inner_dim,
+                    num_attention_heads,
+                    ffn_dim,
+                    eps,
                 )
                 for _ in range(num_layers)
             ]
@@ -245,7 +248,10 @@ class Magi1Decoder3d(nn.Module):
         self.blocks = nn.ModuleList(
             [
                 Magi1TransformerBlock(
-                    inner_dim, num_attention_heads, ffn_dim, eps,
+                    inner_dim,
+                    num_attention_heads,
+                    ffn_dim,
+                    eps,
                 )
                 for _ in range(num_layers)
             ]
@@ -282,8 +288,17 @@ class Magi1Decoder3d(nn.Module):
         x = self.norm_out(x)
         x = x[:, 1:]  # remove cls_token
 
-        x = x.reshape(B, latentT, latentH, latentW, self.patch_size[0], self.patch_size[1], self.patch_size[2], self.unpatch_channels)
-        x = rearrange(x, 'B lT lH lW pT pH pW C -> B C (lT pT) (lH pH) (lW pW)', C=self.unpatch_channels)
+        x = x.reshape(
+            B,
+            latentT,
+            latentH,
+            latentW,
+            self.patch_size[0],
+            self.patch_size[1],
+            self.patch_size[2],
+            self.unpatch_channels,
+        )
+        x = rearrange(x, "B lT lH lW pT pH pW C -> B C (lT pT) (lH pH) (lW pW)", C=self.unpatch_channels)
 
         x = self.conv_out(x)
         return x
@@ -362,16 +377,31 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.z_dim = z_dim
 
         self.encoder = Magi1Encoder3d(
-            inner_dim, ffn_dim, num_attention_heads, eps, num_layers,
-            height, width, attention_head_dim, patch_size,
+            inner_dim,
+            ffn_dim,
+            num_attention_heads,
+            eps,
+            num_layers,
+            height,
+            width,
+            attention_head_dim,
+            patch_size,
         )
         self.quant_linear = nn.Linear(inner_dim, z_dim)
         self.post_quant_linear = nn.Linear(z_dim, inner_dim)
 
         self.decoder = Magi1Decoder3d(
-            inner_dim, z_dim, patch_size, num_frames,
-            height, width, num_attention_heads, attention_head_dim,
-            ffn_dim, eps, num_layers,
+            inner_dim,
+            z_dim,
+            patch_size,
+            num_frames,
+            height,
+            width,
+            num_attention_heads,
+            attention_head_dim,
+            ffn_dim,
+            eps,
+            num_layers,
         )
 
         self.spatial_compression_ratio = 8
@@ -443,7 +473,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         decoding in one step.
         """
         self.use_slicing = False
-
 
     def _encode(self, x: torch.Tensor):
         _, _, num_frame, height, width = x.shape
