@@ -187,21 +187,25 @@ def get_peft_kwargs(
     # for now we know that the "bias" keys are only associated with `lora_B`.
     lora_bias = any("lora_B" in k and k.endswith(".bias") for k in peft_state_dict)
 
-    # Example: load FusionX LoRA into Wan VACE
-    exclude_modules = _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name)
-    if not exclude_modules:
-        exclude_modules = None
-
     lora_config_kwargs = {
         "r": r,
         "lora_alpha": lora_alpha,
         "rank_pattern": rank_pattern,
         "alpha_pattern": alpha_pattern,
         "target_modules": target_modules,
-        "exclude_modules": exclude_modules,
         "use_dora": use_dora,
         "lora_bias": lora_bias,
     }
+
+    # Example: try load FusionX LoRA into Wan VACE
+    exclude_modules = _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name)
+    if exclude_modules:
+        if not is_peft_version(">=", "0.14.0"):
+            msg = "It seems like there are certain modules that need to be excluded when initializing `LoraConfig`. Your current `peft` version doesn't support passing an `exclude_modules` to `LoraConfig`. Please update it by running `pip install -U peft`."
+            logger.warning(msg)
+        else:
+            lora_config_kwargs.update({"exclude_modules": exclude_modules})
+
     return lora_config_kwargs
 
 
@@ -382,6 +386,11 @@ def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
 
 
 def _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name=None):
+    """
+    Derives the modules to exclude while initializing `LoraConfig` through `exclude_modules`. It works by comparing the
+    `model_state_dict` and `peft_state_dict` and adds a module from `model_state_dict` to the exclusion set if it
+    doesn't exist in `peft_state_dict`.
+    """
     all_modules = set()
     string_to_replace = f"{adapter_name}." if adapter_name else ""
 
