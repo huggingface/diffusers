@@ -1116,7 +1116,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 prompt_embeds.dtype,
                 device,
                 generator,
-                latents=None,
+                latents,
             )
 
         # 8. Prepare mask latents
