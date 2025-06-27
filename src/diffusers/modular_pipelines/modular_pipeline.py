@@ -126,7 +126,7 @@ class PipelineState:
         input_names = self.input_kwargs.get(kwargs_type, [])
         return self.get_inputs(input_names)
 
-    def get_intermediates_kwargs(self, kwargs_type: str) -> Dict[str, Any]:
+    def get_intermediate_kwargs(self, kwargs_type: str) -> Dict[str, Any]:
         """
         Get all intermediates with matching kwargs_type.
 
@@ -325,7 +325,7 @@ class ModularPipelineBlocks(ConfigMixin):
     def init_pipeline(
         self,
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
-        component_manager: Optional[ComponentsManager] = None,
+        components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
     ):
         """
@@ -344,10 +344,10 @@ class ModularPipelineBlocks(ConfigMixin):
         loader = loader_class(
             specs=specs,
             pretrained_model_name_or_path=pretrained_model_name_or_path,
-            component_manager=component_manager,
+            components_manager=components_manager,
             collection=collection,
         )
-        modular_pipeline = ModularPipeline(blocks=self, loader=loader)
+        modular_pipeline = ModularPipeline(blocks=deepcopy(self), loader=loader)
         return modular_pipeline
 
 
@@ -374,17 +374,17 @@ class PipelineBlock(ModularPipelineBlocks):
         return []
 
     @property
-    def intermediates_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> List[InputParam]:
         """List of intermediate input parameters. Must be implemented by subclasses."""
         return []
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         """List of intermediate output parameters. Must be implemented by subclasses."""
         return []
 
     def _get_outputs(self):
-        return self.intermediates_outputs
+        return self.intermediate_outputs
 
     # YiYi TODO: is it too easy for user to unintentionally override these properties?
     # Adding outputs attributes here for consistency between PipelineBlock/AutoPipelineBlocks/SequentialPipelineBlocks
@@ -403,9 +403,9 @@ class PipelineBlock(ModularPipelineBlocks):
     def required_inputs(self) -> List[str]:
         return self._get_required_inputs()
 
-    def _get_required_intermediates_inputs(self):
+    def _get_required_intermediate_inputs(self):
         input_names = []
-        for input_param in self.intermediates_inputs:
+        for input_param in self.intermediate_inputs:
             if input_param.required:
                 input_names.append(input_param.name)
         return input_names
@@ -413,8 +413,8 @@ class PipelineBlock(ModularPipelineBlocks):
     # YiYi TODO: maybe we do not need this, it is only used in docstring,
     # intermediate_inputs is by default required, unless you manually handle it inside the block
     @property
-    def required_intermediates_inputs(self) -> List[str]:
-        return self._get_required_intermediates_inputs()
+    def required_intermediate_inputs(self) -> List[str]:
+        return self._get_required_intermediate_inputs()
 
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         raise NotImplementedError("__call__ method must be implemented in subclasses")
@@ -449,7 +449,7 @@ class PipelineBlock(ModularPipelineBlocks):
 
         # Intermediates section
         intermediates_str = format_intermediates_short(
-            self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs
+            self.intermediate_inputs, self.required_intermediate_inputs, self.intermediate_outputs
         )
         intermediates = f"Intermediates:\n{intermediates_str}"
 
@@ -459,7 +459,7 @@ class PipelineBlock(ModularPipelineBlocks):
     def doc(self):
         return make_doc_string(
             self.inputs,
-            self.intermediates_inputs,
+            self.intermediate_inputs,
             self.outputs,
             self.description,
             class_name=self.__class__.__name__,
@@ -492,7 +492,7 @@ class PipelineBlock(ModularPipelineBlocks):
                             data[input_param.kwargs_type][k] = v
 
         # Check intermediates
-        for input_param in self.intermediates_inputs:
+        for input_param in self.intermediate_inputs:
             if input_param.name:
                 value = state.get_intermediate(input_param.name)
                 if input_param.required and value is None:
@@ -503,9 +503,9 @@ class PipelineBlock(ModularPipelineBlocks):
                 # if kwargs_type is provided, get all intermediates with matching kwargs_type
                 if input_param.kwargs_type not in data:
                     data[input_param.kwargs_type] = {}
-                intermediates_kwargs = state.get_intermediates_kwargs(input_param.kwargs_type)
-                if intermediates_kwargs:
-                    for k, v in intermediates_kwargs.items():
+                intermediate_kwargs = state.get_intermediate_kwargs(input_param.kwargs_type)
+                if intermediate_kwargs:
+                    for k, v in intermediate_kwargs.items():
                         if v is not None:
                             if k not in data:
                                 data[k] = v
@@ -513,13 +513,13 @@ class PipelineBlock(ModularPipelineBlocks):
         return BlockState(**data)
 
     def add_block_state(self, state: PipelineState, block_state: BlockState):
-        for output_param in self.intermediates_outputs:
+        for output_param in self.intermediate_outputs:
             if not hasattr(block_state, output_param.name):
                 raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")
             param = getattr(block_state, output_param.name)
             state.add_intermediate(output_param.name, param, output_param.kwargs_type)
 
-        for input_param in self.intermediates_inputs:
+        for input_param in self.intermediate_inputs:
             if hasattr(block_state, input_param.name):
                 param = getattr(block_state, input_param.name)
                 # Only add if the value is different from what's in the state
@@ -527,7 +527,7 @@ class PipelineBlock(ModularPipelineBlocks):
                 if current_value is not param:  # Using identity comparison to check if object was modified
                     state.add_intermediate(input_param.name, param, input_param.kwargs_type)
 
-        for input_param in self.intermediates_inputs:
+        for input_param in self.intermediate_inputs:
             if input_param.name and hasattr(block_state, input_param.name):
                 param = getattr(block_state, input_param.name)
                 # Only add if the value is different from what's in the state
@@ -537,8 +537,8 @@ class PipelineBlock(ModularPipelineBlocks):
             elif input_param.kwargs_type:
                 # if it is a kwargs type, e.g. "guider_input_fields", it is likely to be a list of parameters
                 # we need to first find out which inputs are and loop through them.
-                intermediates_kwargs = state.get_intermediates_kwargs(input_param.kwargs_type)
-                for param_name, current_value in intermediates_kwargs.items():
+                intermediate_kwargs = state.get_intermediate_kwargs(input_param.kwargs_type)
+                for param_name, current_value in intermediate_kwargs.items():
                     param = getattr(block_state, param_name)
                     if current_value is not param:  # Using identity comparison to check if object was modified
                         state.add_intermediate(param_name, param, input_param.kwargs_type)
@@ -610,6 +610,7 @@ def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) ->
     return list(combined_dict.values())
 
 
+# YiYi TODO: change blocks attribute to a different name, so it is not confused with the blocks attribute in ModularPipeline
 class AutoPipelineBlocks(ModularPipelineBlocks):
     """
     A class that automatically selects a block to run based on the inputs.
@@ -692,15 +693,15 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     # YiYi TODO: maybe we do not need this, it is only used in docstring,
     # intermediate_inputs is by default required, unless you manually handle it inside the block
     @property
-    def required_intermediates_inputs(self) -> List[str]:
+    def required_intermediate_inputs(self) -> List[str]:
         if None not in self.block_trigger_inputs:
             return []
         first_block = next(iter(self.blocks.values()))
-        required_by_all = set(getattr(first_block, "required_intermediates_inputs", set()))
+        required_by_all = set(getattr(first_block, "required_intermediate_inputs", set()))
 
         # Intersect with required inputs from all other blocks
         for block in list(self.blocks.values())[1:]:
-            block_required = set(getattr(block, "required_intermediates_inputs", set()))
+            block_required = set(getattr(block, "required_intermediate_inputs", set()))
             required_by_all.intersection_update(block_required)
 
         return list(required_by_all)
@@ -719,20 +720,20 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
         return combined_inputs
 
     @property
-    def intermediates_inputs(self) -> List[str]:
-        named_inputs = [(name, block.intermediates_inputs) for name, block in self.blocks.items()]
+    def intermediate_inputs(self) -> List[str]:
+        named_inputs = [(name, block.intermediate_inputs) for name, block in self.blocks.items()]
         combined_inputs = combine_inputs(*named_inputs)
         # mark Required inputs only if that input is required by all the blocks
         for input_param in combined_inputs:
-            if input_param.name in self.required_intermediates_inputs:
+            if input_param.name in self.required_intermediate_inputs:
                 input_param.required = True
             else:
                 input_param.required = False
         return combined_inputs
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        named_outputs = [(name, block.intermediates_outputs) for name, block in self.blocks.items()]
+    def intermediate_outputs(self) -> List[str]:
+        named_outputs = [(name, block.intermediate_outputs) for name, block in self.blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
 
@@ -885,7 +886,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     def doc(self):
         return make_doc_string(
             self.inputs,
-            self.intermediates_inputs,
+            self.intermediate_inputs,
             self.outputs,
             self.description,
             class_name=self.__class__.__name__,
@@ -975,12 +976,12 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     # YiYi TODO: maybe we do not need this, it is only used in docstring,
     # intermediate_inputs is by default required, unless you manually handle it inside the block
     @property
-    def required_intermediates_inputs(self) -> List[str]:
-        required_intermediates_inputs = []
-        for input_param in self.intermediates_inputs:
+    def required_intermediate_inputs(self) -> List[str]:
+        required_intermediate_inputs = []
+        for input_param in self.intermediate_inputs:
             if input_param.required:
-                required_intermediates_inputs.append(input_param.name)
-        return required_intermediates_inputs
+                required_intermediate_inputs.append(input_param.name)
+        return required_intermediate_inputs
 
     # YiYi TODO: add test for this
     @property
@@ -999,10 +1000,10 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return combined_inputs
 
     @property
-    def intermediates_inputs(self) -> List[str]:
-        return self.get_intermediates_inputs()
+    def intermediate_inputs(self) -> List[str]:
+        return self.get_intermediate_inputs()
 
-    def get_intermediates_inputs(self):
+    def get_intermediate_inputs(self):
         inputs = []
         outputs = set()
         added_inputs = set()
@@ -1010,7 +1011,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         # Go through all blocks in order
         for block in self.blocks.values():
             # Add inputs that aren't in outputs yet
-            for inp in block.intermediates_inputs:
+            for inp in block.intermediate_inputs:
                 if inp.name not in outputs and inp.name not in added_inputs:
                     inputs.append(inp)
                     added_inputs.add(inp.name)
@@ -1022,27 +1023,27 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
             if should_add_outputs:
                 # Add this block's outputs
-                block_intermediates_outputs = [out.name for out in block.intermediates_outputs]
-                outputs.update(block_intermediates_outputs)
+                block_intermediate_outputs = [out.name for out in block.intermediate_outputs]
+                outputs.update(block_intermediate_outputs)
         return inputs
 
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> List[str]:
         named_outputs = []
         for name, block in self.blocks.items():
-            inp_names = {inp.name for inp in block.intermediates_inputs}
-            # so we only need to list new variables as intermediates_outputs, but if user wants to list these they modified it's still fine (a.k.a we don't enforce)
-            # filter out them here so they do not end up as intermediates_outputs
+            inp_names = {inp.name for inp in block.intermediate_inputs}
+            # so we only need to list new variables as intermediate_outputs, but if user wants to list these they modified it's still fine (a.k.a we don't enforce)
+            # filter out them here so they do not end up as intermediate_outputs
             if name not in inp_names:
-                named_outputs.append((name, block.intermediates_outputs))
+                named_outputs.append((name, block.intermediate_outputs))
         combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
 
     # YiYi TODO: I think we can remove the outputs property
     @property
     def outputs(self) -> List[str]:
-        # return next(reversed(self.blocks.values())).intermediates_outputs
-        return self.intermediates_outputs
+        # return next(reversed(self.blocks.values())).intermediate_outputs
+        return self.intermediate_outputs
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1248,7 +1249,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     def doc(self):
         return make_doc_string(
             self.inputs,
-            self.intermediates_inputs,
+            self.intermediate_inputs,
             self.outputs,
             self.description,
             class_name=self.__class__.__name__,
@@ -1287,12 +1288,12 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return []
 
     @property
-    def loop_intermediates_inputs(self) -> List[InputParam]:
+    def loop_intermediate_inputs(self) -> List[InputParam]:
         """List of intermediate input parameters. Must be implemented by subclasses."""
         return []
 
     @property
-    def loop_intermediates_outputs(self) -> List[OutputParam]:
+    def loop_intermediate_outputs(self) -> List[OutputParam]:
         """List of intermediate output parameters. Must be implemented by subclasses."""
         return []
 
@@ -1305,9 +1306,9 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return input_names
 
     @property
-    def loop_required_intermediates_inputs(self) -> List[str]:
+    def loop_required_intermediate_inputs(self) -> List[str]:
         input_names = []
-        for input_param in self.loop_intermediates_inputs:
+        for input_param in self.loop_intermediate_inputs:
             if input_param.required:
                 input_names.append(input_param.name)
         return input_names
@@ -1356,25 +1357,25 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     def inputs(self):
         return self.get_inputs()
 
-    # modified from SequentialPipelineBlocks to include loop_intermediates_inputs
+    # modified from SequentialPipelineBlocks to include loop_intermediate_inputs
     @property
-    def intermediates_inputs(self):
-        intermediates = self.get_intermediates_inputs()
+    def intermediate_inputs(self):
+        intermediates = self.get_intermediate_inputs()
         intermediate_names = [input.name for input in intermediates]
-        for loop_intermediate_input in self.loop_intermediates_inputs:
+        for loop_intermediate_input in self.loop_intermediate_inputs:
             if loop_intermediate_input.name not in intermediate_names:
                 intermediates.append(loop_intermediate_input)
         return intermediates
 
     # modified from SequentialPipelineBlocks
-    def get_intermediates_inputs(self):
+    def get_intermediate_inputs(self):
         inputs = []
         outputs = set()
 
         # Go through all blocks in order
         for block in self.blocks.values():
             # Add inputs that aren't in outputs yet
-            inputs.extend(input_name for input_name in block.intermediates_inputs if input_name.name not in outputs)
+            inputs.extend(input_name for input_name in block.intermediate_inputs if input_name.name not in outputs)
 
             # Only add outputs if the block cannot be skipped
             should_add_outputs = True
@@ -1383,8 +1384,8 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
             if should_add_outputs:
                 # Add this block's outputs
-                block_intermediates_outputs = [out.name for out in block.intermediates_outputs]
-                outputs.update(block_intermediates_outputs)
+                block_intermediate_outputs = [out.name for out in block.intermediate_outputs]
+                outputs.update(block_intermediate_outputs)
         return inputs
 
     # modified from SequentialPipelineBlocks, if any additionan input required by the loop is required by the block
@@ -1407,23 +1408,23 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     # YiYi TODO: maybe we do not need this, it is only used in docstring,
     # intermediate_inputs is by default required, unless you manually handle it inside the block
     @property
-    def required_intermediates_inputs(self) -> List[str]:
-        required_intermediates_inputs = []
-        for input_param in self.intermediates_inputs:
+    def required_intermediate_inputs(self) -> List[str]:
+        required_intermediate_inputs = []
+        for input_param in self.intermediate_inputs:
             if input_param.required:
-                required_intermediates_inputs.append(input_param.name)
-        for input_param in self.loop_intermediates_inputs:
+                required_intermediate_inputs.append(input_param.name)
+        for input_param in self.loop_intermediate_inputs:
             if input_param.required:
-                required_intermediates_inputs.append(input_param.name)
-        return required_intermediates_inputs
+                required_intermediate_inputs.append(input_param.name)
+        return required_intermediate_inputs
 
     # YiYi TODO: this need to be thought about more
-    # modified from SequentialPipelineBlocks to include loop_intermediates_outputs
+    # modified from SequentialPipelineBlocks to include loop_intermediate_outputs
     @property
-    def intermediates_outputs(self) -> List[str]:
-        named_outputs = [(name, block.intermediates_outputs) for name, block in self.blocks.items()]
+    def intermediate_outputs(self) -> List[str]:
+        named_outputs = [(name, block.intermediate_outputs) for name, block in self.blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
-        for output in self.loop_intermediates_outputs:
+        for output in self.loop_intermediate_outputs:
             if output.name not in {output.name for output in combined_outputs}:
                 combined_outputs.append(output)
         return combined_outputs
@@ -1431,7 +1432,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     # YiYi TODO: this need to be thought about more
     @property
     def outputs(self) -> List[str]:
-        return next(reversed(self.blocks.values())).intermediates_outputs
+        return next(reversed(self.blocks.values())).intermediate_outputs
 
     def __init__(self):
         blocks = InsertableOrderedDict()
@@ -1497,7 +1498,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                             data[input_param.kwargs_type][k] = v
 
         # Check intermediates
-        for input_param in self.intermediates_inputs:
+        for input_param in self.intermediate_inputs:
             if input_param.name:
                 value = state.get_intermediate(input_param.name)
                 if input_param.required and value is None:
@@ -1508,9 +1509,9 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 # if kwargs_type is provided, get all intermediates with matching kwargs_type
                 if input_param.kwargs_type not in data:
                     data[input_param.kwargs_type] = {}
-                intermediates_kwargs = state.get_intermediates_kwargs(input_param.kwargs_type)
-                if intermediates_kwargs:
-                    for k, v in intermediates_kwargs.items():
+                intermediate_kwargs = state.get_intermediate_kwargs(input_param.kwargs_type)
+                if intermediate_kwargs:
+                    for k, v in intermediate_kwargs.items():
                         if v is not None:
                             if k not in data:
                                 data[k] = v
@@ -1518,13 +1519,13 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return BlockState(**data)
 
     def add_block_state(self, state: PipelineState, block_state: BlockState):
-        for output_param in self.intermediates_outputs:
+        for output_param in self.intermediate_outputs:
             if not hasattr(block_state, output_param.name):
                 raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")
             param = getattr(block_state, output_param.name)
             state.add_intermediate(output_param.name, param, output_param.kwargs_type)
 
-        for input_param in self.intermediates_inputs:
+        for input_param in self.intermediate_inputs:
             if input_param.name and hasattr(block_state, input_param.name):
                 param = getattr(block_state, input_param.name)
                 # Only add if the value is different from what's in the state
@@ -1534,8 +1535,8 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
             elif input_param.kwargs_type:
                 # if it is a kwargs type, e.g. "guider_input_fields", it is likely to be a list of parameters
                 # we need to first find out which inputs are and loop through them.
-                intermediates_kwargs = state.get_intermediates_kwargs(input_param.kwargs_type)
-                for param_name, current_value in intermediates_kwargs.items():
+                intermediate_kwargs = state.get_intermediate_kwargs(input_param.kwargs_type)
+                for param_name, current_value in intermediate_kwargs.items():
                     if not hasattr(block_state, param_name):
                         continue
                     param = getattr(block_state, param_name)
@@ -1546,7 +1547,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     def doc(self):
         return make_doc_string(
             self.inputs,
-            self.intermediates_inputs,
+            self.intermediate_inputs,
             self.outputs,
             self.description,
             class_name=self.__class__.__name__,
@@ -1660,7 +1661,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
            - non from_pretrained components are created during __init__ and registered as the object itself
         - Components are updated with the `update()` method: e.g. loader.update(unet=unet) or
           loader.update(guider=guider_spec)
-        - (from_pretrained) Components are loaded with the `load()` method: e.g. loader.load(component_names=["unet"])
+        - (from_pretrained) Components are loaded with the `load()` method: e.g. loader.load(names=["unet"])
 
         Args:
             **kwargs: Keyword arguments where keys are component names and values are component objects.
@@ -1710,8 +1711,8 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             if not is_registered:
                 self.register_to_config(**register_dict)
                 setattr(self, name, module)
-                if module is not None and module._diffusers_load_id != "null" and self._component_manager is not None:
-                    self._component_manager.add(name, module, self._collection)
+                if module is not None and module._diffusers_load_id != "null" and self._components_manager is not None:
+                    self._components_manager.add(name, module, self._collection)
                 continue
 
             current_module = getattr(self, name, None)
@@ -1745,22 +1746,22 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             # finally set models
             setattr(self, name, module)
             # add to component manager if one is attached
-            if module is not None and module._diffusers_load_id != "null" and self._component_manager is not None:
-                self._component_manager.add(name, module, self._collection)
+            if module is not None and module._diffusers_load_id != "null" and self._components_manager is not None:
+                self._components_manager.add(name, module, self._collection)
 
     # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
     def __init__(
         self,
         specs: List[Union[ComponentSpec, ConfigSpec]],
         pretrained_model_name_or_path: Optional[str] = None,
-        component_manager: Optional[ComponentsManager] = None,
+        components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
         **kwargs,
     ):
         """
         Initialize the loader with a list of component specs and config specs.
         """
-        self._component_manager = component_manager
+        self._components_manager = components_manager
         self._collection = collection
         self._component_specs = {spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ComponentSpec)}
         self._config_specs = {spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ConfigSpec)}
@@ -1848,6 +1849,10 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             return module.dtype
 
         return torch.float32
+    
+    @property
+    def component_names(self) -> List[str]:
+        return list(self.components.keys())
 
     @property
     def components(self) -> Dict[str, Any]:
@@ -1958,12 +1963,12 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         self.register_to_config(**config_to_register)
 
     # YiYi TODO: support map for additional from_pretrained kwargs
-    def load(self, component_names: Optional[List[str]] = None, **kwargs):
+    def load(self, names: Optional[List[str]] = None, **kwargs):
         """
-        Load selectedcomponents from specs.
+        Load selected components from specs.
 
         Args:
-            component_names: List of component names to load
+            names: List of component names to load
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
              - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
              - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
@@ -1971,19 +1976,19 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                `variant`, `revision`, etc.
         """
         # if not specific name, load all the components with default_creation_method == "from_pretrained"
-        if component_names is None:
-            component_names = [
+        if names is None:
+            names = [
                 name
                 for name in self._component_specs.keys()
                 if self._component_specs[name].default_creation_method == "from_pretrained"
             ]
-        elif not isinstance(component_names, list):
-            component_names = [component_names]
+        elif not isinstance(names, list):
+            names = [names]
 
-        components_to_load = {name for name in component_names if name in self._component_specs}
-        unknown_component_names = {name for name in component_names if name not in self._component_specs}
-        if len(unknown_component_names) > 0:
-            logger.warning(f"Unknown components will be ignored: {unknown_component_names}")
+        components_to_load = {name for name in names if name in self._component_specs}
+        unknown_names = {name for name in names if name not in self._component_specs}
+        if len(unknown_names) > 0:
+            logger.warning(f"Unknown components will be ignored: {unknown_names}")
 
         components_to_register = {}
         for name in components_to_load:
@@ -2240,7 +2245,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         cls,
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
         spec_only: bool = True,
-        component_manager: Optional[ComponentsManager] = None,
+        components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
         **kwargs,
     ):
@@ -2261,7 +2266,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             elif name in expected_config:
                 config_specs.append(ConfigSpec(name=name, default=value))
 
-        return cls(component_specs + config_specs, component_manager=component_manager, collection=collection)
+        return cls(component_specs + config_specs, components_manager=components_manager, collection=collection)
 
     @staticmethod
     def _component_spec_to_dict(component_spec: ComponentSpec) -> Any:
@@ -2370,20 +2375,20 @@ class ModularPipeline:
         # Add inputs to state, using defaults if not provided in the kwargs or the state
         # if same input already in the state, will override it if provided in the kwargs
 
-        intermediates_inputs = [inp.name for inp in self.blocks.intermediates_inputs]
+        intermediate_inputs = [inp.name for inp in self.blocks.intermediate_inputs]
         for expected_input_param in self.blocks.inputs:
             name = expected_input_param.name
             default = expected_input_param.default
             kwargs_type = expected_input_param.kwargs_type
             if name in passed_kwargs:
-                if name not in intermediates_inputs:
+                if name not in intermediate_inputs:
                     state.add_input(name, passed_kwargs.pop(name), kwargs_type)
                 else:
                     state.add_input(name, passed_kwargs[name], kwargs_type)
             elif name not in state.inputs:
                 state.add_input(name, default, kwargs_type)
 
-        for expected_intermediate_param in self.blocks.intermediates_inputs:
+        for expected_intermediate_param in self.blocks.intermediate_inputs:
             name = expected_intermediate_param.name
             kwargs_type = expected_intermediate_param.kwargs_type
             if name in passed_kwargs:
@@ -2412,8 +2417,8 @@ class ModularPipeline:
         else:
             raise ValueError(f"Output '{output}' is not a valid output type")
 
-    def load_components(self, component_names: Optional[List[str]] = None, **kwargs):
-        self.loader.load(component_names=component_names, **kwargs)
+    def load_components(self, names: Optional[List[str]] = None, **kwargs):
+        self.loader.load(names=names, **kwargs)
 
     def update_components(self, **kwargs):
         self.loader.update(**kwargs)
@@ -2424,7 +2429,7 @@ class ModularPipeline:
         cls,
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
         trust_remote_code: Optional[bool] = None,
-        component_manager: Optional[ComponentsManager] = None,
+        components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
         **kwargs,
     ):
@@ -2432,7 +2437,7 @@ class ModularPipeline:
             pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs
         )
         pipeline = blocks.init_pipeline(
-            pretrained_model_name_or_path, component_manager=component_manager, collection=collection, **kwargs
+            pretrained_model_name_or_path, components_manager=components_manager, collection=collection, **kwargs
         )
         return pipeline
 

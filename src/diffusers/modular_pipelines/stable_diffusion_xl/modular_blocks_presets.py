@@ -68,7 +68,7 @@ class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks):
         )
 
 
-# optional ip-adapter (run before before_denoise)
+# optional ip-adapter (run before input step)
 class StableDiffusionXLAutoIPAdapterStep(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLIPAdapterStep]
     block_names = ["ip_adapter"]
@@ -76,7 +76,9 @@ class StableDiffusionXLAutoIPAdapterStep(AutoPipelineBlocks):
 
     @property
     def description(self):
-        return "Run IP Adapter step if `ip_adapter_image` is provided."
+        return (
+            "Run IP Adapter step if `ip_adapter_image` is provided. This step should be placed before the 'input' step.\n"
+        )
 
 
 # before_denoise: text2img
@@ -370,7 +372,7 @@ AUTO_BLOCKS = InsertableOrderedDict(
 )
 
 
-SDXL_SUPPORTED_BLOCKS = {
+ALL_BLOCKS = {
     "text2img": TEXT2IMAGE_BLOCKS,
     "img2img": IMAGE2IMAGE_BLOCKS,
     "inpaint": INPAINT_BLOCKS,

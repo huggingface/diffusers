@@ -55,7 +55,7 @@ class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
         )
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "latents",
@@ -91,7 +91,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
         )
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "latents",
@@ -174,7 +174,7 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "num_inference_steps",
@@ -280,7 +280,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "controlnet_cond",
@@ -473,13 +473,13 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam("generator"),
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     # YiYi TODO: move this out of here
@@ -545,7 +545,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam("generator"),
             InputParam(
@@ -572,7 +572,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @staticmethod
@@ -660,7 +660,7 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @property
-    def loop_intermediates_inputs(self) -> List[InputParam]:
+    def loop_intermediate_inputs(self) -> List[InputParam]:
         return [
             InputParam(
                 "timesteps",

@@ -284,12 +284,12 @@ class ComponentsManager:
             if comp == component:
                 comp_name = self._id_to_name(comp_id)
                 if comp_name == name:
-                    logger.warning(f"component '{name}' already exists as '{comp_id}'")
+                    logger.warning(f"ComponentsManager: component '{name}' already exists as '{comp_id}'")
                     component_id = comp_id
                     break
                 else:
                     logger.warning(
-                        f"Adding component '{name}' as '{component_id}', but it is duplicate of '{comp_id}'"
+                        f"ComponentsManager: adding component '{name}' as '{component_id}', but it is duplicate of '{comp_id}'"
                         f"To remove a duplicate, call `components_manager.remove('<component_id>')`."
                     )
 
@@ -301,7 +301,7 @@ class ComponentsManager:
             if components_with_same_load_id:
                 existing = ", ".join(components_with_same_load_id)
                 logger.warning(
-                    f"Adding component '{component_id}', but it has duplicate load_id '{component._diffusers_load_id}' with existing components: {existing}. "
+                    f"ComponentsManager: adding component '{component_id}', but it has duplicate load_id '{component._diffusers_load_id}' with existing components: {existing}. "
                     f"To remove a duplicate, call `components_manager.remove('<component_id>')`."
                 )
 
@@ -315,12 +315,12 @@ class ComponentsManager:
             if component_id not in self.collections[collection]:
                 comp_ids_in_collection = self._lookup_ids(name=name, collection=collection)
                 for comp_id in comp_ids_in_collection:
-                    logger.info(f"Removing existing {name} from collection '{collection}': {comp_id}")
+                    logger.warning(f"ComponentsManager: removing existing {name} from collection '{collection}': {comp_id}")
                     self.remove(comp_id)
                 self.collections[collection].add(component_id)
-                logger.info(f"Added component '{name}' in collection '{collection}': {component_id}")
+                logger.info(f"ComponentsManager: added component '{name}' in collection '{collection}': {component_id}")
         else:
-            logger.info(f"Added component '{name}' as '{component_id}'")
+            logger.info(f"ComponentsManager: added component '{name}' as '{component_id}'")
 
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)
@@ -659,6 +659,10 @@ class ComponentsManager:
         return info
 
     def __repr__(self):
+        # Handle empty components case
+        if not self.components:
+            return "Components:\n" + "=" * 50 + "\nNo components registered.\n" + "=" * 50
+
         # Helper to get simple name without UUID
         def get_simple_name(name):
             # Extract the base name by splitting on underscore and taking first part
@@ -801,51 +805,6 @@ class ComponentsManager:
                     output += "  IP-Adapter: Enabled\n"
 
         return output
-
-    def from_pretrained(self, pretrained_model_name_or_path, prefix: Optional[str] = None, **kwargs):
-        """
-        Load components from a pretrained model and add them to the manager.
-
-        Args:
-            pretrained_model_name_or_path (str): The path or identifier of the pretrained model
-            prefix (str, optional): Prefix to add to all component names loaded from this model.
-                                  If provided, components will be named as "{prefix}_{component_name}"
-            **kwargs: Additional arguments to pass to DiffusionPipeline.from_pretrained()
-        """
-        subfolder = kwargs.pop("subfolder", None)
-        # YiYi TODO: extend AutoModel to support non-diffusers models
-        if subfolder:
-            from ..models import AutoModel
-
-            component = AutoModel.from_pretrained(pretrained_model_name_or_path, subfolder=subfolder, **kwargs)
-            component_name = f"{prefix}_{subfolder}" if prefix else subfolder
-            if component_name not in self.components:
-                self.add(component_name, component)
-            else:
-                logger.warning(
-                    f"Component '{component_name}' already exists in ComponentsManager and will not be added. To add it, either:\n"
-                    f"1. remove the existing component with remove('{component_name}')\n"
-                    f"2. Use a different prefix: add_from_pretrained(..., prefix='{prefix}_2')"
-                )
-        else:
-            from ..pipelines.pipeline_utils import DiffusionPipeline
-
-            pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, **kwargs)
-            for name, component in pipe.components.items():
-                if component is None:
-                    continue
-
-                # Add prefix if specified
-                component_name = f"{prefix}_{name}" if prefix else name
-
-                if component_name not in self.components:
-                    self.add(component_name, component)
-                else:
-                    logger.warning(
-                        f"Component '{component_name}' already exists in ComponentsManager and will not be added. To add it, either:\n"
-                        f"1. remove the existing component with remove('{component_name}')\n"
-                        f"2. Use a different prefix: add_from_pretrained(..., prefix='{prefix}_2')"
-                    )
 
     def get_one(
         self,

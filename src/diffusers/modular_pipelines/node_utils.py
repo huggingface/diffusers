@@ -382,7 +382,7 @@ class ModularNode(ConfigMixin):
         # e.g. you can pass ModularNode(scheduler = {name :"scheduler"})
         #  it will get this spec in node defination {"scheduler": {"label": "Scheduler", "type": "scheduler", "display": "input"}}
         #  name can be a dict, in that case, it is part of a "dict" input in mellon nodes, e.g. text_encoder= {name: {"text_encoders": "text_encoder"}}
-        inputs = self.blocks.inputs + self.blocks.intermediates_inputs
+        inputs = self.blocks.inputs + self.blocks.intermediate_inputs
         for inp in inputs:
             param = kwargs.pop(inp.name, None)
             if param:
@@ -455,9 +455,9 @@ class ModularNode(ConfigMixin):
         output_params = {}
         if isinstance(self.blocks, SequentialPipelineBlocks):
             last_block_name = list(self.blocks.blocks.keys())[-1]
-            outputs = self.blocks.blocks[last_block_name].intermediates_outputs
+            outputs = self.blocks.blocks[last_block_name].intermediate_outputs
         else:
-            outputs = self.blocks.intermediates_outputs
+            outputs = self.blocks.intermediate_outputs
 
         for out in outputs:
             param = kwargs.pop(out.name, None)
@@ -495,9 +495,9 @@ class ModularNode(ConfigMixin):
         }
         self.register_to_config(**register_dict)
 
-    def setup(self, components, collection=None):
-        self.blocks.setup_loader(component_manager=components, collection=collection)
-        self._components_manager = components
+    def setup(self, components_manager, collection=None):
+        self.blocks.setup_loader(components_manager=components_manager, collection=collection)
+        self._components_manager = components_manager
 
     @property
     def mellon_config(self):

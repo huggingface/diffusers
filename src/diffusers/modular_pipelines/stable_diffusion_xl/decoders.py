@@ -59,7 +59,7 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "latents",
@@ -70,7 +70,7 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> List[str]:
         return [
             OutputParam(
                 "images",
@@ -170,30 +170,28 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("image", required=True),
-            InputParam("mask_image", required=True),
+            InputParam("image"),
+            InputParam("mask_image"),
             InputParam("padding_mask_crop"),
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "images",
-                required=True,
                 type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
                 description="The generated images from the decode step",
             ),
             InputParam(
                 "crops_coords",
-                required=True,
                 type_hint=Tuple[int, int],
                 description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.",
             ),
         ]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> List[str]:
         return [
             OutputParam(
                 "images",

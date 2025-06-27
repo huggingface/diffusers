@@ -49,7 +49,13 @@ class InsertableOrderedDict(OrderedDict):
 
         items = []
         for i, (key, value) in enumerate(self.items()):
-            items.append(f"{i}: ({repr(key)}, {repr(value)})")
+            if isinstance(value, type):
+                # For classes, show class name and <class ...>
+                obj_repr = f"<class '{value.__module__}.{value.__name__}'>"
+            else:
+                # For objects (instances) and other types, show class name and module
+                obj_repr = f"<obj '{value.__class__.__module__}.{value.__class__.__name__}'>"
+            items.append(f"{i}: ({repr(key)}, {obj_repr})")
 
         return "InsertableOrderedDict([\n  " + ",\n  ".join(items) + "\n])"
 
@@ -260,11 +266,11 @@ class ConfigSpec:
     description: Optional[str] = None
 
 
-# YiYi Notes: both inputs and intermediates_inputs are InputParam objects
-# however some fields are not relevant for intermediates_inputs
+# YiYi Notes: both inputs and intermediate_inputs are InputParam objects
+# however some fields are not relevant for intermediate_inputs
 # e.g. unlike inputs, required only used in docstring for intermediate_inputs, we do not check if a required intermediate inputs is passed
-# default is not used for intermediates_inputs, we only use default from inputs, so it is ignored if it is set for intermediates_inputs
-# -> should we use different class for inputs and intermediates_inputs?
+# default is not used for intermediate_inputs, we only use default from inputs, so it is ignored if it is set for intermediate_inputs
+# -> should we use different class for inputs and intermediate_inputs?
 @dataclass
 class InputParam:
     """Specification for an input parameter."""
@@ -324,14 +330,14 @@ def format_inputs_short(inputs):
     return inputs_str
 
 
-def format_intermediates_short(intermediates_inputs, required_intermediates_inputs, intermediates_outputs):
+def format_intermediates_short(intermediate_inputs, required_intermediate_inputs, intermediate_outputs):
     """
     Formats intermediate inputs and outputs of a block into a string representation.
 
     Args:
-        intermediates_inputs: List of intermediate input parameters
-        required_intermediates_inputs: List of required intermediate input names
-        intermediates_outputs: List of intermediate output parameters
+        intermediate_inputs: List of intermediate input parameters
+        required_intermediate_inputs: List of required intermediate input names
+        intermediate_outputs: List of intermediate output parameters
 
     Returns:
         str: Formatted string like:
@@ -342,8 +348,8 @@ def format_intermediates_short(intermediates_inputs, required_intermediates_inpu
     """
     # Handle inputs
     input_parts = []
-    for inp in intermediates_inputs:
-        if inp.name in required_intermediates_inputs:
+    for inp in intermediate_inputs:
+        if inp.name in required_intermediate_inputs:
             input_parts.append(f"Required({inp.name})")
         else:
             if inp.name is None and inp.kwargs_type is not None:
@@ -353,11 +359,11 @@ def format_intermediates_short(intermediates_inputs, required_intermediates_inpu
             input_parts.append(inp_name)
 
     # Handle modified variables (appear in both inputs and outputs)
-    inputs_set = {inp.name for inp in intermediates_inputs}
+    inputs_set = {inp.name for inp in intermediate_inputs}
     modified_parts = []
     new_output_parts = []
 
-    for out in intermediates_outputs:
+    for out in intermediate_outputs:
         if out.name in inputs_set:
             modified_parts.append(out.name)
         else:
@@ -575,7 +581,7 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
 
 def make_doc_string(
     inputs,
-    intermediates_inputs,
+    intermediate_inputs,
     outputs,
     description="",
     class_name=None,
@@ -587,7 +593,7 @@ def make_doc_string(
 
     Args:
         inputs: List of input parameters
-        intermediates_inputs: List of intermediate input parameters
+        intermediate_inputs: List of intermediate input parameters
         outputs: List of output parameters
         description (str, *optional*): Description of the block
         class_name (str, *optional*): Name of the class to include in the documentation
@@ -621,7 +627,7 @@ def make_doc_string(
         output += configs_str + "\n\n"
 
     # Add inputs section
-    output += format_input_params(inputs + intermediates_inputs, indent_level=2)
+    output += format_input_params(inputs + intermediate_inputs, indent_level=2)
 
     # Add outputs section
     output += "\n\n"

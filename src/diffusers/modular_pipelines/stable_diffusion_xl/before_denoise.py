@@ -215,7 +215,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "prompt_embeds",
@@ -251,7 +251,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> List[str]:
         return [
             OutputParam(
                 "batch_size",
@@ -423,7 +423,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "batch_size",
@@ -434,7 +434,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> List[str]:
         return [
             OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
             OutputParam(
@@ -565,7 +565,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
             OutputParam(
@@ -642,7 +642,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam("generator"),
             InputParam(
@@ -678,7 +678,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> List[str]:
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
@@ -928,7 +928,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> List[InputParam]:
         return [
             InputParam("generator"),
             InputParam(
@@ -953,7 +953,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
@@ -1009,7 +1009,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> List[InputParam]:
         return [
             InputParam("generator"),
             InputParam(
@@ -1022,7 +1022,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
@@ -1124,7 +1124,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> List[InputParam]:
         return [
             InputParam(
                 "latents",
@@ -1147,7 +1147,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
                 "add_time_ids",
@@ -1328,7 +1328,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> List[InputParam]:
         return [
             InputParam(
                 "latents",
@@ -1351,7 +1351,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
                 "add_time_ids",
@@ -1510,7 +1510,7 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "latents",
@@ -1538,7 +1538,7 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam("controlnet_cond", type_hint=torch.Tensor, description="The processed control image"),
             OutputParam(
@@ -1730,7 +1730,7 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> List[InputParam]:
         return [
             InputParam(
                 "latents",
@@ -1764,7 +1764,7 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam("controlnet_cond", type_hint=List[torch.Tensor], description="The processed control images"),
             OutputParam(

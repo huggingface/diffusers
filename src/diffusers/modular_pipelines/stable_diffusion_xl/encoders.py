@@ -63,8 +63,11 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
     @property
     def description(self) -> str:
         return (
-            "IP Adapter step that handles all the ip adapter related tasks: Load/unload ip adapter weights into unet, prepare ip adapter image embeddings, etc"
-            " See [ModularIPAdapterMixin](https://huggingface.co/docs/diffusers/api/loaders/ip_adapter#diffusers.loaders.ModularIPAdapterMixin)"
+            "IP Adapter step that prepares ip adapter image embeddings.\n"
+            "Note that this step only prepares the embeddings - in order for it to work correctly, "
+            "you need to load ip adapter weights into unet via ModularPipeline.loader.\n"
+            "e.g. pipeline.loader.load_ip_adapter() and pipeline.loader.set_ip_adapter_scale().\n"
+            "See [ModularIPAdapterMixin](https://huggingface.co/docs/diffusers/api/loaders/ip_adapter#diffusers.loaders.ModularIPAdapterMixin)"
             " for more details"
         )
 
@@ -99,7 +102,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam("ip_adapter_embeds", type_hint=torch.Tensor, description="IP adapter image embeddings"),
             OutputParam(
@@ -251,7 +254,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
@@ -602,7 +605,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> List[InputParam]:
         return [
             InputParam("generator"),
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
@@ -614,7 +617,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
                 "image_latents",
@@ -727,14 +730,14 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> List[InputParam]:
         return [
             InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
             InputParam("generator"),
         ]
 
     @property
-    def intermediates_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
                 "image_latents", type_hint=torch.Tensor, description="The latents representation of the input image"
@@ -843,6 +846,11 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
 
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
         block_state.device = components._execution_device
+
+        if block_state.height is None:
+            block_state.height = components.default_height
+        if block_state.width is None:
+            block_state.width = components.default_width
 
         if block_state.padding_mask_crop is not None:
             block_state.crops_coords = components.mask_processor.get_crop_region(
