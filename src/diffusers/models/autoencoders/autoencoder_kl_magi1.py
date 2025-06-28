@@ -294,7 +294,13 @@ class Magi1Decoder3d(nn.Module):
         )
         # Rearrange from (B, lT, lH, lW, pT, pH, pW, C) to (B, C, lT*pT, lH*pH, lW*pW)
         x = x.permute(0, 7, 1, 4, 2, 5, 3, 6)  # (B, C, lT, pT, lH, pH, lW, pW)
-        x = x.reshape(B, self.unpatch_channels, latentT * self.patch_size[0], latentH * self.patch_size[1], latentW * self.patch_size[2])
+        x = x.reshape(
+            B,
+            self.unpatch_channels,
+            latentT * self.patch_size[0],
+            latentH * self.patch_size[1],
+            latentW * self.patch_size[2],
+        )
 
         x = self.conv_out(x)
         return x
