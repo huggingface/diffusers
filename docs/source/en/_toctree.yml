@@ -375,7 +375,7 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
-      - local: api/models/autoencoder_kl_magi
+      - local: api/models/autoencoder_kl_magi1
         title: AutoencoderKLMagi1
       - local: api/models/autoencoderkl_magvit
         title: AutoencoderKLMagvit

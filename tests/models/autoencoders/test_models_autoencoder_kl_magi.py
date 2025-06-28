@@ -31,7 +31,7 @@ class AutoencoderKLMagiTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCas
     main_input_name = "sample"
     base_precision = 1e-2
 
-    def get_autoencoder_kl_magi_config(self):
+    def get_autoencoder_kl_magi1_config(self):
         return {
             "base_dim": 3,
             "z_dim": 16,
@@ -67,12 +67,12 @@ class AutoencoderKLMagiTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCas
         return (3, 9, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_magi_config()
+        init_dict = self.get_autoencoder_kl_magi1_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def prepare_init_args_and_inputs_for_tiling(self):
-        init_dict = self.get_autoencoder_kl_magi_config()
+        init_dict = self.get_autoencoder_kl_magi1_config()
         inputs_dict = self.dummy_input_tiling
         return init_dict, inputs_dict
 
