@@ -5,6 +5,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
+import PIL.Image
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -44,27 +45,53 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
+        # Inpainting with text only
         ```py
         >>> import torch
-        >>> from diffusers import FluxKontextPipeline
+        >>> from diffusers import FluxKontextInpaintPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = FluxKontextPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
-        ... )
+        >>> prompt = "Change the yellow dinosaur to green one"
+        >>> img_url = "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_input.jpeg?raw=true"
+        >>> mask_url = "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_mask.png?raw=true"
+
+        >>> source = load_image(img_url)
+        >>> mask = load_image(mask_url)
+
+        >>> pipe = FluxKontextInpaintPipeline.from_pretrained("black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
-        ... ).convert("RGB")
-        >>> prompt = "Make Pikachu hold a sign that says 'Black Forest Labs is awesome', yarn art style, detailed, vibrant colors"
+        >>> image = pipe(prompt=prompt, image=source, mask_image=mask, strength=1.0).images[0]
+        >>> image.save("kontext_inpainting_normal.png")
+        ```
+
+        # Inpainting with image conditioning
+        ```py
+        >>> import torch
+        >>> from diffusers import FluxKontextInpaintPipeline
+        >>> from diffusers.utils import load_image
+
+        >>> pipe = FluxKontextInpaintPipeline.from_pretrained("black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16)
+        >>> pipe.to("cuda")
+
+        >>> prompt = "Replace this ball"
+        >>> img_url = "https://images.pexels.com/photos/39362/the-ball-stadion-football-the-pitch-39362.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500"
+        >>> mask_url = "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/ball_mask.png?raw=true"
+        >>> image_reference_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTah3x6OL_ECMBaZ5ZlJJhNsyC-OSMLWAI-xw&s"
+
+        >>> source = load_image(img_url)
+        >>> mask = load_image(mask_url)
+        >>> image_reference = load_image(image_reference_url)
+
+        >>> mask = pipe.mask_processor.blur(mask, blur_factor=12)
         >>> image = pipe(
-        ...     image=image,
         ...     prompt=prompt,
-        ...     guidance_scale=2.5,
-        ...     generator=torch.Generator().manual_seed(42),
+        ...     image=source,
+        ...     mask_image=mask,
+        ...     image_reference=image_reference,
+        ...     strength=1.0
         ... ).images[0]
-        >>> image.save("output.png")
+        >>> image.save("kontext_inpainting_ref.png")
         ```
 """
 
@@ -250,7 +277,7 @@ class FluxKontextInpaintPipeline(
             do_normalize=False,
             do_binarize=True,
             do_convert_grayscale=True,
-        ) 
+        )
 
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
@@ -780,6 +807,7 @@ class FluxKontextInpaintPipeline(
 
         return latents, image_latents, image_reference_latents, latent_ids, image_ids, image_reference_ids, noise
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux_inpaint.FluxInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self,
         mask,
@@ -880,7 +908,6 @@ class FluxKontextInpaintPipeline(
         image: Optional[PipelineImageInput] = None,
         image_reference: Optional[PipelineImageInput] = None,
         mask_image: PipelineImageInput = None,
-        masked_image_latents: PipelineImageInput = None,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         negative_prompt: Union[str, List[str]] = None,
@@ -918,13 +945,13 @@ class FluxKontextInpaintPipeline(
 
         Args:
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
-                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
-                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
-                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
-                latents as `image`, but if passing latents directly it is not encoded again.
+                `Image`, numpy array or tensor representing an image batch to be be inpainted (which parts of the image to be masked out
+                with `mask_image` and repainted according to `prompt` and `image_reference`). For both numpy array and pytorch tensor,
+                the expected value range is between `[0, 1]` If it's a tensor or a list or tensors, the expected shape should be
+                `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`
+                It can also accept image latents as `image`, but if passing latents directly it is not encoded again.
             image_reference (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
+                `Image`, numpy array or tensor representing an image batch to be used as the starting point for the masked area. For both
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)` If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
@@ -936,9 +963,6 @@ class FluxKontextInpaintPipeline(
                 color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`, `(B,
                 H, W)`, `(1, H, W)`, `(H, W)`. And for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W,
                 1)`, or `(H, W)`.
-            mask_image_latent (`torch.Tensor`, `List[torch.Tensor]`):
-                `Tensor` representing an image batch to mask `image` generated by VAE. If not provided, the mask
-                latents tensor will ge generated by `mask_image`.           
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -1121,8 +1145,10 @@ class FluxKontextInpaintPipeline(
                 resize_mode = "default"
 
             image = self.image_processor.preprocess(image, image_height, image_width, crops_coords=crops_coords, resize_mode=resize_mode)
+        else:
+            raise ValueError("image must be provided correctly for inpainting")
 
-        init_image = image.to(dtype=torch.float32)  
+        init_image = image.to(dtype=torch.float32)
 
         #2.1 Preprocess image_reference
         if image_reference is not None and not (isinstance(image_reference, torch.Tensor) and image_reference.size(1) == self.latent_channels):
@@ -1138,6 +1164,8 @@ class FluxKontextInpaintPipeline(
             image_reference_height = image_reference_height // multiple_of * multiple_of
             image_reference = self.image_processor.resize(image_reference, image_reference_height, image_reference_width)
             image_reference = self.image_processor.preprocess(image_reference, image_reference_height, image_reference_width, crops_coords=crops_coords, resize_mode=resize_mode)
+        else:
+            image_reference = None
 
         # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1174,7 +1202,7 @@ class FluxKontextInpaintPipeline(
             (
                 negative_prompt_embeds,
                 negative_pooled_prompt_embeds,
-                negative_text_ids,     
+                negative_text_ids,
             ) = self.encode_prompt(
                 prompt=negative_prompt,
                 prompt_2=negative_prompt_2,
@@ -1239,12 +1267,9 @@ class FluxKontextInpaintPipeline(
             mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
         )
 
-        if masked_image_latents is None:
-            masked_image = init_image * (mask_condition < 0.5)
-        else:
-            masked_image = masked_image_latents
+        masked_image = init_image * (mask_condition < 0.5)
 
-        mask, masked_image_latents = self.prepare_mask_latents(
+        mask, _ = self.prepare_mask_latents(
             mask_condition,
             masked_image,
             batch_size,
@@ -1355,7 +1380,7 @@ class FluxKontextInpaintPipeline(
                     init_latents_proper = self.scheduler.scale_noise(
                         init_latents_proper, torch.tensor([noise_timestep]), noise
                     )
-                
+
                 latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if latents.dtype != latents_dtype:
