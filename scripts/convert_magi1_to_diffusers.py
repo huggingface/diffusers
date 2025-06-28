@@ -552,66 +552,6 @@ def convert_transformer_state_dict(checkpoint):
     return state_dict
 
 
-def convert_magi_checkpoint(
-    magi_checkpoint_path,
-    vae_checkpoint_path=None,
-    transformer_checkpoint_path=None,
-    t5_model_name="google/umt5-xxl",
-    output_path=None,
-    dtype=None,
-):
-    """
-    Convert MAGI-1 checkpoints to a diffusers pipeline.
-
-    Args:
-        magi_checkpoint_path: Path to the MAGI-1 checkpoint directory.
-        vae_checkpoint_path: Optional path to the VAE checkpoint.
-        transformer_checkpoint_path: Optional path to the transformer checkpoint.
-        t5_model_name: Name of the T5 model to use.
-        output_path: Path to save the converted pipeline.
-        dtype: Optional dtype for the models.
-
-    Returns:
-        A diffusers Magi1Pipeline.
-    """
-    # Load or convert the VAE
-    if vae_checkpoint_path is None:
-        vae_checkpoint_path = os.path.join(magi_checkpoint_path, "ckpt/vae")
-
-    vae = convert_magi_vae_checkpoint(vae_checkpoint_path, dtype=dtype)
-
-    # Load or convert the transformer
-    if transformer_checkpoint_path is None:
-        transformer_checkpoint_path = os.path.join(magi_checkpoint_path, "ckpt/magi/4.5B_base/inference_weight")
-
-    transformer = convert_magi_transformer_checkpoint(transformer_checkpoint_path, dtype=dtype)
-
-    # Load the text encoder and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(t5_model_name)
-    text_encoder = UMT5EncoderModel.from_pretrained(t5_model_name)
-
-    if dtype is not None:
-        text_encoder = text_encoder.to(dtype=dtype)
-
-    # Create the scheduler
-    scheduler = FlowMatchEulerDiscreteScheduler()
-
-    # Create the pipeline
-    pipeline = Magi1Pipeline(
-        vae=vae,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-        transformer=transformer,
-        scheduler=scheduler,
-    )
-
-    # Save the pipeline if output_path is provided
-    if output_path is not None:
-        pipeline.save_pretrained(output_path)
-
-    return pipeline
-
-
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_type", type=str, default=None)
@@ -630,7 +570,7 @@ if __name__ == "__main__":
     args = get_args()
 
     # transformer = convert_transformer(args.model_type)
-    vae = convert_magi_vae_checkpoint(os.path.join(args.model_type, "ckpt/vae"))
+    vae = convert_magi_vae()
     # text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=torch.bfloat16)
     # tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     # flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
@@ -659,11 +599,11 @@ if __name__ == "__main__":
         # )
     # else:
     pipe = Magi1Pipeline(
-        transformer=transformer,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
+        transformer=None,#transformer,
+        text_encoder=None,#text_encoder,
+        tokenizer=None,#tokenizer,
         vae=vae,
-        scheduler=scheduler,
+        scheduler=None,#scheduler,
     )
 
     pipe.save_pretrained(args.output_path,
