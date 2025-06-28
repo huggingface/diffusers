@@ -454,8 +454,8 @@ class ModularNode(ConfigMixin):
 
         output_params = {}
         if isinstance(self.blocks, SequentialPipelineBlocks):
-            last_block_name = list(self.blocks.blocks.keys())[-1]
-            outputs = self.blocks.blocks[last_block_name].intermediate_outputs
+            last_block_name = list(self.blocks.sub_blocks.keys())[-1]
+            outputs = self.blocks.sub_blocks[last_block_name].intermediate_outputs
         else:
             outputs = self.blocks.intermediate_outputs
 
