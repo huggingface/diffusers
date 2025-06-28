@@ -76,6 +76,7 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator_with_training,
     require_torch_gpu,
     require_torch_multi_accelerator,
+    require_torch_version_greater,
     run_test_in_subprocess,
     slow,
     torch_all_close,
@@ -1528,14 +1529,16 @@ class ModelTesterMixin:
         test_fn(torch.float8_e5m2, torch.float32)
         test_fn(torch.float8_e4m3fn, torch.bfloat16)
 
+    @torch.no_grad()
     def test_layerwise_casting_inference(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-        base_slice = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+        model = self.model_class(**config)
+        model.eval()
+        model.to(torch_device)
+        base_slice = model(**inputs_dict)[0].detach().flatten().cpu().numpy()
 
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
@@ -1573,6 +1576,7 @@ class ModelTesterMixin:
         test_layerwise_casting(torch.float8_e4m3fn, torch.bfloat16)
 
     @require_torch_accelerator
+    @torch.no_grad()
     def test_layerwise_casting_memory(self):
         MB_TOLERANCE = 0.2
         LEAST_COMPUTE_CAPABILITY = 8.0
@@ -1709,10 +1713,6 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
-
-        torch.manual_seed(0)
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
         model.eval()
         additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1725,7 +1725,7 @@ class ModelTesterMixin:
                 **additional_kwargs,
             )
             has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
-            assert has_safetensors, "No safetensors found in the directory."
+            self.assertTrue(len(has_safetensors) > 0, "No safetensors found in the offload directory.")
             _ = model(**inputs_dict)[0]
 
     def test_auto_model(self, expected_max_diff=5e-5):
@@ -1908,6 +1908,8 @@ class ModelPushToHubTester(unittest.TestCase):
 @is_torch_compile
 @slow
 class TorchCompileTesterMixin:
+    different_shapes_for_compilation = None
+
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
@@ -1936,14 +1938,35 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
+    def test_torch_compile_repeated_blocks(self):
+        if self.model_class._repeated_blocks is None:
+            pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model.compile_repeated_blocks(fullgraph=True)
+
+        recompile_limit = 1
+        if self.model_class.__name__ == "UNet2DConditionModel":
+            recompile_limit = 2
+
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(recompile_limit=recompile_limit),
+            torch.no_grad(),
+        ):
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
     def test_compile_with_group_offloading(self):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         torch._dynamo.config.cache_size_limit = 10000
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
-
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.eval()
         # TODO: Can test for other group offloading kwargs later if needed.
@@ -1960,6 +1983,21 @@ class TorchCompileTesterMixin:
         with torch.no_grad():
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
+
+    @require_torch_version_greater("2.7.1")
+    def test_compile_on_different_shapes(self):
+        if self.different_shapes_for_compilation is None:
+            pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
+        torch.fx.experimental._config.use_duck_shape = False
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True, dynamic=True)
+
+        for height, width in self.different_shapes_for_compilation:
+            with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+                inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                _ = model(**inputs_dict)
 
 
 @slow
@@ -2108,7 +2146,7 @@ class LoraHotSwappingForModelTesterMixin:
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_model_conv2d(self, rank0, rank1):
         if "unet" not in self.model_class.__name__.lower():
-            return
+            pytest.skip("Test only applies to UNet.")
 
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
@@ -2118,7 +2156,7 @@ class LoraHotSwappingForModelTesterMixin:
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_model_both_linear_and_conv2d(self, rank0, rank1):
         if "unet" not in self.model_class.__name__.lower():
-            return
+            pytest.skip("Test only applies to UNet.")
 
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]

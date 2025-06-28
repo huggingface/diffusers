@@ -19,6 +19,7 @@ import unittest
 from typing import List
 
 import numpy as np
+from parameterized import parameterized
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
@@ -29,6 +30,7 @@ from diffusers import (
     TorchAoConfig,
 )
 from diffusers.models.attention_processor import Attention
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     backend_synchronize,
@@ -43,6 +45,8 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
+
+from ..test_torch_compile_utils import QuantCompileTests
 
 
 enable_full_determinism()
@@ -623,6 +627,53 @@ class TorchAoSerializationTest(unittest.TestCase):
         device = "cpu"
         self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
+
+
+@require_torchao_version_greater_or_equal("0.7.0")
+class TorchAoCompileTest(QuantCompileTests):
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_mapping={
+                "transformer": TorchAoConfig(quant_type="int8_weight_only"),
+            },
+        )
+
+    def test_torch_compile(self):
+        super()._test_torch_compile(quantization_config=self.quantization_config)
+
+    @unittest.skip(
+        "Changing the device of AQT tensor with module._apply (called from doing module.to() in accelerate) does not work "
+        "when compiling."
+    )
+    def test_torch_compile_with_cpu_offload(self):
+        # RuntimeError: _apply(): Couldn't swap Linear.weight
+        super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
+
+    @unittest.skip(
+        """
+        For `use_stream=False`:
+            - Changing the device of AQT tensor, with `param.data = param.data.to(device)` as done in group offloading implementation
+            is unsupported in TorchAO. When compiling, FakeTensor device mismatch causes failure.
+        For `use_stream=True`:
+            Using non-default stream requires ability to pin tensors. AQT does not seem to support this yet in TorchAO.
+        """
+    )
+    @parameterized.expand([False, True])
+    def test_torch_compile_with_group_offload_leaf(self):
+        # For use_stream=False:
+        # If we run group offloading without compilation, we will see:
+        #   RuntimeError: Attempted to set the storage of a tensor on device "cpu" to a storage on different device "cuda:0".  This is no longer allowed; the devices must match.
+        # When running with compilation, the error ends up being different:
+        #   Dynamo failed to run FX node with fake tensors: call_function <built-in function linear>(*(FakeTensor(..., device='cuda:0', size=(s0, 256), dtype=torch.bfloat16), AffineQuantizedTensor(tensor_impl=PlainAQTTensorImpl(data=FakeTensor(..., size=(1536, 256), dtype=torch.int8)... , scale=FakeTensor(..., size=(1536,), dtype=torch.bfloat16)... , zero_point=FakeTensor(..., size=(1536,), dtype=torch.int64)... , _layout=PlainLayout()), block_size=(1, 256), shape=torch.Size([1536, 256]), device=cpu, dtype=torch.bfloat16, requires_grad=False), Parameter(FakeTensor(..., device='cuda:0', size=(1536,), dtype=torch.bfloat16,
+        #   requires_grad=True))), **{}): got RuntimeError('Unhandled FakeTensor Device Propagation for aten.mm.default, found two different devices cuda:0, cpu')
+        # Looks like something that will have to be looked into upstream.
+        # for linear layers, weight.tensor_impl shows cuda... but:
+        # weight.tensor_impl.{data,scale,zero_point}.device will be cpu
+
+        # For use_stream=True:
+        # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
+        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
 
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
