@@ -47,6 +47,10 @@ RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         tensorboard \
         transformers \
         matplotlib \
-        setuptools==69.5.1
+        setuptools==69.5.1 \
+        bitsandbytes \
+        torchao \
+        gguf \
+        optimum-quanto
 
 CMD ["/bin/bash"]
