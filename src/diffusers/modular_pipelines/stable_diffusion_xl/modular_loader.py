@@ -44,7 +44,6 @@ class StableDiffusionXLModularLoader(
     StableDiffusionXLLoraLoaderMixin,
     ModularIPAdapterMixin,
 ):
-    
     @property
     def default_height(self):
         return self.default_sample_size * self.vae_scale_factor
@@ -52,8 +51,7 @@ class StableDiffusionXLModularLoader(
     @property
     def default_width(self):
         return self.default_sample_size * self.vae_scale_factor
-    
-    
+
     @property
     def default_sample_size(self):
         default_sample_size = 128

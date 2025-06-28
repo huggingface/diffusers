@@ -1849,23 +1849,30 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             return module.dtype
 
         return torch.float32
-    
+
     @property
     def null_component_names(self) -> List[str]:
         return [name for name in self._component_specs.keys() if hasattr(self, name) and getattr(self, name) is None]
-    
+
     @property
     def component_names(self) -> List[str]:
         return list(self.components.keys())
-    
+
     @property
     def pretrained_component_names(self) -> List[str]:
-        return [name for name in self._component_specs.keys() if self._component_specs[name].default_creation_method == "from_pretrained"]
-    
+        return [
+            name
+            for name in self._component_specs.keys()
+            if self._component_specs[name].default_creation_method == "from_pretrained"
+        ]
+
     @property
     def config_component_names(self) -> List[str]:
-        return [name for name in self._component_specs.keys() if self._component_specs[name].default_creation_method == "from_config"]
-        
+        return [
+            name
+            for name in self._component_specs.keys()
+            if self._component_specs[name].default_creation_method == "from_config"
+        ]
 
     @property
     def components(self) -> Dict[str, Any]:
@@ -2430,9 +2437,13 @@ class ModularPipeline:
             raise ValueError(f"Output '{output}' is not a valid output type")
 
     def load_default_components(self, **kwargs):
-        names = [name for name in self.loader._component_specs.keys() if self.loader._component_specs[name].default_creation_method == "from_pretrained"]
+        names = [
+            name
+            for name in self.loader._component_specs.keys()
+            if self.loader._component_specs[name].default_creation_method == "from_pretrained"
+        ]
         self.loader.load(names=names, **kwargs)
-    
+
     def load_components(self, names: Union[List[str], str], **kwargs):
         self.loader.load(names=names, **kwargs)
 

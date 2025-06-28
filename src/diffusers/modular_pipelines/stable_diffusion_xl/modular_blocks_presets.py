@@ -76,9 +76,7 @@ class StableDiffusionXLAutoIPAdapterStep(AutoPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Run IP Adapter step if `ip_adapter_image` is provided. This step should be placed before the 'input' step.\n"
-        )
+        return "Run IP Adapter step if `ip_adapter_image` is provided. This step should be placed before the 'input' step.\n"
 
 
 # before_denoise: text2img
