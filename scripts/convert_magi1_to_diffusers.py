@@ -14,45 +14,174 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Convert MAGI-1 checkpoints to diffusers format."""
+"""
+Convert MAGI-1 checkpoints to diffusers format.
+
+This script converts MAGI-1 transformer checkpoints from the original sharded format
+to the diffusers format. It follows diffusers' design philosophy with modular components,
+config-driven model creation, and proper error handling.
+"""
 
 import argparse
 import json
+import logging
 import os
-from huggingface_hub import hf_hub_download
+import shutil
+import tempfile
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from safetensors.torch import load_file
-from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import (
-    AutoencoderKLMagi1,
-    FlowMatchEulerDiscreteScheduler,
-    #Magi1Transformer3DModel,
-    Magi1Pipeline,
-)
+from diffusers import Magi1Pipeline, Magi1Transformer3DModel
+from diffusers.models.autoencoders import AutoencoderKLMagi1
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.utils import logging as diffusers_logging
 
 
-# Mapping dictionary for transformer weights
+# Set up logging
+logger = logging.getLogger(__name__)
+diffusers_logging.set_verbosity_info()
+
+
+# Mapping from original MAGI-1 transformer keys to diffusers format
+# Following the same pattern as WAN to ensure consistency
 TRANSFORMER_KEYS_RENAME_DICT = {
-    "t_embedder.mlp.0": "time_embedding.0",
-    "t_embedder.mlp.2": "time_embedding.2",
-    "y_embedder.y_proj_adaln.0": "text_embedding.0",
-    "y_embedder.y_proj_xattn.0": "cross_attention_proj",
-    "y_embedder.null_caption_embedding": "null_caption_embedding",
-    "rope.bands": "rotary_emb.bands",
-    "videodit_blocks.final_layernorm": "transformer_blocks.norm_final",
+    # Time embedding
+    "t_embedder.mlp.0": "condition_embedder.time_embedder.linear_1",
+    "t_embedder.mlp.2": "condition_embedder.time_embedder.linear_2",
+
+    # Text embedding - AdaLN projection
+    "y_embedder.y_proj_adaln.0": "condition_embedder.text_embedder.linear_1",
+    "y_embedder.y_proj_adaln.2": "condition_embedder.text_embedder.linear_2",
+
+    # Time projection
+    "condition_embedder.time_embedder.linear_2": "condition_embedder.time_proj", # Duplicate mapping handled later
+
+    # Final output components
+    "videodit_blocks.final_layernorm": "norm_out",
     "final_linear.linear": "proj_out",
+
+    # AdaLN modulation
+    "ada_modulate_layer.proj.0": "scale_shift_table",
+
+    # Self-attention mappings
+    "self_attention.linear_qkv.q": "attn1.to_q",
+    "self_attention.linear_qkv.k": "attn1.to_k",
+    "self_attention.linear_qkv.v": "attn1.to_v",
+    "self_attention.linear_proj": "attn1.to_out.0",
+    "self_attention.q_layernorm": "attn1.norm_q",
+    "self_attention.k_layernorm": "attn1.norm_k",
+
+    # Cross-attention mappings
+    "self_attention.linear_qkv.qx": "attn2.to_q",  # Cross-attention query
+    "self_attention.linear_kv_xattn": "attn2.to_kv",  # Will be split into to_k and to_v
+    "self_attention.q_layernorm_xattn": "attn2.norm_q",
+    "self_attention.k_layernorm_xattn": "attn2.norm_k",
+
+    # Feed-forward network
+    "mlp.linear_fc1": "ffn.net.0.proj",
+    "mlp.linear_fc2": "ffn.net.2",
+    "mlp.layer_norm": "norm3",
+
+    # Normalization layers
+    "self_attn_post_norm": "norm2",
+
+    # Image conditioning (for I2V models)
+    "img_emb.proj.0": "condition_embedder.image_embedder.norm1",
+    "img_emb.proj.1": "condition_embedder.image_embedder.ff.net.0.proj",
+    "img_emb.proj.3": "condition_embedder.image_embedder.ff.net.2",
+    "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
+    "img_emb.emb_pos": "condition_embedder.image_embedder.pos_embed",
 }
 
-# Layer-specific mappings
-LAYER_KEYS_RENAME_DICT = {
-    "ada_modulate_layer.proj.0": "ff_norm",
-    "self_attention.linear_kv_xattn": "attn1.to_kv",
-    "self_attention.linear_proj": "attn1.to_out",
-    "mlp.linear_fc1": "ff.net.0.proj",
-}
+# Special handling for keys that need custom processing
+TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+
+
+
+
+def convert_magi_transformer(model_type):
+    """
+    Convert MAGI-1 transformer for a specific model type.
+
+    Args:
+        model_type: The model type (e.g., "MAGI-1-T2V-4.5B-distill", "MAGI-1-T2V-24B-distill", etc.)
+
+    Returns:
+        The converted transformer model.
+    """
+    # Map model_type to the actual path in the repo
+    # MAGI-1-T2V-4.5B-distill -> 4.5B_distill
+    # MAGI-1-T2V-24B-distill -> 24B_distill
+    model_type_mapping = {
+        "MAGI-1-T2V-4.5B-distill": "4.5B_distill",
+        "MAGI-1-T2V-24B-distill": "24B_distill",
+        "MAGI-1-T2V-4.5B": "4.5B",
+        "MAGI-1-T2V-24B": "24B",
+        "4.5B_distill": "4.5B_distill",
+        "24B_distill": "24B_distill",
+        "4.5B": "4.5B",
+        "24B": "24B",
+    }
+
+    repo_path = model_type_mapping.get(model_type, model_type)
+
+    # Download the transformer checkpoint directory from HuggingFace Hub
+    # The checkpoint is sharded into multiple files in inference_weight.distill directory
+
+    # Create a temporary directory to store the sharded checkpoint files
+    temp_dir = tempfile.mkdtemp()
+    transformer_ckpt_dir = os.path.join(temp_dir, "transformer_checkpoint")
+    os.makedirs(transformer_ckpt_dir, exist_ok=True)
+
+    # Download all sharded checkpoint files
+    # For 4.5B_distill, there are 2 shards: model-00001-of-00002.safetensors and model-00002-of-00002.safetensors
+    checkpoint_files = []
+    shard_index = 1
+    while True:
+        try:
+            if shard_index == 1:
+                # Try to download the first shard to determine total number of shards
+                shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
+                shard_path = hf_hub_download(
+                    "sand-ai/MAGI-1",
+                    f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
+                )
+                checkpoint_files.append(shard_path)
+                print(f"Downloaded {shard_filename}")
+                shard_index += 1
+            elif shard_index == 2:
+                # Download the second shard
+                shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
+                shard_path = hf_hub_download(
+                    "sand-ai/MAGI-1",
+                    f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
+                )
+                checkpoint_files.append(shard_path)
+                print(f"Downloaded {shard_filename}")
+                break
+            else:
+                break
+        except Exception as e:
+            print(f"No more shards found or error downloading shard {shard_index}: {e}")
+            break
+
+    if not checkpoint_files:
+        raise ValueError(f"No checkpoint files found for model type: {model_type}")
+
+    # Copy files to the temporary directory with consistent naming
+    for i, shard_path in enumerate(checkpoint_files):
+        dest_path = os.path.join(transformer_ckpt_dir, f"model-{i+1:05d}-of-{len(checkpoint_files):05d}.safetensors")
+        shutil.copy2(shard_path, dest_path)
+
+    # Convert the transformer checkpoint
+    transformer = convert_magi_transformer_checkpoint(transformer_ckpt_dir)
+
+    return transformer
 
 
 def convert_magi_vae():
@@ -366,7 +495,7 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
     converted_state_dict = convert_transformer_state_dict(checkpoint)
 
     # Load the state dict
-    missing_keys, unexpected_keys = transformer.load_state_dict(converted_state_dict, strict=False)
+    missing_keys, unexpected_keys = transformer.load_state_dict(converted_state_dict, strict=True)
 
     if missing_keys:
         print(f"Missing keys in transformer: {missing_keys}")
@@ -383,173 +512,78 @@ def convert_transformer_state_dict(checkpoint):
     """
     Convert MAGI-1 transformer state dict to diffusers format.
 
-    Maps the keys from the MAGI-1 transformer state dict to the diffusers transformer state dict.
+    Uses a key mapping approach similar to WAN conversion for consistency.
+    Maps the original MAGI-1 parameter names to diffusers' standard transformer naming.
     """
-    state_dict = {}
+    original_state_dict = {}
 
-    # Process input projection
-    if "x_embedder.weight" in checkpoint:
-        state_dict["input_proj.weight"] = checkpoint["x_embedder.weight"]
+    # First, load all parameters into a flat dictionary
+    for key, value in checkpoint.items():
+        original_state_dict[key] = value
 
-    # Process time embedding
-    if "t_embedder.mlp.0.weight" in checkpoint:
-        state_dict["time_embedding.0.weight"] = checkpoint["t_embedder.mlp.0.weight"]
-        state_dict["time_embedding.0.bias"] = checkpoint["t_embedder.mlp.0.bias"]
-        state_dict["time_embedding.2.weight"] = checkpoint["t_embedder.mlp.2.weight"]
-        state_dict["time_embedding.2.bias"] = checkpoint["t_embedder.mlp.2.bias"]
+    # Apply systematic key renaming using the mapping dictionary
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
 
-    # Process text embedding
-    if "y_embedder.y_proj_adaln.0.weight" in checkpoint:
-        state_dict["text_embedding.0.weight"] = checkpoint["y_embedder.y_proj_adaln.0.weight"]
-        state_dict["text_embedding.0.bias"] = checkpoint["y_embedder.y_proj_adaln.0.bias"]
+        # Apply transformer block-specific mappings
+        if "videodit_blocks.layers." in key:
+            # Extract layer number
+            parts = key.split(".")
+            if len(parts) >= 4 and parts[0] == "videodit_blocks" and parts[1] == "layers":
+                layer_num = parts[2]
+                remaining_key = ".".join(parts[3:])
 
-    if "y_embedder.y_proj_xattn.0.weight" in checkpoint:
-        state_dict["cross_attention_proj.weight"] = checkpoint["y_embedder.y_proj_xattn.0.weight"]
-        state_dict["cross_attention_proj.bias"] = checkpoint["y_embedder.y_proj_xattn.0.bias"]
+                # Map to blocks.{layer_num}.{component}
+                for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+                    if remaining_key.startswith(replace_key):
+                        suffix = remaining_key[len(replace_key):]
+                        new_key = f"blocks.{layer_num}.{rename_key}{suffix}"
+                        break
+        else:
+            # Apply global mappings for non-block components
+            for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+                new_key = new_key.replace(replace_key, rename_key)
 
-    # Process null caption embedding
-    if "y_embedder.null_caption_embedding" in checkpoint:
-        state_dict["null_caption_embedding"] = checkpoint["y_embedder.null_caption_embedding"]
+        # Update the state dict
+        if new_key != key:
+            original_state_dict[new_key] = original_state_dict.pop(key)
 
-    # Process rotary embedding
-    if "rope.bands" in checkpoint:
-        state_dict["rotary_emb.bands"] = checkpoint["rope.bands"]
+    # Handle special cases that need custom processing
+    processed_keys = set()
 
-    # Process final layer norm
-    if "videodit_blocks.final_layernorm.weight" in checkpoint:
-        state_dict["transformer_blocks.norm_final.weight"] = checkpoint["videodit_blocks.final_layernorm.weight"]
-        state_dict["transformer_blocks.norm_final.bias"] = checkpoint["videodit_blocks.final_layernorm.bias"]
-
-    # Process final linear projection
-    if "final_linear.linear.weight" in checkpoint:
-        state_dict["proj_out.weight"] = checkpoint["final_linear.linear.weight"]
-
-    # Process transformer blocks
-    # Based on the full parameter list, there are 34 layers (0-33)
-    num_layers = 34
+    # Process each transformer block separately for special handling
+    num_layers = 34  # MAGI-1 has 34 layers
     for i in range(num_layers):
-        # Check if this layer exists in the checkpoint
         layer_prefix = f"videodit_blocks.layers.{i}"
-        if f"{layer_prefix}.ada_modulate_layer.proj.0.weight" not in checkpoint:
+        block_prefix = f"blocks.{i}"
+
+        # Check if this layer exists
+        if f"{layer_prefix}.self_attention.linear_qkv.q.weight" not in checkpoint:
             continue
 
-        # FF norm (AdaLN projection)
-        state_dict[f"transformer_blocks.{i}.ff_norm.weight"] = checkpoint[
-            f"{layer_prefix}.ada_modulate_layer.proj.0.weight"
-        ]
-        state_dict[f"transformer_blocks.{i}.ff_norm.bias"] = checkpoint[
-            f"{layer_prefix}.ada_modulate_layer.proj.0.bias"
-        ]
+        # Handle cross-attention K,V splitting
+        kv_key = f"{layer_prefix}.self_attention.linear_kv_xattn.weight"
+        if kv_key in checkpoint:
+            kv_weight = checkpoint[kv_key]
+            # Split into separate K and V projections
+            k_weight, v_weight = kv_weight.chunk(2, dim=0)
+            original_state_dict[f"{block_prefix}.attn2.to_k.weight"] = k_weight
+            original_state_dict[f"{block_prefix}.attn2.to_v.weight"] = v_weight
+            # Mark original key for removal
+            if f"{block_prefix}.attn2.to_kv.weight" in original_state_dict:
+                del original_state_dict[f"{block_prefix}.attn2.to_kv.weight"]
 
-        # Self-attention components
+        # Share output projection between attn1 and attn2 (original MAGI-1 pattern)
+        attn1_out_key = f"{block_prefix}.attn1.to_out.0.weight"
+        if attn1_out_key in original_state_dict:
+            original_state_dict[f"{block_prefix}.attn2.to_out.0.weight"] = original_state_dict[attn1_out_key]
 
-        # Query normalization
-        if f"{layer_prefix}.self_attention.q_layernorm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.norm_q.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.q_layernorm.weight"
-            ]
-            state_dict[f"transformer_blocks.{i}.attn1.norm_q.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.q_layernorm.bias"
-            ]
+    # Handle time projection mapping (need to avoid duplicate mapping)
+    if "condition_embedder.time_embedder.linear_2.weight" in original_state_dict:
+        original_state_dict["condition_embedder.time_proj.weight"] = original_state_dict["condition_embedder.time_embedder.linear_2.weight"]
+        original_state_dict["condition_embedder.time_proj.bias"] = original_state_dict["condition_embedder.time_embedder.linear_2.bias"]
 
-        # Key normalization
-        if f"{layer_prefix}.self_attention.k_layernorm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.norm_k.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.k_layernorm.weight"
-            ]
-            state_dict[f"transformer_blocks.{i}.attn1.norm_k.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.k_layernorm.bias"
-            ]
-
-        # Cross-attention key normalization
-        if f"{layer_prefix}.self_attention.k_layernorm_xattn.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.norm_k_xattn.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"
-            ]
-            state_dict[f"transformer_blocks.{i}.attn1.norm_k_xattn.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"
-            ]
-
-        # Cross-attention query normalization
-        if f"{layer_prefix}.self_attention.q_layernorm_xattn.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.norm_q_xattn.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"
-            ]
-            state_dict[f"transformer_blocks.{i}.attn1.norm_q_xattn.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"
-            ]
-
-        # QKV linear projections
-        if f"{layer_prefix}.self_attention.linear_qkv.q.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_q.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.q.weight"
-            ]
-
-        if f"{layer_prefix}.self_attention.linear_qkv.k.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_k.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.k.weight"
-            ]
-
-        if f"{layer_prefix}.self_attention.linear_qkv.v.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_v.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.v.weight"
-            ]
-
-        if f"{layer_prefix}.self_attention.linear_qkv.qx.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_q_xattn.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
-            ]
-
-        # QKV layer norm
-        if f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.qkv_norm.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"
-            ]
-            state_dict[f"transformer_blocks.{i}.attn1.qkv_norm.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"
-            ]
-
-        # KV cross-attention
-        if f"{layer_prefix}.self_attention.linear_kv_xattn.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_kv_xattn.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_kv_xattn.weight"
-            ]
-
-        # Output projection
-        if f"{layer_prefix}.self_attention.linear_proj.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.attn1.to_out.0.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_proj.weight"
-            ]
-
-        # Self-attention post normalization
-        if f"{layer_prefix}.self_attn_post_norm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.norm1.weight"] = checkpoint[
-                f"{layer_prefix}.self_attn_post_norm.weight"
-            ]
-            state_dict[f"transformer_blocks.{i}.norm1.bias"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.bias"]
-
-        # MLP components
-        # MLP layer norm
-        if f"{layer_prefix}.mlp.layer_norm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.ff.norm.weight"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.weight"]
-            state_dict[f"transformer_blocks.{i}.ff.norm.bias"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.bias"]
-
-        # MLP FC1 (projection)
-        if f"{layer_prefix}.mlp.linear_fc1.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint[
-                f"{layer_prefix}.mlp.linear_fc1.weight"
-            ]
-
-        # MLP FC2 (projection)
-        if f"{layer_prefix}.mlp.linear_fc2.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.ff.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
-
-        # MLP post normalization
-        if f"{layer_prefix}.mlp_post_norm.weight" in checkpoint:
-            state_dict[f"transformer_blocks.{i}.norm2.weight"] = checkpoint[f"{layer_prefix}.mlp_post_norm.weight"]
-            state_dict[f"transformer_blocks.{i}.norm2.bias"] = checkpoint[f"{layer_prefix}.mlp_post_norm.bias"]
-
-    return state_dict
+    return original_state_dict
 
 
 def get_args():
@@ -569,19 +603,19 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    # transformer = convert_transformer(args.model_type)
+    transformer = convert_magi_transformer(args.model_type)
     #vae = convert_magi_vae()
-    text_encoder = T5EncoderModel.from_pretrained("DeepFloyd/t5-v1_1-xxl")
-    tokenizer = AutoTokenizer.from_pretrained("DeepFloyd/t5-v1_1-xxl")
+    #text_encoder = T5EncoderModel.from_pretrained("DeepFloyd/t5-v1_1-xxl")
+    #tokenizer = AutoTokenizer.from_pretrained("DeepFloyd/t5-v1_1-xxl")
     # flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
     # scheduler = UniPCMultistepScheduler(
     #     prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift
     # )
 
     # If user has specified "none", we keep the original dtypes of the state dict without any conversion
-    # if args.dtype != "none":
-    #     dtype = DTYPE_MAPPING[args.dtype]
-    #     transformer.to(dtype)
+    if args.dtype != "none":
+        dtype = DTYPE_MAPPING[args.dtype]
+        transformer.to(dtype)
 
     # if "I2V" in args.model_type or "FLF2V" in args.model_type:
         # image_encoder = CLIPVisionModelWithProjection.from_pretrained(
@@ -599,9 +633,9 @@ if __name__ == "__main__":
         # )
     # else:
     pipe = Magi1Pipeline(
-        transformer=None,#transformer,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
+        transformer=transformer,
+        text_encoder=None,#text_encoder,
+        tokenizer=None,#tokenizer,
         vae=None,#vae,
         scheduler=None,#scheduler,
     )

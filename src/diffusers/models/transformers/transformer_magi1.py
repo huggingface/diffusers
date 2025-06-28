@@ -1,4 +1,4 @@
-# Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The MAGI Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
 
 import math
 from typing import Any, Dict, Optional, Tuple, Union
+
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -35,6 +37,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class Magi1AttnProcessor2_0:
+    r"""
+    Processor for implementing MAGI-1 attention mechanism.
+
+    This processor handles both self-attention and cross-attention for the MAGI-1 model,
+    following diffusers' standard attention processor interface. It supports image conditioning
+    for image-to-video generation tasks.
+    """
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("Magi1AttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
@@ -47,30 +57,38 @@ class Magi1AttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # Handle image conditioning if present for cross-attention
         encoder_hidden_states_img = None
-        if attn.add_k_proj is not None:
-            # 512 is the context length of the text encoder, hardcoded for now
-            image_context_length = encoder_hidden_states.shape[1] - 512
+        if attn.add_k_proj is not None and encoder_hidden_states is not None:
+            # Extract image conditioning from the concatenated encoder states
+            # The text encoder context length is typically 512 tokens
+            text_context_length = getattr(attn, 'text_context_length', 512)
+            image_context_length = encoder_hidden_states.shape[1] - text_context_length
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
             encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
+
+        # For self-attention, use hidden_states as encoder_hidden_states
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
 
+        # Standard attention computation
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
+        # Apply normalization if available
         if attn.norm_q is not None:
             query = attn.norm_q(query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
+        # Reshape for multi-head attention
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
+        # Apply rotary embeddings if provided
         if rotary_emb is not None:
-
             def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
                 dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
                 x_rotated = torch.view_as_complex(hidden_states.to(dtype).unflatten(3, (-1, 2)))
@@ -80,8 +98,13 @@ class Magi1AttnProcessor2_0:
             query = apply_rotary_emb(query, rotary_emb)
             key = apply_rotary_emb(key, rotary_emb)
 
-        # I2V task
-        hidden_states_img = None
+        # Compute attention
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+
+        # Handle image conditioning (I2V task) for cross-attention
         if encoder_hidden_states_img is not None:
             key_img = attn.add_k_proj(encoder_hidden_states_img)
             key_img = attn.norm_added_k(key_img)
@@ -90,27 +113,32 @@ class Magi1AttnProcessor2_0:
             key_img = key_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
             value_img = value_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
-            hidden_states_img = F.scaled_dot_product_attention(
+            attn_output_img = F.scaled_dot_product_attention(
                 query, key_img, value_img, attn_mask=None, dropout_p=0.0, is_causal=False
             )
-            hidden_states_img = hidden_states_img.transpose(1, 2).flatten(2, 3)
-            hidden_states_img = hidden_states_img.type_as(query)
+            attn_output_img = attn_output_img.transpose(1, 2).flatten(2, 3)
+            hidden_states = hidden_states + attn_output_img
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        hidden_states = hidden_states.type_as(query)
-
-        if hidden_states_img is not None:
-            hidden_states = hidden_states + hidden_states_img
-
+        # Apply output projection
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
 
 
 class Magi1ImageEmbedding(torch.nn.Module):
+    """
+    Image embedding layer for the MAGI-1 model.
+
+    This module processes image conditioning features for image-to-video generation tasks.
+    It applies layer normalization, a feed-forward transformation, and optional positional
+    embeddings to prepare image features for cross-attention.
+
+    Args:
+        in_features (`int`): Input feature dimension.
+        out_features (`int`): Output feature dimension.
+        pos_embed_seq_len (`int`, optional): Sequence length for positional embeddings.
+            If provided, learnable positional embeddings will be added to the input.
+    """
     def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
 
@@ -135,6 +163,22 @@ class Magi1ImageEmbedding(torch.nn.Module):
 
 
 class Magi1TimeTextImageEmbedding(nn.Module):
+    """
+    Combined time, text, and image embedding module for the MAGI-1 model.
+
+    This module handles the encoding of three types of conditioning inputs:
+    1. Timestep embeddings for diffusion process control
+    2. Text embeddings for text-to-video generation
+    3. Optional image embeddings for image-to-video generation
+
+    Args:
+        dim (`int`): Hidden dimension of the transformer model.
+        time_freq_dim (`int`): Dimension for sinusoidal time embeddings.
+        time_proj_dim (`int`): Output dimension for time projection.
+        text_embed_dim (`int`): Input dimension of text embeddings.
+        image_embed_dim (`int`, optional): Input dimension of image embeddings.
+        pos_embed_seq_len (`int`, optional): Sequence length for image positional embeddings.
+    """
     def __init__(
         self,
         dim: int,
@@ -222,6 +266,23 @@ class Magi1RotaryPosEmbed(nn.Module):
 
 
 class Magi1TransformerBlock(nn.Module):
+    """
+    A transformer block used in the MAGI-1 model.
+
+    This block follows diffusers' design philosophy with separate self-attention (attn1)
+    and cross-attention (attn2) modules, while faithfully implementing the original
+    MAGI-1 logic through appropriate parameter mapping during conversion.
+
+    Args:
+        dim (`int`): The number of channels in the input and output.
+        ffn_dim (`int`): The number of channels in the feed-forward layer.
+        num_heads (`int`): The number of attention heads.
+        qk_norm (`str`): The type of normalization to apply to query and key projections.
+        cross_attn_norm (`bool`): Whether to apply normalization in cross-attention.
+        eps (`float`): The epsilon value for layer normalization.
+        added_kv_proj_dim (`Optional[int]`): Additional key-value projection dimension for image conditioning.
+    """
+
     def __init__(
         self,
         dim: int,
@@ -270,6 +331,7 @@ class Magi1TransformerBlock(nn.Module):
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
         self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
 
+        # Scale and shift table for AdaLN - 6 components for gating
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
     def forward(
@@ -307,86 +369,122 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
     r"""
     A Transformer model for video-like data used in the Magi1 model.
 
+    This model implements a 3D transformer architecture for video generation with support for text conditioning
+    and optional image conditioning. The model uses rotary position embeddings and adaptive layer normalization
+    for temporal and spatial modeling.
+
     Args:
         patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
             3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
-        num_attention_heads (`int`, defaults to `40`):
-            Fixed length for text embeddings.
-        attention_head_dim (`int`, defaults to `128`):
-            The number of channels in each head.
+        num_attention_heads (`int`, defaults to `16`):
+            The number of attention heads in each transformer block.
+        attention_head_dim (`int`, defaults to `64`):
+            The dimension of each attention head.
         in_channels (`int`, defaults to `16`):
-            The number of channels in the input.
+            The number of input channels (from VAE latent space).
         out_channels (`int`, defaults to `16`):
-            The number of channels in the output.
-        text_dim (`int`, defaults to `512`):
-            Input dimension for text embeddings.
+            The number of output channels (to VAE latent space).
+        cross_attention_dim (`int`, defaults to `4096`):
+            The dimension of cross-attention (text encoder hidden size).
         freq_dim (`int`, defaults to `256`):
             Dimension for sinusoidal time embeddings.
-        ffn_dim (`int`, defaults to `13824`):
+        ffn_dim (`int`, defaults to `4096`):
             Intermediate dimension in feed-forward network.
-        num_layers (`int`, defaults to `40`):
-            The number of layers of transformer blocks to use.
-        window_size (`Tuple[int]`, defaults to `(-1, -1)`):
-            Window size for local attention (-1 indicates global attention).
+        num_layers (`int`, defaults to `34`):
+            The number of transformer layers to use.
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
-        qk_norm (`bool`, defaults to `True`):
-            Enable query/key normalization.
+        qk_norm (`Optional[str]`, defaults to `"rms_norm_across_heads"`):
+            Type of query/key normalization to use.
         eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
-        add_img_emb (`bool`, defaults to `False`):
-            Whether to use img_emb.
-        added_kv_proj_dim (`int`, *optional*, defaults to `None`):
-            The number of channels to use for the added key and value projections. If `None`, no projection is used.
+        use_linear_projection (`bool`, defaults to `True`):
+            Whether to use linear projection for patch embedding.
+        upcast_attention (`bool`, defaults to `False`):
+            Whether to upcast attention computation to float32.
+        image_embed_dim (`Optional[int]`, defaults to `None`):
+            Dimension of image embeddings for image-to-video tasks.
+        rope_max_seq_len (`int`, defaults to `1024`):
+            Maximum sequence length for rotary position embeddings.
+        pos_embed_seq_len (`Optional[int]`, defaults to `None`):
+            Sequence length for positional embeddings in image conditioning.
     """
 
     _supports_gradient_checkpointing = True
-    _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
+    _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "rope"]
     _no_split_modules = ["Magi1TransformerBlock"]
-    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
+    _repeated_blocks = ["Magi1TransformerBlock"]
 
     @register_to_config
     def __init__(
         self,
         patch_size: Tuple[int] = (1, 2, 2),
-        num_attention_heads: int = 40,
-        attention_head_dim: int = 128,
+        num_attention_heads: int = 16,
+        attention_head_dim: int = 64,
         in_channels: int = 16,
         out_channels: int = 16,
-        text_dim: int = 4096,
+        cross_attention_dim: int = 4096,
         freq_dim: int = 256,
-        ffn_dim: int = 13824,
-        num_layers: int = 40,
+        ffn_dim: int = 4096,
+        num_layers: int = 34,
         cross_attn_norm: bool = True,
         qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
+        use_linear_projection: bool = True,
+        upcast_attention: bool = False,
+        image_embed_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
     ) -> None:
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
+        self.inner_dim = inner_dim
         out_channels = out_channels or in_channels
+
+        # Validate configuration
+        if inner_dim != num_attention_heads * attention_head_dim:
+            raise ValueError(
+                f"inner_dim ({inner_dim}) should be equal to num_attention_heads ({num_attention_heads}) * "
+                f"attention_head_dim ({attention_head_dim})"
+            )
+
+        if any(p <= 0 for p in patch_size):
+            raise ValueError(f"All patch_size values must be positive, got {patch_size}")
+
+        if num_layers <= 0:
+            raise ValueError(f"num_layers must be positive, got {num_layers}")
+
+        if freq_dim <= 0:
+            raise ValueError(f"freq_dim must be positive, got {freq_dim}")
+
+        if image_embed_dim is not None and image_embed_dim <= 0:
+            raise ValueError(f"image_embed_dim must be positive when provided, got {image_embed_dim}")
 
         # 1. Patch & position embedding
         self.rope = Magi1RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
-        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
+
+        if use_linear_projection:
+            self.patch_embedding = nn.Linear(in_channels * math.prod(patch_size), inner_dim)
+        else:
+            self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
-        # image_embedding_dim=1280 for I2V model
         self.condition_embedder = Magi1TimeTextImageEmbedding(
             dim=inner_dim,
             time_freq_dim=freq_dim,
             time_proj_dim=inner_dim * 6,
-            text_embed_dim=text_dim,
-            image_embed_dim=image_dim,
+            text_embed_dim=cross_attention_dim,
+            image_embed_dim=image_embed_dim,
             pos_embed_seq_len=pos_embed_seq_len,
         )
 
         # 3. Transformer blocks
+        # For image-to-video tasks, we may need additional projections
+        added_kv_proj_dim = image_embed_dim if image_embed_dim is not None else None
+
         self.blocks = nn.ModuleList(
             [
                 Magi1TransformerBlock(
@@ -435,8 +533,29 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
 
         rotary_emb = self.rope(hidden_states)
 
-        hidden_states = self.patch_embedding(hidden_states)
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        # Patch embedding - handle both conv3d and linear projection
+        if self.config.use_linear_projection:
+            # For linear projection, we need to patchify first
+            batch_size, num_channels, num_frames, height, width = hidden_states.shape
+            p_t, p_h, p_w = self.config.patch_size
+
+            # Patchify: (B, C, T, H, W) -> (B, T//p_t, H//p_h, W//p_w, C*p_t*p_h*p_w)
+            hidden_states = hidden_states.unfold(2, p_t, p_t).unfold(3, p_h, p_h).unfold(4, p_w, p_w)
+            hidden_states = hidden_states.contiguous().view(
+                batch_size,
+                num_frames // p_t,
+                height // p_h,
+                width // p_w,
+                num_channels * p_t * p_h * p_w
+            )
+            # Reshape to sequence: (B, T*H*W, C*p_t*p_h*p_w)
+            hidden_states = hidden_states.flatten(1, 3)
+            # Apply linear projection: (B, T*H*W, inner_dim)
+            hidden_states = self.patch_embedding(hidden_states)
+        else:
+            # For conv3d projection
+            hidden_states = self.patch_embedding(hidden_states)
+            hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
             timestep, encoder_hidden_states, encoder_hidden_states_image
@@ -461,19 +580,31 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the
-        # first device rather than the last device, which hidden_states ends up
-        # on.
+        # first device rather than the last device, which hidden_states ends up on.
         shift = shift.to(hidden_states.device)
         scale = scale.to(hidden_states.device)
 
         hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
+        # Unpatchify: convert from sequence back to video format
         hidden_states = hidden_states.reshape(
-            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
+            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1
         )
-        hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
-        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+
+        # Rearrange patches: (B, T//p_t, H//p_h, W//p_w, C*p_t*p_h*p_w) -> (B, C, T, H, W)
+        p_t, p_h, p_w = self.config.patch_size
+        hidden_states = hidden_states.view(
+            batch_size, post_patch_num_frames, post_patch_height, post_patch_width,
+            self.config.out_channels, p_t, p_h, p_w
+        )
+        hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
+        output = hidden_states.contiguous().view(
+            batch_size, self.config.out_channels,
+            post_patch_num_frames * p_t,
+            post_patch_height * p_h,
+            post_patch_width * p_w
+        )
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer

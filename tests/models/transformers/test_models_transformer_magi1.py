@@ -68,7 +68,7 @@ class MagiTransformer3DTests(ModelTesterMixin, unittest.TestCase):
             "attention_head_dim": 12,
             "in_channels": 4,
             "out_channels": 4,
-            "text_dim": 16,
+            "cross_attention_dim": 16,
             "freq_dim": 256,
             "ffn_dim": 32,
             "num_layers": 2,
