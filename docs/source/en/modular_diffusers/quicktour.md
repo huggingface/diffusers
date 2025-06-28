@@ -18,26 +18,32 @@ With Modular Diffusers, we introduce a unified pipeline system that simplifies h
 
 **Assemble Like LEGO®**: You can mix and match blocks in flexible ways. This allows you to write dedicated blocks for specific workflows, and then assemble different blocks into a pipeline that that can be used more conveniently for multiple workflows. 
 
-In this guide, we will focus on how to use pipeline like this we built with Modular diffusers 🧨! We will also go over the basics of pipeline blocks, how they work under the hood, and how to assemble SequentialPipelineBlocks and AutoPipelineBlocks in this [guide](TODO). For advanced users who want to build complete workflows from scratch, we provide an end-to-end example in the [Developer Guide](developer_guide.md) that covers everything from writing custom pipeline blocks to deploying your workflow as a UI node.
+In this guide, we will focus on how to build pipelines this way using blocks we officially support at diffusers 🧨! We will show you how to write your own pipeline blocks and go into more details on how they work under the hood in this [guide](TODO). For advanced users who want to build complete workflows from scratch, we provide an end-to-end example in the [Developer Guide](developer_guide.md) that covers everything from writing custom pipeline blocks to deploying your workflow as a UI node.
 
 Let's get started! The Modular Diffusers Framework consists of three main components:
+- ModularPipelineBlocks
+- PipelineState & BlockState
+- ModularPipeline
 
 ## ModularPipelineBlocks
 
 Pipeline blocks are the fundamental building blocks of the Modular Diffusers system. All pipeline blocks inherit from the base class `ModularPipelineBlocks`, including:
-- [`PipelineBlock`](TODO)
-- [`SequentialPipelineBlocks`](TODO)
-- [`LoopSequentialPipelineBlocks`](TODO)
-- [`AutoPipelineBlocks`](TODO)
 
+- [`PipelineBlock`](TODO): The most granular block - you define the computation logic.
+- [`SequentialPipelineBlocks`](TODO): A multi-block composed of multiple blocks that run sequentially, passing outputs as inputs to the next block.
+- [`LoopSequentialPipelineBlocks`](TODO): A special type of multi-block that forms loops.
+- [`AutoPipelineBlocks`](TODO): A multi-block composed of multiple blocks that are selected at runtime based on the inputs.
 
-To use a `ModularPipelineBlocks` officially supported in 🧨 Diffusers
+All blocks have a consistent interface defining their requirements (components, configs, inputs, outputs) and computation logic. They can be used standalone or combined into larger blocks. Blocks are designed to be assembled into workflows for tasks such as image generation, video creation, and inpainting.
+
+It is very easy to use a `ModularPipelineBlocks` officially supported in 🧨 Diffusers
+
 ```py
->>> from diffusers.modular_pipelines.stable_diffusion_xl import StableDiffusionXLTextEncoderStep
->>> text_encoder_block = StableDiffusionXLTextEncoderStep()
+from diffusers.modular_pipelines.stable_diffusion_xl import StableDiffusionXLTextEncoderStep
+text_encoder_block = StableDiffusionXLTextEncoderStep()
 ```
 
-Each [`ModularPipelineBlocks`] defines its requirement for components, configs, inputs, intermediate inputs, and outputs. You'll see that this text encoder block uses 2 text_encoders, 2 tokenizers as well as a guider component. It takes user inputs such as `prompt` and `negative_prompt`, and return text embeddings such as `prompt_embeds` and `negative_prompt_embeds`.
+This is a single `PipelineBlock`. You'll see that this text encoder block uses 2 text_encoders, 2 tokenizers as well as a guider component. It takes user inputs such as `prompt` and `negative_prompt`, and return text embeddings outputs such as `prompt_embeds` and `negative_prompt_embeds`.
 
 ```
 >>> text_encoder_block
@@ -59,8 +65,7 @@ StableDiffusionXLTextEncoderStep(
 )
 ```
 
-More commonly, you can create a `SequentialPipelineBlocks` using a modular blocks preset officially supported in 🧨 Diffusers.
-
+More commonly, you can create a `SequentialPipelineBlocks` using a block classes preset from 🧨 Diffusers.
 
 ```py
 from diffusers.modular_pipelines import SequentialPipelineBlocks
@@ -68,7 +73,7 @@ from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS
 t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 ```
 
-This creates a text-to-image pipeline. 
+This creates a `SequentialPipelineBlocks`, which is a multi-block composed of other blocks. Unlike single blocks (like the `text_encoder_block` we saw earlier), this multi-block has a `sub_blocks` attribute that contains the sub-blocks (text_encoder, input, set_timesteps, prepare_latents, prepare_added_con, denoise, decode). Its requirements for components, inputs, and intermediate inputs are combined from these blocks that compose it. At runtime, it executes its sub-blocks sequentially and passes the pipeline state from one block to another. 
 
 ```py
 >>> t2i_blocks
@@ -92,7 +97,7 @@ SequentialPipelineBlocks(
   Configs:
       force_zeros_for_empty_prompt (default: True)
 
-  Blocks:
+  Sub-Blocks:
     [0] text_encoder (StableDiffusionXLTextEncoderStep)
        Description: Text Encoder step that generate text_embeddings to guide the image generation
 
@@ -114,14 +119,14 @@ SequentialPipelineBlocks(
     [4] prepare_add_cond (StableDiffusionXLPrepareAdditionalConditioningStep)
        Description: Step that prepares the additional conditioning for the text-to-image generation process
 
-    [5] denoise (StableDiffusionXLDenoiseLoop)
+    [5] denoise (StableDiffusionXLDenoiseStep)
        Description: Denoise step that iteratively denoise the latents. 
                    Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method 
-                   At each iteration, it runs blocks defined in `blocks` sequencially:
+                   At each iteration, it runs blocks defined in `sub_blocks` sequencially:
                     - `StableDiffusionXLLoopBeforeDenoiser`
                     - `StableDiffusionXLLoopDenoiser`
                     - `StableDiffusionXLLoopAfterDenoiser`
-                   
+                   This block supports both text2img and img2img tasks.
 
     [6] decode (StableDiffusionXLDecodeStep)
        Description: Step that decodes the denoised latents into images
@@ -129,11 +134,11 @@ SequentialPipelineBlocks(
 )
 ```
 
-The blocks preset we used (`TEXT2IMAGE_BLOCKS`) is just a dictionary that maps names to ModularPipelineBlocks classes
+The block classes preset (`TEXT2IMAGE_BLOCKS`) we used is just a dictionary that maps names to ModularPipelineBlocks classes
 
 ```py
 >>> TEXT2IMAGE_BLOCKS
-InsertableOrderedDict([
+InsertableDict([
   0: ('text_encoder', <class 'diffusers.modular_pipelines.stable_diffusion_xl.encoders.StableDiffusionXLTextEncoderStep'>),
   1: ('input', <class 'diffusers.modular_pipelines.stable_diffusion_xl.before_denoise.StableDiffusionXLInputStep'>),
   2: ('set_timesteps', <class 'diffusers.modular_pipelines.stable_diffusion_xl.before_denoise.StableDiffusionXLSetTimestepsStep'>),
@@ -144,51 +149,51 @@ InsertableOrderedDict([
 ])
 ```
 
-When we create a `SequentialPipelineBlocks` from this preset, it instantiates each class into actual block objects. Its `blocks` attribute contains these instantiated objects:
+When we create a `SequentialPipelineBlocks` from this preset, it instantiates each block class into actual block objects. Its `sub_blocks` attribute now contains these instantiated objects:
 
 ```py
->>> t2i_blocks.blocks
-InsertableOrderedDict([
+>>> t2i_blocks.sub_blocks
+InsertableDict([
   0: ('text_encoder', <obj 'diffusers.modular_pipelines.stable_diffusion_xl.encoders.StableDiffusionXLTextEncoderStep'>),
   1: ('input', <obj 'diffusers.modular_pipelines.stable_diffusion_xl.before_denoise.StableDiffusionXLInputStep'>),
   2: ('set_timesteps', <obj 'diffusers.modular_pipelines.stable_diffusion_xl.before_denoise.StableDiffusionXLSetTimestepsStep'>),
   3: ('prepare_latents', <obj 'diffusers.modular_pipelines.stable_diffusion_xl.before_denoise.StableDiffusionXLPrepareLatentsStep'>),
   4: ('prepare_add_cond', <obj 'diffusers.modular_pipelines.stable_diffusion_xl.before_denoise.StableDiffusionXLPrepareAdditionalConditioningStep'>),
-  5: ('denoise', <obj 'diffusers.modular_pipelines.stable_diffusion_xl.denoise.StableDiffusionXLDenoiseLoop'>),
+  5: ('denoise', <obj 'diffusers.modular_pipelines.stable_diffusion_xl.denoise.StableDiffusionXLDenoiseStep'>),
   6: ('decode', <obj 'diffusers.modular_pipelines.stable_diffusion_xl.decoders.StableDiffusionXLDecodeStep'>)
 ])
 ```
 
-Note that both the preset and the `blocks` attribute are `InsertableOrderedDict` objects, which allows you to modify them in several ways:
+Note that both the block classes preset and the `sub_blocks` attribute are `InsertableDict` objects. This is a custom dictionary that extends `OrderedDict` with the ability to insert items at specific positions. You can perform all standard dictionary operations (get, set, delete) plus insert items at any index, which is particularly useful for reordering or inserting blocks in the middle of a pipeline.
 
-**Add a block/block_class at specific positions:**
+**Add a block:**
 ```py
-# Add to preset (class)
+# Add a block class to the preset
 BLOCKS.insert("block_name", BlockClass, index)
-# Add to blocks attribute (instance)
-t2i_blocks.blocks.insert("block_name", block_instance, index)
+# Add a block instance to the `sub_blocks` attribute
+t2i_blocks.sub_blocks.insert("block_name", block_instance, index)
 ```
 
-**Remove blocks:**
+**Remove a block:**
 ```py
 # remove a block class from preset
 BLOCKS.pop("text_encoder")
 # split out a block instance on its own
-text_encoder_block = t2i_blocks.blocks.pop("text_encoder")
+text_encoder_block = t2i_blocks.sub_blocks.pop("text_encoder")
 ```
 
-**Swap/replace blocks:**
+**Swap block:**
 ```py
-# Replace in preset (class)
+# Replace block class in preset
 BLOCKS["prepare_latents"] = CustomPrepareLatents
-# Replace in blocks attribute (instance)
-t2i_blocks.blocks["prepare_latents"] = CustomPrepareLatents()
+# Replace in sub_blocks attribute
+t2i_blocks.sub_blocks["prepare_latents"] = CustomPrepareLatents()
 ```
 
 This means you can mix-and-match blocks in very flexible ways. Let's see some real examples:
 
-**Example 1: Adding IP-Adapter to the preset**
-Let's insert IP-Adapter at index 0 (before the text_encoder block) to create a text-to-image pipeline with IP-Adapter support:
+**Example 1: Adding IP-Adapter to the Block Classes Preset**
+Let's make a new block classes preset by insert IP-Adapter at index 0 (before the text_encoder block), and create a text-to-image pipeline with IP-Adapter support:
 
 ```py
 from diffusers.modular_pipelines.stable_diffusion_xl import StableDiffusionXLAutoIPAdapterStep
@@ -197,31 +202,16 @@ CUSTOM_BLOCKS.insert("ip_adapter", StableDiffusionXLAutoIPAdapterStep, 0)
 custom_blocks = SequentialPipelineBlocks.from_blocks_dict(CUSTOM_BLOCKS)
 ```
 
-**Example 2: Extracting a block from the pipeline**
-You can extract a block instance from the pipeline to use it independently. A common pattern is to extract the text_encoder to process prompts once, then reuse the text embeddings to generate multiple images with different settings (schedulers, seeds, inference steps).
+**Example 2: Extracting a block from a multi-block**
+You can extract a block instance from the multi-block to use it independently. A common pattern is to use text_encoder to process prompts once, then reuse the text embeddings outputs to generate multiple images with different settings (schedulers, seeds, inference steps). We can do this by simply extracting the text_encoder block from the pipeline.
 
 ```py
->>> text_encoder_blocks = t2i_blocks.blocks.pop("text_encoder")
+# this gives you StableDiffusionXLTextEncoderStep()
+>>> text_encoder_blocks = t2i_blocks.sub_blocks.pop("text_encoder")
 >>> text_encoder_blocks
-StableDiffusionXLTextEncoderStep(
-  Class: PipelineBlock
-  Description: Text Encoder step that generate text_embeddings to guide the image generation
-    Components:
-        text_encoder (`CLIPTextModel`)
-        text_encoder_2 (`CLIPTextModelWithProjection`)
-        tokenizer (`CLIPTokenizer`)
-        tokenizer_2 (`CLIPTokenizer`)
-        guider (`ClassifierFreeGuidance`)
-    Configs:
-        force_zeros_for_empty_prompt (default: True)
-  Inputs:
-    prompt=None, prompt_2=None, negative_prompt=None, negative_prompt_2=None, cross_attention_kwargs=None, clip_skip=None
-  Intermediates:
-    - outputs: prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
-)
 ```
 
-the pipeline now has fewer components and no longer has the `text_encoder` block:
+the multi-block now has fewer components and no longer has the `text_encoder` block. If you check its docstring `t2i_blocks.doc`, you will see that it no longer accepts `prompt` as input - you will need to pass the embeddings instead.
 
 ```py
 >>> t2i_blocks
@@ -271,6 +261,33 @@ SequentialPipelineBlocks(
 )
 ```
 
+<Tip>
+
+💡 You can find all the block classes presets we support for each model in `ALL_BLOCKS`.
+
+```py
+# For Stable Diffusion XL
+from diffusers.modular_pipelines.stable_diffusion_xl import ALL_BLOCKS
+ALL_BLOCKS
+# For other models...
+from diffusers.modular_pipelines.<model_name> import ALL_BLOCKS
+```
+
+Each model provides a dictionary that maps all supported tasks/techniques to their corresponding block classes presets. For SDXL, it is 
+
+```py
+ALL_BLOCKS = {
+    "text2img": TEXT2IMAGE_BLOCKS,
+    "img2img": IMAGE2IMAGE_BLOCKS,
+    "inpaint": INPAINT_BLOCKS,
+    "controlnet": CONTROLNET_BLOCKS,
+    "ip_adapter": IP_ADAPTER_BLOCKS,
+    "auto": AUTO_BLOCKS,
+}
+```
+
+</Tip>
+
 We will not go over how to write your own ModularPipelineBlocks but you can learn more about it [here](TODO).
 
 This covers the essentials of pipeline blocks! You may have noticed that we haven't discussed how to load or run pipeline blocks - that's because **pipeline blocks are not runnable by themselves**. They are essentially **"definitions"** - they define the specifications and computational steps for a pipeline, but they do not contain any model states. To actually run them, you need to convert them into a `ModularPipeline` object.
@@ -306,8 +323,8 @@ In standard `model_index.json`, each component entry is a `(library, class)` tup
 
 In `modular_model_index.json`, each component entry contains 3 elements: `(library, class, loading_specs {})`
 
-- `library` and `class`: Information about the actual component loaded in the pipeline at the time of saving (can be `None` if not loaded)
-- `loading_specs`: A dictionary containing all information required to load this component, including `repo`, `revision`, `subfolder`, `variant`, and `type_hint`
+- `library` and `class`: Information about the actual component loaded in the pipeline at the time of saving (will be `null` if not loaded)
+- `loading_specs`: A dictionary containing all information required to load this component, including `repo`, `revision`, `subfolder`, `variant`, and `type_hint`. 
 
 ```py
 "text_encoder": [
@@ -325,7 +342,20 @@ In `modular_model_index.json`, each component entry contains 3 elements: `(libra
   }
 ],
 ```
+Some components may not have `repo` field, they cannot be loaded from a repository and can only be created with default config from the pipeline
 
+```py
+  "image_processor": [
+    "diffusers",
+    "VaeImageProcessor",
+    {
+      "type_hint": [
+        "diffusers",
+        "VaeImageProcessor"
+      ]
+    }
+  ],
+```
 Unlike standard repositories where components must be in subfolders within the same repo, modular repositories can fetch components from different repositories based on the `loading_specs` dictionary. e.g. the `text_encoder` component will be fetched from the "text_encoder" folder in `stabilityai/stable-diffusion-xl-base-1.0` while other components come from different repositories.
 
 
@@ -387,19 +417,33 @@ Unlike `DiffusionPipeline`, when you create a `ModularPipeline` instance (whethe
 
 ```py
 # This will load ALL the expected components into pipeline
-t2i_pipeline.load_components(torch_dtype=torch.float16)
-t2i_pipeline.to(device)
+import torch
+t2i_pipeline.load_default_components(torch_dtype=torch.float16)
+t2i_pipeline.to("cuda")
 ```
 
-All expected components are now loaded into the pipeline. You can also partially load specific components using the `component_names` argument. For example, to only load unet and vae:
+All expected components are now loaded into the pipeline. You can also partially load specific components using the `names` argument. For example, to only load unet and vae:
 
 ```py
->>> t2i_pipeline.load_components(component_names=["unet", "vae"])
+>>> t2i_pipeline.load_components(names=["unet", "vae"], torch_dtype=torch.float16)
 ```
 
-You can inspect the pipeline's loading status through its `loader` attribute to understand what components are expected to load, which ones are already loaded, how they were loaded, and what loading specs are available. It has the same structure as the `modular_model_index.json` we discussed earlier - each component entry contains the `(library, class, loading_specs)` format. You'll need to understand that structure to properly read the loading status below.
+You can inspect the pipeline's loading status through its `loader` attribute to understand what components are expected to load, which ones are already loaded, how they were loaded, and what loading specs are available. The loader is synced with the `modular_model_index.json` from the repository you used during `init_pipeline()` - it takes the loading specs that match the pipeline's component requirements.
 
-Let's inspect the `t2i_pipeline`, you can see all the components expected to load are listed as entries in the loader. The `guider` and `image_processor` components were created using default config (their `library` and `class` field are populated, this means they are initialized, but `loading_spec["repo"]` is null). The `vae` and `unet` components were loaded using their respective loading specs. The rest of the components (scheduler, text_encoder, text_encoder_2, tokenizer, tokenizer_2) are not loaded yet (their `library`, `class` fields are `null`), but you can examine their loading specs to see where they would be loaded from when you call `load_components()`.
+For example, if your pipeline needs a `text_encoder` component, the loader will include the loading spec for `text_encoder` from the modular repo. If the pipeline doesn't need a component (like `controlnet` in a basic text-to-image pipeline), that component won't appear in the loader even if it exists in the modular repo.
+
+The loader has the same structure as `modular_model_index.json` - each component entry contains the `(library, class, loading_specs)` format. You'll need to understand that structure to properly read the loading status below.
+
+<Tip>
+
+💡 **How to read the loader**: 
+- **`library` and `class` fields**: Show info about actually loaded components. If `null`, the component is not loaded yet.
+- **`loading_specs`**: If it does not have `repo` field or if it is `null`, the component cannot be loaded from a repository and can only be created with default config by the pipeline.
+
+</Tip>
+
+Let's inspect the `t2i_pipeline.loader`, you can see all the components expected to load are listed as entries in the loader. The `guider` and `image_processor` components were created using default config (their `library` and `class` field are populated, this means they are initialized, but their loading spec dict is missing loading related fields). The `vae` and `unet` components were loaded using their respective loading specs. The rest of the components (scheduler, text_encoder, text_encoder_2, tokenizer, tokenizer_2) are not loaded yet (their `library`, `class` fields are `null`), but you can examine their loading specs to see where they would be loaded from when you call `load_components()`.
+
 
 ```py
 >>> t2i_pipeline.loader
@@ -411,28 +455,20 @@ StableDiffusionXLModularLoader {
     "diffusers",
     "ClassifierFreeGuidance",
     {
-      "repo": null,
-      "revision": null,
-      "subfolder": null,
       "type_hint": [
         "diffusers",
         "ClassifierFreeGuidance"
-      ],
-      "variant": null
+      ]
     }
   ],
   "image_processor": [
     "diffusers",
     "VaeImageProcessor",
     {
-      "repo": null,
-      "revision": null,
-      "subfolder": null,
       "type_hint": [
         "diffusers",
         "VaeImageProcessor"
-      ],
-      "variant": null
+      ]
     }
   ],
   "scheduler": [
@@ -535,6 +571,58 @@ StableDiffusionXLModularLoader {
   ]
 }
 ```
+
+There are also a few properties that can provide a quick summary of component loading status: 
+
+```py
+# All components expected by the pipeline
+>>> t2i_pipeline.loader.component_names
+['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'guider', 'scheduler', 'unet', 'vae', 'image_processor']
+
+# Components that are not loaded yet (will be loaded with from_pretrained)
+>>> t2i_pipeline.loader.null_component_names
+['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler']
+
+# Components that will be loaded from pretrained models
+>>> t2i_pipeline.loader.pretrained_component_names
+['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler', 'unet', 'vae']
+
+# Components that are created with default config (no repo needed)
+>>> t2i_pipeline.loader.config_component_names
+['guider', 'image_processor']
+```
+
+### Modifying Loading Specs
+
+When you call `pipeline.load_components(names=)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. The pipeline's `loader` attribute is synced with these specs - it shows you exactly what will be loaded and from where.
+
+You can change where components are loaded from by default by modifying the `modular_model_index.json` in the repository. You can change any field in the loading specs: `repo`, `subfolder`, `variant`, `revision`, etc.
+
+```py
+# Original spec in modular_model_index.json
+"unet": [
+  null, null,
+  {
+    "repo": "stabilityai/stable-diffusion-xl-base-1.0",
+    "subfolder": "unet",
+    "variant": "fp16"
+  }
+]
+
+# Modified spec - changed repo, subfolder, and variant
+"unet": [
+  null, null,
+  {
+    "repo": "RunDiffusion/Juggernaut-XL-v9",
+    "subfolder": "unet", 
+    "variant": "fp16"
+  }
+]
+```
+
+When you call `pipeline.load_components(...)`/`pipeline.load_default_components()`, it will now load from the new repository by default.
+
+
 ### Updating components in a `ModularPipeline`
 
 Similar to `DiffusionPipeline`, You could load an components separately to replace the default one in the pipeline. But in Modular Diffusers system, you need to use `ComponentSpec` to load/create them.
@@ -595,8 +683,7 @@ StableDiffusionXLModularLoader {
 }  
 ```
 
-
-### Run a `ModularPipeline`
+### Running a `ModularPipeline`
 
 The API to run the `ModularPipeline` is very similar to how you would run a regular `DiffusionPipeline`:
 
@@ -615,125 +702,623 @@ Under the hood, `ModularPipeline`'s `__call__` method is a wrapper around the pi
 
 You can inspect the docstring of a `ModularPipeline` to check what arguments the pipeline accepts and how to specify the `output` you want. It will list all available outputs (basically everything in the intermediate pipeline state) so you can choose from the list.
 
+**Important**: It is important to always check the docstring because arguments can be different from standard pipelines that you're familar with. For example, in Modular Diffusers we standardized controlnet image input as `control_image`, but regular pipelines have inconsistencies over the names, e.g. controlnet text-to-image uses `image` while SDXL controlnet img2img uses `control_image`.
+
+**Note**: The `output` list might be longer than you expected - it includes everything in the intermediate state that you can choose to return. Most of the time, you'll just want `output="images"` or `output="latents"`.
+
 ```py
 t2i_pipeline.doc
 ```
 
 </Tip>
 
+#### Text-to-Image, Image-to-Image, and Inpainting
+
+These are minimum inference example for our basic tasks: text-to-image, image-to-image and inpainting. The process to create different pipelines is the same - only difference is the block classes presets. The inference is also more or less same to standard pipelines, but please always check `.doc` for correct input names and remember to pass `output="images"`.
+
+
+<hfoptions id="basic-tasks">
+<hfoption id="text-to-image">
+
 ```py
 import torch
 from diffusers.modular_pipelines import SequentialPipelineBlocks
 from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS
 
-t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
+# create pipeline from official blocks preset
+blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 
 modular_repo_id = "YiYiXu/modular-loader-t2i"
-t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id)
+pipeline = blocks.init_pipeline(modular_repo_id)
 
-t2i_pipeline.load_components(torch_dtype=torch.float16)
-t2i_pipeline.to("cuda")
+pipeline.load_default_components(torch_dtype=torch.float16)
+pipeline.to("cuda")
 
-image = t2i_pipeline(prompt="a cat", output="images")[0]
+# run pipeline, need to pass a "output=images" argument
+image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", output="images")[0]
 image.save("modular_t2i_out.png")
 ```
 
+</hfoption>
+<hfoption id="image-to-image">
 
-## An slightly advanced Workflow
+```py
+import torch
+from diffusers.modular_pipelines import SequentialPipelineBlocks
+from diffusers.modular_pipelines.stable_diffusion_xl import IMAGE2IMAGE_BLOCKS
 
-We've learned the basic components of the Modular Diffusers System. Now let's tie everything together with more practical example that demonstrates the true power of Modular Diffusers: working between with multiple pipelines that can share components.
+# create pipeline from blocks preset
+blocks = SequentialPipelineBlocks.from_blocks_dict(IMAGE2IMAGE_BLOCKS)
+
+modular_repo_id = "YiYiXu/modular-loader-t2i"
+pipeline = blocks.init_pipeline(modular_repo_id)
+
+pipeline.load_default_components(torch_dtype=torch.float16)
+pipeline.to("cuda")
+
+url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
+init_image = load_image(url)
+prompt = "a dog catching a frisbee in the jungle"
+image = pipeline(prompt=prompt, image=init_image, strength=0.8, output="images")[0]
+image.save("modular_i2i_out.png")
+```
+
+</hfoption>
+<hfoption id="inpainting">
+
+```py
+import torch
+from diffusers.modular_pipelines import SequentialPipelineBlocks
+from diffusers.modular_pipelines.stable_diffusion_xl import INPAINT_BLOCKS
+from diffusers.utils import load_image
+
+# create pipeline from blocks preset
+blocks = SequentialPipelineBlocks.from_blocks_dict(INPAINT_BLOCKS)
+
+modular_repo_id = "YiYiXu/modular-loader-t2i"
+pipeline = blocks.init_pipeline(modular_repo_id)
+
+pipeline.load_default_components(torch_dtype=torch.float16)
+pipeline.to("cuda")
+
+img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
+mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-inpaint-mask.png"
+
+init_image = load_image(img_url)
+mask_image = load_image(mask_url)
+
+prompt = "A deep sea diver floating"
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.85, output="images")[0]
+image.save("moduar_inpaint_out.png")
+```
+
+</hfoption>
+</hfoptions>
+
+#### ControlNet
+
+For ControlNet, we provide one auto block you can place at the `denoise` step. Let's create it and inspect it to see what it tells us. 
+
+<Tip>
+
+💡 **How to explore new tasks**: When you want to figure out how to do a specific task in Modular Diffusers, it is a good idea to start by checking what block classes presets we offer in `ALL_BLOCKS`. Then create the block instance and inspect it - it will show you the required components, description, and sub-blocks. This is crucial for understanding what each block does and what it needs.
+
+</Tip>
+
+```py
+>>> from diffusers.modular_pipelines.stable_diffusion_xl import ALL_BLOCKS
+>>> ALL_BLOCKS["controlnet"]
+InsertableDict([
+  0: ('denoise', <class 'diffusers.modular_pipelines.stable_diffusion_xl.modular_blocks_presets.StableDiffusionXLAutoControlnetStep'>)
+])
+>>> controlnet_blocks = ALL_BLOCKS["controlnet"]["denoise"]()
+>>> controlnet_blocks
+StableDiffusionXLAutoControlnetStep(
+  Class: SequentialPipelineBlocks
+
+  ====================================================================================================
+  This pipeline contains blocks that are selected at runtime based on inputs.
+  Trigger Inputs: {'mask', 'control_mode', 'control_image', 'controlnet_cond'}
+  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('mask')`).
+  ====================================================================================================
+
+
+  Description: Controlnet auto step that prepare the controlnet input and denoise the latents. It works for both controlnet and controlnet_union and supports text2img, img2img and inpainting tasks. (it should be replace at 'denoise' step)
+
+
+  Components:
+      controlnet (`ControlNetUnionModel`)
+      control_image_processor (`VaeImageProcessor`)
+      scheduler (`EulerDiscreteScheduler`)
+      unet (`UNet2DConditionModel`)
+      guider (`ClassifierFreeGuidance`)
+
+  Sub-Blocks:
+    [0] controlnet_input (StableDiffusionXLAutoControlNetInputStep)
+       Description: Controlnet Input step that prepare the controlnet input.
+                   This is an auto pipeline block that works for both controlnet and controlnet_union.
+                    (it should be called right before the denoise step) - `StableDiffusionXLControlNetUnionInputStep` is called to prepare the controlnet input when `control_mode` and `control_image` are provided.
+                    - `StableDiffusionXLControlNetInputStep` is called to prepare the controlnet input when `control_image` is provided. - if neither `control_mode` nor `control_image` is provided, step will be skipped.
+
+    [1] controlnet_denoise (StableDiffusionXLAutoControlNetDenoiseStep)
+       Description: Denoise step that iteratively denoise the latents with controlnet. This is a auto pipeline block that using controlnet for text2img, img2img and inpainting tasks.This block should not be used without a controlnet_cond input - `StableDiffusionXLInpaintControlNetDenoiseStep` (inpaint_controlnet_denoise) is used when mask is provided. - `StableDiffusionXLControlNetDenoiseStep` (controlnet_denoise) is used when mask is not provided but controlnet_cond is provided. - If neither mask nor controlnet_cond are provided, step will be skipped.
+
+)
+```
+
+<Tip>
+
+💡 **Auto Blocks**: This is first time we meet a Auto Blocks! `AutoPipelineBlocks` automatically adapt to your inputs by combining multiple workflows with conditional logic. This is why one convenient block can work for all tasks and controlnet types. See the [Auto Blocks Guide](TODO) for more details.
+
+</Tip>
+
+The block shows us it has two steps (prepare inputs + denoise) and supports all tasks with both controlnet and controlnet union. Most importantly, it tells us to place it at the 'denoise' step. Let's do exactly that:
+
+```py
+import torch
+from diffusers.modular_pipelines import SequentialPipelineBlocks
+from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS, StableDiffusionXLAutoControlnetStep
+from diffusers.utils import load_image
+
+# create pipeline from blocks preset
+blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
+
+# these two lines applies controlnet
+controlnet_blocks = StableDiffusionXLAutoControlnetStep()
+blocks.sub_blocks["denoise"] = controlnet_blocks 
+```
+
+Before we convert the blocks into a pipeline and load its components, let's inspect the blocks and its docs again to make sure it was assembled correctly. You should be able to see that `controlnet` and `control_image_processor` are now listed as `Components`, so we should initialize the pipeline with a repo that contains desired loading specs for these 2 components.
+
+```py
+# make sure to a modular_repo including controlnet
+modular_repo_id = "YiYiXu/modular-demo-auto"
+pipeline = blocks.init_pipeline(modular_repo_id)
+pipeline.load_default_components(torch_dtype=torch.float16)
+pipeline.to("cuda")
+
+# generate
+canny_image = load_image(
+    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+)
+image = pipeline(
+    prompt="a bird", controlnet_conditioning_scale=0.5, control_image=canny_image, output="images"
+)[0]
+image.save("modular_control_out.png")
+```
+
+#### IP-Adapter
+
+**Challenge time!** Before we show you how to apply IP-adapter, try doing it yourself! Use the same process we just walked you through with ControlNet: check the official blocks preset, inspect the block instance and docstring `.doc`, and adapt a regular IP-adapter example to modular.
+
+Let's walk through the steps:
+
+1. Check blocks preset
+
+```py
+>>> from diffusers.modular_pipelines.stable_diffusion_xl import ALL_BLOCKS
+>>> ALL_BLOCKS["ip_adapter"]
+InsertableDict([
+  0: ('ip_adapter', <class 'diffusers.modular_pipelines.stable_diffusion_xl.modular_blocks_presets.StableDiffusionXLAutoIPAdapterStep'>)
+])
+```
+
+2. inspect the block & doc
+
+```
+>>> from diffusers.modular_pipelines.stable_diffusion_xl import StableDiffusionXLAutoIPAdapterStep
+>>> ip_adapter_blocks = StableDiffusionXLAutoIPAdapterStep()
+>>> ip_adapter_blocks
+StableDiffusionXLAutoIPAdapterStep(
+  Class: AutoPipelineBlocks
+
+  ====================================================================================================
+  This pipeline contains blocks that are selected at runtime based on inputs.
+  Trigger Inputs: {'ip_adapter_image'}
+  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('ip_adapter_image')`).
+  ====================================================================================================
+
+
+  Description: Run IP Adapter step if `ip_adapter_image` is provided. This step should be placed before the 'input' step.
+      
+
+
+  Components:
+      image_encoder (`CLIPVisionModelWithProjection`)
+      feature_extractor (`CLIPImageProcessor`)
+      unet (`UNet2DConditionModel`)
+      guider (`ClassifierFreeGuidance`)
+
+  Sub-Blocks:
+    • ip_adapter [trigger: ip_adapter_image] (StableDiffusionXLIPAdapterStep)
+       Description: IP Adapter step that prepares ip adapter image embeddings.
+                   Note that this step only prepares the embeddings - in order for it to work correctly, you need to load ip adapter weights into unet via ModularPipeline.loader.
+                   e.g. pipeline.loader.load_ip_adapter() and pipeline.loader.set_ip_adapter_scale().
+                   See [ModularIPAdapterMixin](https://huggingface.co/docs/diffusers/api/loaders/ip_adapter#diffusers.loaders.ModularIPAdapterMixin) for more details
+
+)
+```
+3. follow the instruction to build
+
+```py
+import torch
+from diffusers.modular_pipelines import SequentialPipelineBlocks
+from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS
+
+# create pipeline from official blocks preset
+blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
+
+# insert ip_adapter_blocks before the input step as instructed
+blocks.sub_blocks.insert("ip_adapter", ip_adapter_blocks, 1)
+
+# inspec the blocks before you convert it into pipelines,
+# and make sure to use a repo that contains the loading spec for all components
+# for ip-adapter, you need image_encoder & feature_extractor
+modular_repo_id = "YiYiXu/modular-demo-auto"
+pipeline = blocks.init_pipeline(modular_repo_id)
+
+pipeline.load_default_components(torch_dtype=torch.float16)
+pipeline.loader.load_ip_adapter(
+  "h94/IP-Adapter",
+  subfolder="sdxl_models",
+  weight_name="ip-adapter_sdxl.bin"
+)
+pipeline.loader.set_ip_adapter_scale(0.8)
+pipeline.to("cuda")
+```
+
+4. adapt an example to modular
+
+We are using [this one](https://huggingface.co/docs/diffusers/using-diffusers/ip_adapter?ipadapter-variants=IP-Adapter+Plus#ip-adapter) from our IP-Adapter doc!
+
+
+```py
+from diffusers.utils import load_image
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_diner.png")
+image = pipeline(
+    prompt="a polar bear sitting in a chair drinking a milkshake",
+    ip_adapter_image=image,
+    negative_prompt="deformed, ugly, wrong proportion, low res, bad anatomy, worst quality, low quality",
+    output="images"
+)[0]
+image.save("modular_ipa_out.png")
+```
+
+
+## A more practical example
+
+We've learned the basic components of the Modular Diffusers System. Now let's tie everything together with more practical example that demonstrates the true power of Modular Diffusers: working between with multiple pipelines that can share components. 
+
+In this example, we'll generate latents from a text-to-image pipeline, then refine them with an image-to-image pipeline. We will use IP-adapter, LoRA, and ControlNet.
+
+Let's setup the text-to-image workflow. Instead of putting all blocks into one complete pipeline, we'll create separate `text_blocks` for encoding prompts, `t2i_blocks` for generating latents, and `decoder_blocks` for creating final images.
 
 
 ```py
 import torch
-from diffusers.modular_pipelines import SequentialPipelineBlocks, ComponentsManager
-from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS, IMAGE2IMAGE_BLOCKS
+from diffusers.modular_pipelines import SequentialPipelineBlocks
+from diffusers.modular_pipelines.stable_diffusion_xl import ALL_BLOCKS
 
 # create t2i blocks and then pop out the text_encoder step and decoder step so that we can use them in standalone manner
-t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS.copy())
-text_blocks = t2i_blocks.blocks.pop("text_encoder")
-decoder_blocks = t2i_blocks.blocks.pop("decode")
+t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(ALL_BLOCKS["text2img"])
+text_blocks = t2i_blocks.sub_blocks.pop("text_encoder")
+decoder_blocks = t2i_blocks.sub_blocks.pop("decode")
+```
 
-# Create a refiner blocks
-# - removing image_encoder a since we'll use latents from t2i
-# - removing decode since we already created a seperate decoder_block
-i2i_blocks_dict = IMAGE2IMAGE_BLOCKS.copy()
-i2i_blocks_dict.pop("image_encoder")
-i2i_blocks_dict.pop("decode")
-refiner_blocks = SequentialPipelineBlocks.from_blocks_dict(i2i_blocks_dict)
+Next, convert them into runnable pipelines. We'll use a Components Manager with auto offloading strategy.
 
+**Components Manager**: Create one manager and pass it to `init_pipeline` along with a collection name. All models loaded by that pipeline will be added to the manager under that collection.
+
+**Auto Offloading**: All components are placed on CPU and only moved to device right before their forward pass. The manager monitors device memory and may move components off-device to make space for new ones. Unlike `DiffusionPipeline.enable_model_cpu_offload()`, this works across all components in the manager and all your workflows.
+
+
+```py
+from diffusers import ComponentsManager
 # Set up component manager and turn on the offloading
 components = ComponentsManager()
 components.enable_auto_cpu_offload(device="cuda")
-
-# convert all blocks into runnable pipelines: text_node, decoder_node, t2i_pipe, refiner_pipe
-t2i_repo = "YiYiXu/modular-loader-t2i"
-refiner_repo = "YiYiXu/modular_refiner"
-dtype = torch.float16
-
-text_node = text_blocks.init_pipeline(t2i_repo, component_manager=components, collection="t2i")
-text_node.load_components(torch_dtype=dtype)
-
-decoder_node = decoder_blocks.init_pipeline(t2i_repo, component_manager=components, collection="t2i")
-decoder_node.load_components(torch_dtype=dtype)
-
-t2i_pipe = t2i_blocks.init_pipeline(t2i_repo, component_manager=components, collection="t2i")
-t2i_pipe.load_components(torch_dtype=dtype)
-
-# for refiner pipeline, only unet is unique so we only load unet here, and we will reuse other components
-refiner_pipe = refiner_blocks.init_pipeline(refiner_repo, component_manager=components, collection="refiner")
-refiner_pipe.load_components(component_names="unet", torch_dtype=dtype)
 ```
 
-let's inspect components manager here, you can see that 5 models are automatically registered: two text encoders, two UNets, and one VAE. The models are organized by collection - 4 models under "t2i" and one UNet under "refiner". This happens because we passed a `collection` parameter when initializing each pipeline. For example, when we created the refiner pipeline, we did `refiner_pipe = refiner_blocks.init_pipeline(refiner_repo, component_manager=components, collection="refiner")`. All models loaded by `refiner_pipe.load_components(...)` are automatically placed under the "refiner" collection. 
+Since we have a modular setup where different pipelines may share components, we recommend using a standalone loader to load components all at once and add them to each pipeline with `update_components()`.
 
-Notice that all models are currently on CPU with execution device "cuda:0" - this is due to the auto CPU offloading strategy we enabled with `components.enable_auto_cpu_offload(device="cuda")`. 
 
-The manager also displays useful info like dtype and memory size for each model.
+<Tip>
+
+💡 **Load components without pipeline blocks**: 
+- `blocks.init_pipeline(repo)` creates a pipeline with a built-in loader that only includes components its blocks needs
+- `StableDiffusionXLModularLoader.from_pretrained(repo)` set up a standalone loader that includes everything in the repo's `modular_model_index.json`
+
+See the [Loader Guide](TODO) for more details.
+
+</Tip>
+
+```py
+from diffusers import StableDiffusionXLModularLoader
+t2i_repo = "YiYiXu/modular-demo-auto"
+t2i_loader = StableDiffusionXLModularLoader.from_pretrained(t2i_repo, components_manager=components, collection="t2i")
+
+text_node = text_blocks.init_pipeline(t2i_repo, components_manager=components)
+decoder_node = decoder_blocks.init_pipeline(t2i_repo, components_manager=components)
+t2i_pipe = t2i_blocks.init_pipeline(t2i_repo, components_manager=components)
+```
+
+We'll load components in `t2i_loader`. You can get the list of all loadable components from loader's `pretrained_component_names` property.
+
+```py
+>>> t2i_loader.pretrained_component_names
+['controlnet', 'image_encoder', 'scheduler', 'text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'unet', 'vae']
+```
+
+It include controlnet and image_encoder for ip-adapter that we don't need now. But I'll load them anyway since they'll stay on CPU and I might use them later. But you can choose what to load in the `names` argument.
+
+```py
+import torch
+# inspect before you load
+# t2i_loader
+t2i_loader.load(t2i_loader.pretrained_component_names, torch_dtype=torch.float16)
+```
+All the models are registered to components manager under the collection "t2i".
 
 ```py
 >>> components
 Components:
-======================================================================================================================================================================================
+============================================================================================================================================================
 Models:
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Name            | Class                       | Device: act(exec)    | Dtype           | Size (GB)  | Load ID                                                           | Collection
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-text_encoder_2  | CLIPTextModelWithProjection | cpu(cuda:0)          | torch.float16   | 1.29       | stabilityai/stable-diffusion-xl-base-1.0|text_encoder_2|null|null | t2i
-text_encoder    | CLIPTextModel               | cpu(cuda:0)          | torch.float16   | 0.23       | stabilityai/stable-diffusion-xl-base-1.0|text_encoder|null|null   | t2i
-unet            | UNet2DConditionModel        | cpu(cuda:0)          | torch.float16   | 4.78       | RunDiffusion/Juggernaut-XL-v9|unet|fp16|null                      | t2i
-unet            | UNet2DConditionModel        | cpu(cuda:0)          | torch.float16   | 4.21       | stabilityai/stable-diffusion-xl-refiner-1.0|unet|null|null        | refiner
-vae             | AutoencoderKL               | cpu(cuda:0)          | torch.float16   | 0.16       | madebyollin/sdxl-vae-fp16-fix|null|null|null                      | t2i
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+Name           | Class                        | Device: act(exec)| Dtype        | Size (GB)| Load ID                                            | Collection
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+vae            | AutoencoderKL                | cpu(cuda:0)      | torch.float16| 0.16     | SG161222/RealVisXL_V4.0|vae|null|null              | t2i
+image_encoder  | CLIPVisionModelWithProjection| cpu(cuda:0)      | torch.float16| 3.44     | h94/IP-Adapter|sdxl_models/image_encoder|null|null | t2i
+text_encoder   | CLIPTextModel                | cpu(cuda:0)      | torch.float16| 0.23     | SG161222/RealVisXL_V4.0|text_encoder|null|null     | t2i
+unet           | UNet2DConditionModel         | cpu(cuda:0)      | torch.float16| 4.78     | SG161222/RealVisXL_V4.0|unet|null|null             | t2i
+text_encoder_2 | CLIPTextModelWithProjection  | cpu(cuda:0)      | torch.float16| 1.29     | SG161222/RealVisXL_V4.0|text_encoder_2|null|null   | t2i
+controlnet     | ControlNetModel              | cpu(cuda:0)      | torch.float16| 2.33     | diffusers/controlnet-canny-sdxl-1.0|null|null|null | t2i
+------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Other Components:
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Name            | Class                       | Collection
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-tokenizer       | CLIPTokenizer               | t2i
-tokenizer_2     | CLIPTokenizer               | t2i
-scheduler       | EulerDiscreteScheduler      | t2i
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+Name           | Class                        | Collection
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+tokenizer_2    | CLIPTokenizer                | t2i
+tokenizer      | CLIPTokenizer                | t2i
+scheduler      | EulerDiscreteScheduler       | t2i
+------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Additional Component Info:
 ==================================================
 ```
 
+Let's add the loaded components to each pipeline. We'll follow this pattern for each pipeline:
+1. Check what components the pipeline needs: inspect `pipeline.loader` or use `loader.null_component_names`
+2. Get them from the components manager: use its `search_models()`/`get_one`/`get_components_from_names` method
+3. Update the pipeline: `pipeline.update_components()`
+4. Verify the components are loaded correctly: inspect `pipeline.loader` as well as components manager
 
-Now let's reuse components from the t2i pipeline in the refiner. First, let's check the loading status of the refiner pipeline to understand what components are needed:
+We will start with `decoder_node`. First, check what components it needs:
+
+```py
+>>> decoder_node.loader.null_component_names
+['vae']
+```
+The pipeline only needs a `vae`. Looking at the components manager table, there's only one VAE available:
+
+```
+Name | Class        | Device: act(exec)| Dtype        | Size (GB)| Load ID                               | Collection
+----------------------------------------------------------------------------------------------------------------------
+vae  | AutoencoderKL| cpu(cuda:0)      | torch.float16| 0.16     | SG161222/RealVisXL_V4.0|vae|null|null | t2i
+```
+Since there's only one VAE, we can get it using its unique Load ID:
+
+```py
+vae = components.get_one(load_id="SG161222/RealVisXL_V4.0|vae|null|null")
+decoder_node.update_components(vae=vae)
+```
+
+Verify it's correctly loaded:
+
+```py
+decoder_node.loader
+```
+Now let's do the same for `text_node`. Get the list of components the pipeline needs to load:
+
+```py
+>>> text_node.loader.null_component_names
+['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2']
+```
+Pass the list directly to the components manager to get the components and add it to the pipeline
+
+```py
+text_components = components.get_components_by_names(text_node.loader.null_component_names)
+# Add components to pipeline
+text_node.update_components(**text_components)
+
+# Verify components are loaded
+assert not text_node.loader.null_component_names
+text_node.loader
+```
+
+Finally, let's set up `t2i_pipe`:
+
+```py
+
+# Get unet & scheduler from components manager and add to pipeline
+comps = components.get_components_by_names(t2i_pipe.loader.null_component_names)
+t2i_pipe.update_components(**comps)
+
+# Verify everything is loaded
+assert not t2i_pipe.loader.null_component_names
+t2i_pipe.loader
+
+# Verify components manager hasn't changed (we only reused existing components)
+components
+```
+
+We can start to generate an image with the t2i pipeline.
+
+First to run the prompt through text_node to get prompt embeddings
+
+<Tip>
+
+💡 don't forget to `text_node.doc` to find out what outputs are available and set the `output` argument accordingly
+
+</Tip>
+
+```py
+prompt = "an astronaut"
+text_embeddings = text_node(prompt=prompt, output=["prompt_embeds","negative_prompt_embeds", "pooled_prompt_embeds", "negative_pooled_prompt_embeds"])
+```
+
+Now generate latents with t2i pipeline and then decode with decoder.
+
+
+```py
+generator = torch.Generator(device="cuda").manual_seed(0)
+latents_t2i = t2i_pipe(**text_embeddings, num_inference_steps=25, generator=generator, output="latents")
+image = decoder_node(latents=latents_t2i, output="images")[0]
+image.save("modular_part2_t2i.png")
+
+```
+
+Now let's add a LoRA to our pipeline. With the modular approach we will be able to reuse intermediate outputs from blocks that otherwise needs to be re-run. Let's load the LoRA weights and see what happens:
+
+```py
+t2i_loader.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy_face")
+components
+```
+Notice that the "Additional Component Info" section shows that only the `unet` component has the LoRA adapter loaded. This means we can skip the text encoding step and reuse the existing embeddings, making the generation much faster.
+
+```out
+Components:
+============================================================================================================================================================
+...
+Additional Component Info:
+==================================================
+
+unet:
+  Adapters: ['toy_face']
+```
+
+
+<Tip>
+
+🔍 Alternatively, you can find a component's ID and then use `get_model_info` to get detailed metadata about that component:
+
+```py
+id = components.get_ids("unet")[0]
+components.get_model_info(id)
+# {'model_id': 'unet_6c2b839d-ec39-4ce9-8741-333ba6d25932', 'added_time': 1751101289.203884, 'collection': 't2i', 'class_name': 'UNet2DConditionModel', 'size_gb': 4.940812595188618, 'adapters': ['toy_face'], 'has_hook': True, 'execution_device': device(type='cuda', index=0)}
+```
+</Tip>
+
+
+```py
+generator = torch.Generator(device="cuda").manual_seed(0)
+latents_lora = t2i_pipe(**text_embeddings, num_inference_steps=25, generator=generator, output="latents")
+image = decoder_node(latents=latents_lora, output="images")[0]
+image.save("modular_part2_lora.png")
+```
+
+IP-adapter can also be used as a standalone pipeline. We can generate the embeddings once and reuse them for different workflows.
+
+```py
+from diffusers.utils import load_image
+
+ipa_blocks = ALL_BLOCKS["ip_adapter"]["ip_adapter"]()
+ipa_node = ipa_blocks.init_pipeline(t2i_repo, components_manager=components)
+comps = components.get_components_by_names(ipa_node.loader.null_component_names)
+ipa_node.update_components(**comps)
+
+t2i_loader.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
+t2i_loader.set_ip_adapter_scale(0.6)
+
+# check it's correctly loaded
+assert not ipa_node.loader.null_component_names
+ipa_node.loader
+# find out inputs/outputs 
+print(ipa_node.doc)
+
+ip_adapter_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/style_ziggy/img5.png")
+ipa_embeddings = ipa_node(ip_adapter_image=ip_adapter_image, output=["ip_adapter_embeds","negative_ip_adapter_embeds"])
+
+generator = torch.Generator(device="cuda").manual_seed(0)
+latents_ipa = t2i_pipe(**text_embeddings, **ipa_embeddings, num_inference_steps=25, generator=generator, output="latents")
+
+image = decoder_node(latents=latents_ipa, output="images")[0]
+image.save("modular_part2_lora_ipa.png")
+```
+
+We can create a new ControlNet workflow by modifying the pipeline blocks, reusing components as much as possible, and see how it affects the generation.
+
+We want to use a different ControlNet from the one that's already loaded.
+
+```py
+from diffusers import ComponentSpec, ControlNetModel
+control_blocks = ALL_BLOCKS["controlnet"]["denoise"]()
+# update the t2i_blocks and create pipeline
+t2i_blocks.sub_blocks["denoise"] = control_blocks
+t2i_control_pipe = t2i_blocks.init_pipeline(t2i_repo, components_manager=components)
+
+# fetch the controlnet_pose seperately since we need to change name when adding it to the pipeline
+controlnet_spec = ComponentSpec(name="controlnet_pose", type_hint=ControlNetModel, repo="thibaud/controlnet-openpose-sdxl-1.0")
+controlnet = controlnet_spec.load(torch_dtype=torch.float16)
+t2i_control_pipe.update_components(controlnet=controlnet)
+
+# fetch the rest of the components from the components manager
+comps = components.get_components_by_names(t2i_control_pipe.loader.null_component_names)
+t2i_control_pipe.update_components(**comps)
+
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/controlnet/person_pose.png")
+generator = torch.Generator(device="cuda").manual_seed(0)
+latents_control = t2i_control_pipe(**text_embeddings, **ipa_embeddings, control_image=control_image, num_inference_steps=25, generator=generator, output="latents")
+
+image = decoder_node(latents=latents_control, output="images")[0]
+image.save("modular_part2_lora_ipa_control.png")
+```
+
+
+Now set up refiner workflow. For refiner blocks, we removed `image_encoder` since the refiner works with latents directly, and `decoder` since we already have a dedicated one. We keep `text_encoder` because SDXL refiner encodes text prompts differently from the text-to-image pipeline, so we cannot share it.
+
+```py
+# Create a refiner blocks
+# - removing image_encoder a since we'll use latents from t2i
+# - removing decode since we already created a seperate decoder_block
+refiner_blocks = SequentialPipelineBlocks.from_blocks_dict(ALL_BLOCKS["img2img"])
+refiner_blocks.sub_blocks.pop("image_encoder")
+refiner_blocks.sub_blocks.pop("decode")
+```
+
+Create refiner pipeline. refiner has a different unet and use only one text_encoder so it is hosted in a different repo. We pass the same components manager to refiner pipeline, along with a unique "refiner" collection.
+
+```py
+refiner_repo = "YiYiXu/modular_refiner"
+refiner_pipe = refiner_blocks.init_pipeline(refiner_repo, components_manager=components, collection="refiner")
+```
+
+
+We want to reuse components from the t2i pipeline in the refiner as much as possible. First, let's check the loading status of the refiner pipeline to understand what components are needed:
 
 ```py
 >>> refiner_pipe.loader
 ```
 
-Looking at the loader output, you can see that `text_encoder` and `tokenizer` have empty loading spec maps (their `repo` fields are `null`), this is because refiner pipeline does not use these two components so they are not listed in the `modular_model_index.json` in `refiner_repo`. The `unet` is already correctly loaded from the refiner repository. We need to load the remaining components: `vae`, `text_encoder_2`, `tokenizer_2`, and `scheduler`. Since these components are already available in the t2i collection, we can reuse them instead of loading duplicates.
+Looking at the loader output, you can see that `text_encoder` and `tokenizer` have empty loading spec maps (their `repo` fields are `null`), this is because refiner pipeline does not use these two components so they are not listed in the `modular_model_index.json` in `refiner_repo`. The `unet` is different from the one we loaded for text-to-image. The remaining components: `vae`, `text_encoder_2`, `tokenizer_2`, and `scheduler` are already available in the t2i collection, we can reuse them instead of loading duplicates.
+
+```py
+refiner_pipe.load_components(names="unet", torch_dtype=torch.float16)
+
+# verify loaded correctly
+refiner_pipe.loader
+
+# veryfiy registered to components manager under refiner
+components
+```
 
 Now let's reuse the components from the t2i pipeline in the refiner. We use the`|` to select multiple components from components manager at once:
 
 ```py
 # Reuse components from t2i pipeline (select everything at once)
-reuse_components = components.get("text_encoder_2|scheduler|vae|tokenizer_2", as_name_component_tuples=True)
-refiner_pipe.update_components(**dict(reuse_components))
+reuse_components = components.search_components("text_encoder_2|scheduler|vae|tokenizer_2")
+refiner_pipe.update_components(**reuse_components)
 ```
 
 You'll see warnings indicating that these components already exist in the components manager:
@@ -747,126 +1332,29 @@ component 'vae' already exists as 'vae_357eee6a-4a06-46f1-be83-494f7d60ca69'
 
 These warnings are expected and indicate that the components manager is correctly identifying that these components are already loaded. The system will reuse the existing components rather than creating duplicates.
 
-Let's check the components manager again to see the updated state:
+Let's check the components manager again to see the updated state. You should see `text_encoder_2`, `vae`, `tokenizer_2`, and `scheduler` now appear under both "t2i" and "refiner" collections.
+
+Now let's refine! 
 
 ```py
->>> components
-Components:
-======================================================================================================================================================================================
-Models:
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Name            | Class                       | Device: act(exec)    | Dtype           | Size (GB)  | Load ID                                                           | Collection
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-text_encoder    | CLIPTextModel               | cpu(cuda:0)          | torch.float16   | 0.23       | stabilityai/stable-diffusion-xl-base-1.0|text_encoder|null|null   | t2i
-text_encoder_2  | CLIPTextModelWithProjection | cpu(cuda:0)          | torch.float16   | 1.29       | stabilityai/stable-diffusion-xl-base-1.0|text_encoder_2|null|null | t2i
-                |                             |                      |                 |            |                                                                   | refiner
-vae             | AutoencoderKL               | cpu(cuda:0)          | torch.float16   | 0.16       | madebyollin/sdxl-vae-fp16-fix|null|null|null                      | t2i
-                |                             |                      |                 |            |                                                                   | refiner
-unet            | UNet2DConditionModel        | cpu(cuda:0)          | torch.float16   | 4.78       | RunDiffusion/Juggernaut-XL-v9|unet|fp16|null                      | t2i
-unet            | UNet2DConditionModel        | cpu(cuda:0)          | torch.float16   | 4.21       | stabilityai/stable-diffusion-xl-refiner-1.0|unet|null|null        | refiner
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-Other Components:
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Name            | Class                       | Collection
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-tokenizer_2     | CLIPTokenizer               | t2i
-                |                             | refiner
-tokenizer       | CLIPTokenizer               | t2i
-scheduler       | EulerDiscreteScheduler      | t2i
-                |                             | refiner
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-Additional Component Info:
-==================================================
-```
-
-Notice how `text_encoder_2`, `vae`, `tokenizer_2`, and `scheduler` now appear under both "t2i" and "refiner" collections.
-
-We can start to generate an image with the t2i pipeline and refine it.
-
-First to run the prompt through text_node to get prompt embeddings
-
-<Tip>
-
-💡 don't forget to `text_node.doc` to find out what outputs are available and set the `output` argument accordingly
-
-</Tip>
-
-```py
-prompt = "A crystal orb resting on a wooden table with a yellow rubber duck, surrounded by aged scrolls and alchemy tools, illuminated by candlelight, detailed texture, high resolution image"
-
-text_embeddings = text_node(prompt=prompt, output=["prompt_embeds","negative_prompt_embeds", "pooled_prompt_embeds", "negative_pooled_prompt_embeds"])
-```
-
-Now generate latents with t2i pipeline and then refine with refiner. Note that both our `t2i_pipe` and `refiner_pipe` do not have decoder steps since we separated them out earlier, so we need to use `output="latents"` instead of `output="images"`.
-
-<Tip>
-
-💡 `t2i_pipe.blocks` shows you what steps this pipeline takes. You can see that our `t2i_pipe` no longer includes the `text_encoder` and `decode` steps since we removed them earlier when we popped them out to create separate nodes.
-
-```py
->>> t2i_pipe.blocks
-SequentialPipelineBlocks(
-  Class: ModularPipelineBlocks
-
-  Description: 
-
-
-  Components:
-      scheduler (`EulerDiscreteScheduler`)
-      guider (`ClassifierFreeGuidance`)
-      unet (`UNet2DConditionModel`)
-
-  Blocks:
-    [0] input (StableDiffusionXLInputStep)
-       Description: Input processing step that:
-                     1. Determines `batch_size` and `dtype` based on `prompt_embeds`
-                     2. Adjusts input tensor shapes based on `batch_size` (number of prompts) and `num_images_per_prompt`
-                   
-                   All input tensors are expected to have either batch_size=1 or match the batch_size
-                   of prompt_embeds. The tensors will be duplicated across the batch dimension to
-                   have a final batch_size of batch_size * num_images_per_prompt.
-
-    [1] set_timesteps (StableDiffusionXLSetTimestepsStep)
-       Description: Step that sets the scheduler's timesteps for inference
-
-    [2] prepare_latents (StableDiffusionXLPrepareLatentsStep)
-       Description: Prepare latents step that prepares the latents for the text-to-image generation process
-
-    [3] prepare_add_cond (StableDiffusionXLPrepareAdditionalConditioningStep)
-       Description: Step that prepares the additional conditioning for the text-to-image generation process
-
-    [4] denoise (StableDiffusionXLDenoiseLoop)
-       Description: Denoise step that iteratively denoise the latents. 
-                   Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method 
-                   At each iteration, it runs blocks defined in `blocks` sequencially:
-                    - `StableDiffusionXLLoopBeforeDenoiser`
-                    - `StableDiffusionXLLoopDenoiser`
-                    - `StableDiffusionXLLoopAfterDenoiser`
-                   
-
-)
-```
-
-</Tip>
-
-```py
-latents = t2i_pipe(**text_embeddings, num_inference_steps=25, output="latents")
-refined_latents = refiner_pipe(image_latents=latents, prompt=prompt, num_inference_steps=10, output="latents")
-```
-
-To get the final images, we need to pass the latents through our separate decoder node:
-
-```py
-image = decoder_node(latents=latents, output="images")[0]
+# refine the latents from base text-to-image workflow
+refined_latents = refiner_pipe(image_latents=latents_t2i, prompt=prompt, num_inference_steps=10, output="latents")
 refined_image = decoder_node(latents=refined_latents, output="images")[0]
+refined_image.save("modular_part2_t2i_refine_out.png")
+
+# refine the latents from the text-to-image lora workflow
+refined_latents = refiner_pipe(image_latents=latents_lora, prompt=prompt, num_inference_steps=10, output="latents")
+refined_image = decoder_node(latents=refined_latents, output="images")[0]
+refined_image.save("modular_part2_lora_refine_out.png")
+
+# refine the latents from the text-to-image + lora + ip-adapter workflow
+refined_latents = refiner_pipe(image_latents=latents_ipa, prompt=prompt, num_inference_steps=10, output="latents")
+refined_image = decoder_node(latents=refined_latents, output="images")[0]
+refined_image.save("modular_part2_ipa_refine_out.png")
+
+# refine the latents from the text-to-image + lora + ip-adapter + controlnet workflow
+refined_latents = refiner_pipe(image_latents=latents_control, prompt=prompt, num_inference_steps=10, output="latents")
+refined_image = decoder_node(latents=refined_latents, output="images")[0]
+refined_image.save("modular_part2_control_refine_out.png")
 ```
-
-## YiYi TODO: maybe more on controlnet/lora/ip-adapter
-
-
-
-
-
 

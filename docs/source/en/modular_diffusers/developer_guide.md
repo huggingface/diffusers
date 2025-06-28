@@ -39,7 +39,7 @@ Let's see how this works with the Differential Diffusion example.
 Differential diffusion (https://differential-diffusion.github.io/) is an image-to-image workflow, so it makes sense for us to start with the preset of pipeline blocks used to build img2img pipeline (`IMAGE2IMAGE_BLOCKS`) and see how we can build this new pipeline with them. 
 
 ```py
->>> IMAGE2IMAGE_BLOCKS = InsertableOrderedDict([
+>>> IMAGE2IMAGE_BLOCKS = InsertableDict([
 ...     ("text_encoder", StableDiffusionXLTextEncoderStep),
 ...     ("image_encoder", StableDiffusionXLVaeEncoderStep),
 ...     ("input", StableDiffusionXLInputStep),
@@ -64,7 +64,7 @@ StableDiffusionXLDenoiseLoop(
 
   Description: Denoise step that iteratively denoise the latents. 
       Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method 
-      At each iteration, it runs blocks defined in `blocks` sequencially:
+      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
        - `StableDiffusionXLLoopBeforeDenoiser`
        - `StableDiffusionXLLoopDenoiser`
        - `StableDiffusionXLLoopAfterDenoiser`
@@ -78,13 +78,13 @@ StableDiffusionXLDenoiseLoop(
 
   Blocks:
     [0] before_denoiser (StableDiffusionXLLoopBeforeDenoiser)
-       Description: step within the denoising loop that prepare the latent input for the denoiser. This block should be used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)
+       Description: step within the denoising loop that prepare the latent input for the denoiser. This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)
 
     [1] denoiser (StableDiffusionXLLoopDenoiser)
-       Description: Step within the denoising loop that denoise the latents with guidance. This block should be used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)
+       Description: Step within the denoising loop that denoise the latents with guidance. This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)
 
     [2] after_denoiser (StableDiffusionXLLoopAfterDenoiser)
-       Description: step within the denoising loop that update the latents. This block should be used to compose the `blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)
+       Description: step within the denoising loop that update the latents. This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` object (e.g. `StableDiffusionXLDenoiseLoopWrapper`)
 
 )
 ```
@@ -223,7 +223,7 @@ This is the modified `StableDiffusionXLImg2ImgPrepareLatentsStep` we ended up wi
           ]
 
       @property
-      def intermediates_inputs(self) -> List[InputParam]:
+      def intermediate_inputs(self) -> List[InputParam]:
           return [
               InputParam("generator"),
 -             InputParam("latent_timestep", required=True, type_hint=torch.Tensor, description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step."),
@@ -232,7 +232,7 @@ This is the modified `StableDiffusionXLImg2ImgPrepareLatentsStep` we ended up wi
           ]
 
       @property
-      def intermediates_outputs(self) -> List[OutputParam]:
+      def intermediate_outputs(self) -> List[OutputParam]:
           return [
 +             OutputParam("original_latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"),
 +             OutputParam("diffdiff_masks", type_hint=torch.Tensor, description="The masks used for the differential diffusion denoising process"),
@@ -295,7 +295,7 @@ class SDXLDiffDiffLoopBeforeDenoiser(PipelineBlock):
 +       ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
                 "latents", 
@@ -393,7 +393,7 @@ SequentialPipelineBlocks(
        Description: Step that prepares the additional conditioning for the image-to-image/inpainting generation process
 
     [6] denoise (SDXLDiffDiffDenoiseLoop)
-       Description: Pipeline block that iteratively denoise the latents over `timesteps`. The specific steps with each iteration can be customized with `blocks` attributes
+       Description: Pipeline block that iteratively denoise the latents over `timesteps`. The specific steps with each iteration can be customized with `sub_blocks` attributes
 
     [7] decode (StableDiffusionXLDecodeStep)
        Description: Step that decodes the denoised latents into images
@@ -447,10 +447,10 @@ It has 4 components: `unet` and `guider` are already used in diff-diff, but it a
 )
 ```
 
-We can directly add the ip-adapter block instance to the `diffdiff_blocks` that we created before. The `blocks` attribute is a `InsertableOrderedDict`, so we're able to insert the it at specific position (index `0` here).
+We can directly add the ip-adapter block instance to the `diffdiff_blocks` that we created before. The `sub_blocks` attribute is a `InsertableDict`, so we're able to insert the it at specific position (index `0` here).
 
 ```py
->>> dd_blocks.blocks.insert("ip_adapter", ip_adapter_block, 0)
+>>> dd_blocks.sub_blocks.insert("ip_adapter", ip_adapter_block, 0)
 ```
 
 Take a look at the new diff-diff pipeline with ip-adapter! 
@@ -522,7 +522,7 @@ SequentialPipelineBlocks(
        Description: Step that prepares the additional conditioning for the image-to-image/inpainting generation process
 
     [7] denoise (SDXLDiffDiffDenoiseLoop)
-       Description: Pipeline block that iteratively denoise the latents over `timesteps`. The specific steps with each iteration can be customized with `blocks` attributes
+       Description: Pipeline block that iteratively denoise the latents over `timesteps`. The specific steps with each iteration can be customized with `sub_blocks` attributes
 
     [8] decode (StableDiffusionXLDecodeStep)
        Description: Step that decodes the denoised latents into images
@@ -535,10 +535,10 @@ Let's test it out. We used an orange image to condition the generation via ip-ad
 
 ```py
 >>> ip_adapter_block = StableDiffusionXLAutoIPAdapterStep()
->>> dd_blocks.blocks.insert("ip_adapter", ip_adapter_block, 0)
+>>> dd_blocks.sub_blocks.insert("ip_adapter", ip_adapter_block, 0)
 >>> 
 >>> dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
->>> dd_pipeline.load_components(torch_dtype=torch.float16)
+>>> dd_pipeline.load_default_components(torch_dtype=torch.float16)
 >>> dd_pipeline.loader.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 >>> dd_pipeline.loader.set_ip_adapter_scale(0.6)
 >>> dd_pipeline = dd_pipeline.to(device)
@@ -627,11 +627,11 @@ StableDiffusionXLControlNetAutoInput(
 Let's assemble the blocks and run an example using controlnet + differential diffusion. We used a tomato as `control_image`, so you can see that in the output, the right half that transformed into a pear had a tomato-like shape.
 
 ```py
->>> dd_blocks.blocks.insert("controlnet_input", control_input_block, 7)
->>> dd_blocks.blocks["denoise"] = controlnet_denoise_block
+>>> dd_blocks.sub_blocks.insert("controlnet_input", control_input_block, 7)
+>>> dd_blocks.sub_blocks["denoise"] = controlnet_denoise_block
 >>> 
 >>> dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
->>> dd_pipeline.load_components(torch_dtype=torch.float16)
+>>> dd_pipeline.load_default_components(torch_dtype=torch.float16)
 >>> dd_pipeline = dd_pipeline.to(device)
 >>> 
 >>> control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_tomato_canny.jpeg")
@@ -709,8 +709,8 @@ With a modular repo, it is very easy for the community to use the workflow you j
 >>> 
 >>> components = ComponentsManager()
 >>> 
->>> diffdiff_pipeline = ModularPipeline.from_pretrained(repo_id, trust_remote_code=True, component_manager=components, collection="diffdiff")
->>> diffdiff_pipeline.loader.load(torch_dtype=torch.float16)
+>>> diffdiff_pipeline = ModularPipeline.from_pretrained(repo_id, trust_remote_code=True, components_manager=components, collection="diffdiff")
+>>> diffdiff_pipeline.load_default_components(torch_dtype=torch.float16)
 >>> components.enable_auto_cpu_offload()
 ```
 
