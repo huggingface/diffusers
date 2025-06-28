@@ -133,8 +133,8 @@ class Magi1Encoder3d(nn.Module):
         super().__init__()
         self.z_dim = z_dim
 
-        # init block
-        self.proj_in = nn.Linear(z_dim, inner_dim)
+        # 1. Patch & position embedding
+        self.patch_embedding = nn.Conv3d(3, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         self.cls_token_nums = 1
         self.cls_token = nn.Parameter(torch.zeros(1, 1, inner_dim))
@@ -167,7 +167,7 @@ class Magi1Encoder3d(nn.Module):
 
         # output blocks
         self.norm_out = nn.LayerNorm(inner_dim)
-        self.linear_out = nn.Linear(inner_dim, z_dim)
+        self.linear_out = nn.Linear(inner_dim, z_dim * 2)  # Changed to z_dim * 2 for mean and logvar
 
         trunc_normal_(self.pos_embed, std=0.02)
 
@@ -196,8 +196,8 @@ class Magi1Encoder3d(nn.Module):
         x = x[:, 1:]  # remove cls_token
         x = self.linear_out(x)
 
-        # B L C - > B , lT, lH, lW, zC
-        x = x.reshape(B, latentT, latentH, latentW, self.z_dim)
+        # B L C - > B , lT, lH, lW, zC (where zC is now z_dim * 2)
+        x = x.reshape(B, latentT, latentH, latentW, self.z_dim * 2)
 
         # B , lT, lH, lW, zC -> B, zC, lT, lH, lW
         x = x.permute(0, 4, 1, 2, 3)
@@ -474,7 +474,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         iter_ = 1 + (num_frame - 1) // 4
         for i in range(iter_):
-            self._enc_conv_idx = [0]
             if i == 0:
                 out = self.encoder(x[:, :, :1, :, :])
             else:
@@ -600,7 +599,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 time = []
                 frame_range = 1 + (num_frames - 1) // 4
                 for k in range(frame_range):
-                    self._enc_conv_idx = [0]
                     if k == 0:
                         tile = x[:, :, :1, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
                     else:
@@ -666,7 +664,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             for j in range(0, width, tile_latent_stride_width):
                 time = []
                 for k in range(num_frames):
-                    self._conv_idx = [0]
                     tile = z[:, :, k : k + 1, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
                     decoded = self.decoder(tile)
                     time.append(decoded)
