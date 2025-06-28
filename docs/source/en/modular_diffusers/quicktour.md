@@ -984,12 +984,13 @@ image = pipeline(
 image.save("modular_ipa_out.png")
 ```
 
-
-## A more practical example
+## Building Advanced Workflows: The Modular Way
 
 We've learned the basic components of the Modular Diffusers System. Now let's tie everything together with more practical example that demonstrates the true power of Modular Diffusers: working between with multiple pipelines that can share components. 
 
 In this example, we'll generate latents from a text-to-image pipeline, then refine them with an image-to-image pipeline. We will use IP-adapter, LoRA, and ControlNet.
+
+### Base Text-to-Image
 
 Let's setup the text-to-image workflow. Instead of putting all blocks into one complete pipeline, we'll create separate `text_blocks` for encoding prompts, `t2i_blocks` for generating latents, and `decoder_blocks` for creating final images.
 
@@ -1179,6 +1180,8 @@ image.save("modular_part2_t2i.png")
 
 ```
 
+### Lora
+
 Now let's add a LoRA to our pipeline. With the modular approach we will be able to reuse intermediate outputs from blocks that otherwise needs to be re-run. Let's load the LoRA weights and see what happens:
 
 ```py
@@ -1218,6 +1221,8 @@ image = decoder_node(latents=latents_lora, output="images")[0]
 image.save("modular_part2_lora.png")
 ```
 
+### IP-adapter 
+
 IP-adapter can also be used as a standalone pipeline. We can generate the embeddings once and reuse them for different workflows.
 
 ```py
@@ -1246,6 +1251,8 @@ latents_ipa = t2i_pipe(**text_embeddings, **ipa_embeddings, num_inference_steps=
 image = decoder_node(latents=latents_ipa, output="images")[0]
 image.save("modular_part2_lora_ipa.png")
 ```
+
+### ControlNet
 
 We can create a new ControlNet workflow by modifying the pipeline blocks, reusing components as much as possible, and see how it affects the generation.
 
@@ -1286,6 +1293,8 @@ refiner_blocks = SequentialPipelineBlocks.from_blocks_dict(ALL_BLOCKS["img2img"]
 refiner_blocks.sub_blocks.pop("image_encoder")
 refiner_blocks.sub_blocks.pop("decode")
 ```
+
+### Refiner
 
 Create refiner pipeline. refiner has a different unet and use only one text_encoder so it is hosted in a different repo. We pass the same components manager to refiner pipeline, along with a unique "refiner" collection.
 
@@ -1357,4 +1366,30 @@ refined_latents = refiner_pipe(image_latents=latents_control, prompt=prompt, num
 refined_image = decoder_node(latents=refined_latents, output="images")[0]
 refined_image.save("modular_part2_control_refine_out.png")
 ```
+
+
+### Results
+
+Here are the results from our modular pipeline examples. You can find all the generated images in the [Hugging Face dataset](https://huggingface.co/datasets/YiYiXu/testing-images/tree/main/modular_quicktour).
+
+#### Base Text-to-Image Generation
+| Base Text-to-Image | Base Text-to-Image (Refined) |
+|-------------------|------------------------------|
+| ![Base T2I](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_t2i.png) | ![Base T2I Refined](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_t2i_refine_out.png) |
+
+#### LoRA
+| LoRA              | LoRA               (Refined) |
+|-------------------|------------------------------|
+| ![LoRA](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_lora.png) | ![LoRA Refined](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_lora_refine_out.png) |
+
+#### LoRA + IP-Adapter
+| LoRA + IP-Adapter | LoRA + IP-Adapter (Refined) |
+|-------------------|------------------------------|
+| ![LoRA + IP-Adapter](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_ipa.png) | ![LoRA + IP-Adapter Refined](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_ipa_refine_out.png) |
+
+### ControlNet + LoRA + IP-Adapter
+| ControlNet + LoRA + IP-Adapter | ControlNet + LoRA + IP-Adapter (Refined) |
+|-------------------|------------------------------|
+| ![ControlNet + LoRA + IP-Adapter](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_control.png) | ![ControlNet + LoRA + IP-Adapter Refined](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_control_refine_out.png) |
+
 
