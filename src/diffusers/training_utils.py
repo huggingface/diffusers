@@ -3,6 +3,8 @@ import copy
 import gc
 import math
 import random
+import re
+import warnings
 from contextlib import contextmanager
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -325,6 +327,10 @@ def offload_models(
     """
     Context manager that, if offload=True, moves each module to `device` on enter, then moves it back to its original
     device on exit.
+
+    Args:
+        device (`str` or `torch.Device`): Device to move the `modules` to.
+        offload (`bool`): Flag to enable offloading.
     """
     if offload:
         is_model = not any(isinstance(m, DiffusionPipeline) for m in modules)
@@ -345,6 +351,46 @@ def offload_models(
             # move back to original devices
             for m, orig_dev in zip(modules, original_devices):
                 m.to(orig_dev)
+
+
+def parse_buckets_string(buckets_str):
+    """Parses a string defining buckets into a list of (height, width) tuples."""
+    if not buckets_str:
+        raise ValueError("Bucket string cannot be empty.")
+
+    bucket_pairs = buckets_str.strip().split(";")
+    parsed_buckets = []
+    for pair_str in bucket_pairs:
+        match = re.match(r"^\s*(\d+)\s*,\s*(\d+)\s*$", pair_str)
+        if not match:
+            raise ValueError(f"Invalid bucket format: '{pair_str}'. Expected 'height,width'.")
+        try:
+            height = int(match.group(1))
+            width = int(match.group(2))
+            if height <= 0 or width <= 0:
+                raise ValueError("Bucket dimensions must be positive integers.")
+            if height % 8 != 0 or width % 8 != 0:
+                warnings.warn(f"Bucket dimension ({height},{width}) not divisible by 8. This might cause issues.")
+            parsed_buckets.append((height, width))
+        except ValueError as e:
+            raise ValueError(f"Invalid integer in bucket pair '{pair_str}': {e}") from e
+
+    if not parsed_buckets:
+        raise ValueError("No valid buckets found in the provided string.")
+
+    return parsed_buckets
+
+
+def find_nearest_bucket(h, w, bucket_options):
+    """Finds the closes bucket to the given height and width."""
+    min_metric = float("inf")
+    best_bucket_idx = None
+    for bucket_idx, (bucket_h, bucket_w) in enumerate(bucket_options):
+        metric = abs(h * bucket_w - w * bucket_h)
+        if metric <= min_metric:
+            min_metric = metric
+            best_bucket_idx = bucket_idx
+    return best_bucket_idx
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
