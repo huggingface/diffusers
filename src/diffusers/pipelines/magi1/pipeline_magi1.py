@@ -21,7 +21,7 @@ import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...loaders import Magi1LoraLoaderMixin
+#from ...loaders import Magi1LoraLoaderMixin
 from ...models import AutoencoderKLMagi1, Magi1Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
@@ -91,7 +91,7 @@ def prompt_clean(text):
     return text
 
 
-class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
+class Magi1Pipeline(DiffusionPipeline):#, Magi1LoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using Magi1.
 

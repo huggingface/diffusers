@@ -29,7 +29,7 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 from diffusers import (
     AutoencoderKLMagi1,
     FlowMatchEulerDiscreteScheduler,
-    Magi1Transformer3DModel,
+    #Magi1Transformer3DModel,
     Magi1Pipeline,
 )
 
