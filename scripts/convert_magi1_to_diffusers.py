@@ -299,7 +299,7 @@ def load_magi_transformer_checkpoint(checkpoint_path):
         if safetensors_files:
             # Load and merge sharded safetensors files
             state_dict = {}
-            for safetensors_file in safetensors_files:
+            for safetensors_file in sorted(safetensors_files):  # Sort to ensure consistent order
                 file_path = os.path.join(checkpoint_path, safetensors_file)
                 with safe_open(file_path, framework="pt", device="cpu") as f:
                     for key in f.keys():
@@ -311,10 +311,32 @@ def load_magi_transformer_checkpoint(checkpoint_path):
                 raise ValueError(f"No checkpoint files found in {checkpoint_path}")
 
             checkpoint_file = os.path.join(checkpoint_path, checkpoint_files[0])
-            state_dict = torch.load(checkpoint_file, map_location="cpu")
+            checkpoint_data = torch.load(checkpoint_file, map_location="cpu")
+
+            # Handle different checkpoint formats
+            if isinstance(checkpoint_data, dict):
+                if "model" in checkpoint_data:
+                    state_dict = checkpoint_data["model"]
+                elif "state_dict" in checkpoint_data:
+                    state_dict = checkpoint_data["state_dict"]
+                else:
+                    state_dict = checkpoint_data
+            else:
+                state_dict = checkpoint_data
     else:
         # Try loading PyTorch checkpoint
-        state_dict = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint_data = torch.load(checkpoint_path, map_location="cpu")
+
+        # Handle different checkpoint formats
+        if isinstance(checkpoint_data, dict):
+            if "model" in checkpoint_data:
+                state_dict = checkpoint_data["model"]
+            elif "state_dict" in checkpoint_data:
+                state_dict = checkpoint_data["state_dict"]
+            else:
+                state_dict = checkpoint_data
+        else:
+            state_dict = checkpoint_data
 
     return state_dict
 
