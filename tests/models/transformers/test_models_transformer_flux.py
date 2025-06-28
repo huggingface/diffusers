@@ -186,6 +186,10 @@ class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
 
 class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
     model_class = FluxTransformer2DModel
+    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
     def prepare_init_args_and_inputs_for_common(self):
         return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+
+    def prepare_dummy_input(self, height, width):
+        return FluxTransformerTests().prepare_dummy_input(height=height, width=width)
