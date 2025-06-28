@@ -37,7 +37,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class MagiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class Magi1PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = Magi1Pipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -140,7 +140,7 @@ class MagiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_accelerator
-class MagiPipelineIntegrationTests(unittest.TestCase):
+class Magi1PipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
@@ -154,5 +154,5 @@ class MagiPipelineIntegrationTests(unittest.TestCase):
         backend_empty_cache(torch_device)
 
     @unittest.skip("TODO: test needs to be implemented")
-    def test_Magi(self):
+    def test_Magi1(self):
         pass

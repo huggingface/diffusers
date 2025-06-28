@@ -23,7 +23,7 @@ from diffusers import (
     AutoencoderKLMagi1,
     FlowMatchEulerDiscreteScheduler,
     Magi1Transformer3DModel,
-    MagiImageToVideoPipeline,
+    Magi1ImageToVideoPipeline,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -42,8 +42,8 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class MagiImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = MagiImageToVideoPipeline
+class Magi1ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Magi1ImageToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -146,7 +146,7 @@ class MagiImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
 
-class MagiFLFToVideoPipelineFastTests(MagiImageToVideoPipelineFastTests):
+class MagiFLFToVideoPipelineFastTests(Magi1ImageToVideoPipelineFastTests):
     def get_dummy_components(self):
         torch.manual_seed(0)
         vae = AutoencoderKLMagi1(

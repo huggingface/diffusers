@@ -22,9 +22,9 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_magi"] = ["Magi1Pipeline"]
-    _import_structure["pipeline_magi_i2v"] = ["Magi1ImageToVideoPipeline"]
-    _import_structure["pipeline_magi_v2v"] = ["Magi1VideoToVideoPipeline"]
+    _import_structure["pipeline_magi1"] = ["Magi1Pipeline"]
+    _import_structure["pipeline_magi1_i2v"] = ["Magi1ImageToVideoPipeline"]
+    _import_structure["pipeline_magi1_v2v"] = ["Magi1VideoToVideoPipeline"]
     _import_structure["pipeline_output"] = ["Magi1PipelineOutput"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLMagi1, Magi1Transformer3DModel, MagiVideoToVideoPipeline, UniPCMultistepScheduler
+from diffusers import AutoencoderKLMagi1, Magi1Transformer3DModel, Magi1VideoToVideoPipeline, UniPCMultistepScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
 )
@@ -32,8 +32,8 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class MagiVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = MagiVideoToVideoPipeline
+class Magi1VideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Magi1VideoToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -135,13 +135,13 @@ class MagiVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
     @unittest.skip(
-        "MagiVideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors"
+        "Magi1VideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors"
     )
     def test_model_cpu_offload_forward_pass(self):
         pass
 
     @unittest.skip(
-        "MagiVideoToVideoPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
+        "Magi1VideoToVideoPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
     )
     def test_save_load_float16(self):
         pass
