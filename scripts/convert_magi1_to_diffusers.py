@@ -19,6 +19,7 @@
 import argparse
 import json
 import os
+from huggingface_hub import hf_hub_download
 
 import torch
 from safetensors import safe_open
@@ -54,36 +55,22 @@ LAYER_KEYS_RENAME_DICT = {
 }
 
 
-def convert_magi_vae_checkpoint(checkpoint_path, vae_config_file=None, dtype=None):
-    """
-    Convert a MAGI-1 VAE checkpoint to a diffusers AutoencoderKLMagi1.
+def convert_magi_vae():
+    vae_ckpt_path = hf_hub_download("sand-ai/MAGI-1", "ckpt/vae/diffusion_pytorch_model.safetensors")
+    checkpoint = load_file(vae_ckpt_path)
 
-    Args:
-        checkpoint_path: Path to the MAGI-1 VAE checkpoint.
-        vae_config_file: Optional path to a VAE config file.
-        dtype: Optional dtype for the model.
-
-    Returns:
-        A diffusers AutoencoderKLMagi1 model.
-    """
-    if vae_config_file is not None:
-        with open(vae_config_file, "r") as f:
-            config = json.load(f)
-    else:
-        # Default config for MAGI-1 VAE based on the checkpoint structure
-        # This is a ViT-based VAE, not a traditional CNN-based VAE
-        config = {
-            "patch_size": (4, 8, 8),  # Based on encoder.patch_embed.proj.weight shape [1024, 3, 4, 8, 8]
-            "num_attention_heads": 16,  # Typical for 1024 hidden size
-            "attention_head_dim": 64,  # 1024 / 16 = 64
-            "z_dim": 16,  # Based on decoder.proj_in.weight shape [1024, 16]
-            "height": 256,  # Typical video frame height
-            "width": 256,  # Typical video frame width
-            "num_frames": 16,  # Typical number of frames
-            "ffn_dim": 4 * 1024,  # Typical FFN expansion
-            "num_layers": 24,  # 24 transformer blocks in encoder/decoder
-            "eps": 1e-6,
-        }
+    config = {
+        "patch_size": (4, 8, 8),  # Based on encoder.patch_embed.proj.weight shape [1024, 3, 4, 8, 8]
+        "num_attention_heads": 16,  # Typical for 1024 hidden size
+        "attention_head_dim": 64,  # 1024 / 16 = 64
+        "z_dim": 16,  # Based on decoder.proj_in.weight shape [1024, 16]
+        "height": 256,  # Typical video frame height
+        "width": 256,  # Typical video frame width
+        "num_frames": 16,  # Typical number of frames
+        "ffn_dim": 4 * 1024,  # Typical FFN expansion
+        "num_layers": 24,  # 24 transformer blocks in encoder/decoder
+        "eps": 1e-6,
+    }
 
     # Create the diffusers VAE model
     vae = AutoencoderKLMagi1(
@@ -99,27 +86,16 @@ def convert_magi_vae_checkpoint(checkpoint_path, vae_config_file=None, dtype=Non
         eps=config["eps"],
     )
 
-    # Load the checkpoint
-    if checkpoint_path.endswith(".safetensors"):
-        # Load safetensors file
-        checkpoint = load_file(checkpoint_path)
-    else:
-        # Load PyTorch checkpoint
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
-
     # Convert and load the state dict
     converted_state_dict = convert_vae_state_dict(checkpoint)
 
     # Load the state dict
-    missing_keys, unexpected_keys = vae.load_state_dict(converted_state_dict, strict=False)
+    missing_keys, unexpected_keys = vae.load_state_dict(converted_state_dict, strict=True)
 
-    if missing_keys:
-        print(f"Missing keys in VAE: {missing_keys}")
-    if unexpected_keys:
-        print(f"Unexpected keys in VAE: {unexpected_keys}")
-
-    if dtype is not None:
-        vae = vae.to(dtype=dtype)
+    # if missing_keys:
+    #     print(f"Missing keys in VAE: {missing_keys}")
+    # if unexpected_keys:
+    #     print(f"Unexpected keys in VAE: {unexpected_keys}")
 
     return vae
 
@@ -636,128 +612,63 @@ def convert_magi_checkpoint(
     return pipeline
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Convert MAGI-1 checkpoints to diffusers format.")
-    parser.add_argument(
-        "--magi_checkpoint_path",
-        type=str,
-        required=True,
-        help="Path to the MAGI-1 checkpoint directory.",
-    )
-    parser.add_argument(
-        "--vae_checkpoint_path",
-        type=str,
-        help="Path to the VAE checkpoint. If not provided, will look in magi_checkpoint_path/ckpt/vae.",
-    )
-    parser.add_argument(
-        "--transformer_checkpoint_path",
-        type=str,
-        help="Path to the transformer checkpoint. If not provided, will look in magi_checkpoint_path/ckpt/magi/4.5B_base.",
-    )
-    parser.add_argument(
-        "--t5_model_name",
-        type=str,
-        default="google/umt5-xxl",
-        help="Name of the T5 model to use.",
-    )
-    parser.add_argument(
-        "--output_path",
-        type=str,
-        required=True,
-        help="Path to save the converted pipeline.",
-    )
-    parser.add_argument(
-        "--dtype",
-        type=str,
-        choices=["float32", "float16", "bfloat16"],
-        default="float32",
-        help="Data type for the models.",
-    )
-
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_type", type=str, default=None)
+    parser.add_argument("--output_path", type=str, required=True)
+    parser.add_argument("--dtype", default="fp32", choices=["fp32", "fp16", "bf16", "none"])
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
-
-    # Set the dtype
-    if args.dtype == "float16":
-        dtype = torch.float16
-    elif args.dtype == "bfloat16":
-        dtype = torch.bfloat16
-    else:
-        dtype = torch.float32
-
-    print("Starting MAGI-1 conversion to diffusers format...")
-    print(f"Output will be saved to: {args.output_path}")
-    print(f"Using dtype: {args.dtype}")
-
-    try:
-        # Convert the VAE
-        print("Converting VAE checkpoint...")
-        if args.vae_checkpoint_path:
-            vae_path = args.vae_checkpoint_path
-        else:
-            vae_path = os.path.join(args.magi_checkpoint_path, "ckpt/vae/diffusion_pytorch_model.safetensors")
-            if not os.path.exists(vae_path):
-                vae_path = os.path.join(args.magi_checkpoint_path, "ckpt/vae")
-
-        print(f"VAE checkpoint path: {vae_path}")
-        vae = convert_magi_vae_checkpoint(vae_path, dtype=dtype)
-        print("VAE conversion complete.")
-
-        # Convert the transformer
-        print("Converting transformer checkpoint...")
-        if args.transformer_checkpoint_path:
-            transformer_path = args.transformer_checkpoint_path
-        else:
-            transformer_path = os.path.join(args.magi_checkpoint_path, "ckpt/magi/4.5B_base/inference_weight")
-
-        print(f"Transformer checkpoint path: {transformer_path}")
-        transformer = convert_magi_transformer_checkpoint(transformer_path, dtype=dtype)
-        print("Transformer conversion complete.")
-
-        # Load the text encoder and tokenizer
-        print(f"Loading text encoder and tokenizer from {args.t5_model_name}...")
-        tokenizer = AutoTokenizer.from_pretrained(args.t5_model_name)
-        text_encoder = UMT5EncoderModel.from_pretrained(args.t5_model_name)
-
-        if dtype is not None:
-            text_encoder = text_encoder.to(dtype=dtype)
-        print("Text encoder and tokenizer loaded successfully.")
-
-        # Create the scheduler
-        print("Creating scheduler...")
-        scheduler = FlowMatchEulerDiscreteScheduler()
-        print("Scheduler created successfully.")
-
-        # Create the pipeline
-        print("Creating MAGI pipeline...")
-        pipeline = Magi1Pipeline(
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            transformer=transformer,
-            scheduler=scheduler,
-        )
-        print("MAGI pipeline created successfully.")
-
-        # Save the pipeline
-        print(f"Saving pipeline to {args.output_path}...")
-        pipeline.save_pretrained(args.output_path)
-        print("Pipeline saved successfully.")
-
-        print(f"Conversion complete! MAGI-1 pipeline saved to {args.output_path}")
-
-    except Exception as e:
-        print(f"Error during conversion: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        return 1
-
-    return 0
-
+DTYPE_MAPPING = {
+    "fp32": torch.float32,
+    "fp16": torch.float16,
+    "bf16": torch.bfloat16,
+}
 
 if __name__ == "__main__":
-    main()
+    args = get_args()
+
+    # transformer = convert_transformer(args.model_type)
+    vae = convert_magi_vae_checkpoint(os.path.join(args.model_type, "ckpt/vae"))
+    # text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=torch.bfloat16)
+    # tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    # flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
+    # scheduler = UniPCMultistepScheduler(
+    #     prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift
+    # )
+
+    # If user has specified "none", we keep the original dtypes of the state dict without any conversion
+    # if args.dtype != "none":
+    #     dtype = DTYPE_MAPPING[args.dtype]
+    #     transformer.to(dtype)
+
+    # if "I2V" in args.model_type or "FLF2V" in args.model_type:
+        # image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+        #     "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
+        # )
+        # image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        # pipe = Magi1ImageToVideoPipeline(
+        #     transformer=transformer,
+        #     text_encoder=text_encoder,
+        #     tokenizer=tokenizer,
+        #     vae=vae,
+        #     scheduler=scheduler,
+        #     image_encoder=image_encoder,
+        #     image_processor=image_processor,
+        # )
+    # else:
+    pipe = Magi1Pipeline(
+        transformer=transformer,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        vae=vae,
+        scheduler=scheduler,
+    )
+
+    pipe.save_pretrained(args.output_path,
+                         safe_serialization=True,
+                         max_shard_size="5GB",
+                         push_to_hub=True,
+                         repo_id=f"tolgacangoz/{args.model_type}-Diffusers",
+                         )
