@@ -1370,7 +1370,7 @@ refined_image.save("modular_part2_control_refine_out.png")
 
 ### Results
 
-Here are the results from our modular pipeline examples. You can find all the generated images in the [Hugging Face dataset](https://huggingface.co/datasets/YiYiXu/testing-images/tree/main/modular_quicktour).
+Here are the results from our modular pipeline examples.
 
 #### Base Text-to-Image Generation
 | Base Text-to-Image | Base Text-to-Image (Refined) |
@@ -1387,7 +1387,7 @@ Here are the results from our modular pipeline examples. You can find all the ge
 |-------------------|------------------------------|
 | ![LoRA + IP-Adapter](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_ipa.png) | ![LoRA + IP-Adapter Refined](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_ipa_refine_out.png) |
 
-### ControlNet + LoRA + IP-Adapter
+#### ControlNet + LoRA + IP-Adapter
 | ControlNet + LoRA + IP-Adapter | ControlNet + LoRA + IP-Adapter (Refined) |
 |-------------------|------------------------------|
 | ![ControlNet + LoRA + IP-Adapter](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_control.png) | ![ControlNet + LoRA + IP-Adapter Refined](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/modular_part2_control_refine_out.png) |
