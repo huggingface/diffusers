@@ -24,7 +24,7 @@ from huggingface_hub import hf_hub_download
 import torch
 from safetensors import safe_open
 from safetensors.torch import load_file
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLMagi1,
@@ -571,8 +571,8 @@ if __name__ == "__main__":
 
     # transformer = convert_transformer(args.model_type)
     #vae = convert_magi_vae()
-    text_encoder = UMT5EncoderModel.from_pretrained("google/t5-v1_1-xxl")
-    tokenizer = AutoTokenizer.from_pretrained("google/t5-v1_1-xxl")
+    text_encoder = T5EncoderModel.from_pretrained("DeepFloyd/t5-v1_1-xxl")
+    tokenizer = AutoTokenizer.from_pretrained("DeepFloyd/t5-v1_1-xxl")
     # flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
     # scheduler = UniPCMultistepScheduler(
     #     prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift
