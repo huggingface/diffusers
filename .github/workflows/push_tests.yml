@@ -189,6 +189,7 @@ jobs:
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         RUN_COMPILE: yes
+        RUN_SLOW: yes
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
