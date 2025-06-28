@@ -294,7 +294,7 @@ def prepare_face_models(model_path, device, dtype):
 
     Parameters:
     - model_path: Path to the directory containing model files.
-    - device: The device (e.g., 'cuda', 'cpu') where models will be loaded.
+    - device: The device (e.g., 'cuda', 'xpu', 'cpu') where models will be loaded.
     - dtype: Data type (e.g., torch.float32) for model inference.
 
     Returns:

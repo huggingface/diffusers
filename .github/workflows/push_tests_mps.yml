@@ -1,12 +1,7 @@
 name: Fast mps tests on main
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "src/diffusers/**.py"
-      - "tests/**.py"
+  workflow_dispatch:
 
 env:
   DIFFUSERS_IS_CI: yes

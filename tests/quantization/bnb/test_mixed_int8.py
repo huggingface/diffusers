@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Team Inc.
+# Copyright 2025 The HuggingFace Team Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -96,6 +96,10 @@ class Base8bitTests(unittest.TestCase):
     prompt = "a beautiful sunset amidst the mountains."
     num_inference_steps = 10
     seed = 0
+
+    @classmethod
+    def setUpClass(cls):
+        torch.use_deterministic_algorithms(True)
 
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
@@ -485,7 +489,6 @@ class SlowBnb8bitTests(Base8bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
-        torch.use_deterministic_algorithms(True)
         self.pipeline_8bit.transformer.dequantize()
         output = self.pipeline_8bit(
             prompt=self.prompt,
@@ -828,11 +831,13 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
 
 @require_torch_version_greater_equal("2.6.0")
 class Bnb8BitCompileTests(QuantCompileTests):
-    quantization_config = PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_8bit",
-        quant_kwargs={"load_in_8bit": True},
-        components_to_quantize=["transformer", "text_encoder_2"],
-    )
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_8bit",
+            quant_kwargs={"load_in_8bit": True},
+            components_to_quantize=["transformer", "text_encoder_2"],
+        )
 
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -844,7 +849,7 @@ class Bnb8BitCompileTests(QuantCompileTests):
         )
 
     @pytest.mark.xfail(reason="Test fails because of an offloading problem from Accelerate with confusion in hooks.")
-    def test_torch_compile_with_group_offload(self):
-        super()._test_torch_compile_with_group_offload(
-            quantization_config=self.quantization_config, torch_dtype=torch.float16
+    def test_torch_compile_with_group_offload_leaf(self):
+        super()._test_torch_compile_with_group_offload_leaf(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16, use_stream=True
         )

@@ -227,3 +227,8 @@ class DiffusersQuantizer(ABC):
     @property
     @abstractmethod
     def is_trainable(self): ...
+
+    @property
+    def is_compileable(self) -> bool:
+        """Flag indicating whether the quantized model can be compiled"""
+        return False
