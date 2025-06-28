@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Team Inc.
+# Copyright 2025 The HuggingFace Team Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,10 +16,13 @@ import tempfile
 import unittest
 
 import torch
+from parameterized import parameterized
 
 from diffusers import DiffusionPipeline, QuantoConfig
 from diffusers.quantizers import PipelineQuantizationConfig
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
+    CaptureLogger,
     is_transformers_available,
     require_accelerate,
     require_bitsandbytes_version_greater,
@@ -188,3 +191,55 @@ class PipelineQuantizationTests(unittest.TestCase):
         output_2 = loaded_pipe(**pipe_inputs, generator=torch.manual_seed(self.seed)).images
 
         self.assertTrue(torch.allclose(output_1, output_2))
+
+    @parameterized.expand(["quant_kwargs", "quant_mapping"])
+    def test_warn_invalid_component(self, method):
+        invalid_component = "foo"
+        if method == "quant_kwargs":
+            components_to_quantize = ["transformer", invalid_component]
+            quant_config = PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_8bit",
+                quant_kwargs={"load_in_8bit": True},
+                components_to_quantize=components_to_quantize,
+            )
+        else:
+            quant_config = PipelineQuantizationConfig(
+                quant_mapping={
+                    "transformer": QuantoConfig("int8"),
+                    invalid_component: TranBitsAndBytesConfig(load_in_8bit=True),
+                }
+            )
+
+        logger = logging.get_logger("diffusers.pipelines.pipeline_loading_utils")
+        logger.setLevel(logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
+            _ = DiffusionPipeline.from_pretrained(
+                self.model_name,
+                quantization_config=quant_config,
+                torch_dtype=torch.bfloat16,
+            )
+        self.assertTrue(invalid_component in cap_logger.out)
+
+    @parameterized.expand(["quant_kwargs", "quant_mapping"])
+    def test_no_quantization_for_all_invalid_components(self, method):
+        invalid_component = "foo"
+        if method == "quant_kwargs":
+            components_to_quantize = [invalid_component]
+            quant_config = PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_8bit",
+                quant_kwargs={"load_in_8bit": True},
+                components_to_quantize=components_to_quantize,
+            )
+        else:
+            quant_config = PipelineQuantizationConfig(
+                quant_mapping={invalid_component: TranBitsAndBytesConfig(load_in_8bit=True)}
+            )
+
+        pipe = DiffusionPipeline.from_pretrained(
+            self.model_name,
+            quantization_config=quant_config,
+            torch_dtype=torch.bfloat16,
+        )
+        for name, component in pipe.components.items():
+            if isinstance(component, torch.nn.Module):
+                self.assertTrue(not hasattr(component.config, "quantization_config"))

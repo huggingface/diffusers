@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -36,6 +36,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 To learn more about how to load LoRA weights, see the [LoRA](../../using-diffusers/loading_adapters#lora) loading guide.
 
 </Tip>
+
+## LoraBaseMixin
+
+[[autodoc]] loaders.lora_base.LoraBaseMixin
 
 ## StableDiffusionLoraLoaderMixin
 
@@ -95,10 +99,6 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 ## HiDreamImageLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.HiDreamImageLoraLoaderMixin
-
-## LoraBaseMixin
-
-[[autodoc]] loaders.lora_base.LoraBaseMixin
 
 ## WanLoraLoaderMixin
 
