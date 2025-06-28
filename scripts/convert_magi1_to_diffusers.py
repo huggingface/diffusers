@@ -570,9 +570,9 @@ if __name__ == "__main__":
     args = get_args()
 
     # transformer = convert_transformer(args.model_type)
-    vae = convert_magi_vae()
-    # text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=torch.bfloat16)
-    # tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    #vae = convert_magi_vae()
+    text_encoder = UMT5EncoderModel.from_pretrained("google/t5-v1_1-xxl")
+    tokenizer = AutoTokenizer.from_pretrained("google/t5-v1_1-xxl")
     # flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
     # scheduler = UniPCMultistepScheduler(
     #     prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift
@@ -600,9 +600,9 @@ if __name__ == "__main__":
     # else:
     pipe = Magi1Pipeline(
         transformer=None,#transformer,
-        text_encoder=None,#text_encoder,
-        tokenizer=None,#tokenizer,
-        vae=vae,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        vae=None,#vae,
         scheduler=None,#scheduler,
     )
 
