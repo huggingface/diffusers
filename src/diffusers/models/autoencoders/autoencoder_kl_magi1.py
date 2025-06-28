@@ -17,7 +17,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
 from timm.layers import trunc_normal_
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -293,7 +292,9 @@ class Magi1Decoder3d(nn.Module):
             self.patch_size[2],
             self.unpatch_channels,
         )
-        x = rearrange(x, "B lT lH lW pT pH pW C -> B C (lT pT) (lH pH) (lW pW)", C=self.unpatch_channels)
+        # Rearrange from (B, lT, lH, lW, pT, pH, pW, C) to (B, C, lT*pT, lH*pH, lW*pW)
+        x = x.permute(0, 7, 1, 4, 2, 5, 3, 6)  # (B, C, lT, pT, lH, pH, lW, pW)
+        x = x.reshape(B, self.unpatch_channels, latentT * self.patch_size[0], latentH * self.patch_size[1], latentW * self.patch_size[2])
 
         x = self.conv_out(x)
         return x
