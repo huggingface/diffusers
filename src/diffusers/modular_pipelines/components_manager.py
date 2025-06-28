@@ -864,6 +864,8 @@ class ComponentsManager:
         Get component IDs by a list of names, optionally filtered by collection.
         """
         ids = set()
+        if not isinstance(names, list):
+            names = [names]
         for name in names:
             ids.update(self._lookup_ids(name=name, collection=collection))
         return list(ids)
@@ -895,25 +897,15 @@ class ComponentsManager:
 def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
     """Summarizes a dictionary by finding common prefixes that share the same value.
 
-    This function is particularly useful for IP-Adapter attention processor patterns, where multiple
-    attention layers may share the same scale value. It groups dot-separated keys by their values
-    and finds the shortest common prefix for each group.
-
-    For example, given a dictionary with IP-Adapter attention processor patterns like:
-    {
+    For a dictionary with dot-separated keys like: {
         'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor': [0.6],
         'down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor': [0.6],
         'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor': [0.3],
-        'up_blocks.1.attentions.0.transformer_blocks.1.attn2.processor': [0.3],
     }
 
-    Returns a dictionary where keys are the shortest common prefixes and values are their shared values:
-    {
-        'down_blocks.1.attentions.1.transformer_blocks': [0.6],
-        'up_blocks.1.attentions.0.transformer_blocks': [0.3]
+    Returns a dictionary where keys are the shortest common prefixes and values are their shared values: {
+        'down_blocks': [0.6], 'up_blocks': [0.3]
     }
-
-    This helps identify which attention layers share the same IP-Adapter scale values.
     """
     # First group by values - convert lists to tuples to make them hashable
     value_to_keys = {}
