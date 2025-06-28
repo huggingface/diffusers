@@ -1350,7 +1350,6 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
                 # Making sure part of the model will actually end up offloaded
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
-                print(f" new_model.hf_device_map:{new_model.hf_device_map}")
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
 
@@ -2019,6 +2018,8 @@ class LoraHotSwappingForModelTesterMixin:
 
     """
 
+    different_shapes_for_compilation = None
+
     def tearDown(self):
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
         # there will be recompilation errors, as torch caches the model when run in the same process.
@@ -2116,29 +2117,27 @@ class LoraHotSwappingForModelTesterMixin:
                 model = torch.compile(model, mode="reduce-overhead", dynamic=different_resolutions is not None)
 
             with torch.inference_mode():
-                output0_after = model(**inputs_dict)["sample"]
-
                 # additionally check if dynamic compilation works.
                 if different_resolutions is not None:
                     for height, width in self.different_shapes_for_compilation:
                         new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
                         _ = model(**new_inputs_dict)
-
-            assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
+                else:
+                    output0_after = model(**inputs_dict)["sample"]
+                    assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
 
             # hotswap the 2nd adapter
             model.load_lora_adapter(file_name1, adapter_name="adapter0", hotswap=True, prefix=None)
 
             # we need to call forward to potentially trigger recompilation
             with torch.inference_mode():
-                output1_after = model(**inputs_dict)["sample"]
-
                 if different_resolutions is not None:
                     for height, width in self.different_shapes_for_compilation:
                         new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
                         _ = model(**new_inputs_dict)
-
-            assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
+                else:
+                    output1_after = model(**inputs_dict)["sample"]
+                    assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
 
             # check error when not passing valid adapter name
             name = "does-not-exist"
