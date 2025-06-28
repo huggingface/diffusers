@@ -63,9 +63,10 @@ class Magi1AttnProcessor2_0:
         qkv = self.qkv_norm(qkv)
         query, key, value = qkv.chunk(3, dim=2)
 
-        query = query.transpose(1, 2)
-        key = key.transpose(1, 2)
-        value = value.transpose(1, 2)
+        # Remove the extra dimension from chunking and transpose properly
+        query = query.squeeze(2).transpose(1, 2)
+        key = key.squeeze(2).transpose(1, 2)
+        value = value.squeeze(2).transpose(1, 2)
 
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
