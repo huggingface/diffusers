@@ -421,6 +421,10 @@ def require_big_accelerator(test_case):
     Decorator marking a test that requires a bigger hardware accelerator (24GB) for execution. Some example pipelines:
     Flux, SD3, Cog, etc.
     """
+    import pytest
+
+    test_case = pytest.mark.big_accelerator(test_case)
+
     if not is_torch_available():
         return unittest.skip("test requires PyTorch")(test_case)
 

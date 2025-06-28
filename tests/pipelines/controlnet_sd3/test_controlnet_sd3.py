@@ -18,7 +18,6 @@ import unittest
 from typing import Optional
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
@@ -221,7 +220,6 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3ControlNetPipeline
 
