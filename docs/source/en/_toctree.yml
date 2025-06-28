@@ -499,7 +499,7 @@
       title: Lumina 2.0
     - local: api/pipelines/lumina
       title: Lumina-T2X
-    - local: api/pipelines/magi
+    - local: api/pipelines/magi1
       title: MAGI-1
     - local: api/pipelines/marigold
       title: Marigold

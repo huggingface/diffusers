@@ -34,9 +34,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_magi import Magi1Pipeline
-        from .pipeline_magi_i2v import Magi1ImageToVideoPipeline
-        from .pipeline_magi_v2v import Magi1VideoToVideoPipeline
+        from .pipeline_magi1 import Magi1Pipeline
+        from .pipeline_magi1_i2v import Magi1ImageToVideoPipeline
+        from .pipeline_magi1_v2v import Magi1VideoToVideoPipeline
         from .pipeline_output import Magi1PipelineOutput
 
 else:
