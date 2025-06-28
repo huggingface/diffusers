@@ -33,16 +33,6 @@ jobs:
             runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
-          - name: Fast Flax CPU tests on Ubuntu
-            framework: flax
-            runner: aws-general-8-plus
-            image: diffusers/diffusers-flax-cpu
-            report: flax_cpu
-          - name: Fast ONNXRuntime CPU tests on Ubuntu
-            framework: onnxruntime
-            runner: aws-general-8-plus
-            image: diffusers/diffusers-onnxruntime-cpu
-            report: onnx_cpu
           - name: PyTorch Example CPU tests on Ubuntu
             framework: pytorch_examples
             runner: aws-general-8-plus
@@ -84,24 +74,6 @@ jobs:
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/
-
-    - name: Run fast Flax TPU tests
-      if: ${{ matrix.config.framework == 'flax' }}
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "Flax" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/
-
-    - name: Run fast ONNXRuntime CPU tests
-      if: ${{ matrix.config.framework == 'onnxruntime' }}
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
