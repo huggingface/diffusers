@@ -39,7 +39,7 @@ from .modular_pipeline_utils import (
     ComponentSpec,
     ConfigSpec,
     InputParam,
-    InsertableOrderedDict,
+    InsertableDict,
     OutputParam,
     format_components,
     format_configs,
@@ -626,7 +626,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     block_trigger_inputs = []
 
     def __init__(self):
-        sub_blocks = InsertableOrderedDict()
+        sub_blocks = InsertableDict()
         for block_name, block_cls in zip(self.block_names, self.block_classes):
             sub_blocks[block_name] = block_cls()
         self.sub_blocks = sub_blocks
@@ -840,7 +840,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
         configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
 
         # Blocks section - moved to the end with simplified format
-        blocks_str = "  Blocks:\n"
+        blocks_str = "  Sub-Blocks:\n"
         for i, (name, block) in enumerate(self.sub_blocks.items()):
             # Get trigger input for this block
             trigger = None
@@ -942,7 +942,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         instance = cls()
 
         # Create instances if classes are provided
-        sub_blocks = InsertableOrderedDict()
+        sub_blocks = InsertableDict()
         for name, block in blocks_dict.items():
             if inspect.isclass(block):
                 sub_blocks[name] = block()
@@ -955,7 +955,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return instance
 
     def __init__(self):
-        sub_blocks = InsertableOrderedDict()
+        sub_blocks = InsertableDict()
         for block_name, block_cls in zip(self.block_names, self.block_classes):
             sub_blocks[block_name] = block_cls()
         self.sub_blocks = sub_blocks
@@ -1203,7 +1203,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
 
         # Blocks section - moved to the end with simplified format
-        blocks_str = "  Blocks:\n"
+        blocks_str = "  Sub-Blocks:\n"
         for i, (name, block) in enumerate(self.sub_blocks.items()):
             # Get trigger input for this block
             trigger = None
@@ -1435,7 +1435,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return next(reversed(self.sub_blocks.values())).intermediate_outputs
 
     def __init__(self):
-        sub_blocks = InsertableOrderedDict()
+        sub_blocks = InsertableDict()
         for block_name, block_cls in zip(self.block_names, self.block_classes):
             sub_blocks[block_name] = block_cls()
         self.sub_blocks = sub_blocks
@@ -1584,7 +1584,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
 
         # Blocks section - moved to the end with simplified format
-        blocks_str = "  Blocks:\n"
+        blocks_str = "  Sub-Blocks:\n"
         for i, (name, block) in enumerate(self.sub_blocks.items()):
             # For SequentialPipelineBlocks, show execution order
             blocks_str += f"    [{i}] {name} ({block.__class__.__name__})\n"

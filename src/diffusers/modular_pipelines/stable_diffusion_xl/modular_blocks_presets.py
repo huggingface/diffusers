@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableOrderedDict
+from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     StableDiffusionXLControlNetInputStep,
     StableDiffusionXLControlNetUnionInputStep,
@@ -308,7 +308,7 @@ class StableDiffusionXLAutoControlnetStep(SequentialPipelineBlocks):
         )
 
 
-TEXT2IMAGE_BLOCKS = InsertableOrderedDict(
+TEXT2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusionXLTextEncoderStep),
         ("input", StableDiffusionXLInputStep),
@@ -320,7 +320,7 @@ TEXT2IMAGE_BLOCKS = InsertableOrderedDict(
     ]
 )
 
-IMAGE2IMAGE_BLOCKS = InsertableOrderedDict(
+IMAGE2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusionXLTextEncoderStep),
         ("image_encoder", StableDiffusionXLVaeEncoderStep),
@@ -333,7 +333,7 @@ IMAGE2IMAGE_BLOCKS = InsertableOrderedDict(
     ]
 )
 
-INPAINT_BLOCKS = InsertableOrderedDict(
+INPAINT_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusionXLTextEncoderStep),
         ("image_encoder", StableDiffusionXLInpaintVaeEncoderStep),
@@ -346,20 +346,20 @@ INPAINT_BLOCKS = InsertableOrderedDict(
     ]
 )
 
-CONTROLNET_BLOCKS = InsertableOrderedDict(
+CONTROLNET_BLOCKS = InsertableDict(
     [
         ("denoise", StableDiffusionXLAutoControlnetStep),
     ]
 )
 
 
-IP_ADAPTER_BLOCKS = InsertableOrderedDict(
+IP_ADAPTER_BLOCKS = InsertableDict(
     [
         ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ]
 )
 
-AUTO_BLOCKS = InsertableOrderedDict(
+AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusionXLTextEncoderStep),
         ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),

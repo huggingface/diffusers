@@ -26,7 +26,7 @@ if is_torch_available():
     pass
 
 
-class InsertableOrderedDict(OrderedDict):
+class InsertableDict(OrderedDict):
     def insert(self, key, value, index):
         items = list(self.items())
 
@@ -45,7 +45,7 @@ class InsertableOrderedDict(OrderedDict):
 
     def __repr__(self):
         if not self:
-            return "InsertableOrderedDict()"
+            return "InsertableDict()"
 
         items = []
         for i, (key, value) in enumerate(self.items()):
@@ -57,7 +57,7 @@ class InsertableOrderedDict(OrderedDict):
                 obj_repr = f"<obj '{value.__class__.__module__}.{value.__class__.__name__}'>"
             items.append(f"{i}: ({repr(key)}, {obj_repr})")
 
-        return "InsertableOrderedDict([\n  " + ",\n  ".join(items) + "\n])"
+        return "InsertableDict([\n  " + ",\n  ".join(items) + "\n])"
 
 
 # YiYi TODO:
