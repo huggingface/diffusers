@@ -693,6 +693,8 @@ class PeftAdapterMixin:
         recurse_remove_peft_layers(self)
         if hasattr(self, "peft_config"):
             del self.peft_config
+        if hasattr(self, "_hf_peft_config_loaded"):
+            self._hf_peft_config_loaded = None
 
         _maybe_remove_and_reapply_group_offloading(self)
 
