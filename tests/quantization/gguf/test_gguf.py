@@ -586,17 +586,11 @@ class HiDreamGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
 @require_torch_version_greater("2.7.1")
 class GGUFCompileTests(QuantCompileTests):
     torch_dtype = torch.bfloat16
-    quantization_config = GGUFQuantizationConfig(compute_dtype=torch_dtype)
     gguf_ckpt = "https://huggingface.co/city96/stable-diffusion-3.5-medium-gguf/blob/main/sd3.5_medium-Q3_K_M.gguf"
 
-    def _init_pipeline(self, *args, **kwargs):
-        transformer = SD3Transformer2DModel.from_single_file(
-            self.gguf_ckpt, quantization_config=self.quantization_config, torch_dtype=self.torch_dtype
-        )
-        pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-3.5-medium", transformer=transformer, torch_dtype=self.torch_dtype
-        )
-        return pipe
+    @property
+    def quantization_config(self):
+        return GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
 
     def test_torch_compile(self):
         super()._test_torch_compile(quantization_config=self.quantization_config)
@@ -606,3 +600,12 @@ class GGUFCompileTests(QuantCompileTests):
 
     def test_torch_compile_with_group_offload(self):
         super()._test_torch_compile_with_group_offload(quantization_config=self.quantization_config)
+
+    def _init_pipeline(self, *args, **kwargs):
+        transformer = SD3Transformer2DModel.from_single_file(
+            self.gguf_ckpt, quantization_config=self.quantization_config, torch_dtype=self.torch_dtype
+        )
+        pipe = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-3.5-medium", transformer=transformer, torch_dtype=self.torch_dtype
+        )
+        return pipe
