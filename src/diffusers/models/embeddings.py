@@ -825,6 +825,8 @@ def get_3d_rotary_pos_embed(
     grid_type: str = "linspace",
     max_size: Optional[Tuple[int, int]] = None,
     device: Optional[torch.device] = None,
+    center_grid_hw_indices: bool = False,
+    equal_split_ratio: Optional[int] = None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     RoPE for video tokens with 3D structure.
@@ -871,10 +873,19 @@ def get_3d_rotary_pos_embed(
     else:
         raise ValueError("Invalid value passed for `grid_type`.")
 
-    # Compute dimensions for each axis
-    dim_t = embed_dim // 4
-    dim_h = embed_dim // 8 * 3
-    dim_w = embed_dim // 8 * 3
+    if center_grid_hw_indices:
+        # Center the grid height and width indices around zero
+        grid_h = grid_h - grid_h.max() / 2
+        grid_w = grid_w - grid_w.max() / 2
+
+    if equal_split_ratio is None:
+        dim_t = embed_dim // 4
+        dim_h = embed_dim // 8 * 3
+        dim_w = embed_dim // 8 * 3
+    else:
+        dim_t = embed_dim // equal_split_ratio
+        dim_h = embed_dim // equal_split_ratio
+        dim_w = embed_dim // equal_split_ratio
 
     # Temporal frequencies
     freqs_t = get_1d_rotary_pos_embed(dim_t, grid_t, theta=theta, use_real=True)
