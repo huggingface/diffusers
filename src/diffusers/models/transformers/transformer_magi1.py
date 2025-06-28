@@ -15,8 +15,6 @@
 import math
 from typing import Any, Dict, Optional, Tuple, Union
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,9 +38,8 @@ class Magi1AttnProcessor2_0:
     r"""
     Processor for implementing MAGI-1 attention mechanism.
 
-    This processor handles both self-attention and cross-attention for the MAGI-1 model,
-    following diffusers' standard attention processor interface. It supports image conditioning
-    for image-to-video generation tasks.
+    This processor handles both self-attention and cross-attention for the MAGI-1 model, following diffusers' standard
+    attention processor interface. It supports image conditioning for image-to-video generation tasks.
     """
 
     def __init__(self):
@@ -62,7 +59,7 @@ class Magi1AttnProcessor2_0:
         if attn.add_k_proj is not None and encoder_hidden_states is not None:
             # Extract image conditioning from the concatenated encoder states
             # The text encoder context length is typically 512 tokens
-            text_context_length = getattr(attn, 'text_context_length', 512)
+            text_context_length = getattr(attn, "text_context_length", 512)
             image_context_length = encoder_hidden_states.shape[1] - text_context_length
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
             encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
@@ -89,6 +86,7 @@ class Magi1AttnProcessor2_0:
 
         # Apply rotary embeddings if provided
         if rotary_emb is not None:
+
             def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
                 dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
                 x_rotated = torch.view_as_complex(hidden_states.to(dtype).unflatten(3, (-1, 2)))
@@ -129,9 +127,9 @@ class Magi1ImageEmbedding(torch.nn.Module):
     """
     Image embedding layer for the MAGI-1 model.
 
-    This module processes image conditioning features for image-to-video generation tasks.
-    It applies layer normalization, a feed-forward transformation, and optional positional
-    embeddings to prepare image features for cross-attention.
+    This module processes image conditioning features for image-to-video generation tasks. It applies layer
+    normalization, a feed-forward transformation, and optional positional embeddings to prepare image features for
+    cross-attention.
 
     Args:
         in_features (`int`): Input feature dimension.
@@ -139,6 +137,7 @@ class Magi1ImageEmbedding(torch.nn.Module):
         pos_embed_seq_len (`int`, optional): Sequence length for positional embeddings.
             If provided, learnable positional embeddings will be added to the input.
     """
+
     def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
 
@@ -179,6 +178,7 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         image_embed_dim (`int`, optional): Input dimension of image embeddings.
         pos_embed_seq_len (`int`, optional): Sequence length for image positional embeddings.
     """
+
     def __init__(
         self,
         dim: int,
@@ -269,9 +269,9 @@ class Magi1TransformerBlock(nn.Module):
     """
     A transformer block used in the MAGI-1 model.
 
-    This block follows diffusers' design philosophy with separate self-attention (attn1)
-    and cross-attention (attn2) modules, while faithfully implementing the original
-    MAGI-1 logic through appropriate parameter mapping during conversion.
+    This block follows diffusers' design philosophy with separate self-attention (attn1) and cross-attention (attn2)
+    modules, while faithfully implementing the original MAGI-1 logic through appropriate parameter mapping during
+    conversion.
 
     Args:
         dim (`int`): The number of channels in the input and output.
@@ -369,9 +369,9 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
     r"""
     A Transformer model for video-like data used in the Magi1 model.
 
-    This model implements a 3D transformer architecture for video generation with support for text conditioning
-    and optional image conditioning. The model uses rotary position embeddings and adaptive layer normalization
-    for temporal and spatial modeling.
+    This model implements a 3D transformer architecture for video generation with support for text conditioning and
+    optional image conditioning. The model uses rotary position embeddings and adaptive layer normalization for
+    temporal and spatial modeling.
 
     Args:
         patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
@@ -542,11 +542,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             # Patchify: (B, C, T, H, W) -> (B, T//p_t, H//p_h, W//p_w, C*p_t*p_h*p_w)
             hidden_states = hidden_states.unfold(2, p_t, p_t).unfold(3, p_h, p_h).unfold(4, p_w, p_w)
             hidden_states = hidden_states.contiguous().view(
-                batch_size,
-                num_frames // p_t,
-                height // p_h,
-                width // p_w,
-                num_channels * p_t * p_h * p_w
+                batch_size, num_frames // p_t, height // p_h, width // p_w, num_channels * p_t * p_h * p_w
             )
             # Reshape to sequence: (B, T*H*W, C*p_t*p_h*p_w)
             hidden_states = hidden_states.flatten(1, 3)
@@ -595,15 +591,22 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         # Rearrange patches: (B, T//p_t, H//p_h, W//p_w, C*p_t*p_h*p_w) -> (B, C, T, H, W)
         p_t, p_h, p_w = self.config.patch_size
         hidden_states = hidden_states.view(
-            batch_size, post_patch_num_frames, post_patch_height, post_patch_width,
-            self.config.out_channels, p_t, p_h, p_w
+            batch_size,
+            post_patch_num_frames,
+            post_patch_height,
+            post_patch_width,
+            self.config.out_channels,
+            p_t,
+            p_h,
+            p_w,
         )
         hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
         output = hidden_states.contiguous().view(
-            batch_size, self.config.out_channels,
+            batch_size,
+            self.config.out_channels,
             post_patch_num_frames * p_t,
             post_patch_height * p_h,
-            post_patch_width * p_w
+            post_patch_width * p_w,
         )
 
         if USE_PEFT_BACKEND:

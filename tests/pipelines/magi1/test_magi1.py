@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLMagi1, FlowMatchEulerDiscreteScheduler, Magi1Transformer3DModel, Magi1Pipeline
+from diffusers import AutoencoderKLMagi1, FlowMatchEulerDiscreteScheduler, Magi1Pipeline, Magi1Transformer3DModel
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,

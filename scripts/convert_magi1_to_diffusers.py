@@ -28,8 +28,6 @@ import logging
 import os
 import shutil
 import tempfile
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from huggingface_hub import hf_hub_download
@@ -38,7 +36,6 @@ from safetensors.torch import load_file
 
 from diffusers import Magi1Pipeline, Magi1Transformer3DModel
 from diffusers.models.autoencoders import AutoencoderKLMagi1
-from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils import logging as diffusers_logging
 
 
@@ -53,18 +50,14 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     # Time embedding
     "t_embedder.mlp.0": "condition_embedder.time_embedder.linear_1",
     "t_embedder.mlp.2": "condition_embedder.time_embedder.linear_2",
-
     # Text embedding - AdaLN projection
     "y_embedder.y_proj_adaln.0": "condition_embedder.text_embedder.linear_1",
     "y_embedder.y_proj_adaln.2": "condition_embedder.text_embedder.linear_2",
-
     # Text embedding - Cross attention projection
     "y_embedder.y_proj_xattn.0": "condition_embedder.text_proj",
-
     # Final output components
     "videodit_blocks.final_layernorm": "norm_out",
     "final_linear.linear": "proj_out",
-
     # Input patch embedding
     "x_embedder": "patch_embedding",
 }
@@ -79,30 +72,24 @@ BLOCK_COMPONENT_MAPPINGS = {
     "self_attention.q_layernorm": "attn1.norm_q",
     "self_attention.k_layernorm": "attn1.norm_k",
     "self_attention.linear_qkv.layer_norm": "norm1",
-
     # Cross-attention (text conditioning)
     "self_attention.linear_qkv.qx": "attn2.to_q",
     "self_attention.q_layernorm_xattn": "attn2.norm_q",
     "self_attention.k_layernorm_xattn": "attn2.norm_k",
     # Note: linear_kv_xattn will be handled separately for K,V splitting
-
     # Feed-forward network
     "mlp.linear_fc1": "ff.net.0.proj",
     "mlp.linear_fc2": "ff.net.2",
     "mlp.layer_norm": "norm3",
-
     # Post-attention normalization
     "self_attn_post_norm": "norm2",
     "mlp_post_norm": "norm4",
-
     # AdaLN modulation layer
     "ada_modulate_layer.proj.0": "scale_shift_table",
 }
 
 # Special handling for keys that need custom processing
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
-
-
 
 
 def convert_magi_transformer(model_type):
@@ -149,8 +136,7 @@ def convert_magi_transformer(model_type):
                 # Try to download the first shard to determine total number of shards
                 shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
                 shard_path = hf_hub_download(
-                    "sand-ai/MAGI-1",
-                    f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
+                    "sand-ai/MAGI-1", f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
                 )
                 checkpoint_files.append(shard_path)
                 print(f"Downloaded {shard_filename}")
@@ -159,8 +145,7 @@ def convert_magi_transformer(model_type):
                 # Download the second shard
                 shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
                 shard_path = hf_hub_download(
-                    "sand-ai/MAGI-1",
-                    f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
+                    "sand-ai/MAGI-1", f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
                 )
                 checkpoint_files.append(shard_path)
                 print(f"Downloaded {shard_filename}")
@@ -176,7 +161,7 @@ def convert_magi_transformer(model_type):
 
     # Copy files to the temporary directory with consistent naming
     for i, shard_path in enumerate(checkpoint_files):
-        dest_path = os.path.join(transformer_ckpt_dir, f"model-{i+1:05d}-of-{len(checkpoint_files):05d}.safetensors")
+        dest_path = os.path.join(transformer_ckpt_dir, f"model-{i + 1:05d}-of-{len(checkpoint_files):05d}.safetensors")
         shutil.copy2(shard_path, dest_path)
 
     # Convert the transformer checkpoint
@@ -553,14 +538,18 @@ def convert_transformer_state_dict(checkpoint):
     if "t_embedder.mlp.0.weight" in checkpoint:
         # Checkpoint: t_embedder.mlp.0.weight [768, 256]
         # Diffusers expects: condition_embedder.time_embedder.linear_1.weight [768, 256] (same)
-        converted_state_dict["condition_embedder.time_embedder.linear_1.weight"] = checkpoint["t_embedder.mlp.0.weight"]
+        converted_state_dict["condition_embedder.time_embedder.linear_1.weight"] = checkpoint[
+            "t_embedder.mlp.0.weight"
+        ]
     if "t_embedder.mlp.0.bias" in checkpoint:
         converted_state_dict["condition_embedder.time_embedder.linear_1.bias"] = checkpoint["t_embedder.mlp.0.bias"]
 
     if "t_embedder.mlp.2.weight" in checkpoint:
         # Checkpoint: t_embedder.mlp.2.weight [768, 768]
         # Diffusers expects: condition_embedder.time_embedder.linear_2.weight [768, 768] (same)
-        converted_state_dict["condition_embedder.time_embedder.linear_2.weight"] = checkpoint["t_embedder.mlp.2.weight"]
+        converted_state_dict["condition_embedder.time_embedder.linear_2.weight"] = checkpoint[
+            "t_embedder.mlp.2.weight"
+        ]
     if "t_embedder.mlp.2.bias" in checkpoint:
         converted_state_dict["condition_embedder.time_embedder.linear_2.bias"] = checkpoint["t_embedder.mlp.2.bias"]
 
@@ -574,16 +563,24 @@ def convert_transformer_state_dict(checkpoint):
     if "y_embedder.y_proj_adaln.0.weight" in checkpoint:
         # Checkpoint: y_embedder.y_proj_adaln.0.weight [768, 4096]
         # Diffusers expects: condition_embedder.text_embedder.linear_1.weight [768, 4096] (same)
-        converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint["y_embedder.y_proj_adaln.0.weight"]
+        converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint[
+            "y_embedder.y_proj_adaln.0.weight"
+        ]
     if "y_embedder.y_proj_adaln.0.bias" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint["y_embedder.y_proj_adaln.0.bias"]
+        converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint[
+            "y_embedder.y_proj_adaln.0.bias"
+        ]
 
     if "y_embedder.y_proj_adaln.2.weight" in checkpoint:
         # Checkpoint: y_embedder.y_proj_adaln.2.weight [768, 768]
         # Diffusers expects: condition_embedder.text_embedder.linear_2.weight [768, 768] (same)
-        converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint["y_embedder.y_proj_adaln.2.weight"]
+        converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint[
+            "y_embedder.y_proj_adaln.2.weight"
+        ]
     if "y_embedder.y_proj_adaln.2.bias" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint["y_embedder.y_proj_adaln.2.bias"]
+        converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint[
+            "y_embedder.y_proj_adaln.2.bias"
+        ]
 
     # Text projection for cross-attention
     if "y_embedder.y_proj_xattn.0.weight" in checkpoint:
@@ -595,7 +592,9 @@ def convert_transformer_state_dict(checkpoint):
 
     # Handle null caption embedding
     if "y_embedder.null_caption_embedding" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.null_caption_embedding"] = checkpoint["y_embedder.null_caption_embedding"]
+        converted_state_dict["condition_embedder.text_embedder.null_caption_embedding"] = checkpoint[
+            "y_embedder.null_caption_embedding"
+        ]
 
     # 4. Final output layers
     if "videodit_blocks.final_layernorm.weight" in checkpoint:
@@ -630,64 +629,96 @@ def convert_transformer_state_dict(checkpoint):
         if f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.self_attention.linear_qkv.layer_norm.weight [3072]
             # Diffusers expects: blocks.X.norm1.weight [3072] (same)
-            converted_state_dict[f"{block_prefix}.norm1.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"]
+            converted_state_dict[f"{block_prefix}.norm1.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"
+            ]
         if f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm1.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"]
+            converted_state_dict[f"{block_prefix}.norm1.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"
+            ]
 
         # Self-attention Q projection
         if f"{layer_prefix}.self_attention.linear_qkv.q.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.self_attention.linear_qkv.q.weight [3072, 3072]
             # Diffusers expects: blocks.X.attn1.to_q.weight [3072, 3072] (same)
-            converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.q.weight"]
+            converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.q.weight"
+            ]
         if f"{layer_prefix}.self_attention.linear_qkv.q.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.q.bias"]
+            converted_state_dict[f"{block_prefix}.attn1.to_q.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.q.bias"
+            ]
 
         # Self-attention K,V projections (smaller dimensions)
         if f"{layer_prefix}.self_attention.linear_qkv.k.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.self_attention.linear_qkv.k.weight [1024, 3072]
             # Diffusers expects: blocks.X.attn1.to_k.weight [1024, 3072] (same)
-            converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.k.weight"]
+            converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.k.weight"
+            ]
         if f"{layer_prefix}.self_attention.linear_qkv.k.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_k.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.k.bias"]
+            converted_state_dict[f"{block_prefix}.attn1.to_k.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.k.bias"
+            ]
 
         if f"{layer_prefix}.self_attention.linear_qkv.v.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.self_attention.linear_qkv.v.weight [1024, 3072]
             # Diffusers expects: blocks.X.attn1.to_v.weight [1024, 3072] (same)
-            converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.v.weight"]
+            converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.v.weight"
+            ]
         if f"{layer_prefix}.self_attention.linear_qkv.v.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_v.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.v.bias"]
+            converted_state_dict[f"{block_prefix}.attn1.to_v.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.v.bias"
+            ]
 
         # Self-attention output projection
         if f"{layer_prefix}.self_attention.linear_proj.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.self_attention.linear_proj.weight [3072, 3072]
             # Diffusers expects: blocks.X.attn1.to_out.0.weight [3072, 3072] (same)
-            converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_proj.weight"]
+            converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_proj.weight"
+            ]
         if f"{layer_prefix}.self_attention.linear_proj.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_out.0.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_proj.bias"]
+            converted_state_dict[f"{block_prefix}.attn1.to_out.0.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_proj.bias"
+            ]
 
         # Q/K layer norms (smaller dimensions - 128 instead of 1024)
         if f"{layer_prefix}.self_attention.q_layernorm.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.self_attention.q_layernorm.weight [128]
             # Diffusers expects: blocks.X.attn1.norm_q.weight [128] (same)
-            converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm.weight"]
+            converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.q_layernorm.weight"
+            ]
         if f"{layer_prefix}.self_attention.q_layernorm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm.bias"]
+            converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.q_layernorm.bias"
+            ]
 
         if f"{layer_prefix}.self_attention.k_layernorm.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.self_attention.k_layernorm.weight [128]
             # Diffusers expects: blocks.X.attn1.norm_k.weight [128] (same)
-            converted_state_dict[f"{block_prefix}.attn1.norm_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm.weight"]
+            converted_state_dict[f"{block_prefix}.attn1.norm_k.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.k_layernorm.weight"
+            ]
         if f"{layer_prefix}.self_attention.k_layernorm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.norm_k.bias"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm.bias"]
+            converted_state_dict[f"{block_prefix}.attn1.norm_k.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.k_layernorm.bias"
+            ]
 
         # Cross-attention (text conditioning)
         # Q projection for cross-attention
         if f"{layer_prefix}.self_attention.linear_qkv.qx.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.self_attention.linear_qkv.qx.weight [3072, 3072]
             # Diffusers expects: blocks.X.attn2.to_q.weight [3072, 3072] (same)
-            converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.qx.weight"]
+            converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
+            ]
         if f"{layer_prefix}.self_attention.linear_qkv.qx.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.to_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.qx.bias"]
+            converted_state_dict[f"{block_prefix}.attn2.to_q.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.linear_qkv.qx.bias"
+            ]
 
         # K,V for cross-attention (split from combined linear_kv_xattn)
         if f"{layer_prefix}.self_attention.linear_kv_xattn.weight" in checkpoint:
@@ -707,24 +738,38 @@ def convert_transformer_state_dict(checkpoint):
 
         # Cross-attention output projection (share with self-attention)
         if f"{block_prefix}.attn1.to_out.0.weight" in converted_state_dict:
-            converted_state_dict[f"{block_prefix}.attn2.to_out.0.weight"] = converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"]
+            converted_state_dict[f"{block_prefix}.attn2.to_out.0.weight"] = converted_state_dict[
+                f"{block_prefix}.attn1.to_out.0.weight"
+            ]
         if f"{block_prefix}.attn1.to_out.0.bias" in converted_state_dict:
-            converted_state_dict[f"{block_prefix}.attn2.to_out.0.bias"] = converted_state_dict[f"{block_prefix}.attn1.to_out.0.bias"]
+            converted_state_dict[f"{block_prefix}.attn2.to_out.0.bias"] = converted_state_dict[
+                f"{block_prefix}.attn1.to_out.0.bias"
+            ]
 
         # Cross-attention Q/K norms
         if f"{layer_prefix}.self_attention.q_layernorm_xattn.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"]
+            converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"
+            ]
         if f"{layer_prefix}.self_attention.q_layernorm_xattn.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.norm_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"]
+            converted_state_dict[f"{block_prefix}.attn2.norm_q.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"
+            ]
 
         if f"{layer_prefix}.self_attention.k_layernorm_xattn.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.norm_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"]
+            converted_state_dict[f"{block_prefix}.attn2.norm_k.weight"] = checkpoint[
+                f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"
+            ]
         if f"{layer_prefix}.self_attention.k_layernorm_xattn.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.norm_k.bias"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"]
+            converted_state_dict[f"{block_prefix}.attn2.norm_k.bias"] = checkpoint[
+                f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"
+            ]
 
         # Post-attention norm
         if f"{layer_prefix}.self_attn_post_norm.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm2.weight"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.weight"]
+            converted_state_dict[f"{block_prefix}.norm2.weight"] = checkpoint[
+                f"{layer_prefix}.self_attn_post_norm.weight"
+            ]
         if f"{layer_prefix}.self_attn_post_norm.bias" in checkpoint:
             converted_state_dict[f"{block_prefix}.norm2.bias"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.bias"]
 
@@ -735,12 +780,18 @@ def convert_transformer_state_dict(checkpoint):
             converted_state_dict[f"{block_prefix}.norm3.bias"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.bias"]
 
         if f"{layer_prefix}.mlp.linear_fc1.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.ff.net.0.proj.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc1.weight"]
+            converted_state_dict[f"{block_prefix}.ff.net.0.proj.weight"] = checkpoint[
+                f"{layer_prefix}.mlp.linear_fc1.weight"
+            ]
         if f"{layer_prefix}.mlp.linear_fc1.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.ff.net.0.proj.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc1.bias"]
+            converted_state_dict[f"{block_prefix}.ff.net.0.proj.bias"] = checkpoint[
+                f"{layer_prefix}.mlp.linear_fc1.bias"
+            ]
 
         if f"{layer_prefix}.mlp.linear_fc2.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.ff.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
+            converted_state_dict[f"{block_prefix}.ff.net.2.weight"] = checkpoint[
+                f"{layer_prefix}.mlp.linear_fc2.weight"
+            ]
         if f"{layer_prefix}.mlp.linear_fc2.bias" in checkpoint:
             converted_state_dict[f"{block_prefix}.ff.net.2.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.bias"]
 
@@ -754,9 +805,13 @@ def convert_transformer_state_dict(checkpoint):
         if f"{layer_prefix}.ada_modulate_layer.proj.0.weight" in checkpoint:
             # Checkpoint: videodit_blocks.layers.X.ada_modulate_layer.proj.0.weight [6144, 768]
             # Diffusers expects: blocks.X.scale_shift_table.weight [6144, 768] (same)
-            converted_state_dict[f"{block_prefix}.scale_shift_table.weight"] = checkpoint[f"{layer_prefix}.ada_modulate_layer.proj.0.weight"]
+            converted_state_dict[f"{block_prefix}.scale_shift_table.weight"] = checkpoint[
+                f"{layer_prefix}.ada_modulate_layer.proj.0.weight"
+            ]
         if f"{layer_prefix}.ada_modulate_layer.proj.0.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.scale_shift_table.bias"] = checkpoint[f"{layer_prefix}.ada_modulate_layer.proj.0.bias"]
+            converted_state_dict[f"{block_prefix}.scale_shift_table.bias"] = checkpoint[
+                f"{layer_prefix}.ada_modulate_layer.proj.0.bias"
+            ]
 
     print(f"Converted {len(converted_state_dict)} parameters")
     return converted_state_dict
@@ -780,9 +835,9 @@ if __name__ == "__main__":
     args = get_args()
 
     transformer = convert_magi_transformer(args.model_type)
-    #vae = convert_magi_vae()
-    #text_encoder = T5EncoderModel.from_pretrained("DeepFloyd/t5-v1_1-xxl")
-    #tokenizer = AutoTokenizer.from_pretrained("DeepFloyd/t5-v1_1-xxl")
+    # vae = convert_magi_vae()
+    # text_encoder = T5EncoderModel.from_pretrained("DeepFloyd/t5-v1_1-xxl")
+    # tokenizer = AutoTokenizer.from_pretrained("DeepFloyd/t5-v1_1-xxl")
     # flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
     # scheduler = UniPCMultistepScheduler(
     #     prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift
@@ -794,31 +849,32 @@ if __name__ == "__main__":
         transformer.to(dtype)
 
     # if "I2V" in args.model_type or "FLF2V" in args.model_type:
-        # image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        #     "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
-        # )
-        # image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-        # pipe = Magi1ImageToVideoPipeline(
-        #     transformer=transformer,
-        #     text_encoder=text_encoder,
-        #     tokenizer=tokenizer,
-        #     vae=vae,
-        #     scheduler=scheduler,
-        #     image_encoder=image_encoder,
-        #     image_processor=image_processor,
-        # )
+    # image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    #     "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
+    # )
+    # image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+    # pipe = Magi1ImageToVideoPipeline(
+    #     transformer=transformer,
+    #     text_encoder=text_encoder,
+    #     tokenizer=tokenizer,
+    #     vae=vae,
+    #     scheduler=scheduler,
+    #     image_encoder=image_encoder,
+    #     image_processor=image_processor,
+    # )
     # else:
     pipe = Magi1Pipeline(
         transformer=transformer,
-        text_encoder=None,#text_encoder,
-        tokenizer=None,#tokenizer,
-        vae=None,#vae,
-        scheduler=None,#scheduler,
+        text_encoder=None,  # text_encoder,
+        tokenizer=None,  # tokenizer,
+        vae=None,  # vae,
+        scheduler=None,  # scheduler,
     )
 
-    pipe.save_pretrained(args.output_path,
-                         safe_serialization=True,
-                         max_shard_size="5GB",
-                         push_to_hub=True,
-                         repo_id=f"tolgacangoz/{args.model_type}-Diffusers",
-                         )
+    pipe.save_pretrained(
+        args.output_path,
+        safe_serialization=True,
+        max_shard_size="5GB",
+        push_to_hub=True,
+        repo_id=f"tolgacangoz/{args.model_type}-Diffusers",
+    )
