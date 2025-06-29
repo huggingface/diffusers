@@ -1,4 +1,4 @@
-__version__ = "0.34.0.dev0"
+__version__ = "0.35.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -412,6 +412,7 @@ else:
             "FluxFillPipeline",
             "FluxImg2ImgPipeline",
             "FluxInpaintPipeline",
+            "FluxKontextPipeline",
             "FluxPipeline",
             "FluxPriorReduxPipeline",
             "HiDreamImagePipeline",
@@ -1029,6 +1030,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxFillPipeline,
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
+            FluxKontextPipeline,
             FluxPipeline,
             FluxPriorReduxPipeline,
             HiDreamImagePipeline,
