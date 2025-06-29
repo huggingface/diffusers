@@ -319,7 +319,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid, output_type="np"):
     return emb
 
 
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
+def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np", flip_sin_to_cos=False):
     """
     This function generates 1D positional embeddings from a grid.
 
@@ -352,6 +352,11 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
     emb_cos = torch.cos(out)  # (M, D/2)
 
     emb = torch.concat([emb_sin, emb_cos], dim=1)  # (M, D)
+
+    # flip sine and cosine embeddings
+    if flip_sin_to_cos:
+        emb = torch.cat([emb[:, embed_dim // 2 :], emb[:, : embed_dim // 2]], dim=1)
+
     return emb
 
 
@@ -1333,6 +1338,27 @@ class Timesteps(nn.Module):
             downscale_freq_shift=self.downscale_freq_shift,
             scale=self.scale,
         )
+        return t_emb
+
+
+class SkyReelsV2Timesteps(nn.Module):
+    def __init__(self, num_channels: int, flip_sin_to_cos: bool, output_type: str = "pt"):
+        super().__init__()
+        self.num_channels = num_channels
+        self.output_type = output_type
+        self.flip_sin_to_cos = flip_sin_to_cos
+
+    def forward(self, timesteps: torch.Tensor) -> torch.Tensor:
+        original_shape = timesteps.shape
+        t_emb = get_1d_sincos_pos_embed_from_grid(
+            self.num_channels,
+            timesteps,
+            output_type=self.output_type,
+            flip_sin_to_cos=self.flip_sin_to_cos,
+        )
+        # Reshape back to maintain batch structure
+        if len(original_shape) > 1:
+            t_emb = t_emb.reshape(*original_shape, self.num_channels)
         return t_emb
 
 
