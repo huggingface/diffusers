@@ -815,10 +815,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
             header += "\n"
             header += "  " + "=" * 100 + "\n"
             header += "  This pipeline contains blocks that are selected at runtime based on inputs.\n"
-            header += f"  Trigger Inputs: {self.trigger_inputs}\n"
-            # Get first trigger input as example
-            example_input = next(t for t in self.trigger_inputs if t is not None)
-            header += f"  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('{example_input}')`).\n"
+            header += f"  Trigger Inputs: {[inp for inp in self.trigger_inputs if inp is not None]}\n"
             header += "  " + "=" * 100 + "\n\n"
 
         # Format description with proper indentation
@@ -1178,7 +1175,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             header += "\n"
             header += "  " + "=" * 100 + "\n"
             header += "  This pipeline contains blocks that are selected at runtime based on inputs.\n"
-            header += f"  Trigger Inputs: {self.trigger_inputs}\n"
+            header += f"  Trigger Inputs: {[inp for inp in self.trigger_inputs if inp is not None]}\n"
             # Get first trigger input as example
             example_input = next(t for t in self.trigger_inputs if t is not None)
             header += f"  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('{example_input}')`).\n"
