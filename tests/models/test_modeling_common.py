@@ -2047,9 +2047,7 @@ class LoraHotSwappingForModelTesterMixin:
         ]
         return linear_names[0]
 
-    def check_model_hotswap(
-        self, do_compile, rank0, rank1, target_modules0, target_modules1=None, different_resolutions=None
-    ):
+    def check_model_hotswap(self, do_compile, rank0, rank1, target_modules0, target_modules1=None):
         """
         Check that hotswapping works on a small unet.
 
@@ -2065,6 +2063,7 @@ class LoraHotSwappingForModelTesterMixin:
         fail if the values are different. Since rank != alpha does not matter for the purpose of this test, this is
         fine.
         """
+        different_shapes = self.different_shapes_for_compilation
         # create 2 adapters with different ranks and alphas
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -2114,12 +2113,12 @@ class LoraHotSwappingForModelTesterMixin:
             model.load_lora_adapter(file_name0, safe_serialization=True, adapter_name="adapter0", prefix=None)
 
             if do_compile:
-                model = torch.compile(model, mode="reduce-overhead", dynamic=different_resolutions is not None)
+                model = torch.compile(model, mode="reduce-overhead", dynamic=different_shapes is not None)
 
             with torch.inference_mode():
                 # additionally check if dynamic compilation works.
-                if different_resolutions is not None:
-                    for height, width in self.different_shapes_for_compilation:
+                if different_shapes is not None:
+                    for height, width in different_shapes:
                         new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
                         _ = model(**new_inputs_dict)
                 else:
@@ -2131,8 +2130,8 @@ class LoraHotSwappingForModelTesterMixin:
 
             # we need to call forward to potentially trigger recompilation
             with torch.inference_mode():
-                if different_resolutions is not None:
-                    for height, width in self.different_shapes_for_compilation:
+                if different_shapes is not None:
+                    for height, width in different_shapes:
                         new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
                         _ = model(**new_inputs_dict)
                 else:
@@ -2274,5 +2273,4 @@ class LoraHotSwappingForModelTesterMixin:
                 rank0=rank0,
                 rank1=rank1,
                 target_modules0=target_modules,
-                different_resolutions=different_shapes_for_compilation,
             )
