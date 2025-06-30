@@ -248,14 +248,15 @@ def _get_connected_pipeline(pipeline_cls):
         return _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False)
 
 
-def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
-    def get_model(pipeline_class_name):
-        for task_mapping in SUPPORTED_TASKS_MAPPINGS:
-            for model_name, pipeline in task_mapping.items():
-                if pipeline.__name__ == pipeline_class_name:
-                    return model_name
+def _get_model(pipeline_class_name):
+    for task_mapping in SUPPORTED_TASKS_MAPPINGS:
+        for model_name, pipeline in task_mapping.items():
+            if pipeline.__name__ == pipeline_class_name:
+                return model_name
 
-    model_name = get_model(pipeline_class_name)
+
+def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
+    model_name = _get_model(pipeline_class_name)
 
     if model_name is not None:
         task_class = mapping.get(model_name, None)
