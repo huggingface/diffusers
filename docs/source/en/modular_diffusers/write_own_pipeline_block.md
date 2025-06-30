@@ -273,9 +273,6 @@ The key insight is that blocks connect through their intermediate inputs and out
 ```py
 def input_block_fn(block_state, pipeline_state):
     
-    # Simulate processing the image
-    if not isinstance(block_state.prompt, list):
-        prompt = [block_state.prompt]
     batch_size = len(block_state.prompt)
     block_state.batch_size = batch_size * block_state.num_images_per_prompt
     
@@ -340,3 +337,5 @@ At runtime, you have data flow like this:
 4. **Consistent Interface**: Each block maintains its own behavior and operates through its defined interface, while collectively these interfaces determine what the entire pipeline accepts and produces
 
 What happens within each block follows the same pattern we described earlier: each block gets its own `block_state` with the relevant inputs and intermediate inputs, performs its computation, and updates the pipeline state with its intermediate outputs.
+
+## `LoopSequentialPipelineBlocks`
