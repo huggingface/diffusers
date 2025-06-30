@@ -295,14 +295,37 @@ Now let's connect these blocks to create a pipeline:
 
 ```py
 from diffusers.modular_pipelines import SequentialPipelineBlocks, InsertableDict
+# define a dict map block names to block class
 blocks_dict = InsertableDict()
 blocks_dict["input"] = input_block
 blocks_dict["image_encoder"] = image_encoder_block
+# create the multi-block
 blocks = SequentialPipelineBlocks.from_blocks_dict(blocks_dict)
+# convert it to a runnable pipeline
 pipeline = blocks.init_pipeline()
 ```
 
-Now you have a pipeline with 2 blocks. When you inspect `pipeline.doc`, you can see that `batch_size` is not listed as an input. The pipeline automatically detects that the `input_block` can produce `batch_size` for the `image_encoder_block`, so it doesn't ask the user to provide it.
+Now you have a pipeline with 2 blocks. 
+
+``py
+>>> pipeline.blocks
+SequentialPipelineBlocks(
+  Class: ModularPipelineBlocks
+
+  Description: 
+
+
+  Sub-Blocks:
+    [0] input (TestBlock)
+       Description: A block that determines batch_size based on the number of prompts and num_images_per_prompt argument.
+
+    [1] image_encoder (TestBlock)
+       Description:  Encode raw image into its latent presentation
+
+)
+```
+
+When you inspect `pipeline.doc`, you can see that `batch_size` is not listed as an input. The pipeline automatically detects that the `input_block` can produce `batch_size` for the `image_encoder_block`, so it doesn't ask the user to provide it.
 
 ```py
 >>> print(pipeline.doc)
@@ -327,7 +350,7 @@ class SequentialPipelineBlocks
 
 At runtime, you have data flow like this:
 
-![Data Flow Diagram](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/sequential_mermaid.png)
+![Data Flow Diagram](https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/modular_quicktour/Editor%20_%20Mermaid%20Chart-2025-06-30-092631.png)
 
 **How SequentialPipelineBlocks Works:**
 
