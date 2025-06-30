@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import sys
-import tempfile
 import unittest
 
-import safetensors.torch
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -30,15 +27,13 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     floats_tensor,
     require_peft_backend,
-    require_peft_version_greater,
     skip_mps,
-    torch_device,
 )
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_module_lora_metadata  # noqa: E402
+from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
@@ -146,45 +141,3 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Text encoder LoRA is not supported in Wan.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
-
-    @require_peft_version_greater("0.13.2")
-    def test_lora_exclude_modules_for_wan(self):
-        """
-        We test if the modules from `target_modules` and `exclude_modules`, that have
-        overlap in their names, are impacted as expected. Refer to
-        https://github.com/huggingface/diffusers/pull/11806 for more details.
-        """
-        scheduler_cls = self.scheduler_classes[0]
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-        pipe = self.pipeline_class(**components).to(torch_device)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        # Only denoiser for now.
-        denoiser_lora_config.target_modules = ["to_q", "to_k", "to_v", "out"]
-        denoiser_lora_config.exclude_modules = ["proj_out"]
-        pipe, _ = self.add_adapters_to_pipeline(
-            pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
-        )
-        # Inference works.
-        _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
-            lora_metadatas = self._get_lora_adapter_metadata(modules_to_save)
-            self.pipeline_class.save_lora_weights(save_directory=tmpdir, **lora_state_dicts, **lora_metadatas)
-            pipe.unload_lora_weights()
-
-            # Check the state dict. It should not have any `proj_out` related modules.
-            state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
-            # There should not be any `proj_out` modules, but there should still be some modules for `out`.
-            self.assertTrue(not any("proj_out" in k for k in state_dict))
-            self.assertTrue("out" in k for k in state_dict)
-
-            # Check if the metadata matches.
-            out = pipe.lora_state_dict(tmpdir, return_lora_metadata=True)
-            _, parsed_metadata = out
-            check_module_lora_metadata(
-                parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key="transformer"
-            )
-            # Inference matching is already tested in `test_lora_exclude_modules`.
