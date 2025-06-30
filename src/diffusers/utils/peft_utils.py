@@ -201,8 +201,13 @@ def get_peft_kwargs(
     exclude_modules = _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name)
     if exclude_modules:
         if not is_peft_version(">=", "0.14.0"):
-            msg = "It seems like there are certain modules that need to be excluded when initializing `LoraConfig`. Your current `peft` version doesn't support passing an `exclude_modules` to `LoraConfig`. Please update it by running `pip install -U peft`."
-            logger.warning(msg)
+            msg = """
+It seems like there are certain modules that need to be excluded when initializing `LoraConfig`. Your current `peft`
+version doesn't support passing an `exclude_modules` to `LoraConfig`. Please update it by running `pip install -U
+peft`. For most cases, this can be completely ignored. But if it seems unexpected, please file an issue -
+https://github.com/huggingface/diffusers/issues/new
+            """
+            logger.debug(msg)
         else:
             lora_config_kwargs.update({"exclude_modules": exclude_modules})
 
