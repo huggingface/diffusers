@@ -187,7 +187,6 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
                 --instance_data_dir {self.instance_data_dir}
-                --instance_prompt {self.instance_prompt}
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
