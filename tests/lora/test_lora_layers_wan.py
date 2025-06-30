@@ -147,10 +147,13 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
-    # Refer to
-    # https://github.com/huggingface/diffusers/pull/11806 for more details.
     @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules_for_wan(self):
+        """
+        We test if the modules from `target_modules` and `exclude_modules`, that have
+        overlap in their names, are impacted as expected. Refer to
+        https://github.com/huggingface/diffusers/pull/11806 for more details.
+        """
         scheduler_cls = self.scheduler_classes[0]
         components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
         pipe = self.pipeline_class(**components).to(torch_device)
@@ -184,5 +187,4 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             check_module_lora_metadata(
                 parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key="transformer"
             )
-
             # Inference matching is already tested in `test_lora_exclude_modules`.
