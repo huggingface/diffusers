@@ -94,6 +94,8 @@
 - sections:
   - local: modular_diffusers/quicktour
     title: Quicktour
+  - local: modular_diffusers/write_own_pipeline_block
+    title: Write your own pipeline block
   - local: modular_diffusers/developer_guide
     title: Developer Guide
   title: Modular Diffusers
