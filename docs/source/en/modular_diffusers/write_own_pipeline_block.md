@@ -248,7 +248,36 @@ image = load_image("https://huggingface.co/datasets/huggingface/documentation-im
 state = pipe(image=image, batch_size=2)
 print(f"pipeline_state (after update): {state}")
 ```
+```out
+pipeline_state (before update): PipelineState(
+  inputs={
+    image: <PIL.Image.Image image mode=RGB size=512x512 at 0x7F3ECC494550>
+  },
+  intermediates={
+    batch_size: 2
+  },
+)
+block_state (before update): BlockState(
+    image: <PIL.Image.Image image mode=RGB size=512x512 at 0x7F3ECC494640>
+    batch_size: 2
+)
 
+block_state (after update): BlockState(
+    image: Tensor(dtype=torch.float32, shape=torch.Size([1, 3, 512, 512]))
+    batch_size: 4
+    processed_image: List[4] of Tensors with shapes [torch.Size([1, 3, 512, 512]), torch.Size([1, 3, 512, 512]), torch.Size([1, 3, 512, 512]), torch.Size([1, 3, 512, 512])]
+    image_latents: Tensor(dtype=torch.float32, shape=torch.Size([1, 4, 64, 64]))
+)
+pipeline_state (after update): PipelineState(
+  inputs={
+    image: <PIL.Image.Image image mode=RGB size=512x512 at 0x7F3ECC494550>
+  },
+  intermediates={
+    batch_size: 4
+    image_latents: Tensor(dtype=torch.float32, shape=torch.Size([1, 4, 64, 64]))
+  },
+)
+```
 **Key Observations:**
 
 1. **Before the update**: `image` (the input) goes to the immutable inputs dict, while `batch_size` (the intermediate_input) goes to the mutable intermediates dict, and both are available in `block_state`.
@@ -670,7 +699,7 @@ class AutoIPAdapter(AutoPipelineBlocks):
     block_trigger_inputs = ["ip_adapter_image"]
     @property
     def description(self):
-        return "Run IP Adapter step if `ip_adapter_image` is provided. This step should be placed before the 'input' step.\n"
+        return "Run IP Adapter step if `ip_adapter_image` is provided."
 ```
 
 Now let's combine these 2 auto blocks together into a `SequentialPipelineBlocks`:
@@ -703,7 +732,7 @@ SequentialPipelineBlocks(
 
   Sub-Blocks:
     [0] ip-adapter (AutoIPAdapter)
-       Description: Run IP Adapter step if `ip_adapter_image` is provided. This step should be placed before the 'input' step.
+       Description: Run IP Adapter step if `ip_adapter_image` is provided.
                    
 
     [1] image-generation (AutoImageBlocks)
