@@ -13,8 +13,10 @@
 # limitations under the License.
 
 import sys
+import tempfile
 import unittest
 
+import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -24,7 +26,7 @@ from diffusers import (
     WanPipeline,
     WanTransformer3DModel,
 )
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps, torch_device
 
 
 sys.path.append(".")
@@ -137,3 +139,38 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Text encoder LoRA is not supported in Wan.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
+
+    # Refer to
+    # https://github.com/huggingface/diffusers/pull/11806 for more details.
+    def test_lora_exclude_modules_for_wan(self):
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components).to(torch_device)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(output_no_lora.shape == self.output_shape)
+
+        pipe, _ = self.check_if_adapters_added_correctly(
+            pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        output_lora_exclude_modules = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            lora_metadatas = self._get_lora_adapter_metadata(modules_to_save)
+            self.pipeline_class.save_lora_weights(save_directory=tmpdir, **lora_state_dicts, **lora_metadatas)
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(tmpdir)
+
+            output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            self.assertTrue(
+                not np.allclose(output_no_lora, output_lora_exclude_modules, atol=1e-3, rtol=1e-3),
+                "LoRA should change outputs.",
+            )
+            self.assertTrue(
+                np.allclose(output_lora_exclude_modules, output_lora_pretrained, atol=1e-3, rtol=1e-3),
+                "Lora outputs should match.",
+            )
