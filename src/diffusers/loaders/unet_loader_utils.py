@@ -156,8 +156,9 @@ def _maybe_expand_lora_scales_for_one_adapter(
 
         del scales[updown]
 
+    state_dict = model.state_dict()
     for layer in scales.keys():
-        if not any(_translate_into_actual_layer_name(layer) in module for module in model.state_dict().keys()):
+        if not any(_translate_into_actual_layer_name(layer) in module for module in state_dict.keys()):
             raise ValueError(
                 f"Can't set lora scale for layer {layer}. It either doesn't exist in this unet or it has no attentions."
             )
