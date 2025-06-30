@@ -1452,6 +1452,15 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
             A new LoopSequentialPipelineBlocks instance
         """
         instance = cls()
+
+        # Create instances if classes are provided
+        sub_blocks = InsertableDict()
+        for name, block in blocks_dict.items():
+            if inspect.isclass(block):
+                sub_blocks[name] = block()
+            else:
+                sub_blocks[name] = block
+
         instance.block_classes = [block.__class__ for block in blocks_dict.values()]
         instance.block_names = list(blocks_dict.keys())
         instance.sub_blocks = blocks_dict
