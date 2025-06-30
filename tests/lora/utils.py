@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import inspect
 import os
 import re
@@ -2340,12 +2341,14 @@ class PeftLoraLoaderMixinTests:
         )
         _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
+    @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules(self):
         """
         Test to check if `exclude_modules` works or not. It works in the following way:
         we first create a pipeline and insert LoRA config into it. We then derive a `set`
         of modules to exclude by investigating its denoiser state dict and denoiser LoRA
         state dict.
+
         We then create a new LoRA config to include the `exclude_modules` and perform tests.
         """
         scheduler_cls = self.scheduler_classes[0]
@@ -2356,6 +2359,16 @@ class PeftLoraLoaderMixinTests:
         output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
+        # only supported for `denoiser` now
+        pipe_cp = copy.deepcopy(pipe)
+        pipe_cp, _ = self.add_adapters_to_pipeline(
+            pipe_cp, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        denoiser_exclude_modules = self._get_exclude_modules(pipe_cp)
+        pipe_cp.to("cpu")
+        del pipe_cp
+
+        denoiser_lora_config.exclude_modules = denoiser_exclude_modules
         pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
         )
