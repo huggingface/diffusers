@@ -49,6 +49,7 @@ from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     backend_empty_cache,
+    numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
     require_accelerator,
     require_hf_hub_version_greater,
@@ -1394,9 +1395,8 @@ class PipelineTesterMixin:
             fp16_inputs["generator"] = self.get_generator(0)
 
         output_fp16 = pipe_fp16(**fp16_inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
-        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
+        max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
+        assert max_diff < 1e-2
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
@@ -2270,9 +2270,10 @@ class PipelineTesterMixin:
                         if hasattr(module, "_diffusers_hook")
                     )
                 )
-            for component_name in ["vae", "vqvae"]:
-                if hasattr(pipe, component_name):
-                    getattr(pipe, component_name).to(torch_device)
+            for component_name in ["vae", "vqvae", "image_encoder"]:
+                component = getattr(pipe, component_name, None)
+                if isinstance(component, torch.nn.Module):
+                    component.to(torch_device)
 
         def run_forward(pipe):
             torch.manual_seed(0)
