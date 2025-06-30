@@ -110,8 +110,11 @@ class CosmosPatchEmbed3d(nn.Module):
         self.patch_size = patch_size
         self.patch_method = patch_method
 
-        self.register_buffer("wavelets", _WAVELETS[patch_method], persistent=False)
-        self.register_buffer("_arange", torch.arange(_WAVELETS[patch_method].shape[0]), persistent=False)
+        wavelets = _WAVELETS.get(patch_method).clone()
+        arange = torch.arange(wavelets.shape[0])
+
+        self.register_buffer("wavelets", wavelets, persistent=False)
+        self.register_buffer("_arange", arange, persistent=False)
 
     def _dwt(self, hidden_states: torch.Tensor, mode: str = "reflect", rescale=False) -> torch.Tensor:
         dtype = hidden_states.dtype
@@ -185,12 +188,11 @@ class CosmosUnpatcher3d(nn.Module):
         self.patch_size = patch_size
         self.patch_method = patch_method
 
-        self.register_buffer("wavelets", _WAVELETS[patch_method], persistent=False)
-        self.register_buffer(
-            "_arange",
-            torch.arange(_WAVELETS[patch_method].shape[0]),
-            persistent=False,
-        )
+        wavelets = _WAVELETS.get(patch_method).clone()
+        arange = torch.arange(wavelets.shape[0])
+
+        self.register_buffer("wavelets", wavelets, persistent=False)
+        self.register_buffer("_arange", arange, persistent=False)
 
     def _idwt(self, hidden_states: torch.Tensor, rescale: bool = False) -> torch.Tensor:
         device = hidden_states.device
