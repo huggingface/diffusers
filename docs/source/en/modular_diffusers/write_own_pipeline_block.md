@@ -79,7 +79,7 @@ user_intermediate_inputs = [
 ]
 ```
 
-When you list something as an intermediate input, you're saying "I need this value, but I want to work with a different block that has already created it. I already know for sure that I can get it from this other block, but it's okay if other developers can use something different."
+When you list something as an intermediate input, you're saying "I need this value, but I want to work with a different block that has already created it. I already know for sure that I can get it from this other block, but it's okay if other developers want use something different."
 
 **Intermediate Outputs: New Values for Subsequent Blocks**
 
@@ -132,7 +132,7 @@ expected_config = [
 ]
 ```
 
-**Components**: You must provide a `name` and ideally a `type_hint`. The actual loading details (repo, subfolder, variant) are typically specified when creating the pipeline, as we covered in the [quicktour](quicktour.md#loading-components-into-a-modularpipeline).
+**Components**: You must provide a `name` and ideally a `type_hint`. The actual loading details (`repo`, `subfolder`, `variant` and `revision` fields) are typically specified when creating the pipeline, as we covered in the [quicktour](quicktour.md#loading-components-into-a-modularpipeline).
 
 **Configs**: Simple pipeline-level settings that control behavior across all blocks.
 
@@ -140,7 +140,7 @@ When you convert your blocks into a pipeline using `blocks.init_pipeline()`, the
 
 That's all you need to define in order to create a `PipelineBlock`. There is no hidden complexity. In fact we are going to create a helper function that take exactly these variables as input and return a pipeline block. We will use this helper function through out the tutorial to create test blocks
 
-Note that for `__call__` method, the only part you should implement differently is the part between `get_block_state` and `add_block_state`, which can be abstracted into a simple function that takes `block_state` and returns the updated state. This is why our helper function accepts a `block_fn` parameter that does exactly that.
+Note that for `__call__` method, the only part you should implement differently is the part between `self.get_block_state()` and `self.add_block_state()`, which can be abstracted into a simple function that takes `block_state` and returns the updated state. Our helper function accepts a `block_fn` that does exactly that.
 
 **Helper Function**
 
@@ -179,7 +179,7 @@ def make_block(inputs=[], intermediate_inputs=[], intermediate_outputs=[], block
 ```
 
 
-Let's create a simple block to see how these definitions interact with the pipeline state:
+Let's create a simple block to see how these definitions interact with the pipeline state. To better understand what's happening, we'll print out the states before and after updates to inspect them:
 
 ```py
 user_inputs = [
@@ -279,12 +279,12 @@ pipeline_state (after update): PipelineState(
 
 **Key Observations:**
 
-1. **Before the update**: `image` goes to the immutable inputs dict, while `batch_size` goes to the mutable intermediates dict, and both are available in `block_state`.
+1. **Before the update**: `image` (the input) goes to the immutable inputs dict, while `batch_size` (the intermediate_input) goes to the mutable intermediates dict, and both are available in `block_state`.
 
 2. **After the update**:
-   - **`image` modification**: Changed in `block_state` but not in `pipeline_state` - this change is local to the block only
-   - **`batch_size` modification**: Updated in both `block_state` and `pipeline_state` - this change affects subsequent blocks (we didn't need to declare it as an intermediate output since it was already in the intermediates dict)
-   - **`image_latents` creation**: Added to `pipeline_state` because it was declared as an intermediate output
-   - **`processed_image` creation**: Not added to `pipeline_state` because it wasn't declared as an intermediate output
+   - **`image` (inputs)** changed in `block_state` but not in `pipeline_state` - this change is local to the block only. 
+   - **`batch_size (intermediate_inputs)`** was updated in both `block_state` and `pipeline_state` - this change affects subsequent blocks (we didn't need to declare it as an intermediate output since it was already in the intermediates dict)
+   - **`image_latents (intermediate_outputs)`** was added to `pipeline_state` because it was declared as an intermediate output
+   - **`processed_image`** was not added to `pipeline_state` because it wasn't declared as an intermediate output
 
 I hope by now you have a basic idea about how `PipelineBlock` manages state through inputs, intermediate inputs, and intermediate outputs. The real power comes when we connect multiple blocks together - their intermediate outputs become intermediate inputs for subsequent blocks, creating modular workflows. Let's explore how to build these connections using multi-blocks like `SequentialPipelineBlocks`.
