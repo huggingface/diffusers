@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import inspect
 import os
 import re
@@ -290,6 +291,20 @@ class PeftLoraLoaderMixinTests:
                 modules_to_save["transformer"] = pipe.transformer
 
         return modules_to_save
+
+    def _get_exclude_modules(self, pipe):
+        from diffusers.utils.peft_utils import _derive_exclude_modules
+
+        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+        denoiser = "unet" if self.unet_kwargs is not None else "transformer"
+        modules_to_save = {k: v for k, v in modules_to_save.items() if k == denoiser}
+        denoiser_lora_state_dict = self._get_lora_state_dicts(modules_to_save)[f"{denoiser}_lora_layers"]
+        pipe.unload_lora_weights()
+        denoiser_state_dict = pipe.unet.state_dict() if self.unet_kwargs is not None else pipe.transformer.state_dict()
+        exclude_modules = _derive_exclude_modules(
+            denoiser_state_dict, denoiser_lora_state_dict, adapter_name="default"
+        )
+        return exclude_modules
 
     def add_adapters_to_pipeline(self, pipe, text_lora_config=None, denoiser_lora_config=None, adapter_name="default"):
         if text_lora_config is not None:
@@ -2325,6 +2340,58 @@ class PeftLoraLoaderMixinTests:
             pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
         )
         _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+    @require_peft_version_greater("0.13.2")
+    def test_lora_exclude_modules(self):
+        """
+        Test to check if `exclude_modules` works or not. It works in the following way:
+        we first create a pipeline and insert LoRA config into it. We then derive a `set`
+        of modules to exclude by investigating its denoiser state dict and denoiser LoRA
+        state dict.
+
+        We then create a new LoRA config to include the `exclude_modules` and perform tests.
+        """
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components).to(torch_device)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(output_no_lora.shape == self.output_shape)
+
+        # only supported for `denoiser` now
+        pipe_cp = copy.deepcopy(pipe)
+        pipe_cp, _ = self.add_adapters_to_pipeline(
+            pipe_cp, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        denoiser_exclude_modules = self._get_exclude_modules(pipe_cp)
+        pipe_cp.to("cpu")
+        del pipe_cp
+
+        denoiser_lora_config.exclude_modules = denoiser_exclude_modules
+        pipe, _ = self.add_adapters_to_pipeline(
+            pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        output_lora_exclude_modules = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            lora_metadatas = self._get_lora_adapter_metadata(modules_to_save)
+            self.pipeline_class.save_lora_weights(save_directory=tmpdir, **lora_state_dicts, **lora_metadatas)
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(tmpdir)
+
+            output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            self.assertTrue(
+                not np.allclose(output_no_lora, output_lora_exclude_modules, atol=1e-3, rtol=1e-3),
+                "LoRA should change outputs.",
+            )
+            self.assertTrue(
+                np.allclose(output_lora_exclude_modules, output_lora_pretrained, atol=1e-3, rtol=1e-3),
+                "Lora outputs should match.",
+            )
 
     def test_inference_load_delete_load_adapters(self):
         "Tests if `load_lora_weights()` -> `delete_adapters()` -> `load_lora_weights()` works."
