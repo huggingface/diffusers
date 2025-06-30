@@ -38,6 +38,7 @@ else:
         "ConfigSpec",
         "InputParam",
         "OutputParam",
+        "InsertableDict",
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularLoader"]
     _import_structure["components_manager"] = ["ComponentsManager"]
@@ -65,6 +66,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ComponentSpec,
             ConfigSpec,
             InputParam,
+            InsertableDict,
             OutputParam,
         )
         from .stable_diffusion_xl import (
