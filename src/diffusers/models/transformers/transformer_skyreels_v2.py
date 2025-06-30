@@ -30,7 +30,6 @@ from ..embeddings import (
     SkyReelsV2Timesteps,
     TimestepEmbedding,
     get_1d_rotary_pos_embed,
-    get_1d_sincos_pos_embed_from_grid,
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
