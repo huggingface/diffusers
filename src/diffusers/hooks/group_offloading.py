@@ -14,6 +14,8 @@
 
 import os
 from contextlib import contextmanager, nullcontext
+from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 import safetensors.torch
@@ -44,6 +46,24 @@ _SUPPORTED_PYTORCH_LAYERS = (
     # because of double invocation of the same norm layer in CogVideoXLayerNorm
 )
 # fmt: on
+
+
+class GroupOffloadingType(str, Enum):
+    BLOCK_LEVEL = "block_level"
+    LEAF_LEVEL = "leaf_level"
+
+
+@dataclass
+class GroupOffloadingConfig:
+    onload_device: torch.device
+    offload_device: torch.device
+    offload_type: GroupOffloadingType
+    non_blocking: bool
+    record_stream: bool
+    low_cpu_mem_usage: bool
+    num_blocks_per_group: Optional[int] = None
+    offload_to_disk_path: Optional[str] = None
+    stream: Optional[Union[torch.cuda.Stream, torch.Stream]] = None
 
 
 class ModuleGroup:
@@ -288,9 +308,12 @@ class GroupOffloadingHook(ModelHook):
 
     _is_stateful = False
 
-    def __init__(self, group: ModuleGroup, next_group: Optional[ModuleGroup] = None) -> None:
+    def __init__(
+        self, group: ModuleGroup, next_group: Optional[ModuleGroup] = None, *, config: GroupOffloadingConfig
+    ) -> None:
         self.group = group
         self.next_group = next_group
+        self.config = config
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         if self.group.offload_leader == module:
@@ -436,7 +459,7 @@ def apply_group_offloading(
     module: torch.nn.Module,
     onload_device: torch.device,
     offload_device: torch.device = torch.device("cpu"),
-    offload_type: str = "block_level",
+    offload_type: Union[str, GroupOffloadingType] = "block_level",
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,
@@ -478,7 +501,7 @@ def apply_group_offloading(
             The device to which the group of modules are onloaded.
         offload_device (`torch.device`, defaults to `torch.device("cpu")`):
             The device to which the group of modules are offloaded. This should typically be the CPU. Default is CPU.
-        offload_type (`str`, defaults to "block_level"):
+        offload_type (`str` or `GroupOffloadingType`, defaults to "block_level"):
             The type of offloading to be applied. Can be one of "block_level" or "leaf_level". Default is
             "block_level".
         offload_to_disk_path (`str`, *optional*, defaults to `None`):
@@ -521,6 +544,8 @@ def apply_group_offloading(
         ```
     """
 
+    offload_type = GroupOffloadingType(offload_type)
+
     stream = None
     if use_stream:
         if torch.cuda.is_available():
@@ -532,84 +557,45 @@ def apply_group_offloading(
 
     if not use_stream and record_stream:
         raise ValueError("`record_stream` cannot be True when `use_stream=False`.")
+    if offload_type == GroupOffloadingType.BLOCK_LEVEL and num_blocks_per_group is None:
+        raise ValueError("`num_blocks_per_group` must be provided when using `offload_type='block_level'.")
 
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
 
-    if offload_type == "block_level":
-        if num_blocks_per_group is None:
-            raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
+    config = GroupOffloadingConfig(
+        onload_device=onload_device,
+        offload_device=offload_device,
+        offload_type=offload_type,
+        num_blocks_per_group=num_blocks_per_group,
+        non_blocking=non_blocking,
+        stream=stream,
+        record_stream=record_stream,
+        low_cpu_mem_usage=low_cpu_mem_usage,
+        offload_to_disk_path=offload_to_disk_path,
+    )
+    _apply_group_offloading(module, config)
 
-        _apply_group_offloading_block_level(
-            module=module,
-            num_blocks_per_group=num_blocks_per_group,
-            offload_device=offload_device,
-            onload_device=onload_device,
-            offload_to_disk_path=offload_to_disk_path,
-            non_blocking=non_blocking,
-            stream=stream,
-            record_stream=record_stream,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-        )
-    elif offload_type == "leaf_level":
-        _apply_group_offloading_leaf_level(
-            module=module,
-            offload_device=offload_device,
-            onload_device=onload_device,
-            offload_to_disk_path=offload_to_disk_path,
-            non_blocking=non_blocking,
-            stream=stream,
-            record_stream=record_stream,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-        )
+
+def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
+    if config.offload_type == GroupOffloadingType.BLOCK_LEVEL:
+        _apply_group_offloading_block_level(module, config)
+    elif config.offload_type == GroupOffloadingType.LEAF_LEVEL:
+        _apply_group_offloading_leaf_level(module, config)
     else:
-        raise ValueError(f"Unsupported offload_type: {offload_type}")
+        assert False
 
 
-def _apply_group_offloading_block_level(
-    module: torch.nn.Module,
-    num_blocks_per_group: int,
-    offload_device: torch.device,
-    onload_device: torch.device,
-    non_blocking: bool,
-    stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
-    record_stream: Optional[bool] = False,
-    low_cpu_mem_usage: bool = False,
-    offload_to_disk_path: Optional[str] = None,
-) -> None:
+def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
     the "leaf_level" offloading, which is more fine-grained, this offloading is done at the top-level blocks.
-
-    Args:
-        module (`torch.nn.Module`):
-            The module to which group offloading is applied.
-        offload_device (`torch.device`):
-            The device to which the group of modules are offloaded. This should typically be the CPU.
-        offload_to_disk_path (`str`, *optional*, defaults to `None`):
-            The path to the directory where parameters will be offloaded. Setting this option can be useful in limited
-            RAM environment settings where a reasonable speed-memory trade-off is desired.
-        onload_device (`torch.device`):
-            The device to which the group of modules are onloaded.
-        non_blocking (`bool`):
-            If True, offloading and onloading is done asynchronously. This can be useful for overlapping computation
-            and data transfer.
-        stream (`torch.cuda.Stream`or `torch.Stream`, *optional*):
-            If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
-            for overlapping computation and data transfer.
-        record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
-            as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to the
-            [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) more
-            details.
-        low_cpu_mem_usage (`bool`, defaults to `False`):
-            If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
-            option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
-            the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
-    if stream is not None and num_blocks_per_group != 1:
+
+    if config.stream is not None and config.num_blocks_per_group != 1:
         logger.warning(
-            f"Using streams is only supported for num_blocks_per_group=1. Got {num_blocks_per_group=}. Setting it to 1."
+            f"Using streams is only supported for num_blocks_per_group=1. Got {config.num_blocks_per_group=}. Setting it to 1."
         )
-        num_blocks_per_group = 1
+        config.num_blocks_per_group = 1
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -621,19 +607,19 @@ def _apply_group_offloading_block_level(
             modules_with_group_offloading.add(name)
             continue
 
-        for i in range(0, len(submodule), num_blocks_per_group):
-            current_modules = submodule[i : i + num_blocks_per_group]
+        for i in range(0, len(submodule), config.num_blocks_per_group):
+            current_modules = submodule[i : i + config.num_blocks_per_group]
             group = ModuleGroup(
                 modules=current_modules,
-                offload_device=offload_device,
-                onload_device=onload_device,
-                offload_to_disk_path=offload_to_disk_path,
+                offload_device=config.offload_device,
+                onload_device=config.onload_device,
+                offload_to_disk_path=config.offload_to_disk_path,
                 offload_leader=current_modules[-1],
                 onload_leader=current_modules[0],
-                non_blocking=non_blocking,
-                stream=stream,
-                record_stream=record_stream,
-                low_cpu_mem_usage=low_cpu_mem_usage,
+                non_blocking=config.non_blocking,
+                stream=config.stream,
+                record_stream=config.record_stream,
+                low_cpu_mem_usage=config.low_cpu_mem_usage,
                 onload_self=True,
             )
             matched_module_groups.append(group)
@@ -643,7 +629,7 @@ def _apply_group_offloading_block_level(
     # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):
         for group_module in group.modules:
-            _apply_group_offloading_hook(group_module, group, None)
+            _apply_group_offloading_hook(group_module, group, None, config=config)
 
     # Parameters and Buffers of the top-level module need to be offloaded/onloaded separately
     # when the forward pass of this module is called. This is because the top-level module is not
@@ -658,9 +644,9 @@ def _apply_group_offloading_block_level(
     unmatched_modules = [unmatched_module for _, unmatched_module in unmatched_modules]
     unmatched_group = ModuleGroup(
         modules=unmatched_modules,
-        offload_device=offload_device,
-        onload_device=onload_device,
-        offload_to_disk_path=offload_to_disk_path,
+        offload_device=config.offload_device,
+        onload_device=config.onload_device,
+        offload_to_disk_path=config.offload_to_disk_path,
         offload_leader=module,
         onload_leader=module,
         parameters=parameters,
@@ -670,54 +656,19 @@ def _apply_group_offloading_block_level(
         record_stream=False,
         onload_self=True,
     )
-    if stream is None:
-        _apply_group_offloading_hook(module, unmatched_group, None)
+    if config.stream is None:
+        _apply_group_offloading_hook(module, unmatched_group, None, config=config)
     else:
-        _apply_lazy_group_offloading_hook(module, unmatched_group, None)
+        _apply_lazy_group_offloading_hook(module, unmatched_group, None, config=config)
 
 
-def _apply_group_offloading_leaf_level(
-    module: torch.nn.Module,
-    offload_device: torch.device,
-    onload_device: torch.device,
-    non_blocking: bool,
-    stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
-    record_stream: Optional[bool] = False,
-    low_cpu_mem_usage: bool = False,
-    offload_to_disk_path: Optional[str] = None,
-) -> None:
+def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
     requirements. However, it can be slower compared to other offloading methods due to the excessive number of device
     synchronizations. When using devices that support streams to overlap data transfer and computation, this method can
     reduce memory usage without any performance degradation.
-
-    Args:
-        module (`torch.nn.Module`):
-            The module to which group offloading is applied.
-        offload_device (`torch.device`):
-            The device to which the group of modules are offloaded. This should typically be the CPU.
-        onload_device (`torch.device`):
-            The device to which the group of modules are onloaded.
-        offload_to_disk_path (`str`, *optional*, defaults to `None`):
-            The path to the directory where parameters will be offloaded. Setting this option can be useful in limited
-            RAM environment settings where a reasonable speed-memory trade-off is desired.
-        non_blocking (`bool`):
-            If True, offloading and onloading is done asynchronously. This can be useful for overlapping computation
-            and data transfer.
-        stream (`torch.cuda.Stream` or `torch.Stream`, *optional*):
-            If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
-            for overlapping computation and data transfer.
-        record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
-            as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to the
-            [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) more
-            details.
-        low_cpu_mem_usage (`bool`, defaults to `False`):
-            If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
-            option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
-            the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
-
     # Create module groups for leaf modules and apply group offloading hooks
     modules_with_group_offloading = set()
     for name, submodule in module.named_modules():
@@ -725,18 +676,18 @@ def _apply_group_offloading_leaf_level(
             continue
         group = ModuleGroup(
             modules=[submodule],
-            offload_device=offload_device,
-            onload_device=onload_device,
-            offload_to_disk_path=offload_to_disk_path,
+            offload_device=config.offload_device,
+            onload_device=config.onload_device,
+            offload_to_disk_path=config.offload_to_disk_path,
             offload_leader=submodule,
             onload_leader=submodule,
-            non_blocking=non_blocking,
-            stream=stream,
-            record_stream=record_stream,
-            low_cpu_mem_usage=low_cpu_mem_usage,
+            non_blocking=config.non_blocking,
+            stream=config.stream,
+            record_stream=config.record_stream,
+            low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
         )
-        _apply_group_offloading_hook(submodule, group, None)
+        _apply_group_offloading_hook(submodule, group, None, config=config)
         modules_with_group_offloading.add(name)
 
     # Parameters and Buffers at all non-leaf levels need to be offloaded/onloaded separately when the forward pass
@@ -767,33 +718,32 @@ def _apply_group_offloading_leaf_level(
         parameters = parent_to_parameters.get(name, [])
         buffers = parent_to_buffers.get(name, [])
         parent_module = module_dict[name]
-        assert getattr(parent_module, "_diffusers_hook", None) is None
         group = ModuleGroup(
             modules=[],
-            offload_device=offload_device,
-            onload_device=onload_device,
+            offload_device=config.offload_device,
+            onload_device=config.onload_device,
             offload_leader=parent_module,
             onload_leader=parent_module,
-            offload_to_disk_path=offload_to_disk_path,
+            offload_to_disk_path=config.offload_to_disk_path,
             parameters=parameters,
             buffers=buffers,
-            non_blocking=non_blocking,
-            stream=stream,
-            record_stream=record_stream,
-            low_cpu_mem_usage=low_cpu_mem_usage,
+            non_blocking=config.non_blocking,
+            stream=config.stream,
+            record_stream=config.record_stream,
+            low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
         )
-        _apply_group_offloading_hook(parent_module, group, None)
+        _apply_group_offloading_hook(parent_module, group, None, config=config)
 
-    if stream is not None:
+    if config.stream is not None:
         # When using streams, we need to know the layer execution order for applying prefetching (to overlap data transfer
         # and computation). Since we don't know the order beforehand, we apply a lazy prefetching hook that will find the
         # execution order and apply prefetching in the correct order.
         unmatched_group = ModuleGroup(
             modules=[],
-            offload_device=offload_device,
-            onload_device=onload_device,
-            offload_to_disk_path=offload_to_disk_path,
+            offload_device=config.offload_device,
+            onload_device=config.onload_device,
+            offload_to_disk_path=config.offload_to_disk_path,
             offload_leader=module,
             onload_leader=module,
             parameters=None,
@@ -801,23 +751,25 @@ def _apply_group_offloading_leaf_level(
             non_blocking=False,
             stream=None,
             record_stream=False,
-            low_cpu_mem_usage=low_cpu_mem_usage,
+            low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
         )
-        _apply_lazy_group_offloading_hook(module, unmatched_group, None)
+        _apply_lazy_group_offloading_hook(module, unmatched_group, None, config=config)
 
 
 def _apply_group_offloading_hook(
     module: torch.nn.Module,
     group: ModuleGroup,
     next_group: Optional[ModuleGroup] = None,
+    *,
+    config: GroupOffloadingConfig,
 ) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(module)
 
     # We may have already registered a group offloading hook if the module had a torch.nn.Parameter whose parent
     # is the current module. In such cases, we don't want to overwrite the existing group offloading hook.
     if registry.get_hook(_GROUP_OFFLOADING) is None:
-        hook = GroupOffloadingHook(group, next_group)
+        hook = GroupOffloadingHook(group, next_group, config=config)
         registry.register_hook(hook, _GROUP_OFFLOADING)
 
 
@@ -825,13 +777,15 @@ def _apply_lazy_group_offloading_hook(
     module: torch.nn.Module,
     group: ModuleGroup,
     next_group: Optional[ModuleGroup] = None,
+    *,
+    config: GroupOffloadingConfig,
 ) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(module)
 
     # We may have already registered a group offloading hook if the module had a torch.nn.Parameter whose parent
     # is the current module. In such cases, we don't want to overwrite the existing group offloading hook.
     if registry.get_hook(_GROUP_OFFLOADING) is None:
-        hook = GroupOffloadingHook(group, next_group)
+        hook = GroupOffloadingHook(group, next_group, config=config)
         registry.register_hook(hook, _GROUP_OFFLOADING)
 
     lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook()
@@ -898,15 +852,48 @@ def _raise_error_if_accelerate_model_or_sequential_hook_present(module: torch.nn
             )
 
 
-def _is_group_offload_enabled(module: torch.nn.Module) -> bool:
+def _get_top_level_group_offload_hook(module: torch.nn.Module) -> Optional[GroupOffloadingHook]:
     for submodule in module.modules():
-        if hasattr(submodule, "_diffusers_hook") and submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING) is not None:
-            return True
-    return False
+        if hasattr(submodule, "_diffusers_hook"):
+            group_offloading_hook = submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING)
+            if group_offloading_hook is not None:
+                return group_offloading_hook
+    return None
+
+
+def _is_group_offload_enabled(module: torch.nn.Module) -> bool:
+    top_level_group_offload_hook = _get_top_level_group_offload_hook(module)
+    return top_level_group_offload_hook is not None
 
 
 def _get_group_onload_device(module: torch.nn.Module) -> torch.device:
-    for submodule in module.modules():
-        if hasattr(submodule, "_diffusers_hook") and submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING) is not None:
-            return submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING).group.onload_device
+    top_level_group_offload_hook = _get_top_level_group_offload_hook(module)
+    if top_level_group_offload_hook is not None:
+        return top_level_group_offload_hook.config.onload_device
     raise ValueError("Group offloading is not enabled for the provided module.")
+
+
+def _maybe_remove_and_reapply_group_offloading(module: torch.nn.Module) -> None:
+    r"""
+    Removes the group offloading hook from the module and re-applies it. This is useful when the module has been
+    modified in-place and the group offloading hook references-to-tensors needs to be updated. The in-place
+    modification can happen in a number of ways, for example, fusing QKV or unloading/loading LoRAs on-the-fly.
+
+    In this implementation, we make an assumption that group offloading has only been applied at the top-level module,
+    and therefore all submodules have the same onload and offload devices. If this assumption is not true, say in the
+    case where user has applied group offloading at multiple levels, this function will not work as expected.
+
+    There is some performance penalty associated with doing this when non-default streams are used, because we need to
+    retrace the execution order of the layers with `LazyPrefetchGroupOffloadingHook`.
+    """
+    top_level_group_offload_hook = _get_top_level_group_offload_hook(module)
+
+    if top_level_group_offload_hook is None:
+        return
+
+    registry = HookRegistry.check_if_exists_or_initialize(module)
+    registry.remove_hook(_GROUP_OFFLOADING, recurse=True)
+    registry.remove_hook(_LAYER_EXECUTION_TRACKER, recurse=True)
+    registry.remove_hook(_LAZY_PREFETCH_GROUP_OFFLOADING, recurse=True)
+
+    _apply_group_offloading(module, top_level_group_offload_hook.config)
