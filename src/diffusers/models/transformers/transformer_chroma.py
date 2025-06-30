@@ -407,6 +407,7 @@ class ChromaTransformer2DModel(
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["ChromaTransformerBlock", "ChromaSingleTransformerBlock"]
+    _repeated_blocks = ["ChromaTransformerBlock", "ChromaSingleTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
 
     @register_to_config
