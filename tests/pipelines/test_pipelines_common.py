@@ -1387,14 +1387,14 @@ class PipelineTesterMixin:
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
 
-        output = pipe(**inputs)[0]
+        output = pipe(**inputs)[0].cpu()
 
         fp16_inputs = self.get_dummy_inputs(torch_device)
         # Reset generator in case it is used inside dummy inputs
         if "generator" in fp16_inputs:
             fp16_inputs["generator"] = self.get_generator(0)
 
-        output_fp16 = pipe_fp16(**fp16_inputs)[0]
+        output_fp16 = pipe_fp16(**fp16_inputs)[0].cpu()
         max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
         assert max_diff < 1e-2
 
