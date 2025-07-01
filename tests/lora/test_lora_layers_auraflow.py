@@ -120,17 +120,5 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pass
 
     @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
     def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
-    def test_simple_inference_with_text_lora_save_load(self):
         pass

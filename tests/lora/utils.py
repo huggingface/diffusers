@@ -343,28 +343,6 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs)[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-    def test_simple_inference_with_text_lora(self):
-        """
-        Tests a simple inference with lora attached on the text encoder
-        and makes sure it works as expected
-        """
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
-
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
-            )
-
     @require_peft_version_greater("0.13.1")
     def test_low_cpu_mem_usage_with_injection(self):
         """Tests if we can inject LoRA state dict with low_cpu_mem_usage."""
@@ -520,12 +498,18 @@ class PeftLoraLoaderMixinTests:
                 "Lora + 0 scale should lead to same result as no LoRA",
             )
 
-    def test_simple_inference_with_text_lora_fused(self):
+    @parameterized.expand([("fused",), ("unloaded",), ("save_load",)])
+    def test_lora_text_encoder_actions(self, action):
         """
-        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
-        and makes sure it works as expected
+        Tests various actions (fusing, unloading, saving/loading) on a pipeline
+        with LoRA applied to the text encoder(s).
         """
+        if not any("text_encoder" in k for k in self.pipeline_class._lora_loadable_modules):
+            pytest.skip(
+                "Test not supported for {self.__class__.__name__} since there is not text encoder in the LoRA loadable modules."
+            )
         for scheduler_cls in self.scheduler_classes:
+            # 1. Setup pipeline and get base output without LoRA
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -535,98 +519,69 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
+            # 2. Add LoRA adapters
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
+            output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            pipe.fuse_lora()
-            # Fusing should still keep the LoRA layers
-            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
-
-            if self.has_two_text_encoders or self.has_three_text_encoders:
-                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                    self.assertTrue(
-                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                    )
-
-            ouput_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertFalse(
-                np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
-            )
-
-    def test_simple_inference_with_text_lora_unloaded(self):
-        """
-        Tests a simple inference with lora attached to text encoder, then unloads the lora weights
-        and makes sure it works as expected
-        """
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
-
-            pipe.unload_lora_weights()
-            # unloading should remove the LoRA layers
-            self.assertFalse(
-                check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
-            )
-
-            if self.has_two_text_encoders or self.has_three_text_encoders:
-                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                    self.assertFalse(
-                        check_if_lora_correctly_set(pipe.text_encoder_2),
-                        "Lora not correctly unloaded in text encoder 2",
-                    )
-
-            ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
-                np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
-                "Fused lora should change the output",
+                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
 
-    def test_simple_inference_with_text_lora_save_load(self):
-        """
-        Tests a simple usecase where users could use saving utilities for LoRA.
-        """
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+            # 3. Perform the specified action and assert the outcome
+            if action == "fused":
+                pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
+                # Fusing should still keep the LoRA layers
+                if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                    self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder))
+                if self.has_two_text_encoders or self.has_three_text_encoders:
+                    if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder_2))
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
-
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                modules_to_save = self._get_modules_to_save(pipe)
-                lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
-
-                self.pipeline_class.save_lora_weights(
-                    save_directory=tmpdirname, safe_serialization=False, **lora_state_dicts
+                output_after_action = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertTrue(
+                    not np.allclose(output_after_action, output_no_lora, atol=1e-3, rtol=1e-3),
+                    "Fused LoRA should produce a different output from the base model.",
                 )
 
-                self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            elif action == "unloaded":
                 pipe.unload_lora_weights()
-                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+                # Unloading should remove the LoRA layers
+                if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                    self.assertFalse(check_if_lora_correctly_set(pipe.text_encoder))
+                if self.has_two_text_encoders or self.has_three_text_encoders:
+                    if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                        self.assertFalse(check_if_lora_correctly_set(pipe.text_encoder_2))
 
-            for module_name, module in modules_to_save.items():
-                self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
+                output_after_action = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertTrue(
+                    np.allclose(output_after_action, output_no_lora, atol=1e-3, rtol=1e-3),
+                    "Output after unloading LoRA should match the original output.",
+                )
 
-            images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            elif action == "save_load":
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    modules_to_save = self._get_modules_to_save(pipe)
+                    lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+                    self.pipeline_class.save_lora_weights(
+                        save_directory=tmpdirname, safe_serialization=False, **lora_state_dicts
+                    )
+                    self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
 
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
-            )
+                    # Unload and then load the weights back
+                    pipe.unload_lora_weights()
+                    pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+
+                    for module_name, module in modules_to_save.items():
+                        self.assertTrue(
+                            check_if_lora_correctly_set(module),
+                            f"LoRA not set correctly in {module_name} after loading.",
+                        )
+
+                    output_after_action = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                    self.assertTrue(
+                        np.allclose(output_lora, output_after_action, atol=1e-3, rtol=1e-3),
+                        "Loading from a saved checkpoint should yield the same result as the original LoRA.",
+                    )
 
     def test_simple_inference_with_partial_text_lora(self):
         """
@@ -688,49 +643,6 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(
                 not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3),
                 "Removing adapters should change the output",
-            )
-
-    def test_simple_inference_save_pretrained_with_text_lora(self):
-        """
-        Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
-        """
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                pipe.save_pretrained(tmpdirname)
-
-                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
-                pipe_from_pretrained.to(torch_device)
-
-            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe_from_pretrained.text_encoder),
-                    "Lora not correctly set in text encoder",
-                )
-
-            if self.has_two_text_encoders or self.has_three_text_encoders:
-                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                    self.assertTrue(
-                        check_if_lora_correctly_set(pipe_from_pretrained.text_encoder_2),
-                        "Lora not correctly set in text encoder 2",
-                    )
-
-            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
-
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
             )
 
     def test_simple_inference_with_text_denoiser_lora_save_load(self):
