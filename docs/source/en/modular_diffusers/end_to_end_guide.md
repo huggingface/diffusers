@@ -613,9 +613,13 @@ to use
 
 You can easily share your differential diffusion workflow on the hub, by creating a modular repo like this https://huggingface.co/YiYiXu/modular-diffdiff
 
-[YiYi TODO: add details tutorial on how to create the modular repo, building upon this https://github.com/huggingface/diffusers/pull/11462]
+To create a Modular Repo and share on hub, you just need to run. Note that if your pipeline contains custom block, you need to manually upload the code to the hub. But we are working on a command line tool to help you upload it very easily.
 
-With a modular repo, it is very easy for the community to use the workflow you just created!
+```py
+dd_pipeline.save_pretrained("YiYiXu/test_modular_doc", push_to_hub=True)
+```
+
+With a modular repo, it is very easy for the community to use the workflow you just created! Here is an example to use the differential-diffusion pipeline we just created and shared.
 
 ```py
 >>> from diffusers.modular_pipelines import ModularPipeline, ComponentsManager
