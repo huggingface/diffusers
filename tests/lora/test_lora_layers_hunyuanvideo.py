@@ -171,19 +171,7 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         super().test_lora_actions(action, components_to_add, expected_atol=9e-3)
 
     @unittest.skip("Not supported in HunyuanVideo.")
-    def test_simple_inference_with_text_denoiser_block_scale(self):
-        pass
-
-    @unittest.skip("Not supported in HunyuanVideo.")
-    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
-        pass
-
-    @unittest.skip("Not supported in HunyuanVideo.")
     def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in HunyuanVideo.")
-    def test_simple_inference_with_partial_text_lora(self):
         pass
 
 
