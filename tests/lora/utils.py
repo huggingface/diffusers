@@ -17,7 +17,6 @@ import inspect
 import os
 import re
 import tempfile
-import unittest
 from itertools import product
 
 import numpy as np
@@ -1012,28 +1011,6 @@ class PeftLoraLoaderMixinTests:
             pipe.load_lora_weights(state_dict)
 
         self.assertTrue(".diffusers_cat" in cap_logger.out)
-
-    @unittest.skip("This is failing for now - need to investigate")
-    def test_simple_inference_with_text_denoiser_lora_unfused_torch_compile(self):
-        """
-        Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
-        and makes sure it works as expected
-        """
-        for scheduler_cls in self.scheduler_classes:
-            pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
-                scheduler_cls
-            )
-
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
-
-            pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-            pipe.text_encoder = torch.compile(pipe.text_encoder, mode="reduce-overhead", fullgraph=True)
-
-            if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, mode="reduce-overhead", fullgraph=True)
-
-            # Just makes sure it works..
-            _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
     def test_modify_padding_mode(self):
         def set_pad_mode(network, mode="circular"):
