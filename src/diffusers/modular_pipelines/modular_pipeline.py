@@ -246,7 +246,7 @@ class BlockState:
         return f"BlockState(\n{attributes}\n)"
 
 
-class ModularPipelineBlocks(ConfigMixin):
+class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     """
     Base class for all Pipeline Blocks: PipelineBlock, AutoPipelineBlocks, SequentialPipelineBlocks,
     LoopSequentialPipelineBlocks
