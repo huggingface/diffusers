@@ -21,11 +21,11 @@ import numpy as np
 import pytest
 import safetensors.torch
 import torch
-from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanVACEPipeline, WanVACETransformer3DModel
+from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
     require_peft_backend,
@@ -34,6 +34,9 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
+
+if is_peft_available():
+    from peft.utils import get_peft_model_state_dict
 
 sys.path.append(".")
 
