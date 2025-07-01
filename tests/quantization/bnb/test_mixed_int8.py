@@ -838,11 +838,13 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
 
 @require_torch_version_greater_equal("2.6.0")
 class Bnb8BitCompileTests(QuantCompileTests):
-    quantization_config = PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_8bit",
-        quant_kwargs={"load_in_8bit": True},
-        components_to_quantize=["transformer", "text_encoder_2"],
-    )
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_8bit",
+            quant_kwargs={"load_in_8bit": True},
+            components_to_quantize=["transformer", "text_encoder_2"],
+        )
 
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -854,7 +856,7 @@ class Bnb8BitCompileTests(QuantCompileTests):
         )
 
     @pytest.mark.xfail(reason="Test fails because of an offloading problem from Accelerate with confusion in hooks.")
-    def test_torch_compile_with_group_offload(self):
-        super()._test_torch_compile_with_group_offload(
-            quantization_config=self.quantization_config, torch_dtype=torch.float16
+    def test_torch_compile_with_group_offload_leaf(self):
+        super()._test_torch_compile_with_group_offload_leaf(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16, use_stream=True
         )
