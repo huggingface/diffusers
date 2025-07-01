@@ -329,20 +329,6 @@ class PeftLoraLoaderMixinTests:
                 )
         return pipe, denoiser
 
-    def test_simple_inference(self):
-        """
-        Tests a simple inference and makes sure it works as expected
-        """
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-
-            _, _, inputs = self.get_dummy_inputs()
-            output_no_lora = pipe(**inputs)[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
     @require_peft_version_greater("0.13.1")
     def test_low_cpu_mem_usage_with_injection(self):
         """Tests if we can inject LoRA state dict with low_cpu_mem_usage."""

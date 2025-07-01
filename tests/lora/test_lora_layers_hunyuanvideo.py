@@ -156,11 +156,6 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
 
-    # TODO(aryan): Fix the following test
-    @unittest.skip("This test fails with an error I haven't been able to debug yet.")
-    def test_simple_inference_save_pretrained(self):
-        pass
-
     @unittest.skip("Not supported in HunyuanVideo.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass

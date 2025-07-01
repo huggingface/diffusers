@@ -13,10 +13,8 @@
 # limitations under the License.
 
 import sys
-import tempfile
 import unittest
 
-import numpy as np
 import torch
 from parameterized import parameterized
 from transformers import AutoTokenizer, GlmModel
@@ -27,7 +25,6 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     skip_mps,
-    torch_device,
 )
 
 
@@ -118,35 +115,6 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
-
-    def test_simple_inference_save_pretrained(self):
-        """
-        Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
-        """
-        for scheduler_cls in self.scheduler_classes:
-            components, _, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                pipe.save_pretrained(tmpdirname)
-
-                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
-                pipe_from_pretrained.to(torch_device)
-
-            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
-
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
-            )
 
     @parameterized.expand([("block_level", True), ("leaf_level", False)])
     @require_torch_accelerator
