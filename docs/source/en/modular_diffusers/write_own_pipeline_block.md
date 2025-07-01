@@ -132,7 +132,7 @@ expected_config = [
 ]
 ```
 
-**Components**: In the `ComponentSpec`, You must provide a `name` and ideally a `type_hint`. The actual loading details (`repo`, `subfolder`, `variant` and `revision` fields) are typically specified when creating the pipeline, as we covered in the [quicktour](quicktour.md#loading-components-into-a-modularpipeline).
+**Components**: In the `ComponentSpec`, You must provide a `name` and ideally a `type_hint`. The actual loading details (`repo`, `subfolder`, `variant` and `revision` fields) are typically specified when creating the pipeline, as we covered in the [Getting Started Guide](https://huggingface.co/docs/diffusers/en/modular_diffusers/getting_started#loading-components-into-a-modularpipeline).
 
 **Configs**: Simple pipeline-level settings that control behavior across all blocks.
 
@@ -292,7 +292,7 @@ I hope by now you have a basic idea about how `PipelineBlock` manages state thro
 
 ## Create a `SequentialPipelineBlocks`
 
-I assume that you're already familiar with `SequentialPipelineBlocks` and how to create them with the `from_blocks_dict` API. It's one of the most common ways to use Modular Diffusers, and we've covered it pretty well in the [Getting Started Guide](https://moon-ci-docs.huggingface.co/docs/diffusers/pr_9672/en/modular_diffusers/quicktour#modularpipelineblocks).
+I assume that you're already familiar with `SequentialPipelineBlocks` and how to create them with the `from_blocks_dict` API. It's one of the most common ways to use Modular Diffusers, and we've covered it pretty well in the [Getting Started Guide](https://huggingface.co/docs/diffusers/pr_9672/en/modular_diffusers/getting_started#modularpipelineblocks).
 
 But how do blocks actually connect and work together? Understanding this is crucial for building effective modular workflows. Let's explore this through an example.
 

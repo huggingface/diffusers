@@ -18,7 +18,7 @@ With Modular Diffusers, we introduce a unified pipeline system that simplifies h
 
 **Assemble Like LEGO®**: You can mix and match blocks in flexible ways. This allows you to write dedicated blocks for specific workflows, and then assemble different blocks into a pipeline that that can be used more conveniently for multiple workflows. 
 
-In this guide, we will focus on how to build pipelines this way using blocks we officially support at diffusers 🧨! We will show you how to write your own pipeline blocks and go into more details on how they work under the hood in this [guide](TODO). For advanced users who want to build complete workflows from scratch, we provide an end-to-end example in the [Developer Guide](developer_guide.md) that covers everything from writing custom pipeline blocks to deploying your workflow as a UI node.
+In this guide, we will focus on how to build pipelines this way using blocks we officially support at diffusers 🧨! We will show you how to write your own pipeline blocks and go into more details on how they work under the hood in this [guide](./write_own_pipeline_block.md). For advanced users who want to build complete workflows from scratch, we provide an end-to-end example in the [Developer Guide](./end_to_end.md) that covers everything from writing custom pipeline blocks to deploying your workflow as a UI node.
 
 Let's get started! The Modular Diffusers Framework consists of three main components:
 - ModularPipelineBlocks
@@ -29,10 +29,10 @@ Let's get started! The Modular Diffusers Framework consists of three main compon
 
 Pipeline blocks are the fundamental building blocks of the Modular Diffusers system. All pipeline blocks inherit from the base class `ModularPipelineBlocks`, including:
 
-- [`PipelineBlock`](TODO): The most granular block - you define the computation logic.
-- [`SequentialPipelineBlocks`](TODO): A multi-block composed of multiple blocks that run sequentially, passing outputs as inputs to the next block.
-- [`LoopSequentialPipelineBlocks`](TODO): A special type of multi-block that forms loops.
-- [`AutoPipelineBlocks`](TODO): A multi-block composed of multiple blocks that are selected at runtime based on the inputs.
+- [`PipelineBlock`]: The most granular block - you define the computation logic.
+- [`SequentialPipelineBlocks`]: A multi-block composed of multiple blocks that run sequentially, passing outputs as inputs to the next block.
+- [`LoopSequentialPipelineBlocks`]: A special type of multi-block that forms loops.
+- [`AutoPipelineBlocks`]: A multi-block composed of multiple blocks that are selected at runtime based on the inputs.
 
 All blocks have a consistent interface defining their requirements (components, configs, inputs, outputs) and computation logic. They can be used standalone or combined into larger blocks. Blocks are designed to be assembled into workflows for tasks such as image generation, video creation, and inpainting.
 
@@ -288,7 +288,7 @@ ALL_BLOCKS = {
 
 </Tip>
 
-We will not go over how to write your own ModularPipelineBlocks but you can learn more about it [here](TODO).
+We will not go over how to write your own ModularPipelineBlocks but you can learn more about it [here](./write_own_pipeline_block.md).
 
 This covers the essentials of pipeline blocks! You may have noticed that we haven't discussed how to load or run pipeline blocks - that's because **pipeline blocks are not runnable by themselves**. They are essentially **"definitions"** - they define the specifications and computational steps for a pipeline, but they do not contain any model states. To actually run them, you need to convert them into a `ModularPipeline` object.
 
@@ -848,7 +848,7 @@ StableDiffusionXLAutoControlnetStep(
 
 <Tip>
 
-💡 **Auto Blocks**: This is first time we meet a Auto Blocks! `AutoPipelineBlocks` automatically adapt to your inputs by combining multiple workflows with conditional logic. This is why one convenient block can work for all tasks and controlnet types. See the [Auto Blocks Guide](TODO) for more details.
+💡 **Auto Blocks**: This is first time we meet a Auto Blocks! `AutoPipelineBlocks` automatically adapt to your inputs by combining multiple workflows with conditional logic. This is why one convenient block can work for all tasks and controlnet types. See the [Auto Blocks Guide](https://huggingface.co/docs/diffusers/modular_diffusers/write_own_pipeline_block#autopipelineblocks) for more details.
 
 </Tip>
 
@@ -1028,8 +1028,6 @@ Since we have a modular setup where different pipelines may share components, we
 💡 **Load components without pipeline blocks**: 
 - `blocks.init_pipeline(repo)` creates a pipeline with a built-in loader that only includes components its blocks needs
 - `StableDiffusionXLModularLoader.from_pretrained(repo)` set up a standalone loader that includes everything in the repo's `modular_model_index.json`
-
-See the [Loader Guide](TODO) for more details.
 
 </Tip>
 
