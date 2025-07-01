@@ -125,7 +125,3 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Text encoder LoRA is not supported in Wan.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass

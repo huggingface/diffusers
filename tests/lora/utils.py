@@ -391,12 +391,7 @@ class PeftLoraLoaderMixinTests:
                         "Loading from a saved checkpoint should yield the same result as the original LoRA.",
                     )
 
-    @parameterized.expand(
-        [
-            ("text_encoder_only",),
-            ("text_and_denoiser",),
-        ]
-    )
+    @parameterized.expand([("text_encoder_only",), ("text_and_denoiser",)])
     def test_lora_scaling(self, lora_components_to_add):
         """
         Tests inference with LoRA scaling applied via attention_kwargs
