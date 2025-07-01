@@ -16,10 +16,10 @@ Batch inference processes multiple prompts at a time to increase throughput. It 
 
 The downside is increased latency because you must wait for the entire batch to complete, and more GPU memory is required for large batches.
 
-To generate a batch of images, pass a list of prompts or images to the pipeline.
-
 <hfoptions id="usage">
 <hfoption id="text-to-image">
+
+To generate a batch of images, pass a list of prompts to the pipeline.
 
 ```py
 import torch
@@ -40,13 +40,71 @@ images = pipeline(
     prompt=prompts,
 ).images
 
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+axes = axes.flatten()
+
 for i, image in enumerate(images):
-    image.save(f"batch_image_{i}.png")
-    print(f"Generated image {i+1} for prompt: {prompts[i]}")
+    axes[i].imshow(image)
+    axes[i].set_title(f"Image {i+1}")
+    axes[i].axis('off')
+
+plt.tight_layout()
+plt.show()
+```
+
+To generate multiple variations of one prompt, use the `num_images_per_prompt` argument.
+
+```py
+import torch
+import matplotlib.pyplot as plt
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16
+).to("cuda")
+
+images = pipeline(
+    prompt="pixel-art a cozy coffee shop interior, low-res, blocky, pixel art style, 8-bit graphics",
+    num_images_per_prompt=4
+).images
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+axes = axes.flatten()
+
+for i, image in enumerate(images):
+    axes[i].imshow(image)
+    axes[i].set_title(f"Image {i+1}")
+    axes[i].axis('off')
+
+plt.tight_layout()
+plt.show()
+```
+
+Combine both approaches to generate different variations of different prompts.
+
+```py
+images = pipeline(
+    prompt=prompts,
+    num_images_per_prompt=2,
+).images
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+axes = axes.flatten()
+
+for i, image in enumerate(images):
+    axes[i].imshow(image)
+    axes[i].set_title(f"Image {i+1}")
+    axes[i].axis('off')
+
+plt.tight_layout()
+plt.show()
 ```
 
 </hfoption>
 <hfoption id="image-to-image">
+
+To generate a batch of images, pass a list of images to the pipeline.
 
 ```py
 import torch
@@ -77,9 +135,80 @@ images = pipeline(
     strength=0.5
 ).images
 
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+axes = axes.flatten()
+
 for i, image in enumerate(images):
-    image.save(f"batch_image_{i}.png")
-    print(f"Generated image {i+1} for prompt: {prompts[i]}")
+    axes[i].imshow(image)
+    axes[i].set_title(f"Image {i+1}")
+    axes[i].axis('off')
+
+plt.tight_layout()
+plt.show()
+```
+
+To generate multiple variations of one prompt, use the `num_images_per_prompt` argument.
+
+```py
+import torch
+import matplotlib.pyplot as plt
+from diffusers.utils import load_image
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16
+).to("cuda")
+
+input_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/detail-prompt.png")
+
+images = pipeline(
+    prompt="pixel-art a cozy coffee shop interior, low-res, blocky, pixel art style, 8-bit graphics",
+    image=input_image,
+    num_images_per_prompt=4
+).images
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+axes = axes.flatten()
+
+for i, image in enumerate(images):
+    axes[i].imshow(image)
+    axes[i].set_title(f"Image {i+1}")
+    axes[i].axis('off')
+
+plt.tight_layout()
+plt.show()
+```
+
+Combine both approaches to generate different variations of different prompts.
+
+```py
+input_images = [
+    load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"),
+    load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/detail-prompt.png")
+]
+
+prompts = [
+    "cinematic film still of a cat basking in the sun on a roof in Turkey, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain",
+    "pixel-art a cozy coffee shop interior, low-res, blocky, pixel art style, 8-bit graphics"
+]
+
+images = pipeline(
+    prompt=prompts,
+    image=input_images,
+    num_images_per_prompt=2,
+).images
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+axes = axes.flatten()
+
+for i, image in enumerate(images):
+    axes[i].imshow(image)
+    axes[i].set_title(f"Image {i+1}")
+    axes[i].axis('off')
+
+plt.tight_layout()
+plt.show()
 ```
 
 </hfoption>
@@ -120,9 +249,16 @@ images = pipeline(
     generator=generator
 ).images
 
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+axes = axes.flatten()
+
 for i, image in enumerate(images):
-    image.save(f"batch_image_{i}.png")
-    print(f"Generated image {i+1} for prompt: {prompts[i]}")
+    axes[i].imshow(image)
+    axes[i].set_title(f"Image {i+1}")
+    axes[i].axis('off')
+
+plt.tight_layout()
+plt.show()
 ```
 
 You can use this to iteratively select an image associated with a seed and then improve on it by crafting a more detailed prompt.
