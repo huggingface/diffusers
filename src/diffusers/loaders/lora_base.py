@@ -949,6 +949,10 @@ class LoraBaseMixin:
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
                         for adapter_name in adapter_names:
+                            if adapter_name not in module.lora_A:
+                                # it is sufficient to check lora_A
+                                continue
+
                             module.lora_A[adapter_name].to(device)
                             module.lora_B[adapter_name].to(device)
                             # this is a param, not a module, so device placement is not in-place -> re-assign
