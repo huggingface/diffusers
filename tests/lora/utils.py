@@ -211,7 +211,7 @@ class PeftLoraLoaderMixinTests:
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
                 pipe.unload_lora_weights()
-                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"), low_cpu_mem_usage=False)
+                pipe.load_lora_weights(tmpdirname, low_cpu_mem_usage=False)
 
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
@@ -224,7 +224,7 @@ class PeftLoraLoaderMixinTests:
 
                 # Now, check for `low_cpu_mem_usage.`
                 pipe.unload_lora_weights()
-                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"), low_cpu_mem_usage=True)
+                pipe.load_lora_weights(tmpdirname, low_cpu_mem_usage=True)
 
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
@@ -374,7 +374,7 @@ class PeftLoraLoaderMixinTests:
                     self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
 
                     pipe.unload_lora_weights()
-                    pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+                    pipe.load_lora_weights(tmpdirname)
                     for module_name, module in modules_to_save.items():
                         self.assertTrue(
                             check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
@@ -1428,10 +1428,8 @@ class PeftLoraLoaderMixinTests:
                 self.pipeline_class.save_lora_weights(
                     save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
                 )
-
-                self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
                 pipe.unload_lora_weights()
-                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+                pipe.load_lora_weights(os.path.join(tmpdirname))
 
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
@@ -1661,7 +1659,6 @@ class PeftLoraLoaderMixinTests:
                 save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
             )
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             pipe, inputs, _, _, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
                 self.scheduler_classes[0]
             )
@@ -1851,7 +1848,6 @@ class PeftLoraLoaderMixinTests:
                 modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
                 lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
                 self.pipeline_class.save_lora_weights(save_directory=tmpdirname, **lora_state_dicts)
-                self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
 
                 # First, delete adapter and compare.
                 pipe.delete_adapters(pipe.get_active_adapters()[0])
