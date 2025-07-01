@@ -244,15 +244,23 @@ class PeftLoraLoaderMixinTests:
                     "Loading from saved checkpoints with `low_cpu_mem_usage` should give same results.",
                 )
 
-    def test_simple_inference_with_text_lora_and_scale(self):
+    def test_simple_inference_with_partial_text_lora(self):
         """
-        Tests a simple inference with lora attached on the text encoder + scale argument
+        Tests a simple inference with lora attached on the text encoder
+        with different ranks and some adapters removed
         and makes sure it works as expected
         """
-        attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
-
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
+            components, _, _ = self.get_dummy_components(scheduler_cls)
+            # Verify `StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
+            text_lora_config = LoraConfig(
+                r=4,
+                rank_pattern={self.text_encoder_target_modules[i]: i + 1 for i in range(3)},
+                lora_alpha=4,
+                target_modules=self.text_encoder_target_modules,
+                init_lora_weights=False,
+                use_dora=False,
+            )
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -263,25 +271,39 @@ class PeftLoraLoaderMixinTests:
 
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
+            state_dict = {}
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                # Gather the state dict for the PEFT model, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
+                # supports missing layers (PR#8324).
+                state_dict = {
+                    f"text_encoder.{module_name}": param
+                    for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
+                    if "text_model.encoder.layers.4" not in module_name
+                }
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    state_dict.update(
+                        {
+                            f"text_encoder_2.{module_name}": param
+                            for module_name, param in get_peft_model_state_dict(pipe.text_encoder_2).items()
+                            if "text_model.encoder.layers.4" not in module_name
+                        }
+                    )
+
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
 
-            attention_kwargs = {attention_kwargs_name: {"scale": 0.5}}
-            output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+            # Unload lora and load it back using the pipe.load_lora_weights machinery
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(state_dict)
 
+            output_partial_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
-                not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
-                "Lora + scale should change the output",
-            )
-
-            attention_kwargs = {attention_kwargs_name: {"scale": 0.0}}
-            output_lora_0_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-
-            self.assertTrue(
-                np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
-                "Lora + 0 scale should lead to same result as no LoRA",
+                not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3),
+                "Removing adapters should change the output",
             )
 
     @parameterized.expand([("fused",), ("unloaded",), ("save_load",)])
@@ -369,66 +391,57 @@ class PeftLoraLoaderMixinTests:
                         "Loading from a saved checkpoint should yield the same result as the original LoRA.",
                     )
 
-    def test_simple_inference_with_partial_text_lora(self):
+    @parameterized.expand(
+        [
+            ("text_encoder_only",),
+            ("text_and_denoiser",),
+        ]
+    )
+    def test_lora_scaling(self, lora_components_to_add):
         """
-        Tests a simple inference with lora attached on the text encoder
-        with different ranks and some adapters removed
-        and makes sure it works as expected
+        Tests inference with LoRA scaling applied via attention_kwargs
+        for different LoRA configurations.
         """
+        if lora_components_to_add == "text_encoder_only":
+            if not any("text_encoder" in k for k in self.pipeline_class._lora_loadable_modules):
+                pytest.skip(
+                    "Test not supported for {self.__class__.__name__} since there is not text encoder in the LoRA loadable modules."
+                )
+        attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
+
         for scheduler_cls in self.scheduler_classes:
-            components, _, _ = self.get_dummy_components(scheduler_cls)
-            # Verify `StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
-            text_lora_config = LoraConfig(
-                r=4,
-                rank_pattern={self.text_encoder_target_modules[i]: i + 1 for i in range(3)},
-                lora_alpha=4,
-                target_modules=self.text_encoder_target_modules,
-                init_lora_weights=False,
-                use_dora=False,
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
             )
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
+            # Add LoRA components based on the parameterization
+            if lora_components_to_add == "text_encoder_only":
+                pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
+            elif lora_components_to_add == "text_and_denoiser":
+                pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+            else:
+                raise ValueError(f"Unknown `lora_components_to_add`: {lora_components_to_add}")
 
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
-
-            state_dict = {}
-            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                # Gather the state dict for the PEFT model, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
-                # supports missing layers (PR#8324).
-                state_dict = {
-                    f"text_encoder.{module_name}": param
-                    for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
-                    if "text_model.encoder.layers.4" not in module_name
-                }
-
-            if self.has_two_text_encoders or self.has_three_text_encoders:
-                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                    state_dict.update(
-                        {
-                            f"text_encoder_2.{module_name}": param
-                            for module_name, param in get_peft_model_state_dict(pipe.text_encoder_2).items()
-                            if "text_model.encoder.layers.4" not in module_name
-                        }
-                    )
-
+            # 1. Test base LoRA output
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+            self.assertFalse(
+                np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "LoRA should change the output."
             )
 
-            # Unload lora and load it back using the pipe.load_lora_weights machinery
-            pipe.unload_lora_weights()
-            pipe.load_lora_weights(state_dict)
+            # 2. Test with a scale of 0.5
+            attention_kwargs = {attention_kwargs_name: {"scale": 0.5}}
+            output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+            self.assertFalse(
+                np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+                "Using a LoRA scale should change the output.",
+            )
 
-            output_partial_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            # 3. Test with a scale of 0.0, which should be identical to no LoRA
+            attention_kwargs = {attention_kwargs_name: {"scale": 0.0}}
+            output_lora_0_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
             self.assertTrue(
-                not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3),
-                "Removing adapters should change the output",
+                np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
+                "Using a LoRA scale of 0.0 should be the same as no LoRA.",
             )
 
     def test_simple_inference_with_text_denoiser_lora_save_load(self):
@@ -468,52 +481,6 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
                 "Loading from saved checkpoints should give same results.",
             )
-
-    def test_simple_inference_with_text_denoiser_lora_and_scale(self):
-        """
-        Tests a simple inference with lora attached on the text encoder + Unet + scale argument
-        and makes sure it works as expected
-        """
-        attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
-
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
-
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
-            )
-
-            attention_kwargs = {attention_kwargs_name: {"scale": 0.5}}
-            output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-
-            self.assertTrue(
-                not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
-                "Lora + scale should change the output",
-            )
-
-            attention_kwargs = {attention_kwargs_name: {"scale": 0.0}}
-            output_lora_0_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-
-            self.assertTrue(
-                np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
-                "Lora + 0 scale should lead to same result as no LoRA",
-            )
-
-            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                self.assertTrue(
-                    pipe.text_encoder.text_model.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0,
-                    "The scaling parameter has not been correctly restored!",
-                )
 
     def test_simple_inference_with_text_lora_denoiser_fused(self):
         """
