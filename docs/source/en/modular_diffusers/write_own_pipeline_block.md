@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# `ModularPipelineBlocks`
+# Writing Your Own Pipeline Blocks
 
 In Modular Diffusers, you build your workflow using `ModularPipelineBlocks`. We support 4 different types of blocks: `PipelineBlock`, `SequentialPipelineBlocks`, `LoopSequentialPipelineBlocks`, and `AutoPipelineBlocks`. Among them, `PipelineBlock` is the most fundamental building block of the whole system - it's like a brick in a Lego system. These blocks are designed to easily connect with each other, allowing for modular construction of creative and potentially very complex workflows.
 
@@ -132,7 +132,7 @@ expected_config = [
 ]
 ```
 
-**Components**: You must provide a `name` and ideally a `type_hint`. The actual loading details (`repo`, `subfolder`, `variant` and `revision` fields) are typically specified when creating the pipeline, as we covered in the [quicktour](quicktour.md#loading-components-into-a-modularpipeline).
+**Components**: In the `ComponentSpec`, You must provide a `name` and ideally a `type_hint`. The actual loading details (`repo`, `subfolder`, `variant` and `revision` fields) are typically specified when creating the pipeline, as we covered in the [quicktour](quicktour.md#loading-components-into-a-modularpipeline).
 
 **Configs**: Simple pipeline-level settings that control behavior across all blocks.
 
