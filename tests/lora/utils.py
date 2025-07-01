@@ -251,61 +251,6 @@ class PeftLoraLoaderMixinTests:
         prepared_inputs["input_ids"] = inputs
         return prepared_inputs
 
-    def _get_lora_state_dicts(self, modules_to_save):
-        state_dicts = {}
-        for module_name, module in modules_to_save.items():
-            if module is not None:
-                state_dicts[f"{module_name}_lora_layers"] = get_peft_model_state_dict(module)
-        return state_dicts
-
-    def _get_lora_adapter_metadata(self, modules_to_save):
-        metadatas = {}
-        for module_name, module in modules_to_save.items():
-            if module is not None:
-                metadatas[f"{module_name}_lora_adapter_metadata"] = module.peft_config["default"].to_dict()
-        return metadatas
-
-    def _get_modules_to_save(self, pipe, has_denoiser=False):
-        modules_to_save = {}
-        lora_loadable_modules = self.pipeline_class._lora_loadable_modules
-
-        if (
-            "text_encoder" in lora_loadable_modules
-            and hasattr(pipe, "text_encoder")
-            and getattr(pipe.text_encoder, "peft_config", None) is not None
-        ):
-            modules_to_save["text_encoder"] = pipe.text_encoder
-
-        if (
-            "text_encoder_2" in lora_loadable_modules
-            and hasattr(pipe, "text_encoder_2")
-            and getattr(pipe.text_encoder_2, "peft_config", None) is not None
-        ):
-            modules_to_save["text_encoder_2"] = pipe.text_encoder_2
-
-        if has_denoiser:
-            if "unet" in lora_loadable_modules and hasattr(pipe, "unet"):
-                modules_to_save["unet"] = pipe.unet
-
-            if "transformer" in lora_loadable_modules and hasattr(pipe, "transformer"):
-                modules_to_save["transformer"] = pipe.transformer
-
-        return modules_to_save
-
-    def _get_exclude_modules(self, pipe):
-        from diffusers.utils.peft_utils import _derive_exclude_modules
-
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        denoiser = "unet" if self.unet_kwargs is not None else "transformer"
-        modules_to_save = {k: v for k, v in modules_to_save.items() if k == denoiser}
-        denoiser_lora_state_dict = self._get_lora_state_dicts(modules_to_save)[f"{denoiser}_lora_layers"]
-        pipe.unload_lora_weights()
-        denoiser_state_dict = pipe.unet.state_dict() if self.unet_kwargs is not None else pipe.transformer.state_dict()
-        exclude_modules = _derive_exclude_modules(
-            denoiser_state_dict, denoiser_lora_state_dict, adapter_name="default"
-        )
-        return exclude_modules
-
     def add_adapters_to_pipeline(self, pipe, text_lora_config=None, denoiser_lora_config=None, adapter_name="default"):
         if text_lora_config is not None:
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
@@ -2408,3 +2353,58 @@ class PeftLoraLoaderMixinTests:
                 # materializes the test methods on invocation which cannot be overridden.
                 return
         self._test_group_offloading_inference_denoiser(offload_type, use_stream)
+
+    def _get_lora_state_dicts(self, modules_to_save):
+        state_dicts = {}
+        for module_name, module in modules_to_save.items():
+            if module is not None:
+                state_dicts[f"{module_name}_lora_layers"] = get_peft_model_state_dict(module)
+        return state_dicts
+
+    def _get_lora_adapter_metadata(self, modules_to_save):
+        metadatas = {}
+        for module_name, module in modules_to_save.items():
+            if module is not None:
+                metadatas[f"{module_name}_lora_adapter_metadata"] = module.peft_config["default"].to_dict()
+        return metadatas
+
+    def _get_modules_to_save(self, pipe, has_denoiser=False):
+        modules_to_save = {}
+        lora_loadable_modules = self.pipeline_class._lora_loadable_modules
+
+        if (
+            "text_encoder" in lora_loadable_modules
+            and hasattr(pipe, "text_encoder")
+            and getattr(pipe.text_encoder, "peft_config", None) is not None
+        ):
+            modules_to_save["text_encoder"] = pipe.text_encoder
+
+        if (
+            "text_encoder_2" in lora_loadable_modules
+            and hasattr(pipe, "text_encoder_2")
+            and getattr(pipe.text_encoder_2, "peft_config", None) is not None
+        ):
+            modules_to_save["text_encoder_2"] = pipe.text_encoder_2
+
+        if has_denoiser:
+            if "unet" in lora_loadable_modules and hasattr(pipe, "unet"):
+                modules_to_save["unet"] = pipe.unet
+
+            if "transformer" in lora_loadable_modules and hasattr(pipe, "transformer"):
+                modules_to_save["transformer"] = pipe.transformer
+
+        return modules_to_save
+
+    def _get_exclude_modules(self, pipe):
+        from diffusers.utils.peft_utils import _derive_exclude_modules
+
+        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+        denoiser = "unet" if self.unet_kwargs is not None else "transformer"
+        modules_to_save = {k: v for k, v in modules_to_save.items() if k == denoiser}
+        denoiser_lora_state_dict = self._get_lora_state_dicts(modules_to_save)[f"{denoiser}_lora_layers"]
+        pipe.unload_lora_weights()
+        denoiser_state_dict = pipe.unet.state_dict() if self.unet_kwargs is not None else pipe.transformer.state_dict()
+        exclude_modules = _derive_exclude_modules(
+            denoiser_state_dict, denoiser_lora_state_dict, adapter_name="default"
+        )
+        return exclude_modules
