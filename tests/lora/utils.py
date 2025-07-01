@@ -129,151 +129,6 @@ class PeftLoraLoaderMixinTests:
     text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
     denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
 
-    def get_dummy_components(self, scheduler_cls=None, use_dora=False, lora_alpha=None):
-        if self.unet_kwargs and self.transformer_kwargs:
-            raise ValueError("Both `unet_kwargs` and `transformer_kwargs` cannot be specified.")
-        if self.has_two_text_encoders and self.has_three_text_encoders:
-            raise ValueError("Both `has_two_text_encoders` and `has_three_text_encoders` cannot be True.")
-
-        scheduler_cls = self.scheduler_cls if scheduler_cls is None else scheduler_cls
-        rank = 4
-        lora_alpha = rank if lora_alpha is None else lora_alpha
-
-        torch.manual_seed(0)
-        if self.unet_kwargs is not None:
-            unet = UNet2DConditionModel(**self.unet_kwargs)
-        else:
-            transformer = self.transformer_cls(**self.transformer_kwargs)
-
-        scheduler = scheduler_cls(**self.scheduler_kwargs)
-
-        torch.manual_seed(0)
-        vae = self.vae_cls(**self.vae_kwargs)
-
-        text_encoder = self.text_encoder_cls.from_pretrained(
-            self.text_encoder_id, subfolder=self.text_encoder_subfolder
-        )
-        tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id, subfolder=self.tokenizer_subfolder)
-
-        if self.text_encoder_2_cls is not None:
-            text_encoder_2 = self.text_encoder_2_cls.from_pretrained(
-                self.text_encoder_2_id, subfolder=self.text_encoder_2_subfolder
-            )
-            tokenizer_2 = self.tokenizer_2_cls.from_pretrained(
-                self.tokenizer_2_id, subfolder=self.tokenizer_2_subfolder
-            )
-
-        if self.text_encoder_3_cls is not None:
-            text_encoder_3 = self.text_encoder_3_cls.from_pretrained(
-                self.text_encoder_3_id, subfolder=self.text_encoder_3_subfolder
-            )
-            tokenizer_3 = self.tokenizer_3_cls.from_pretrained(
-                self.tokenizer_3_id, subfolder=self.tokenizer_3_subfolder
-            )
-
-        text_lora_config = LoraConfig(
-            r=rank,
-            lora_alpha=lora_alpha,
-            target_modules=self.text_encoder_target_modules,
-            init_lora_weights=False,
-            use_dora=use_dora,
-        )
-
-        denoiser_lora_config = LoraConfig(
-            r=rank,
-            lora_alpha=lora_alpha,
-            target_modules=self.denoiser_target_modules,
-            init_lora_weights=False,
-            use_dora=use_dora,
-        )
-
-        pipeline_components = {
-            "scheduler": scheduler,
-            "vae": vae,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
-        }
-        # Denoiser
-        if self.unet_kwargs is not None:
-            pipeline_components.update({"unet": unet})
-        elif self.transformer_kwargs is not None:
-            pipeline_components.update({"transformer": transformer})
-
-        # Remaining text encoders.
-        if self.text_encoder_2_cls is not None:
-            pipeline_components.update({"tokenizer_2": tokenizer_2, "text_encoder_2": text_encoder_2})
-        if self.text_encoder_3_cls is not None:
-            pipeline_components.update({"tokenizer_3": tokenizer_3, "text_encoder_3": text_encoder_3})
-
-        # Remaining stuff
-        init_params = inspect.signature(self.pipeline_class.__init__).parameters
-        if "safety_checker" in init_params:
-            pipeline_components.update({"safety_checker": None})
-        if "feature_extractor" in init_params:
-            pipeline_components.update({"feature_extractor": None})
-        if "image_encoder" in init_params:
-            pipeline_components.update({"image_encoder": None})
-
-        return pipeline_components, text_lora_config, denoiser_lora_config
-
-    @property
-    def output_shape(self):
-        raise NotImplementedError
-
-    def get_dummy_inputs(self, with_generator=True):
-        batch_size = 1
-        sequence_length = 10
-        num_channels = 4
-        sizes = (32, 32)
-
-        generator = torch.manual_seed(0)
-        noise = floats_tensor((batch_size, num_channels) + sizes)
-        input_ids = torch.randint(1, sequence_length, size=(batch_size, sequence_length), generator=generator)
-
-        pipeline_inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
-            "num_inference_steps": 5,
-            "guidance_scale": 6.0,
-            "output_type": "np",
-        }
-        if with_generator:
-            pipeline_inputs.update({"generator": generator})
-
-        return noise, input_ids, pipeline_inputs
-
-    # Copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
-    def get_dummy_tokens(self):
-        max_seq_length = 77
-
-        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
-
-        prepared_inputs = {}
-        prepared_inputs["input_ids"] = inputs
-        return prepared_inputs
-
-    def add_adapters_to_pipeline(self, pipe, text_lora_config=None, denoiser_lora_config=None, adapter_name="default"):
-        if text_lora_config is not None:
-            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                pipe.text_encoder.add_adapter(text_lora_config, adapter_name=adapter_name)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-                )
-
-        if denoiser_lora_config is not None:
-            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
-            denoiser.add_adapter(denoiser_lora_config, adapter_name=adapter_name)
-            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
-        else:
-            denoiser = None
-
-        if text_lora_config is not None and self.has_two_text_encoders or self.has_three_text_encoders:
-            if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                pipe.text_encoder_2.add_adapter(text_lora_config, adapter_name=adapter_name)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-        return pipe, denoiser
-
     @require_peft_version_greater("0.13.1")
     def test_low_cpu_mem_usage_with_injection(self):
         """Tests if we can inject LoRA state dict with low_cpu_mem_usage."""
@@ -2353,6 +2208,161 @@ class PeftLoraLoaderMixinTests:
                 # materializes the test methods on invocation which cannot be overridden.
                 return
         self._test_group_offloading_inference_denoiser(offload_type, use_stream)
+
+    def get_dummy_components(self, scheduler_cls=None, use_dora=False, lora_alpha=None):
+        if self.unet_kwargs and self.transformer_kwargs:
+            raise ValueError("Both `unet_kwargs` and `transformer_kwargs` cannot be specified.")
+        if self.has_two_text_encoders and self.has_three_text_encoders:
+            raise ValueError("Both `has_two_text_encoders` and `has_three_text_encoders` cannot be True.")
+
+        scheduler_cls = self.scheduler_cls if scheduler_cls is None else scheduler_cls
+        rank = 4
+        lora_alpha = rank if lora_alpha is None else lora_alpha
+
+        torch.manual_seed(0)
+        if self.unet_kwargs is not None:
+            unet = UNet2DConditionModel(**self.unet_kwargs)
+        else:
+            transformer = self.transformer_cls(**self.transformer_kwargs)
+
+        scheduler = scheduler_cls(**self.scheduler_kwargs)
+
+        torch.manual_seed(0)
+        vae = self.vae_cls(**self.vae_kwargs)
+
+        text_encoder = self.text_encoder_cls.from_pretrained(
+            self.text_encoder_id, subfolder=self.text_encoder_subfolder
+        )
+        tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id, subfolder=self.tokenizer_subfolder)
+
+        if self.text_encoder_2_cls is not None:
+            text_encoder_2 = self.text_encoder_2_cls.from_pretrained(
+                self.text_encoder_2_id, subfolder=self.text_encoder_2_subfolder
+            )
+            tokenizer_2 = self.tokenizer_2_cls.from_pretrained(
+                self.tokenizer_2_id, subfolder=self.tokenizer_2_subfolder
+            )
+
+        if self.text_encoder_3_cls is not None:
+            text_encoder_3 = self.text_encoder_3_cls.from_pretrained(
+                self.text_encoder_3_id, subfolder=self.text_encoder_3_subfolder
+            )
+            tokenizer_3 = self.tokenizer_3_cls.from_pretrained(
+                self.tokenizer_3_id, subfolder=self.tokenizer_3_subfolder
+            )
+
+        text_lora_config = LoraConfig(
+            r=rank,
+            lora_alpha=lora_alpha,
+            target_modules=self.text_encoder_target_modules,
+            init_lora_weights=False,
+            use_dora=use_dora,
+        )
+
+        denoiser_lora_config = LoraConfig(
+            r=rank,
+            lora_alpha=lora_alpha,
+            target_modules=self.denoiser_target_modules,
+            init_lora_weights=False,
+            use_dora=use_dora,
+        )
+
+        pipeline_components = {
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+        }
+        # Denoiser
+        if self.unet_kwargs is not None:
+            pipeline_components.update({"unet": unet})
+        elif self.transformer_kwargs is not None:
+            pipeline_components.update({"transformer": transformer})
+
+        # Remaining text encoders.
+        if self.text_encoder_2_cls is not None:
+            pipeline_components.update({"tokenizer_2": tokenizer_2, "text_encoder_2": text_encoder_2})
+        if self.text_encoder_3_cls is not None:
+            pipeline_components.update({"tokenizer_3": tokenizer_3, "text_encoder_3": text_encoder_3})
+
+        # Remaining stuff
+        init_params = inspect.signature(self.pipeline_class.__init__).parameters
+        if "safety_checker" in init_params:
+            pipeline_components.update({"safety_checker": None})
+        if "feature_extractor" in init_params:
+            pipeline_components.update({"feature_extractor": None})
+        if "image_encoder" in init_params:
+            pipeline_components.update({"image_encoder": None})
+
+        return pipeline_components, text_lora_config, denoiser_lora_config
+
+    @property
+    def output_shape(self):
+        raise NotImplementedError
+
+    def get_dummy_inputs(self, with_generator=True):
+        batch_size = 1
+        sequence_length = 10
+        num_channels = 4
+        sizes = (32, 32)
+
+        generator = torch.manual_seed(0)
+        noise = floats_tensor((batch_size, num_channels) + sizes)
+        input_ids = torch.randint(1, sequence_length, size=(batch_size, sequence_length), generator=generator)
+
+        pipeline_inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "num_inference_steps": 5,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+        }
+        if with_generator:
+            pipeline_inputs.update({"generator": generator})
+
+        return noise, input_ids, pipeline_inputs
+
+    # Copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
+    def get_dummy_tokens(self):
+        max_seq_length = 77
+
+        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
+
+        prepared_inputs = {}
+        prepared_inputs["input_ids"] = inputs
+        return prepared_inputs
+
+    def add_adapters_to_pipeline(self, pipe, text_lora_config=None, denoiser_lora_config=None, adapter_name="default"):
+        if text_lora_config is not None:
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder.add_adapter(text_lora_config, adapter_name=adapter_name)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                )
+
+        if denoiser_lora_config is not None:
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, adapter_name=adapter_name)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+        else:
+            denoiser = None
+
+        if text_lora_config is not None and self.has_two_text_encoders or self.has_three_text_encoders:
+            if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder_2.add_adapter(text_lora_config, adapter_name=adapter_name)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+        return pipe, denoiser
+
+    def _setup_pipeline_and_get_base_output(self, scheduler_cls):
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        return pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config
 
     def _get_lora_state_dicts(self, modules_to_save):
         state_dicts = {}
