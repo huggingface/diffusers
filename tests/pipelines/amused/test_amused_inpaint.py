@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import AmusedInpaintPipeline, AmusedScheduler, UVit2DModel, VQModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    Expectations,
     enable_full_determinism,
     require_torch_accelerator,
     slow,
@@ -246,5 +247,35 @@ class AmusedInpaintPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0227, 0.0157, 0.0098, 0.0213, 0.0250, 0.0127, 0.0280, 0.0380, 0.0095])
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.0274,
+                        0.0211,
+                        0.0154,
+                        0.0257,
+                        0.0299,
+                        0.0170,
+                        0.0326,
+                        0.0420,
+                        0.0150,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.0227,
+                        0.0157,
+                        0.0098,
+                        0.0213,
+                        0.0250,
+                        0.0127,
+                        0.0280,
+                        0.0380,
+                        0.0095,
+                    ]
+                ),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
         assert np.abs(image_slice - expected_slice).max() < 0.003

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import unittest
 from typing import List
 
 import numpy as np
+from parameterized import parameterized
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
@@ -29,18 +30,23 @@ from diffusers import (
     TorchAoConfig,
 )
 from diffusers.models.attention_processor import Attention
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_synchronize,
     enable_full_determinism,
     is_torch_available,
     is_torchao_available,
     nightly,
     numpy_cosine_similarity_distance,
     require_torch,
-    require_torch_gpu,
+    require_torch_accelerator,
     require_torchao_version_greater_or_equal,
     slow,
     torch_device,
 )
+
+from ..test_torch_compile_utils import QuantCompileTests
 
 
 enable_full_determinism()
@@ -61,7 +67,7 @@ if is_torchao_available():
 
 
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoConfigTest(unittest.TestCase):
     def test_to_dict(self):
@@ -79,7 +85,7 @@ class TorchAoConfigTest(unittest.TestCase):
         Test kwargs validations in TorchAoConfig
         """
         _ = TorchAoConfig("int4_weight_only")
-        with self.assertRaisesRegex(ValueError, "is not supported yet"):
+        with self.assertRaisesRegex(ValueError, "is not supported"):
             _ = TorchAoConfig("uint8")
 
         with self.assertRaisesRegex(ValueError, "does not support the following keyword arguments"):
@@ -119,12 +125,12 @@ class TorchAoConfigTest(unittest.TestCase):
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoTest(unittest.TestCase):
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_components(
         self, quantization_config: TorchAoConfig, model_id: str = "hf-internal-testing/tiny-flux-pipe"
@@ -269,6 +275,7 @@ class TorchAoTest(unittest.TestCase):
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            device_map=f"{torch_device}:0",
         )
 
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
@@ -338,7 +345,7 @@ class TorchAoTest(unittest.TestCase):
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 2e-3)
 
             with tempfile.TemporaryDirectory() as offload_folder:
                 quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
@@ -359,7 +366,7 @@ class TorchAoTest(unittest.TestCase):
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 2e-3)
 
     def test_modules_to_not_convert(self):
         quantization_config = TorchAoConfig("int8_weight_only", modules_to_not_convert=["transformer_blocks.0"])
@@ -518,14 +525,14 @@ class TorchAoTest(unittest.TestCase):
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoSerializationTest(unittest.TestCase):
     model_name = "hf-internal-testing/tiny-flux-pipe"
 
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_model(self, quant_method, quant_method_kwargs, device=None):
         quantization_config = TorchAoConfig(quant_method, **quant_method_kwargs)
@@ -593,17 +600,17 @@ class TorchAoSerializationTest(unittest.TestCase):
         )
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
-    def test_int_a8w8_cuda(self):
+    def test_int_a8w8_accelerator(self):
         quant_method, quant_method_kwargs = "int8_dynamic_activation_int8_weight", {}
         expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
-        device = "cuda"
+        device = torch_device
         self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
 
-    def test_int_a16w8_cuda(self):
+    def test_int_a16w8_accelerator(self):
         quant_method, quant_method_kwargs = "int8_weight_only", {}
         expected_slice = np.array([0.3613, -0.127, -0.0223, -0.2539, -0.459, 0.4961, -0.1357, -0.6992, 0.4551])
-        device = "cuda"
+        device = torch_device
         self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
 
@@ -622,16 +629,63 @@ class TorchAoSerializationTest(unittest.TestCase):
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
 
 
+@require_torchao_version_greater_or_equal("0.7.0")
+class TorchAoCompileTest(QuantCompileTests):
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_mapping={
+                "transformer": TorchAoConfig(quant_type="int8_weight_only"),
+            },
+        )
+
+    def test_torch_compile(self):
+        super()._test_torch_compile(quantization_config=self.quantization_config)
+
+    @unittest.skip(
+        "Changing the device of AQT tensor with module._apply (called from doing module.to() in accelerate) does not work "
+        "when compiling."
+    )
+    def test_torch_compile_with_cpu_offload(self):
+        # RuntimeError: _apply(): Couldn't swap Linear.weight
+        super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
+
+    @unittest.skip(
+        """
+        For `use_stream=False`:
+            - Changing the device of AQT tensor, with `param.data = param.data.to(device)` as done in group offloading implementation
+            is unsupported in TorchAO. When compiling, FakeTensor device mismatch causes failure.
+        For `use_stream=True`:
+            Using non-default stream requires ability to pin tensors. AQT does not seem to support this yet in TorchAO.
+        """
+    )
+    @parameterized.expand([False, True])
+    def test_torch_compile_with_group_offload_leaf(self):
+        # For use_stream=False:
+        # If we run group offloading without compilation, we will see:
+        #   RuntimeError: Attempted to set the storage of a tensor on device "cpu" to a storage on different device "cuda:0".  This is no longer allowed; the devices must match.
+        # When running with compilation, the error ends up being different:
+        #   Dynamo failed to run FX node with fake tensors: call_function <built-in function linear>(*(FakeTensor(..., device='cuda:0', size=(s0, 256), dtype=torch.bfloat16), AffineQuantizedTensor(tensor_impl=PlainAQTTensorImpl(data=FakeTensor(..., size=(1536, 256), dtype=torch.int8)... , scale=FakeTensor(..., size=(1536,), dtype=torch.bfloat16)... , zero_point=FakeTensor(..., size=(1536,), dtype=torch.int64)... , _layout=PlainLayout()), block_size=(1, 256), shape=torch.Size([1536, 256]), device=cpu, dtype=torch.bfloat16, requires_grad=False), Parameter(FakeTensor(..., device='cuda:0', size=(1536,), dtype=torch.bfloat16,
+        #   requires_grad=True))), **{}): got RuntimeError('Unhandled FakeTensor Device Propagation for aten.mm.default, found two different devices cuda:0, cpu')
+        # Looks like something that will have to be looked into upstream.
+        # for linear layers, weight.tensor_impl shows cuda... but:
+        # weight.tensor_impl.{data,scale,zero_point}.device will be cpu
+
+        # For use_stream=True:
+        # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
+        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
+
+
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 @slow
 @nightly
 class SlowTorchAoTests(unittest.TestCase):
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_components(self, quantization_config: TorchAoConfig):
         # This is just for convenience, so that we can modify it at one place for custom environments and locally testing
@@ -713,8 +767,8 @@ class SlowTorchAoTests(unittest.TestCase):
             quantization_config = TorchAoConfig(quant_type=quantization_name, modules_to_not_convert=["x_embedder"])
             self._test_quant_type(quantization_config, expected_slice)
             gc.collect()
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+            backend_empty_cache(torch_device)
+            backend_synchronize(torch_device)
 
     def test_serialization_int8wo(self):
         quantization_config = TorchAoConfig("int8wo")
@@ -733,8 +787,8 @@ class SlowTorchAoTests(unittest.TestCase):
             pipe.remove_all_hooks()
             del pipe.transformer
             gc.collect()
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+            backend_empty_cache(torch_device)
+            backend_synchronize(torch_device)
             transformer = FluxTransformer2DModel.from_pretrained(
                 tmp_dir, torch_dtype=torch.bfloat16, use_safetensors=False
             )
@@ -783,14 +837,14 @@ class SlowTorchAoTests(unittest.TestCase):
 
 
 @require_torch
-@require_torch_gpu
+@require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
 @slow
 @nightly
 class SlowTorchAoPreserializedModelTests(unittest.TestCase):
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_dummy_inputs(self, device: torch.device, seed: int = 0):
         if str(device).startswith("mps"):

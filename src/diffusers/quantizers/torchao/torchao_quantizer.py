@@ -335,3 +335,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     @property
     def is_trainable(self):
         return self.quantization_config.quant_type.startswith("int8")
+
+    @property
+    def is_compileable(self) -> bool:
+        return True

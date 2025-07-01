@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1105,6 +1105,21 @@ class CustomPipelineTests(unittest.TestCase):
 
         assert images.shape == (1, 64, 64, 3)
 
+    def test_remote_custom_pipe_with_dot_in_name(self):
+        # make sure that trust remote code has to be passed
+        with self.assertRaises(ValueError):
+            pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name")
+
+        pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name", trust_remote_code=True)
+
+        assert pipeline.__class__.__name__ == "CustomPipeline"
+
+        pipeline = pipeline.to(torch_device)
+        images, output_str = pipeline(num_inference_steps=2, output_type="np")
+
+        assert images[0].shape == (1, 32, 32, 3)
+        assert output_str == "This is a test"
+
     def test_local_custom_pipeline_repo(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
         pipeline = DiffusionPipeline.from_pretrained(
@@ -1203,13 +1218,13 @@ class PipelineFastTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def dummy_image(self):
         batch_size = 1

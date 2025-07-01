@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright 2025 Black Forest Labs, The HuggingFace Team and The InstantX Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -227,6 +227,7 @@ class FluxTransformer2DModel(
     _supports_gradient_checkpointing = True
     _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
+    _repeated_blocks = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -241,7 +242,7 @@ class FluxTransformer2DModel(
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
-        axes_dims_rope: Tuple[int] = (16, 56, 56),
+        axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels

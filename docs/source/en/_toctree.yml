@@ -180,6 +180,10 @@
     title: Caching
   - local: optimization/memory
     title: Reduce memory usage
+  - local: optimization/speed-memory-optims
+    title: Compile and offloading quantized models
+  - local: optimization/pruna
+    title: Pruna
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome
@@ -283,6 +287,8 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/chroma_transformer
+        title: ChromaTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
@@ -405,6 +411,8 @@
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
       title: BLIP-Diffusion
+    - local: api/pipelines/chroma
+      title: Chroma
     - local: api/pipelines/cogvideox
       title: CogVideoX
     - local: api/pipelines/cogview3
