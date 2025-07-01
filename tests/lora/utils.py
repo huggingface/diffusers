@@ -292,7 +292,7 @@ class PeftLoraLoaderMixinTests:
                 "Removing adapters should change the output",
             )
 
-    def _test_lora_actions(self, action, lora_components_to_add, expected_atol=1e-3):
+    def _test_lora_actions(self, action, lora_components_to_add, expected_atol=1e-3, expected_rtol=1e-3):
         """
         A unified test for various LoRA actions (fusing, unloading, saving/loading, etc.)
         on different combinations of model components.
@@ -321,7 +321,7 @@ class PeftLoraLoaderMixinTests:
             )
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(not np.allclose(output_lora, output_no_lora, atol=expected_atol, rtol=1e-3))
+            self.assertTrue(not np.allclose(output_lora, output_no_lora, atol=expected_atol, rtol=expected_rtol))
 
             # 3. Perform the specified action and assert the outcome
             if action == "fused":
@@ -330,7 +330,7 @@ class PeftLoraLoaderMixinTests:
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
                 output_after_action = pipe(**inputs, generator=torch.manual_seed(0))[0]
                 self.assertTrue(
-                    not np.allclose(output_after_action, output_no_lora, atol=expected_atol, rtol=1e-3),
+                    not np.allclose(output_after_action, output_no_lora, atol=expected_atol, rtol=expected_rtol),
                     "Fused LoRA should produce a different output from the base model.",
                 )
 
@@ -342,7 +342,7 @@ class PeftLoraLoaderMixinTests:
                     )
                 output_after_action = pipe(**inputs, generator=torch.manual_seed(0))[0]
                 self.assertTrue(
-                    np.allclose(output_after_action, output_no_lora, atol=expected_atol, rtol=1e-3),
+                    np.allclose(output_after_action, output_no_lora, atol=expected_atol, rtol=expected_rtol),
                     "Output after unloading LoRA should match the original output.",
                 )
 
@@ -358,7 +358,7 @@ class PeftLoraLoaderMixinTests:
                 output_unfused = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
                 self.assertTrue(
-                    np.allclose(output_fused, output_unfused, atol=expected_atol, rtol=1e-3),
+                    np.allclose(output_fused, output_unfused, atol=expected_atol, rtol=expected_rtol),
                     "Output after unfusing should match the fused output.",
                 )
 
@@ -382,7 +382,7 @@ class PeftLoraLoaderMixinTests:
 
                     output_after_action = pipe(**inputs, generator=torch.manual_seed(0))[0]
                     self.assertTrue(
-                        np.allclose(output_lora, output_after_action, atol=expected_atol, rtol=1e-3),
+                        np.allclose(output_lora, output_after_action, atol=expected_atol, rtol=expected_rtol),
                         "Loading from a saved checkpoint should yield the same result.",
                     )
 

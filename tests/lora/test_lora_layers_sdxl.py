@@ -22,6 +22,7 @@ import unittest
 import numpy as np
 import torch
 from packaging import version
+from parameterized import parameterized
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
@@ -117,7 +118,20 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def test_multiple_wrong_adapter_name_raises_error(self):
         super().test_multiple_wrong_adapter_name_raises_error()
 
-    def test_simple_inference_with_text_denoiser_lora_unfused(self):
+    @parameterized.expand(
+        [
+            # Test actions on text_encoder LoRA only
+            ("fused", "text_encoder_only"),
+            ("unloaded", "text_encoder_only"),
+            ("save_load", "text_encoder_only"),
+            # Test actions on both text_encoder and denoiser LoRA
+            ("fused", "text_and_denoiser"),
+            ("unloaded", "text_and_denoiser"),
+            ("unfused", "text_and_denoiser"),
+            ("save_load", "text_and_denoiser"),
+        ]
+    )
+    def test_lora_actions(self, action, components_to_add):
         if torch.cuda.is_available():
             expected_atol = 9e-2
             expected_rtol = 9e-2
@@ -125,9 +139,7 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             expected_atol = 1e-3
             expected_rtol = 1e-3
 
-        super().test_simple_inference_with_text_denoiser_lora_unfused(
-            expected_atol=expected_atol, expected_rtol=expected_rtol
-        )
+        super().test_lora_actions(expected_atol=expected_atol, expected_rtol=expected_rtol)
 
     def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
         if torch.cuda.is_available():
