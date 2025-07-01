@@ -16,14 +16,11 @@ import sys
 import unittest
 
 import torch
+from parameterized import parameterized
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, MochiPipeline, MochiTransformer3DModel
-from diffusers.utils.testing_utils import (
-    floats_tensor,
-    require_peft_backend,
-    skip_mps,
-)
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps
 
 
 sys.path.append(".")
@@ -102,8 +99,21 @@ class MochiLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
         super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3)
 
-    def test_simple_inference_with_text_denoiser_lora_unfused(self):
-        super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
+    @parameterized.expand(
+        [
+            # Test actions on text_encoder LoRA only
+            ("fused", "text_encoder_only"),
+            ("unloaded", "text_encoder_only"),
+            ("save_load", "text_encoder_only"),
+            # Test actions on both text_encoder and denoiser LoRA
+            ("fused", "text_and_denoiser"),
+            ("unloaded", "text_and_denoiser"),
+            ("unfused", "text_and_denoiser"),
+            ("save_load", "text_and_denoiser"),
+        ]
+    )
+    def test_lora_actions(self, action, components_to_add):
+        super().test_lora_actions(action, components_to_add, expected_atol=9e-3)
 
     @unittest.skip("Not supported in Mochi.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
