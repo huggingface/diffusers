@@ -19,7 +19,7 @@ The downside is increased latency because you must wait for the entire batch to 
 <hfoptions id="usage">
 <hfoption id="text-to-image">
 
-To generate a batch of images, pass a list of prompts to the pipeline.
+For text-to-image, pass a list of prompts to the pipeline.
 
 ```py
 import torch
@@ -104,7 +104,7 @@ plt.show()
 </hfoption>
 <hfoption id="image-to-image">
 
-To generate a batch of images, pass a list of images to the pipeline.
+For image-to-image, pass a list of input images and prompts to the pipeline.
 
 ```py
 import torch
