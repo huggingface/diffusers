@@ -126,11 +126,9 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     )
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")

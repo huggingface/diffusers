@@ -133,10 +133,9 @@ class PeftLoraLoaderMixinTests:
     def test_low_cpu_mem_usage_with_injection(self):
         """Tests if we can inject LoRA state dict with low_cpu_mem_usage."""
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
+            pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                scheduler_cls
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 inject_adapter_in_model(text_lora_config, pipe.text_encoder, low_cpu_mem_usage=True)
@@ -196,17 +195,11 @@ class PeftLoraLoaderMixinTests:
         """Tests if we can load LoRA state dict with low_cpu_mem_usage."""
 
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
+            pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                scheduler_cls
+            )
 
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
-
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             with tempfile.TemporaryDirectory() as tmpdirname:
@@ -251,7 +244,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in self.scheduler_classes:
-            components, _, _ = self.get_dummy_components(scheduler_cls)
+            pipe, inputs, output_no_lora, _, _ = self._setup_pipeline_and_get_base_output(scheduler_cls)
             # Verify `StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
             text_lora_config = LoraConfig(
                 r=4,
@@ -261,13 +254,6 @@ class PeftLoraLoaderMixinTests:
                 init_lora_weights=False,
                 use_dora=False,
             )
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
@@ -475,13 +461,9 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set them
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -552,11 +534,9 @@ class PeftLoraLoaderMixinTests:
         adapter_name = "adapter-1"
 
         scheduler_cls = self.scheduler_classes[0]
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+            scheduler_cls
+        )
 
         pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config, denoiser_lora_config, adapter_name=adapter_name
@@ -574,11 +554,9 @@ class PeftLoraLoaderMixinTests:
     def test_multiple_wrong_adapter_name_raises_error(self):
         adapter_name = "adapter-1"
         scheduler_cls = self.scheduler_classes[0]
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+            scheduler_cls
+        )
 
         pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config, denoiser_lora_config, adapter_name=adapter_name
@@ -604,13 +582,9 @@ class PeftLoraLoaderMixinTests:
         one adapter and set different weights for different blocks (i.e. block lora)
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
@@ -661,13 +635,9 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set different weights for different blocks (i.e. block lora)
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -795,12 +765,9 @@ class PeftLoraLoaderMixinTests:
 
             return opts
 
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(self.scheduler_cls)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
+        pipe, _, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+            self.scheduler_classes[0]
+        )
         pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
 
         denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
@@ -824,13 +791,9 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set/delete them
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -918,13 +881,9 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set them
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -996,11 +955,9 @@ class PeftLoraLoaderMixinTests:
     )
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+            pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                scheduler_cls
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1058,11 +1015,9 @@ class PeftLoraLoaderMixinTests:
         are the expected results
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+            pipe, _, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                scheduler_cls
+            )
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
 
@@ -1087,10 +1042,9 @@ class PeftLoraLoaderMixinTests:
         are the expected results
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
+            pipe, _, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                scheduler_cls
+            )
 
             # 1.
             dicts_to_be_checked = {}
@@ -1162,14 +1116,9 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected - with unet and multi-adapter case
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1243,14 +1192,9 @@ class PeftLoraLoaderMixinTests:
 
         for lora_scale in [1.0, 0.8]:
             for scheduler_cls in self.scheduler_classes:
-                components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-                pipe = self.pipeline_class(**components)
-                pipe = pipe.to(torch_device)
-                pipe.set_progress_bar_config(disable=None)
-                _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-                output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-                self.assertTrue(output_no_lora.shape == self.output_shape)
+                pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                    self._setup_pipeline_and_get_base_output(scheduler_cls)
+                )
 
                 if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                     pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1296,19 +1240,10 @@ class PeftLoraLoaderMixinTests:
     @require_peft_version_greater(peft_version="0.9.0")
     def test_simple_inference_with_dora(self):
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
-                scheduler_cls, use_dora=True
+            pipe, inputs, output_no_dora_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls, use_dora=True)
             )
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_dora_lora.shape == self.output_shape)
-
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
-
             output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertFalse(
@@ -1319,10 +1254,7 @@ class PeftLoraLoaderMixinTests:
     def test_missing_keys_warning(self):
         scheduler_cls = self.scheduler_classes[0]
         # Skip text encoder check for now as that is handled with `transformers`.
-        components, _, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe, _, _, _, denoiser_lora_config = self._setup_pipeline_and_get_base_output(scheduler_cls)
 
         denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
         denoiser.add_adapter(denoiser_lora_config)
@@ -1356,10 +1288,7 @@ class PeftLoraLoaderMixinTests:
     def test_unexpected_keys_warning(self):
         scheduler_cls = self.scheduler_classes[0]
         # Skip text encoder check for now as that is handled with `transformers`.
-        components, _, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe, _, _, _, denoiser_lora_config = self._setup_pipeline_and_get_base_output(scheduler_cls)
 
         denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
         denoiser.add_adapter(denoiser_lora_config)
@@ -1392,11 +1321,9 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+            pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                scheduler_cls
+            )
 
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
@@ -1430,13 +1357,8 @@ class PeftLoraLoaderMixinTests:
     def test_logs_info_when_no_lora_keys_found(self):
         scheduler_cls = self.scheduler_classes[0]
         # Skip text encoder check for now as that is handled with `transformers`.
-        components, _, _ = self.get_dummy_components(scheduler_cls)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-        original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        pipe, inputs, output_no_lora, _, _ = self._setup_pipeline_and_get_base_output(scheduler_cls)
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
         logger = logging.get_logger("diffusers.loaders.peft")
@@ -1448,7 +1370,7 @@ class PeftLoraLoaderMixinTests:
 
         denoiser = getattr(pipe, "unet") if self.unet_kwargs is not None else getattr(pipe, "transformer")
         self.assertTrue(cap_logger.out.startswith(f"No LoRA keys associated to {denoiser.__class__.__name__}"))
-        self.assertTrue(np.allclose(original_out, out_after_lora_attempt, atol=1e-5, rtol=1e-5))
+        self.assertTrue(np.allclose(output_no_lora, out_after_lora_attempt, atol=1e-5, rtol=1e-5))
 
         # test only for text encoder
         for lora_module in self.pipeline_class._lora_loadable_modules:
@@ -1476,15 +1398,9 @@ class PeftLoraLoaderMixinTests:
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
 
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             lora_scale = 0.5
@@ -1514,9 +1430,7 @@ class PeftLoraLoaderMixinTests:
                 )
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-                pipe = self.pipeline_class(**components)
-                pipe = pipe.to(torch_device)
-                pipe.set_progress_bar_config(disable=None)
+                pipe.unload_lora_weights()
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
                 for module_name, module in modules_to_save.items():
@@ -1540,10 +1454,7 @@ class PeftLoraLoaderMixinTests:
     def test_lora_B_bias(self):
         # Currently, this test is only relevant for Flux Control LoRA as we are not
         # aware of any other LoRA checkpoint that has its `lora_B` biases trained.
-        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe, inputs, _, _, denoiser_lora_config = self._setup_pipeline_and_get_base_output(self.scheduler_classes[0])
 
         # keep track of the bias values of the base layers to perform checks later.
         bias_values = {}
@@ -1577,13 +1488,9 @@ class PeftLoraLoaderMixinTests:
         self.assertFalse(np.allclose(lora_bias_false_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
 
     def test_correct_lora_configs_with_different_ranks(self):
-        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        pipe, inputs, original_output, text_lora_config, denoiser_lora_config = (
+            self._setup_pipeline_and_get_base_output(self.scheduler_classes[0])
+        )
 
         if self.unet_kwargs is not None:
             pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
@@ -1729,10 +1636,7 @@ class PeftLoraLoaderMixinTests:
                     self.assertTrue(module._diffusers_hook.get_hook(_PEFT_AUTOCAST_DISABLE_HOOK) is not None)
 
         # 1. Test forward with add_adapter
-        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device, dtype=compute_dtype)
-        pipe.set_progress_bar_config(disable=None)
+        pipe, inputs, _, _, denoiser_lora_config = self._setup_pipeline_and_get_base_output(self.scheduler_classes[0])
 
         denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
         denoiser.add_adapter(denoiser_lora_config)
@@ -1747,7 +1651,6 @@ class PeftLoraLoaderMixinTests:
         )
         check_module(denoiser)
 
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
         pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         # 2. Test forward with load_lora_weights
@@ -1759,10 +1662,9 @@ class PeftLoraLoaderMixinTests:
             )
 
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-            components, _, _ = self.get_dummy_components(self.scheduler_classes[0])
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device, dtype=compute_dtype)
-            pipe.set_progress_bar_config(disable=None)
+            pipe, inputs, _, _, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                self.scheduler_classes[0]
+            )
             pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
             denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
@@ -1774,17 +1676,14 @@ class PeftLoraLoaderMixinTests:
             )
             check_module(denoiser)
 
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
             pipe(**inputs, generator=torch.manual_seed(0))[0]
 
     @parameterized.expand([4, 8, 16])
     def test_lora_adapter_metadata_is_loaded_correctly(self, lora_alpha):
         scheduler_cls = self.scheduler_classes[0]
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
+        pipe, _, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
             scheduler_cls, lora_alpha=lora_alpha
         )
-        pipe = self.pipeline_class(**components)
-
         pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
         )
@@ -1829,15 +1728,9 @@ class PeftLoraLoaderMixinTests:
     @parameterized.expand([4, 8, 16])
     def test_lora_adapter_metadata_save_load_inference(self, lora_alpha):
         scheduler_cls = self.scheduler_classes[0]
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
+        pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
             scheduler_cls, lora_alpha=lora_alpha
         )
-        pipe = self.pipeline_class(**components).to(torch_device)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(output_no_lora.shape == self.output_shape)
-
         pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
         )
@@ -1892,7 +1785,6 @@ class PeftLoraLoaderMixinTests:
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(output_no_lora.shape == self.output_shape)
 
         # only supported for `denoiser` now
         pipe_cp = copy.deepcopy(pipe)
@@ -1931,13 +1823,9 @@ class PeftLoraLoaderMixinTests:
     def test_inference_load_delete_load_adapters(self):
         "Tests if `load_lora_weights()` -> `delete_adapters()` -> `load_lora_weights()` works."
         for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls)
+            )
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config)
@@ -1982,10 +1870,7 @@ class PeftLoraLoaderMixinTests:
         onload_device = torch_device
         offload_device = torch.device("cpu")
 
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe, inputs, _, _, denoiser_lora_config = self._setup_pipeline_and_get_base_output(self.scheduler_classes[0])
 
         denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
         denoiser.add_adapter(denoiser_lora_config)
@@ -1997,17 +1882,14 @@ class PeftLoraLoaderMixinTests:
             self.pipeline_class.save_lora_weights(
                 save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
             )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
 
-            components, _, _ = self.get_dummy_components(self.scheduler_classes[0])
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
+            pipe, inputs, _, _, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                self.scheduler_classes[0]
+            )
             denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
-
-            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
-            check_if_lora_correctly_set(denoiser)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(tmpdirname)
+            self.assertTrue(check_if_lora_correctly_set(denoiser))
 
             # Test group offloading with load_lora_weights
             denoiser.enable_group_offload(
@@ -2025,11 +1907,11 @@ class PeftLoraLoaderMixinTests:
             pipe.unload_lora_weights()
             group_offload_hook_2 = _get_top_level_group_offload_hook(denoiser)
             self.assertTrue(group_offload_hook_2 is not None)
-            output_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]  # noqa: F841
+            _ = pipe(**inputs, generator=torch.manual_seed(0))[0]  # noqa: F841
 
             # Add the lora again and check if group offloading works
-            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
-            check_if_lora_correctly_set(denoiser)
+            pipe.load_lora_weights(tmpdirname)
+            self.assertTrue(check_if_lora_correctly_set(denoiser))
             group_offload_hook_3 = _get_top_level_group_offload_hook(denoiser)
             self.assertTrue(group_offload_hook_3 is not None)
             output_3 = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -2191,14 +2073,17 @@ class PeftLoraLoaderMixinTests:
                 )
         return pipe, denoiser
 
-    def _setup_pipeline_and_get_base_output(self, scheduler_cls):
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+    def _setup_pipeline_and_get_base_output(self, scheduler_cls, lora_alpha=4, use_dora=False):
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
+            scheduler_cls, lora_alpha=lora_alpha, use_dora=use_dora
+        )
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(output_no_lora.shape == self.output_shape)
         return pipe, inputs, output_no_lora, text_lora_config, denoiser_lora_config
 
     def _get_lora_state_dicts(self, modules_to_save):
