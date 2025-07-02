@@ -1,4 +1,4 @@
-# Copyright 2024 Bingxin Ke, ETH Zurich and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Bingxin Ke, ETH Zurich and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ from diffusers.utils import BaseOutput, check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 
 class MarigoldDepthOutput(BaseOutput):

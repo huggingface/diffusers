@@ -65,7 +65,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():
@@ -192,9 +192,9 @@ def log_validation(
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        free_memory()
-        return image_logs
+    del pipeline
+    free_memory()
+    return image_logs
 
 
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):

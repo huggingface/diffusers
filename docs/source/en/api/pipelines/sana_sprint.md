@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ image = pipe(
     height=832, 
     width=480
 ).images[0]
-image[0].save("output.png")
+image.save("output.png")
 ```
 
 ## SanaSprintPipeline
