@@ -934,6 +934,10 @@ class LoraBaseMixin:
         Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
         you want to load multiple adapters and free some GPU memory.
 
+        After offloading the LoRA adapters to CPU, as long as the rest of the model is still on GPU, the LoRA adapters
+        can no longer be used for inference, as that would cause a device mismatch. Remember to set the device back to
+        GPU before using those LoRA adapters for inference.
+
         Args:
             adapter_names (`List[str]`):
                 List of adapters to send device to.
