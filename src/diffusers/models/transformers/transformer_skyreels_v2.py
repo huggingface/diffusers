@@ -318,6 +318,7 @@ class SkyReelsV2TransformerBlock(nn.Module):
                 self.scale_shift_table + temb.float()
             ).chunk(6, dim=1)
         elif temb.dim() == 4:
+            # For 4D temb in Diffusion Forcing framework, we assume the shape is  (b, 6, f * pp_h * pp_w, inner_dim)
             e = (self.scale_shift_table.unsqueeze(2) + temb.float()).chunk(6, dim=1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
         # 1. Self-attention
@@ -529,10 +530,10 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if enable_diffusion_forcing:
             b, f = timestep.shape
             temb = temb.view(b, f, 1, 1, -1)
-            timestep_proj = timestep_proj.view(b, f, 1, 1, 6, -1)
+            timestep_proj = timestep_proj.view(b, f, 1, 1, 6, -1)  # (b, f, 1, 1, 6, inner_dim)
             temb = temb.repeat(1, 1, post_patch_height, post_patch_width, 1).flatten(1, 3)
-            timestep_proj = timestep_proj.repeat(1, 1, post_patch_height, post_patch_width, 1, 1).flatten(1, 3)
-            timestep_proj = timestep_proj.transpose(1, 2).contiguous()
+            timestep_proj = timestep_proj.repeat(1, 1, post_patch_height, post_patch_width, 1, 1).flatten(1, 3)  # (b, f, pp_h, pp_w, 6, inner_dim) -> (b, f * pp_h * pp_w, 6, inner_dim)
+            timestep_proj = timestep_proj.transpose(1, 2).contiguous()  # (b, 6, f * pp_h * pp_w, inner_dim)
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
