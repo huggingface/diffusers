@@ -692,7 +692,7 @@ class FluxInpaintPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class FluxKontextPipeline(metaclass=DummyObject):
+class FluxKontextInpaintPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -707,7 +707,7 @@ class FluxKontextPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class FluxKontextInpaintPipeline(metaclass=DummyObject):
+class FluxKontextPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
