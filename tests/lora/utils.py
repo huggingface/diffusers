@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import inspect
 import os
 import re
@@ -291,9 +292,21 @@ class PeftLoraLoaderMixinTests:
 
         return modules_to_save
 
-    def check_if_adapters_added_correctly(
-        self, pipe, text_lora_config=None, denoiser_lora_config=None, adapter_name="default"
-    ):
+    def _get_exclude_modules(self, pipe):
+        from diffusers.utils.peft_utils import _derive_exclude_modules
+
+        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+        denoiser = "unet" if self.unet_kwargs is not None else "transformer"
+        modules_to_save = {k: v for k, v in modules_to_save.items() if k == denoiser}
+        denoiser_lora_state_dict = self._get_lora_state_dicts(modules_to_save)[f"{denoiser}_lora_layers"]
+        pipe.unload_lora_weights()
+        denoiser_state_dict = pipe.unet.state_dict() if self.unet_kwargs is not None else pipe.transformer.state_dict()
+        exclude_modules = _derive_exclude_modules(
+            denoiser_state_dict, denoiser_lora_state_dict, adapter_name="default"
+        )
+        return exclude_modules
+
+    def add_adapters_to_pipeline(self, pipe, text_lora_config=None, denoiser_lora_config=None, adapter_name="default"):
         if text_lora_config is not None:
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, adapter_name=adapter_name)
@@ -345,7 +358,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config=None)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
@@ -428,7 +441,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
@@ -484,7 +497,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config=None)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
@@ -522,7 +535,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config=None)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
             pipe.fuse_lora()
             # Fusing should still keep the LoRA layers
@@ -554,7 +567,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config=None)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
             pipe.unload_lora_weights()
             # unloading should remove the LoRA layers
@@ -589,7 +602,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config=None)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
@@ -640,7 +653,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config=None)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
             state_dict = {}
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
@@ -691,7 +704,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config=None)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             with tempfile.TemporaryDirectory() as tmpdirname:
@@ -734,7 +747,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
@@ -775,7 +788,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
@@ -819,7 +832,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, denoiser = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
 
@@ -857,7 +870,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, denoiser = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             pipe.unload_lora_weights()
             # unloading should remove the LoRA layers
@@ -893,7 +906,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            pipe, denoiser = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
             self.assertTrue(pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
@@ -1010,7 +1023,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        pipe, _ = self.check_if_adapters_added_correctly(
+        pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config, denoiser_lora_config, adapter_name=adapter_name
         )
 
@@ -1032,7 +1045,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        pipe, _ = self.check_if_adapters_added_correctly(
+        pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config, denoiser_lora_config, adapter_name=adapter_name
         )
 
@@ -1759,7 +1772,7 @@ class PeftLoraLoaderMixinTests:
             output_no_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_dora_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
@@ -1850,7 +1863,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
             pipe.text_encoder = torch.compile(pipe.text_encoder, mode="reduce-overhead", fullgraph=True)
@@ -1937,7 +1950,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             lora_scale = 0.5
             attention_kwargs = {attention_kwargs_name: {"scale": lora_scale}}
@@ -2119,7 +2132,7 @@ class PeftLoraLoaderMixinTests:
             pipe = pipe.to(torch_device, dtype=compute_dtype)
             pipe.set_progress_bar_config(disable=None)
 
-            pipe, denoiser = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
+            pipe, denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
             if storage_dtype is not None:
                 denoiser.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
@@ -2237,7 +2250,7 @@ class PeftLoraLoaderMixinTests:
         )
         pipe = self.pipeline_class(**components)
 
-        pipe, _ = self.check_if_adapters_added_correctly(
+        pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
         )
 
@@ -2290,7 +2303,7 @@ class PeftLoraLoaderMixinTests:
         output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
-        pipe, _ = self.check_if_adapters_added_correctly(
+        pipe, _ = self.add_adapters_to_pipeline(
             pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
         )
         output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -2307,6 +2320,77 @@ class PeftLoraLoaderMixinTests:
 
             self.assertTrue(
                 np.allclose(output_lora, output_lora_pretrained, atol=1e-3, rtol=1e-3), "Lora outputs should match."
+            )
+
+    def test_lora_unload_add_adapter(self):
+        """Tests if `unload_lora_weights()` -> `add_adapter()` works."""
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components).to(torch_device)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        pipe, _ = self.add_adapters_to_pipeline(
+            pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        # unload and then add.
+        pipe.unload_lora_weights()
+        pipe, _ = self.add_adapters_to_pipeline(
+            pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+    @require_peft_version_greater("0.13.2")
+    def test_lora_exclude_modules(self):
+        """
+        Test to check if `exclude_modules` works or not. It works in the following way:
+        we first create a pipeline and insert LoRA config into it. We then derive a `set`
+        of modules to exclude by investigating its denoiser state dict and denoiser LoRA
+        state dict.
+
+        We then create a new LoRA config to include the `exclude_modules` and perform tests.
+        """
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components).to(torch_device)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(output_no_lora.shape == self.output_shape)
+
+        # only supported for `denoiser` now
+        pipe_cp = copy.deepcopy(pipe)
+        pipe_cp, _ = self.add_adapters_to_pipeline(
+            pipe_cp, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        denoiser_exclude_modules = self._get_exclude_modules(pipe_cp)
+        pipe_cp.to("cpu")
+        del pipe_cp
+
+        denoiser_lora_config.exclude_modules = denoiser_exclude_modules
+        pipe, _ = self.add_adapters_to_pipeline(
+            pipe, text_lora_config=text_lora_config, denoiser_lora_config=denoiser_lora_config
+        )
+        output_lora_exclude_modules = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            lora_metadatas = self._get_lora_adapter_metadata(modules_to_save)
+            self.pipeline_class.save_lora_weights(save_directory=tmpdir, **lora_state_dicts, **lora_metadatas)
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(tmpdir)
+
+            output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            self.assertTrue(
+                not np.allclose(output_no_lora, output_lora_exclude_modules, atol=1e-3, rtol=1e-3),
+                "LoRA should change outputs.",
+            )
+            self.assertTrue(
+                np.allclose(output_lora_exclude_modules, output_lora_pretrained, atol=1e-3, rtol=1e-3),
+                "Lora outputs should match.",
             )
 
     def test_inference_load_delete_load_adapters(self):

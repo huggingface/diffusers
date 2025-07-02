@@ -95,7 +95,6 @@ TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0 = {
     "mlp.layer1": "ff.net.0.proj",
     "mlp.layer2": "ff.net.2",
     "x_embedder.proj.1": "patch_embed.proj",
-    # "extra_pos_embedder": "learnable_pos_embed",
     "final_layer.adaln_modulation.1": "norm_out.linear_1",
     "final_layer.adaln_modulation.2": "norm_out.linear_2",
     "final_layer.linear": "proj_out",
