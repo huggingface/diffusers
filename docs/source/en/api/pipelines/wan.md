@@ -302,12 +302,12 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
   ```py
   # pip install ftfy
   import torch
-  from diffusers import WanPipeline, AutoModel
+  from diffusers import WanPipeline, WanTransformer3DModel, AutoencoderKLWan
 
-  vae = AutoModel.from_single_file(
+  vae = AutoencoderKLWan.from_single_file(
       "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors"
   )
-  transformer = AutoModel.from_single_file(
+  transformer = WanTransformer3DModel.from_single_file(
       "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors",
       torch_dtype=torch.bfloat16
   )
