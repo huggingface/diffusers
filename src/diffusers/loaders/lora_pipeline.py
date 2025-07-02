@@ -5501,7 +5501,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-
+            return_lora_metadata (`bool`, *optional*, defaults to False):
+                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -5514,18 +5515,16 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict = _fetch_state_dict(
+        state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5550,7 +5549,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin._maybe_expand_t2v_lora_for_i2v
@@ -5644,7 +5644,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         # convert T2V LoRA to I2V LoRA (when loaded to Wan I2V) by adding zeros for the additional (missing) _img layers
         state_dict = self._maybe_expand_t2v_lora_for_i2v(
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
@@ -5658,6 +5659,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            metadata=metadata,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
