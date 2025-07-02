@@ -938,6 +938,23 @@ class LoraBaseMixin:
         can no longer be used for inference, as that would cause a device mismatch. Remember to set the device back to
         GPU before using those LoRA adapters for inference.
 
+        ```python
+        >>> pipe.load_lora_weights(<path-1>, adapter_name="adapter-1")
+        >>> pipe.load_lora_weights(<path-1>, adapter_name="adapter-2")
+        >>> pipe.set_adapters("adapter-1")
+        >>> image_1 = pipe(**kwargs)
+        >>> # switch to adapter-2, offload adapter-1
+        >>> pipeline.set_lora_device(adapter_names=["adapter-1"], device="cpu")
+        >>> pipeline.set_lora_device(adapter_names=["adapter-2"], device="cuda:0")
+        >>> pipe.set_adapters("adapter-2")
+        >>> image_2 = pipe(**kwargs)
+        >>> # switch back to adapter-1, offload adapter-2
+        >>> pipeline.set_lora_device(adapter_names=["adapter-2"], device="cpu")
+        >>> pipeline.set_lora_device(adapter_names=["adapter-1"], device="cuda:0")
+        >>> pipe.set_adapters("adapter-1")
+        >>> ...
+        ```
+
         Args:
             adapter_names (`List[str]`):
                 List of adapters to send device to.
