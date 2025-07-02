@@ -74,26 +74,13 @@ pipeline = StableDiffusionPipeline.from_single_file(
 
 [LoRAs](../tutorials/using_peft_for_inference) are lightweight checkpoints fine-tuned to generate images or video in a specific style. If you are using a checkpoint trained with a Diffusers training script, the LoRA configuration is automatically saved as metadata in a safetensors file. When the safetensors file is loaded, the metadata is parsed to correctly configure the LoRA and avoids missing or incorrect LoRA configurations.
 
-```py
-import torch
-from diffusers import FluxPipeline
+The easiest way to inspect the metadata, if available, is by clicking on the Safetensors logo next to the weights.
 
-pipeline = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
-).to("cuda")
-pipeline.load_lora_weights("linoyts/yarn_art_Flux_LoRA")
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/safetensors_lora.png"/>
+</div>
 
-network_alphas, metadata = FluxPipeline.lora_state_dict(
-    "linoyts/yarn_art_Flux_LoRA",
-    return_lora_metadata=True
-)
-
-print("LoRA metadata:")
-for key, value in metadata.items():
-    print(f"  {key}: {value}")
-```
-
-For LoRAs that aren't trained with Diffusers, you can still inject the metadata as long as it is a safetensors file.
+For LoRAs that aren't trained with Diffusers, you can still save the metadata as long as it is a safetensors file.
 
 ```py
 import torch
