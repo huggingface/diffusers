@@ -52,13 +52,19 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> prompt = "Change the yellow dinosaur to green one"
-        >>> img_url = "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_input.jpeg?raw=true"
-        >>> mask_url = "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_mask.png?raw=true"
+        >>> img_url = (
+        ...     "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_input.jpeg?raw=true"
+        ... )
+        >>> mask_url = (
+        ...     "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_mask.png?raw=true"
+        ... )
 
         >>> source = load_image(img_url)
         >>> mask = load_image(mask_url)
 
-        >>> pipe = FluxKontextInpaintPipeline.from_pretrained("black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16)
+        >>> pipe = FluxKontextInpaintPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
 
         >>> image = pipe(prompt=prompt, image=source, mask_image=mask, strength=1.0).images[0]
@@ -71,13 +77,19 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import FluxKontextInpaintPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = FluxKontextInpaintPipeline.from_pretrained("black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16)
+        >>> pipe = FluxKontextInpaintPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
 
         >>> prompt = "Replace this ball"
         >>> img_url = "https://images.pexels.com/photos/39362/the-ball-stadion-football-the-pitch-39362.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500"
-        >>> mask_url = "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/ball_mask.png?raw=true"
-        >>> image_reference_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTah3x6OL_ECMBaZ5ZlJJhNsyC-OSMLWAI-xw&s"
+        >>> mask_url = (
+        ...     "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/ball_mask.png?raw=true"
+        ... )
+        >>> image_reference_url = (
+        ...     "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTah3x6OL_ECMBaZ5ZlJJhNsyC-OSMLWAI-xw&s"
+        ... )
 
         >>> source = load_image(img_url)
         >>> mask = load_image(mask_url)
@@ -85,11 +97,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> mask = pipe.mask_processor.blur(mask, blur_factor=12)
         >>> image = pipe(
-        ...     prompt=prompt,
-        ...     image=source,
-        ...     mask_image=mask,
-        ...     image_reference=image_reference,
-        ...     strength=1.0
+        ...     prompt=prompt, image=source, mask_image=mask, image_reference=image_reference, strength=1.0
         ... ).images[0]
         >>> image.save("kontext_inpainting_ref.png")
         ```
@@ -719,7 +727,7 @@ class FluxKontextInpaintPipeline(
         device: torch.device,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-        image_reference: Optional[torch.Tensor]=None,
+        image_reference: Optional[torch.Tensor] = None,
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -793,14 +801,17 @@ class FluxKontextInpaintPipeline(
         if image_reference_latents is not None:
             image_reference_latent_height, image_reference_latent_width = image_reference_latents.shape[2:]
             image_reference_latents = self._pack_latents(
-                image_reference_latents, batch_size, num_channels_latents, image_reference_latent_height, image_reference_latent_width
+                image_reference_latents,
+                batch_size,
+                num_channels_latents,
+                image_reference_latent_height,
+                image_reference_latent_width,
             )
             image_reference_ids = self._prepare_latent_image_ids(
                 batch_size, image_reference_latent_height // 2, image_reference_latent_width // 2, device, dtype
             )
             # image_reference_ids are the same as latent ids with the first dimension set to 1 instead of 0
             image_reference_ids[..., 0] = 1
-
 
         noise = self._pack_latents(noise, batch_size, num_channels_latents, height, width)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
@@ -945,17 +956,18 @@ class FluxKontextInpaintPipeline(
 
         Args:
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be be inpainted (which parts of the image to be masked out
-                with `mask_image` and repainted according to `prompt` and `image_reference`). For both numpy array and pytorch tensor,
-                the expected value range is between `[0, 1]` If it's a tensor or a list or tensors, the expected shape should be
-                `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`
-                It can also accept image latents as `image`, but if passing latents directly it is not encoded again.
-            image_reference (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be used as the starting point for the masked area. For both
+                `Image`, numpy array or tensor representing an image batch to be be inpainted (which parts of the image
+                to be masked out with `mask_image` and repainted according to `prompt` and `image_reference`). For both
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
-                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)` If it is a numpy array or a
+                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
                 latents as `image`, but if passing latents directly it is not encoded again.
+            image_reference (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to be used as the starting point for the
+                masked area. For both numpy array and pytorch tensor, the expected value range is between `[0, 1]` If
+                it's a tensor or a list or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)` If it is
+                a numpy array or a list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can
+                also accept image latents as `image`, but if passing latents directly it is not encoded again.
             mask_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
                 are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
@@ -1134,7 +1146,7 @@ class FluxKontextInpaintPipeline(
             image_height = image_height // multiple_of * multiple_of
             image = self.image_processor.resize(image, image_height, image_width)
 
-            #Choose the resolution of the image to be the same as the image
+            # Choose the resolution of the image to be the same as the image
             width = image_width
             height = image_height
 
@@ -1146,18 +1158,28 @@ class FluxKontextInpaintPipeline(
                 crops_coords = None
                 resize_mode = "default"
 
-            image = self.image_processor.preprocess(image, image_height, image_width, crops_coords=crops_coords, resize_mode=resize_mode)
+            image = self.image_processor.preprocess(
+                image, image_height, image_width, crops_coords=crops_coords, resize_mode=resize_mode
+            )
         else:
             raise ValueError("image must be provided correctly for inpainting")
 
         init_image = image.to(dtype=torch.float32)
 
-        #2.1 Preprocess image_reference
-        if image_reference is not None and not (isinstance(image_reference, torch.Tensor) and image_reference.size(1) == self.latent_channels):
-            if isinstance(image_reference, list) and isinstance(image_reference[0], torch.Tensor) and image_reference[0].ndim == 4:
+        # 2.1 Preprocess image_reference
+        if image_reference is not None and not (
+            isinstance(image_reference, torch.Tensor) and image_reference.size(1) == self.latent_channels
+        ):
+            if (
+                isinstance(image_reference, list)
+                and isinstance(image_reference[0], torch.Tensor)
+                and image_reference[0].ndim == 4
+            ):
                 image_reference = torch.cat(image_reference, dim=0)
             img_reference = image_reference[0] if isinstance(image_reference, list) else image_reference
-            image_reference_height, image_reference_width = self.image_processor.get_default_height_width(img_reference)
+            image_reference_height, image_reference_width = self.image_processor.get_default_height_width(
+                img_reference
+            )
             aspect_ratio = image_reference_width / image_reference_height
             if _auto_resize:
                 # Kontext is trained on specific resolutions, using one of them is recommended
@@ -1166,8 +1188,16 @@ class FluxKontextInpaintPipeline(
                 )
             image_reference_width = image_reference_width // multiple_of * multiple_of
             image_reference_height = image_reference_height // multiple_of * multiple_of
-            image_reference = self.image_processor.resize(image_reference, image_reference_height, image_reference_width)
-            image_reference = self.image_processor.preprocess(image_reference, image_reference_height, image_reference_width, crops_coords=crops_coords, resize_mode=resize_mode)
+            image_reference = self.image_processor.resize(
+                image_reference, image_reference_height, image_reference_width
+            )
+            image_reference = self.image_processor.preprocess(
+                image_reference,
+                image_reference_height,
+                image_reference_width,
+                crops_coords=crops_coords,
+                resize_mode=resize_mode,
+            )
         else:
             image_reference = None
 
@@ -1248,18 +1278,20 @@ class FluxKontextInpaintPipeline(
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
-        latents, image_latents, image_reference_latents, latent_ids, image_ids, image_reference_ids, noise = self.prepare_latents(
-            init_image,
-            latent_timestep,
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-            image_reference,
+        latents, image_latents, image_reference_latents, latent_ids, image_ids, image_reference_ids, noise = (
+            self.prepare_latents(
+                init_image,
+                latent_timestep,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                prompt_embeds.dtype,
+                device,
+                generator,
+                latents,
+                image_reference,
+            )
         )
 
         if image_reference_ids is not None:

@@ -161,11 +161,19 @@ class FluxKontextInpaintPipelineFastTests(
         for height, width in height_width_pairs:
             expected_height = height - height % (pipe.vae_scale_factor * 2)
             expected_width = width - width % (pipe.vae_scale_factor * 2)
-            #Because output shape is the same as the input shape, we need to create a dummy image and mask image
+            # Because output shape is the same as the input shape, we need to create a dummy image and mask image
             image = floats_tensor((1, 3, height, width), rng=random.Random(0)).to(torch_device)
             mask_image = torch.ones((1, 1, height, width)).to(torch_device)
 
-            inputs.update({"height": height, "width": width, "max_area": height * width, "image": image, "mask_image": mask_image})
+            inputs.update(
+                {
+                    "height": height,
+                    "width": width,
+                    "max_area": height * width,
+                    "image": image,
+                    "mask_image": mask_image,
+                }
+            )
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)

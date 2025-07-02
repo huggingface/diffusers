@@ -706,6 +706,7 @@ class FluxKontextPipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
+
 class FluxKontextInpaintPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
