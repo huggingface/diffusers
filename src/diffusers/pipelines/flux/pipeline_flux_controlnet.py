@@ -1278,10 +1278,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             mask_condition_bg = self.mask_processor.preprocess(
                 mask_bg, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
             )
-            if masked_image_latents is None:
-                masked_image_bg = init_image_bg * (mask_condition_bg < 0.5)
-            else:
-                masked_image_bg = masked_image_latents
+            masked_image_bg = init_image_bg * (mask_condition_bg < 0.5)
 
             mask_bg, masked_image_latents_bg = self.prepare_mask_latents(
                 mask_condition_bg,
