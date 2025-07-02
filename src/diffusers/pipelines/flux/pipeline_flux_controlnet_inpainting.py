@@ -1477,7 +1477,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 """
                 if i < ref_prod_injection_steps:
                     init_mask_ref_prod = mask_original
-                    latents = (1.0-bg_flexible_strength) * ((1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents) + bg_flexible_strength * latents
+                    # use Image.new("RGB", (image_size, image_size), color=(255, 255, 255)) as mask
+                    #latents = (1.0-bg_flexible_strength) * ((1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents) + bg_flexible_strength * latents
+                    
+                    #  use masked_bg.convert('RGB') as mask
+                    latents = (1 - init_mask) * ((1.0-bg_flexible_strength) * init_latents_proper + bg_flexible_strength * latents) + init_mask * init_latents_proper
                 else:
                     latents = (1.0-bg_flexible_strength) * ((1 - init_mask) * init_latents_proper + init_mask * latents) + bg_flexible_strength * latents
 
