@@ -532,7 +532,9 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             temb = temb.view(b, f, 1, 1, -1)
             timestep_proj = timestep_proj.view(b, f, 1, 1, 6, -1)  # (b, f, 1, 1, 6, inner_dim)
             temb = temb.repeat(1, 1, post_patch_height, post_patch_width, 1).flatten(1, 3)
-            timestep_proj = timestep_proj.repeat(1, 1, post_patch_height, post_patch_width, 1, 1).flatten(1, 3)  # (b, f, pp_h, pp_w, 6, inner_dim) -> (b, f * pp_h * pp_w, 6, inner_dim)
+            timestep_proj = timestep_proj.repeat(1, 1, post_patch_height, post_patch_width, 1, 1).flatten(
+                1, 3
+            )  # (b, f, pp_h, pp_w, 6, inner_dim) -> (b, f * pp_h * pp_w, 6, inner_dim)
             timestep_proj = timestep_proj.transpose(1, 2).contiguous()  # (b, 6, f * pp_h * pp_w, inner_dim)
 
         # 4. Transformer blocks
