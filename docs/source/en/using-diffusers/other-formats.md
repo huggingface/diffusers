@@ -80,7 +80,7 @@ The easiest way to inspect the metadata, if available, is by clicking on the Saf
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/safetensors_lora.png"/>
 </div>
 
-For LoRAs that aren't trained with Diffusers, you can still save metadata with the `transformer_lora_adapter_metadata` and `text_encoder_lora_adapter_metadata` arguments in [`~FluxLoraLoaderMixin.save_lora_weights`] as long as it is a safetensors file.
+For LoRAs that aren't trained with Diffusers, you can still save metadata with the `transformer_lora_adapter_metadata` and `text_encoder_lora_adapter_metadata` arguments in [`~loaders.FluxLoraLoaderMixin.save_lora_weights`] as long as it is a safetensors file.
 
 ```py
 import torch
