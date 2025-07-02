@@ -1120,6 +1120,8 @@ class FluxKontextInpaintPipeline(
 
         # 2. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
+            if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
+                image = torch.cat(image, dim=0)
             img = image[0] if isinstance(image, list) else image
             image_height, image_width = self.image_processor.get_default_height_width(img)
             aspect_ratio = image_width / image_height
@@ -1152,6 +1154,8 @@ class FluxKontextInpaintPipeline(
 
         #2.1 Preprocess image_reference
         if image_reference is not None and not (isinstance(image_reference, torch.Tensor) and image_reference.size(1) == self.latent_channels):
+            if isinstance(image_reference, list) and isinstance(image_reference[0], torch.Tensor) and image_reference[0].ndim == 4:
+                image_reference = torch.cat(image_reference, dim=0)
             img_reference = image_reference[0] if isinstance(image_reference, list) else image_reference
             image_reference_height, image_reference_width = self.image_processor.get_default_height_width(img_reference)
             aspect_ratio = image_reference_width / image_reference_height
