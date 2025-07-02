@@ -1341,27 +1341,6 @@ class Timesteps(nn.Module):
         return t_emb
 
 
-class SkyReelsV2Timesteps(nn.Module):
-    def __init__(self, num_channels: int, flip_sin_to_cos: bool, output_type: str = "pt"):
-        super().__init__()
-        self.num_channels = num_channels
-        self.output_type = output_type
-        self.flip_sin_to_cos = flip_sin_to_cos
-
-    def forward(self, timesteps: torch.Tensor) -> torch.Tensor:
-        original_shape = timesteps.shape
-        t_emb = get_1d_sincos_pos_embed_from_grid(
-            self.num_channels,
-            timesteps,
-            output_type=self.output_type,
-            flip_sin_to_cos=self.flip_sin_to_cos,
-        )
-        # Reshape back to maintain batch structure
-        if len(original_shape) > 1:
-            t_emb = t_emb.reshape(*original_shape, self.num_channels)
-        return t_emb
-
-
 class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 
