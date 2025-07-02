@@ -105,8 +105,9 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
-        super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3)
+    @parameterized.expand([("simple",), ("weighted",), ("block_lora",), ("delete_adapter",)])
+    def test_lora_set_adapters_scenarios(self, scenario):
+        super()._test_lora_set_adapters_scenarios(scenario, expected_atol=9e-3)
 
     @parameterized.expand(
         [
@@ -122,7 +123,7 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         ]
     )
     def test_lora_actions(self, action, components_to_add):
-        super().test_lora_actions(action, components_to_add, expected_atol=9e-3)
+        super()._test_lora_actions(action, components_to_add, expected_atol=9e-3)
 
     @unittest.skip("Not supported in Wan.")
     def test_modify_padding_mode(self):

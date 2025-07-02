@@ -139,9 +139,10 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             expected_atol = 1e-3
             expected_rtol = 1e-3
 
-        super().test_lora_actions(expected_atol=expected_atol, expected_rtol=expected_rtol)
+        super()._test_lora_actions(action, components_to_add, expected_atol=expected_atol, expected_rtol=expected_rtol)
 
-    def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
+    @parameterized.expand([("simple",), ("weighted",), ("block_lora",), ("delete_adapter",), ("fused_multi",)])
+    def test_lora_set_adapters_scenarios(self, scenario):
         if torch.cuda.is_available():
             expected_atol = 9e-2
             expected_rtol = 9e-2
@@ -149,8 +150,8 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             expected_atol = 1e-3
             expected_rtol = 1e-3
 
-        super().test_simple_inference_with_text_lora_denoiser_fused_multi(
-            expected_atol=expected_atol, expected_rtol=expected_rtol
+        super()._test_lora_set_adapters_scenarios(
+            scenario=scenario, expected_atol=expected_atol, expected_rtol=expected_rtol
         )
 
     def test_lora_scale_kwargs_match_fusion(self):
