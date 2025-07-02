@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -69,11 +69,10 @@ class FSQRegularizer(nn.Module):
         self.num_codebooks = num_codebooks
         self.effective_codebook_dim = effective_codebook_dim
 
-        keep_num_codebooks_dim = self.default(keep_num_codebooks_dim, num_codebooks > 1)
-        assert not (num_codebooks > 1 and not keep_num_codebooks_dim)
+        if keep_num_codebooks_dim is None:
+            keep_num_codebooks_dim = num_codebooks > 1
         self.keep_num_codebooks_dim = keep_num_codebooks_dim
-
-        self.dim = self.default(dim, len(_levels) * num_codebooks)
+        self.dim = len(_levels) * num_codebooks if dim is None else dim
 
         has_projections = self.dim != effective_codebook_dim
         self.project_in = nn.Linear(self.dim, effective_codebook_dim) if has_projections else nn.Identity()
@@ -88,47 +87,22 @@ class FSQRegularizer(nn.Module):
 
         self.global_codebook_usage = torch.zeros([2**self.codebook_dim, self.num_codebooks], dtype=torch.long)
 
-    @staticmethod
-    def default(*args) -> Any:
-        for arg in args:
-            if arg is not None:
-                return arg
-        return None
-
-    @staticmethod
-    def round_ste(z: torch.Tensor) -> torch.Tensor:
-        r"""Round with straight through gradients."""
-        zhat = z.round()
-        return z + (zhat - z).detach()
-
-    def get_trainable_parameters(self) -> Any:
-        return self.parameters()
-
-    def bound(self, z: torch.Tensor, eps: float = 1e-3) -> torch.Tensor:
-        r"""Bound `z`, an array of shape (..., d)."""
+    def quantize(self, z: torch.Tensor, eps: float = 1e-3) -> torch.Tensor:
+        r"""Quantizes z, returns quantized zhat, same shape as z."""
         half_l = (self._levels - 1) * (1 + eps) / 2
         offset = torch.where(self._levels % 2 == 0, 0.5, 0.0)
         shift = (offset / half_l).atanh()
-        return (z + shift).tanh() * half_l - offset
-
-    def quantize(self, z: torch.Tensor) -> torch.Tensor:
-        r"""Quantizes z, returns quantized zhat, same shape as z."""
-        quantized = self.round_ste(self.bound(z))
+        z = (z + shift).tanh() * half_l - offset
+        zhat = z.round()
+        quantized = z + (zhat - z).detach()
         half_width = self._levels // 2
         return quantized / half_width
-
-    def _scale_and_shift(self, zhat_normalized: torch.Tensor) -> torch.Tensor:
-        half_width = self._levels // 2
-        return (zhat_normalized * half_width) + half_width
-
-    def _scale_and_shift_inverse(self, zhat: torch.Tensor) -> torch.Tensor:
-        half_width = self._levels // 2
-        return (zhat - half_width) / half_width
 
     def codes_to_indices(self, zhat: torch.Tensor) -> torch.Tensor:
         r"""Converts a `code` to an index in the codebook."""
         assert zhat.shape[-1] == self.codebook_dim
-        zhat = self._scale_and_shift(zhat)
+        half_width = self._levels // 2
+        zhat = (zhat * half_width) + half_width
         return (zhat * self._basis).sum(dim=-1).to(torch.int32)
 
     def indices_to_codes(self, indices: torch.Tensor, project_out: bool = True) -> torch.Tensor:
@@ -136,7 +110,8 @@ class FSQRegularizer(nn.Module):
         is_img_or_video = indices.ndim >= (3 + int(self.keep_num_codebooks_dim))
         indices = indices.unsqueeze(-1)
         codes_non_centered = (indices // self._basis) % self._levels
-        codes = self._scale_and_shift_inverse(codes_non_centered)
+        half_width = self._levels // 2
+        codes = (codes_non_centered - half_width) / half_width
         if self.keep_num_codebooks_dim:
             codes = codes.reshape(*codes.shape[:-2], -1)
         if project_out:
@@ -145,7 +120,6 @@ class FSQRegularizer(nn.Module):
             codes = codes.permute(0, -1, *range(1, codes.dim() - 1))
         return codes
 
-    @torch.cuda.amp.autocast(enabled=False)
     def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""
         einstein notation b - batch n - sequence (or flattened spatial dimensions) d - feature dimension c - number of
@@ -161,8 +135,6 @@ class FSQRegularizer(nn.Module):
                 b, d, h, w = z.shape
                 is_video = False
             z = z.reshape(b, d, -1).permute(0, 2, 1)
-
-        assert z.shape[-1] == self.dim, f"expected dimension of {self.dim} but found dimension of {z.shape[-1]}"
 
         z = self.project_in(z)
         b, n, _ = z.shape
@@ -301,10 +273,12 @@ class VidTokCausalConv3d(nn.Module):
     ):
         super().__init__()
         self.pad_mode = pad_mode
-
-        kernel_size = self._cast_tuple(kernel_size, 3)
-        dilation = self._cast_tuple(dilation, 3)
-        stride = self._cast_tuple(stride, 3)
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size,) * 3
+        if isinstance(dilation, int):
+            dilation = (dilation,) * 3
+        if isinstance(stride, int):
+            stride = (stride,) * 3
         time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
         time_pad = dilation[0] * (time_kernel_size - 1) + (1 - stride[0])
         height_pad = dilation[1] * (height_kernel_size - 1) + (1 - stride[1])
@@ -324,11 +298,6 @@ class VidTokCausalConv3d(nn.Module):
         self.is_first_chunk = True
         self.causal_cache = None
         self.cache_offset = 0
-
-    @staticmethod
-    def _cast_tuple(t: Union[Tuple[int], int], length: int = 1) -> Tuple[int]:
-        r"""Cast `int` to `Tuple[int]`."""
-        return t if isinstance(t, tuple) else ((t,) * length)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `VidTokCausalConv3d` class."""
