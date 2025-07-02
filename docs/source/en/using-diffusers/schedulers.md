@@ -242,3 +242,6 @@ unet = UNet2DConditionModel.from_pretrained(
 )
 unet.save_pretrained("./local-unet", variant="non_ema")
 ```
+
+> [!TIP]
+> The `dtype` in which a model is loaded can be specified with the `torch_dtype` argument when loading models with `from_pretrained`. On-the-fly dtype conversion can also be done using the Pytorch provided `.to()` method. An important distinction to keep in mind is that the latter converts all weights to the specified dtype, while the former takes into account a special model attribute (`_keep_in_fp32_modules`) when loading the weights. This is important in cases where some layers in the model must remain in FP32 precision for numerical stability and best generation quality. An example can be found [here](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374).
