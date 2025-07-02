@@ -5452,6 +5452,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
+    # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -5552,6 +5553,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         return state_dict
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin._maybe_expand_t2v_lora_for_i2v
     def _maybe_expand_t2v_lora_for_i2v(
         cls,
         transformer: torch.nn.Module,
@@ -5599,6 +5601,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
 
         return state_dict
 
+    # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
