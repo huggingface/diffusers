@@ -28,7 +28,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle
+from ..normalization import AdaLayerNorm, AdaLayerNormSingle
 
 
 logger = logging.get_logger(__name__)
@@ -175,6 +175,7 @@ class AllegroTransformerBlock(nn.Module):
 
 class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["norm_out"]
 
     """
     A 3D Transformer model for video-like data.
@@ -292,8 +293,13 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         )
 
         # 3. Output projection & norm
-        self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.scale_shift_table = nn.Parameter(torch.randn(2, self.inner_dim) / self.inner_dim**0.5)
+        self.norm_out = AdaLayerNorm(
+            embedding_dim=self.inner_dim,
+            output_dim=2 * self.inner_dim,
+            norm_elementwise_affine=False,
+            norm_eps=1e-6,
+            chunk_dim=1,
+        )
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * out_channels)
 
         # 4. Timestep embeddings
@@ -393,11 +399,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                 )
 
         # 4. Output normalization & projection
-        shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
-        hidden_states = self.norm_out(hidden_states)
-
-        # Modulation
-        hidden_states = hidden_states * (1 + scale) + shift
+        hidden_states = self.norm_out(hidden_states, temb=embedded_timestep)
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.squeeze(1)
 
