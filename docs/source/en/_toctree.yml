@@ -64,6 +64,8 @@
     title: Overview
   - local: using-diffusers/create_a_server
     title: Create a server
+  - local: using-diffusers/batched_inference
+    title: Batch inference
   - local: training/distributed_inference
     title: Distributed inference
   - local: using-diffusers/scheduler_features
@@ -180,6 +182,10 @@
     title: Caching
   - local: optimization/memory
     title: Reduce memory usage
+  - local: optimization/speed-memory-optims
+    title: Compile and offloading quantized models
+  - local: optimization/pruna
+    title: Pruna
   - local: optimization/xformers
     title: xFormers
   - local: optimization/tome

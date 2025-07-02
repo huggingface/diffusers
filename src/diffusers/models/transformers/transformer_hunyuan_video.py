@@ -1,4 +1,4 @@
-# Copyright 2024 The Hunyuan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Hunyuan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -865,6 +865,12 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["x_embedder", "context_embedder", "norm"]
     _no_split_modules = [
+        "HunyuanVideoTransformerBlock",
+        "HunyuanVideoSingleTransformerBlock",
+        "HunyuanVideoPatchEmbed",
+        "HunyuanVideoTokenRefiner",
+    ]
+    _repeated_blocks = [
         "HunyuanVideoTransformerBlock",
         "HunyuanVideoSingleTransformerBlock",
         "HunyuanVideoPatchEmbed",

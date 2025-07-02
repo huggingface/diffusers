@@ -23,7 +23,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import empty_device_cache, randn_tensor
 from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionSafetyChecker
 
@@ -760,7 +760,7 @@ class TextToVideoZeroPipeline(
         # manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
-        torch.cuda.empty_cache()
+        empty_device_cache()
 
         if output_type == "latent":
             image = latents

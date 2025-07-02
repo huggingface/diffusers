@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 
 import copy
 import gc
+import glob
 import inspect
 import json
 import os
@@ -29,6 +30,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import pytest
 import requests_mock
 import safetensors.torch
 import torch
@@ -74,6 +76,7 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator_with_training,
     require_torch_gpu,
     require_torch_multi_accelerator,
+    require_torch_version_greater,
     run_test_in_subprocess,
     slow,
     torch_all_close,
@@ -937,8 +940,9 @@ class ModelTesterMixin:
 
     @require_torch_accelerator_with_training
     def test_enable_disable_gradient_checkpointing(self):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
 
@@ -956,8 +960,9 @@ class ModelTesterMixin:
 
     @require_torch_accelerator_with_training
     def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip: set[str] = {}):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1014,8 +1019,9 @@ class ModelTesterMixin:
     def test_gradient_checkpointing_is_applied(
         self, expected_set=None, attention_head_dim=None, num_attention_heads=None, block_out_channels=None
     ):
+        # Skip test if model does not support gradient checkpointing
         if not self.model_class._supports_gradient_checkpointing:
-            return  # Skip test if model does not support gradient checkpointing
+            pytest.skip("Gradient checkpointing is not supported.")
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -1072,7 +1078,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         torch.manual_seed(0)
         output_no_lora = model(**inputs_dict, return_dict=False)[0]
@@ -1127,7 +1133,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         denoiser_lora_config = LoraConfig(
             r=4,
@@ -1158,7 +1164,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         denoiser_lora_config = LoraConfig(
             r=rank,
@@ -1195,7 +1201,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         if not issubclass(model.__class__, PeftAdapterMixin):
-            return
+            pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
 
         denoiser_lora_config = LoraConfig(
             r=4,
@@ -1232,10 +1238,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_cpu_offload(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1262,10 +1268,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_disk_offload_without_safetensors(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1295,10 +1301,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_disk_offload_with_safetensors(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1323,10 +1329,10 @@ class ModelTesterMixin:
 
     @require_torch_multi_accelerator
     def test_model_parallelism(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
 
         model = model.to(torch_device)
 
@@ -1344,7 +1350,6 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
                 # Making sure part of the model will actually end up offloaded
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
-                print(f" new_model.hf_device_map:{new_model.hf_device_map}")
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
 
@@ -1425,10 +1430,10 @@ class ModelTesterMixin:
 
     @require_torch_accelerator
     def test_sharded_checkpoints_device_map(self):
+        if self.model_class._no_split_modules is None:
+            pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-        if model._no_split_modules is None:
-            return
         model = model.to(torch_device)
 
         torch.manual_seed(0)
@@ -1496,7 +1501,7 @@ class ModelTesterMixin:
     def test_layerwise_casting_training(self):
         def test_fn(storage_dtype, compute_dtype):
             if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
-                return
+                pytest.skip("Skipping test because CPU doesn't go well with bfloat16.")
             init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
             model = self.model_class(**init_dict)
@@ -1523,14 +1528,16 @@ class ModelTesterMixin:
         test_fn(torch.float8_e5m2, torch.float32)
         test_fn(torch.float8_e4m3fn, torch.bfloat16)
 
+    @torch.no_grad()
     def test_layerwise_casting_inference(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-        base_slice = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+        model = self.model_class(**config)
+        model.eval()
+        model.to(torch_device)
+        base_slice = model(**inputs_dict)[0].detach().flatten().cpu().numpy()
 
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
@@ -1568,6 +1575,7 @@ class ModelTesterMixin:
         test_layerwise_casting(torch.float8_e4m3fn, torch.bfloat16)
 
     @require_torch_accelerator
+    @torch.no_grad()
     def test_layerwise_casting_memory(self):
         MB_TOLERANCE = 0.2
         LEAST_COMPUTE_CAPABILITY = 8.0
@@ -1616,6 +1624,9 @@ class ModelTesterMixin:
     @parameterized.expand([False, True])
     @require_torch_accelerator
     def test_group_offloading(self, record_stream):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
 
@@ -1632,8 +1643,6 @@ class ModelTesterMixin:
             return model(**inputs_dict)[0]
 
         model = self.model_class(**init_dict)
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.to(torch_device)
         output_without_group_offloading = run_forward(model)
@@ -1669,12 +1678,12 @@ class ModelTesterMixin:
     @require_torch_accelerator
     @torch.no_grad()
     def test_group_offloading_with_layerwise_casting(self, record_stream, offload_type):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
-
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.to(torch_device)
         model.eval()
@@ -1692,6 +1701,31 @@ class ModelTesterMixin:
         )
         model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
         _ = model(**inputs_dict)[0]
+
+    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @require_torch_accelerator
+    @torch.no_grad()
+    def test_group_offloading_with_disk(self, record_stream, offload_type):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
+        torch.manual_seed(0)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.eval()
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.enable_group_offload(
+                torch_device,
+                offload_type=offload_type,
+                offload_to_disk_path=tmpdir,
+                use_stream=True,
+                record_stream=record_stream,
+                **additional_kwargs,
+            )
+            has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
+            self.assertTrue(len(has_safetensors) > 0, "No safetensors found in the offload directory.")
+            _ = model(**inputs_dict)[0]
 
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
@@ -1735,6 +1769,45 @@ class ModelTesterMixin:
             expected_max_diff,
             f"AutoModel forward pass diff: {max_diff} exceeds threshold {expected_max_diff}",
         )
+
+    @parameterized.expand(
+        [
+            (-1, "You can't pass device_map as a negative int"),
+            ("foo", "When passing device_map as a string, the value needs to be a device name"),
+        ]
+    )
+    def test_wrong_device_map_raises_error(self, device_map, msg_substring):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            with self.assertRaises(ValueError) as err_ctx:
+                _ = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+
+        assert msg_substring in str(err_ctx.exception)
+
+    @parameterized.expand([0, "cuda", torch.device("cuda")])
+    @require_torch_gpu
+    def test_passing_non_dict_device_map_works(self, device_map):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).eval()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+            _ = loaded_model(**inputs_dict)
+
+    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
+    @require_torch_gpu
+    def test_passing_dict_device_map_works(self, name, device):
+        # There are other valid dict-based `device_map` values too. It's best to refer to
+        # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).eval()
+        device_map = {name: device}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
+            _ = loaded_model(**inputs_dict)
 
 
 @is_staging_test
@@ -1834,6 +1907,8 @@ class ModelPushToHubTester(unittest.TestCase):
 @is_torch_compile
 @slow
 class TorchCompileTesterMixin:
+    different_shapes_for_compilation = None
+
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
@@ -1862,14 +1937,35 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
+    def test_torch_compile_repeated_blocks(self):
+        if self.model_class._repeated_blocks is None:
+            pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model.compile_repeated_blocks(fullgraph=True)
+
+        recompile_limit = 1
+        if self.model_class.__name__ == "UNet2DConditionModel":
+            recompile_limit = 2
+
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(recompile_limit=recompile_limit),
+            torch.no_grad(),
+        ):
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
+
     def test_compile_with_group_offloading(self):
+        if not self.model_class._supports_group_offloading:
+            pytest.skip("Model does not support group offloading.")
+
         torch._dynamo.config.cache_size_limit = 10000
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
-
-        if not getattr(model, "_supports_group_offloading", True):
-            return
 
         model.eval()
         # TODO: Can test for other group offloading kwargs later if needed.
@@ -1886,6 +1982,21 @@ class TorchCompileTesterMixin:
         with torch.no_grad():
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
+
+    @require_torch_version_greater("2.7.1")
+    def test_compile_on_different_shapes(self):
+        if self.different_shapes_for_compilation is None:
+            pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
+        torch.fx.experimental._config.use_duck_shape = False
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True, dynamic=True)
+
+        for height, width in self.different_shapes_for_compilation:
+            with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+                inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                _ = model(**inputs_dict)
 
 
 @slow
@@ -1906,6 +2017,8 @@ class LoraHotSwappingForModelTesterMixin:
     for the analogous PEFT test.
 
     """
+
+    different_shapes_for_compilation = None
 
     def tearDown(self):
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
@@ -1944,11 +2057,13 @@ class LoraHotSwappingForModelTesterMixin:
         - hotswap the second adapter
         - check that the outputs are correct
         - optionally compile the model
+        - optionally check if recompilations happen on different shapes
 
         Note: We set rank == alpha here because save_lora_adapter does not save the alpha scalings, thus the test would
         fail if the values are different. Since rank != alpha does not matter for the purpose of this test, this is
         fine.
         """
+        different_shapes = self.different_shapes_for_compilation
         # create 2 adapters with different ranks and alphas
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1998,19 +2113,30 @@ class LoraHotSwappingForModelTesterMixin:
             model.load_lora_adapter(file_name0, safe_serialization=True, adapter_name="adapter0", prefix=None)
 
             if do_compile:
-                model = torch.compile(model, mode="reduce-overhead")
+                model = torch.compile(model, mode="reduce-overhead", dynamic=different_shapes is not None)
 
             with torch.inference_mode():
-                output0_after = model(**inputs_dict)["sample"]
-            assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
+                # additionally check if dynamic compilation works.
+                if different_shapes is not None:
+                    for height, width in different_shapes:
+                        new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                        _ = model(**new_inputs_dict)
+                else:
+                    output0_after = model(**inputs_dict)["sample"]
+                    assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
 
             # hotswap the 2nd adapter
             model.load_lora_adapter(file_name1, adapter_name="adapter0", hotswap=True, prefix=None)
 
             # we need to call forward to potentially trigger recompilation
             with torch.inference_mode():
-                output1_after = model(**inputs_dict)["sample"]
-            assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
+                if different_shapes is not None:
+                    for height, width in different_shapes:
+                        new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                        _ = model(**new_inputs_dict)
+                else:
+                    output1_after = model(**inputs_dict)["sample"]
+                    assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
 
             # check error when not passing valid adapter name
             name = "does-not-exist"
@@ -2034,7 +2160,7 @@ class LoraHotSwappingForModelTesterMixin:
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_model_conv2d(self, rank0, rank1):
         if "unet" not in self.model_class.__name__.lower():
-            return
+            pytest.skip("Test only applies to UNet.")
 
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
@@ -2044,7 +2170,7 @@ class LoraHotSwappingForModelTesterMixin:
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_model_both_linear_and_conv2d(self, rank0, rank1):
         if "unet" not in self.model_class.__name__.lower():
-            return
+            pytest.skip("Test only applies to UNet.")
 
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
@@ -2128,3 +2254,23 @@ class LoraHotSwappingForModelTesterMixin:
                     do_compile=True, rank0=8, rank1=8, target_modules0=target_modules0, target_modules1=target_modules1
                 )
                 assert any("Hotswapping adapter0 was unsuccessful" in log for log in cm.output)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])
+    @require_torch_version_greater("2.7.1")
+    def test_hotswapping_compile_on_different_shapes(self, rank0, rank1):
+        different_shapes_for_compilation = self.different_shapes_for_compilation
+        if different_shapes_for_compilation is None:
+            pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
+        # Specifying `use_duck_shape=False` instructs the compiler if it should use the same symbolic
+        # variable to represent input sizes that are the same. For more details,
+        # check out this [comment](https://github.com/huggingface/diffusers/pull/11327#discussion_r2047659790).
+        torch.fx.experimental._config.use_duck_shape = False
+
+        target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            self.check_model_hotswap(
+                do_compile=True,
+                rank0=rank0,
+                rank1=rank1,
+                target_modules0=target_modules,
+            )

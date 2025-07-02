@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Team Inc.
+# Copyright 2025 The HuggingFace Team Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,11 @@ from diffusers.utils.testing_utils import backend_empty_cache, require_torch_gpu
 @require_torch_gpu
 @slow
 class QuantCompileTests(unittest.TestCase):
-    quantization_config = None
+    @property
+    def quantization_config(self):
+        raise NotImplementedError(
+            "This property should be implemented in the subclass to return the appropriate quantization config."
+        )
 
     def setUp(self):
         super().setUp()
@@ -64,7 +68,9 @@ class QuantCompileTests(unittest.TestCase):
             # small resolutions to ensure speedy execution.
             pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
 
-    def _test_torch_compile_with_group_offload(self, quantization_config, torch_dtype=torch.bfloat16):
+    def _test_torch_compile_with_group_offload_leaf(
+        self, quantization_config, torch_dtype=torch.bfloat16, *, use_stream: bool = False
+    ):
         torch._dynamo.config.cache_size_limit = 10000
 
         pipe = self._init_pipeline(quantization_config, torch_dtype)
@@ -72,8 +78,7 @@ class QuantCompileTests(unittest.TestCase):
             "onload_device": torch.device("cuda"),
             "offload_device": torch.device("cpu"),
             "offload_type": "leaf_level",
-            "use_stream": True,
-            "non_blocking": True,
+            "use_stream": use_stream,
         }
         pipe.transformer.enable_group_offload(**group_offload_kwargs)
         pipe.transformer.compile()

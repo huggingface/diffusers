@@ -44,6 +44,8 @@ def retrieve_latents(
 
 
 class LTXLatentUpsamplePipeline(DiffusionPipeline):
+    model_cpu_offload_seq = ""
+
     def __init__(
         self,
         vae: AutoencoderKLLTXVideo,

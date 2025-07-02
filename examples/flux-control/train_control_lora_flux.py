@@ -57,7 +57,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -837,11 +837,6 @@ def main(args):
     assert torch.all(flux_transformer.x_embedder.weight[:, initial_input_channels:].data == 0)
     flux_transformer.register_to_config(in_channels=initial_input_channels * 2, out_channels=initial_input_channels)
 
-    if args.train_norm_layers:
-        for name, param in flux_transformer.named_parameters():
-            if any(k in name for k in NORM_LAYER_PREFIXES):
-                param.requires_grad = True
-
     if args.lora_layers is not None:
         if args.lora_layers != "all-linear":
             target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
@@ -878,6 +873,11 @@ def main(args):
         lora_bias=args.use_lora_bias,
     )
     flux_transformer.add_adapter(transformer_lora_config)
+
+    if args.train_norm_layers:
+        for name, param in flux_transformer.named_parameters():
+            if any(k in name for k in NORM_LAYER_PREFIXES):
+                param.requires_grad = True
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
