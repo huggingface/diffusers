@@ -102,7 +102,7 @@ The following SkyReels-V2 models are supported in Diffusers:
 
 
         An example on how the step matrix is constructed for asynchronous processing:
-        Given the parameters: (num_inference_steps=30, shift=8, num_frames=97, ar_step=5, causal_block_size=5)
+        Given the parameters: (num_inference_steps=30, flow_shift=8, num_frames=97, ar_step=5, causal_block_size=5)
         - num_latent_frames = (97 frames - 1) // (4 temporal downsampling) + 1 = 25
         - step_template = [999, 995, 991, 986, 980, 975, 969, 963, 956, 948,
                            941, 932, 922, 912, 901, 888, 874, 859, 841, 822,
@@ -159,8 +159,8 @@ pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     transformer=transformer,
     torch_dtype=torch.bfloat16
 )
-shift = 8.0  # 8.0 for T2V, 5.0 for I2V
-pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
+flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
+pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 pipeline = pipeline.to("cuda")
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
@@ -203,8 +203,8 @@ vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=to
 pipeline = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
 )
-shift = 5.0  # 8.0 for T2V, 5.0 for I2V
-pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
+flow_shift = 5.0  # 8.0 for T2V, 5.0 for I2V
+pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 pipeline.to("cuda")
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
@@ -266,8 +266,8 @@ vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=to
 pipeline = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
 )
-shift = 5.0  # 8.0 for T2V, 5.0 for I2V
-pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
+flow_shift = 5.0  # 8.0 for T2V, 5.0 for I2V
+pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 pipeline.to("cuda")
 
 video = load_video("input_video.mp4")
