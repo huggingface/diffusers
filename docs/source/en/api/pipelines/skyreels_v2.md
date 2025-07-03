@@ -161,11 +161,11 @@ pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
 )
 shift = 8.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
-pipe = pipe.to("cuda")
+pipeline = pipeline.to("cuda")
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 
-output = pipe(
+output = pipeline(
     prompt=prompt,
     num_inference_steps=30,
     height=544,  # 720 for 720P
@@ -200,19 +200,19 @@ from diffusers.utils import export_to_video, load_image
 
 model_id = "Skywork/SkyReels-V2-DF-14B-720P-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
+pipeline = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
 )
 shift = 5.0  # 8.0 for T2V, 5.0 for I2V
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
-pipe.to("cuda")
+pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
+pipeline.to("cuda")
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
 last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
 
-def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
+def aspect_ratio_resize(image, pipeline, max_area=720 * 1280):
     aspect_ratio = image.height / image.width
-    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    mod_value = pipeline.vae_scale_factor_spatial * pipeline.transformer.config.patch_size[1]
     height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
     width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
     image = image.resize((width, height))
@@ -230,13 +230,13 @@ def center_crop_resize(image, height, width):
 
     return image, height, width
 
-first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
+first_frame, height, width = aspect_ratio_resize(first_frame, pipeline)
 if last_frame.size != first_frame.size:
     last_frame, _, _ = center_crop_resize(last_frame, height, width)
 
 prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
 
-output = pipe(
+output = pipeline(
     image=first_frame, last_image=last_frame, prompt=prompt, height=height, width=width, guidance_scale=5.0
 ).frames[0]
 export_to_video(output, "output.mp4", fps=24, quality=8)
@@ -263,18 +263,18 @@ from diffusers.utils import export_to_video, load_video
 
 model_id = "Skywork/SkyReels-V2-DF-14B-540P-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
+pipeline = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
 )
 shift = 5.0  # 8.0 for T2V, 5.0 for I2V
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
-pipe.to("cuda")
+pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
+pipeline.to("cuda")
 
 video = load_video("input_video.mp4")
 
 prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
 
-output = pipe(
+output = pipeline(
     video=video, prompt=prompt, height=544, width=960, guidance_scale=5.0,
     num_inference_steps=30, num_frames=257, base_num_frames=97#, ar_step=5, causal_block_size=5,
 ).frames[0]
