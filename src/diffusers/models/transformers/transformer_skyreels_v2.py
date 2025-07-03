@@ -198,7 +198,7 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
     ):
         timestep = self.timesteps_proj(timestep)
 
-        time_embedder_dtype = get_parameter_dtype(self.time_embedder)
+        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
             timestep = timestep.to(time_embedder_dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
