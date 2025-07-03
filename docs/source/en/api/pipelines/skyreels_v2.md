@@ -157,7 +157,6 @@ pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     "Skywork/SkyReels-V2-DF-14B-540P-Diffusers",
     vae=vae,
     transformer=transformer,
-    text_encoder=text_encoder,
     torch_dtype=torch.bfloat16
 )
 shift = 8.0  # 8.0 for T2V, 5.0 for I2V
