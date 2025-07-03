@@ -379,6 +379,15 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         return mask
 
+    def apply_erosion_to_mask(self, mask,iterations = 10):
+
+        kernel = np.ones((3, 3), np.uint8)
+        mask = mask.astype(np.uint8)
+        mask = cv2.erode(mask, kernel, iterations=iterations)
+        mask = np.array(mask, dtype=bool)
+
+        return mask
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -392,11 +401,13 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         is_qv: Optional[bool] = False, # thesea modified for quick validation of product shots
+        for_blend_preprocessing: Optional[bool] = False, # thesea modified for quick validation of product shots
         is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         is_inpainting: Optional[bool] = False, # controlnet inpainting
         contains_element: Optional[bool] = False, # controlnet inpainting for element
-        iterations: Optional[int] = 20, # controlnet inpainting
+        iterations: Optional[int] = 10, # controlnet inpainting
+        iterations_erosion: Optional[int] = 8, # modified for injecting original prod image
         mask_value: Optional[int] = 255, # controlnet inpainting
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
@@ -502,6 +513,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
             bg_mask = np.full((image_width, image_height, 3), True, dtype=bool)
             image_mask_prod = {}
+            image_mask_prod_original = {}
             image_mask_bg = {}
             image_mask_all = {}
             for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
@@ -519,6 +531,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 if is_product.lower() == "true":
                     if index not in image_mask_prod:
                         image_mask_prod[index] = mask
+                        image_mask_prod_original[index] = mask
                 else:
                     if index not in image_mask_bg:
                         image_mask_bg[index] = mask
@@ -536,31 +549,41 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
             composed_image_all = np.zeros((image_width, image_height, 3))
             masked_bg = np.zeros((image_width, image_height, 3))
+            masked_bg_original = np.zeros((image_width, image_height, 3))
             masked_bg_with_element = np.zeros((image_width, image_height, 3))
             composed_bg_image = np.zeros((image_width, image_height, 3))
             composed_prod_images = []
+            composed_prod_images_all = np.zeros((image_width, image_height, 3))
             for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
                 if is_product.lower() == "true":
                     composed_prod_images.append(Image.fromarray(img_array.astype(np.uint8)))
+                    composed_prod_images_all += img_array * image_mask_prod[index]
                 else:
                     composed_bg_image += img_array * image_mask_bg[index]
                 
                 composed_image_all += img_array * image_mask_all[index]
                 if is_product.lower() == "true":
                     masked_bg += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
+                    masked_bg_original += mask_value*np.ones((image_width, image_height, 3)) * self.apply_erosion_to_mask(image_mask_all[index], iterations=iterations_erosion)
 
                 if index > 0:
                     masked_bg_with_element += mask_value*np.ones((image_width, image_height, 3)) * self.apply_dilate_to_mask(image_mask_all[index], iterations=iterations)
 
             composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
+            composed_prod_images_all = Image.fromarray(composed_prod_images_all.astype(np.uint8)).convert('RGB')
             composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
             masked_bg = Image.fromarray(masked_bg.astype(np.uint8)).convert('RGB')
+            masked_bg_original = Image.fromarray(masked_bg_original.astype(np.uint8)).convert('RGB')
             masked_bg_with_element = Image.fromarray(masked_bg_with_element.astype(np.uint8)).convert('RGB')
         
             bg_mask = Image.fromarray(bg_mask.astype(np.uint8)*255).convert('RGB')
             prod_masks = []
             for tmp_mask in image_mask_prod:
                 prod_masks.append(Image.fromarray(image_mask_prod[tmp_mask].astype(np.uint8)*255).convert('RGB'))
+
+            prod_masks_original = []
+            for tmp_mask in image_mask_prod_original:
+                prod_masks_original.append(Image.fromarray(image_mask_prod_original[tmp_mask].astype(np.uint8)*255).convert('RGB'))
             
             image_latents_bg = self.encode_image(composed_bg_image, device, 1)
             image_latents_prods = []
@@ -629,14 +652,22 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         # scale & concatenate image and text embeddings
         if is_qv:
-            if len(prompt_embeds_list) != len(image_embeds_prods):
-                raise ValueError(
-                    f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
-                )
-            
-            prompt_embeds = image_embeds_bg
-            for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
-                prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
+            if for_blend_preprocessing:
+                if (len(prompt_embeds_list) - 1) != len(image_embeds_prods):
+                    raise ValueError(
+                        f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
+                    )
+                
+                prompt_embeds = image_embeds_bg
+            else:
+                if len(prompt_embeds_list) != len(image_embeds_prods):
+                    raise ValueError(
+                        f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
+                    )
+                
+                prompt_embeds = image_embeds_bg
+                for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
+                    prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
         else:
             prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
         
@@ -656,9 +687,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             if is_qv:
                 if is_inpainting:
                     if contains_element:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_with_element, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_original, masked_bg_with_element, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, prod_masks_original, bg_mask)
                     else:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, masked_bg, masked_bg_original, composed_bg_image, composed_prod_images, composed_prod_images_all, prod_masks, prod_masks_original, bg_mask)
                 else:
                     return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
             else:
