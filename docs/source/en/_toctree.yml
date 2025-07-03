@@ -634,8 +634,6 @@
       title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/flow_match_heun_discrete
       title: FlowMatchHeunDiscreteScheduler
-    - local: api/schedulers/flow_match_unipc
-      title: FlowMatchUniPCMultistepScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm

@@ -147,7 +147,7 @@ From the original repo:
 ```py
 # pip install ftfy
 import torch
-from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline, FlowMatchUniPCMultistepScheduler
+from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline, UniPCMultistepScheduler
 from diffusers.utils import export_to_video
 
 vae = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32)
@@ -161,7 +161,7 @@ pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     torch_dtype=torch.bfloat16
 )
 shift = 8.0  # 8.0 for T2V, 5.0 for I2V
-pipeline.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
+pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, shift=shift)
 pipe = pipe.to("cuda")
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
@@ -195,7 +195,7 @@ The example below demonstrates how to use the image-to-video pipeline to generat
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingImageToVideoPipeline, FlowMatchUniPCMultistepScheduler
+from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingImageToVideoPipeline, UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_image
 
 
@@ -205,7 +205,7 @@ pipe = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
 )
 shift = 5.0  # 8.0 for T2V, 5.0 for I2V
-pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
 pipe.to("cuda")
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
@@ -258,7 +258,7 @@ export_to_video(output, "output.mp4", fps=24, quality=8)
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingVideoToVideoPipeline, FlowMatchUniPCMultistepScheduler
+from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingVideoToVideoPipeline, UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
 
 
@@ -268,7 +268,7 @@ pipe = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
 )
 shift = 5.0  # 8.0 for T2V, 5.0 for I2V
-pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
 pipe.to("cuda")
 
 video = load_video("input_video.mp4")

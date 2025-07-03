@@ -27,7 +27,7 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import SkyReelsV2LoraLoaderMixin
 from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
-from ...schedulers import FlowMatchUniPCMultistepScheduler
+from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -54,7 +54,7 @@ EXAMPLE_DOC_STRING = """\
         >>> import torch
         >>> from diffusers import (
         ...     SkyReelsV2DiffusionForcingVideoToVideoPipeline,
-        ...     FlowMatchUniPCMultistepScheduler,
+        ...     UniPCMultistepScheduler,
         ...     AutoencoderKLWan,
         ... )
         >>> from diffusers.utils import export_to_video
@@ -75,7 +75,7 @@ EXAMPLE_DOC_STRING = """\
         ...     torch_dtype=torch.bfloat16,
         ... )
         >>> shift = 8.0  # 8.0 for T2V, 5.0 for I2V
-        >>> pipe.scheduler = FlowMatchUniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
+        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
@@ -203,7 +203,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
         transformer ([`SkyReelsV2Transformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
-        scheduler ([`FlowMatchUniPCMultistepScheduler`]):
+        scheduler ([`UniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
@@ -218,7 +218,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         text_encoder: UMT5EncoderModel,
         transformer: SkyReelsV2Transformer3DModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowMatchUniPCMultistepScheduler,
+        scheduler: UniPCMultistepScheduler,
     ):
         super().__init__()
 

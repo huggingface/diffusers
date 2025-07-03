@@ -11,7 +11,7 @@ from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjec
 
 from diffusers import (
     AutoencoderKLWan,
-    FlowMatchUniPCMultistepScheduler,
+    UniPCMultistepScheduler,
     SkyReelsV2DiffusionForcingPipeline,
     SkyReelsV2ImageToVideoPipeline,
     SkyReelsV2Pipeline,
@@ -593,9 +593,10 @@ if __name__ == "__main__":
     vae = convert_vae()
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
-    scheduler = FlowMatchUniPCMultistepScheduler(
+    scheduler = UniPCMultistepScheduler(
         prediction_type="flow_prediction",
         num_train_timesteps=1000,
+        use_flow_sigmas=True,
     )
 
     if "I2V" in args.model_type or "FLF2V" in args.model_type:

@@ -27,7 +27,7 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKLWan,
-    FlowMatchUniPCMultistepScheduler,
+    UniPCMultistepScheduler,
     SkyReelsV2ImageToVideoPipeline,
     SkyReelsV2Transformer3DModel,
 )
@@ -70,7 +70,7 @@ class SkyReelsV2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.Test
         )
 
         torch.manual_seed(0)
-        scheduler = FlowMatchUniPCMultistepScheduler(shift=5.0)
+        scheduler = UniPCMultistepScheduler(shift=5.0, use_flow_sigmas=True)
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
