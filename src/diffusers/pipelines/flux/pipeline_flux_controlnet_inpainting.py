@@ -750,11 +750,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
-        image_ref_prod: Optional[PipelineImageInput] = None, # original prod image
+        image_ref_prod: Optional[Union[PipelineImageInput, list[PipelineImageInput]]] = None, # original prod image
         ratio_ref_prod: Optional[float] = 0.125, # modified for injecting prod image
         bg_flexible_strength: Optional[float] = 0.0, # modified for injecting prod image
         mask_image: PipelineImageInput = None, # original mask image for inpainting
-        mask_image_original: Optional[PipelineImageInput] = None, # modified for injecting original prod images
+        mask_image_original: Optional[Union[PipelineImageInput, list[PipelineImageInput]]] = None, # modified for injecting original prod images
         prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for injecting original prod images
         masked_image_latents: PipelineImageInput = None,
         control_image: PipelineImageInput = None,
@@ -782,7 +782,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         max_sequence_length: int = 512,
         iterations: Optional[int] = 1, # modified for applying gradient to mask_image
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
-        ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
+        ref_prod_injection_steps: Optional[Union[int, List[int]]] = None, # modified for injecting ref product images
         inpainting_starting_step: Optional[int] = 0, # modified for starting inpainting
         inpainting_ending_step: Optional[int] = 0, # modified for starting inpainting
     ):
