@@ -98,7 +98,14 @@ class Base4bitTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        torch.use_deterministic_algorithms(True)
+        cls.is_deterministic_enabled = torch.are_deterministic_algorithms_enabled()
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(False)
 
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
@@ -866,15 +873,17 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
 
 @require_torch_version_greater("2.7.1")
 class Bnb4BitCompileTests(QuantCompileTests):
-    quantization_config = PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_8bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
-        },
-        components_to_quantize=["transformer", "text_encoder_2"],
-    )
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_8bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["transformer", "text_encoder_2"],
+        )
 
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -883,5 +892,7 @@ class Bnb4BitCompileTests(QuantCompileTests):
     def test_torch_compile_with_cpu_offload(self):
         super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
 
-    def test_torch_compile_with_group_offload(self):
-        super()._test_torch_compile_with_group_offload(quantization_config=self.quantization_config)
+    def test_torch_compile_with_group_offload_leaf(self):
+        super()._test_torch_compile_with_group_offload_leaf(
+            quantization_config=self.quantization_config, use_stream=True
+        )
