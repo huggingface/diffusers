@@ -105,8 +105,12 @@ VACE_TRANSFORMER_KEYS_RENAME_DICT = {
     "after_proj": "proj_out",
 }
 
-TRANSFORMER_SPECIAL_KEYS_REMAP = {}
-VACE_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+TRANSFORMER_SPECIAL_KEYS_REMAP = {
+    "norm_out.linear.bias": lambda key, state_dict: state_dict.setdefault(key, torch.zeros(state_dict["norm_out.linear.weight"].shape[0]))
+}
+VACE_TRANSFORMER_SPECIAL_KEYS_REMAP = {
+    "norm_out.linear.bias": lambda key, state_dict: state_dict.setdefault(key, torch.zeros(state_dict["norm_out.linear.weight"].shape[0]))
+}
 
 
 def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
@@ -307,6 +311,10 @@ def convert_transformer(model_type: str):
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
+
+    for special_key, handler_fn_inplace in SPECIAL_KEYS_REMAP.items():
+        if special_key not in original_state_dict:
+            handler_fn_inplace(special_key, original_state_dict)
 
     transformer.load_state_dict(original_state_dict, strict=True, assign=True)
     return transformer
