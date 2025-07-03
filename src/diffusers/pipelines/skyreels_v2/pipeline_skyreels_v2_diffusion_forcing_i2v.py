@@ -995,7 +995,6 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                                 t[idx],
                                 latents[:, :, idx, :, :],
                                 return_dict=False,
-                                generator=generator,
                             )[0]
 
                     if callback_on_step_end is not None:
