@@ -252,7 +252,6 @@ class PeftLoraLoaderMixinTests:
                 init_lora_weights=False,
                 use_dora=False,
             )
-
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
             state_dict = {}
@@ -317,7 +316,6 @@ class PeftLoraLoaderMixinTests:
             modules_to_save = self._get_modules_to_save(
                 pipe, has_denoiser=lora_components_to_add != "text_encoder_only"
             )
-
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(not np.allclose(output_lora, output_no_lora, atol=expected_atol, rtol=expected_rtol))
 
@@ -348,9 +346,11 @@ class PeftLoraLoaderMixinTests:
                 pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
+                self.assertTrue(pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
                 output_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
                 pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
+                self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
                 output_unfused = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -384,6 +384,14 @@ class PeftLoraLoaderMixinTests:
                         "Loading from a saved checkpoint should yield the same result.",
                     )
 
+            elif action == "disable":
+                pipe.disable_lora()
+                output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertTrue(
+                    np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
+                    "output with no lora and output with lora disabled should give same results",
+                )
+
     @parameterized.expand(
         [
             # Test actions on text_encoder LoRA only
@@ -395,6 +403,7 @@ class PeftLoraLoaderMixinTests:
             ("unloaded", "text_and_denoiser"),
             ("unfused", "text_and_denoiser"),
             ("save_load", "text_and_denoiser"),
+            ("disable", "text_and_denoiser"),
         ]
     )
     def test_lora_actions(self, action, lora_components_to_add, expected_atol=1e-3):
@@ -1349,12 +1358,12 @@ class PeftLoraLoaderMixinTests:
             output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             # Also disable the LoRA
-            pipe.disable_lora()
-            output_lora_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            # pipe.disable_lora()
+            # output_lora_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             # --- Assert base multi-adapter behavior ---
             self.assertFalse(np.allclose(output_no_lora, output_adapter_1, atol=expected_atol, rtol=expected_rtol))
-            self.assertTrue(np.allclose(output_no_lora, output_lora_disabled, atol=expected_atol, rtol=expected_rtol))
+            # self.assertTrue(np.allclose(output_no_lora, output_lora_disabled, atol=expected_atol, rtol=expected_rtol))
             self.assertFalse(np.allclose(output_adapter_1, output_adapter_2, atol=expected_atol, rtol=expected_rtol))
             self.assertFalse(
                 np.allclose(output_adapter_1, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
@@ -1400,8 +1409,6 @@ class PeftLoraLoaderMixinTests:
                 # 1. Fuse a single adapter
                 pipe.set_adapters("adapter-1")
                 pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
-                self.assertTrue(pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
-
                 output_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
                 self.assertTrue(
                     np.allclose(output_adapter_1, output_lora_1_fused, atol=expected_atol, rtol=expected_rtol)
@@ -1552,7 +1559,6 @@ class PeftLoraLoaderMixinTests:
             init_lora_weights=False,
             use_dora=use_dora,
         )
-
         denoiser_lora_config = LoraConfig(
             r=rank,
             lora_alpha=lora_alpha,
@@ -1614,16 +1620,6 @@ class PeftLoraLoaderMixinTests:
             pipeline_inputs.update({"generator": generator})
 
         return noise, input_ids, pipeline_inputs
-
-    # Copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
-    def get_dummy_tokens(self):
-        max_seq_length = 77
-
-        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
-
-        prepared_inputs = {}
-        prepared_inputs["input_ids"] = inputs
-        return prepared_inputs
 
     def add_adapters_to_pipeline(self, pipe, text_lora_config=None, denoiser_lora_config=None, adapter_name="default"):
         if text_lora_config is not None and "text_encoder" in self.pipeline_class._lora_loadable_modules:

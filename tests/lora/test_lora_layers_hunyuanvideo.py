@@ -153,7 +153,7 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @parameterized.expand([("simple",), ("weighted",), ("block_lora",), ("delete_adapter",)])
     def test_lora_set_adapters_scenarios(self, scenario):
-        super()._test_lora_set_adapters_scenarios(scenario, expected_atol=9e-3, expected_rtol=9e-3)
+        super()._test_lora_set_adapters_scenarios(scenario, expected_atol=9e-3)
 
     @parameterized.expand(
         [
