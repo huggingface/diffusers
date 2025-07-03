@@ -32,7 +32,7 @@ from ..embeddings import (
     get_1d_sincos_pos_embed_from_grid,
 )
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin, get_parameter_dtype
+from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
 
 
