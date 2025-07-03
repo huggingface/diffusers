@@ -27,9 +27,9 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKLWan,
-    UniPCMultistepScheduler,
     SkyReelsV2ImageToVideoPipeline,
     SkyReelsV2Transformer3DModel,
+    UniPCMultistepScheduler,
 )
 from diffusers.utils.testing_utils import enable_full_determinism
 

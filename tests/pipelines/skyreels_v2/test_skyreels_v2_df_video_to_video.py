@@ -22,9 +22,9 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
-    UniPCMultistepScheduler,
     SkyReelsV2DiffusionForcingVideoToVideoPipeline,
     SkyReelsV2Transformer3DModel,
+    UniPCMultistepScheduler,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
