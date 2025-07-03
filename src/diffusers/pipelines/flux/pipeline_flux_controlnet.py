@@ -826,10 +826,10 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         negative_prompt: Union[str, List[str]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None, # original prod image
-        image_bg: PipelineImageInput = None, # original bg image
+
         ratio_ref: Optional[float] = 0.1, # ratio of original prod images
         mask_image: PipelineImageInput = None, # modified for injecting original prod images
-        mask_bg: PipelineImageInput = None, # modified for injecting original bg images
+        
         prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for averaging multiple copies
         masked_image_latents: PipelineImageInput = None,
         true_cfg_scale: float = 1.0,
@@ -864,7 +864,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         max_sequence_length: int = 512,
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
         ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
-        ref_bg_injection_steps: Optional[int] = 0, # modified for injecting ref product images
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1089,12 +1088,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             init_image = init_image.to(dtype=torch.float32)
         else:
             init_image = None
-        
-        if image_bg is not None:
-            init_image_bg = self.image_processor.preprocess(
-                image_bg, height=global_height, width=global_width, crops_coords=crops_coords, resize_mode=resize_mode
-            )
-            init_image_bg = init_image_bg.to(dtype=torch.float32)
 
         # 3. Prepare control image
         num_channels_latents = self.transformer.config.in_channels // 4
@@ -1236,21 +1229,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             ref_prod_injection_steps,
         )
 
-        if image_bg is not None:
-            _, noise_bg, image_latents_bg, _ = self.prepare_latents(
-                init_image_bg,
-                latent_timestep,
-                batch_size * num_images_per_prompt,
-                num_channels_latents,
-                global_height,
-                global_width,
-                prompt_embeds.dtype,
-                device,
-                generator,
-                latents=None,
-                ref_prod_injection_steps=ref_prod_injection_steps,
-            )
-
         # Prepare mask latents
         if image is not None:
             mask_condition = self.mask_processor.preprocess(
@@ -1264,28 +1242,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             mask, masked_image_latents = self.prepare_mask_latents(
                 mask_condition,
                 masked_image,
-                batch_size,
-                num_channels_latents,
-                num_images_per_prompt,
-                global_height,
-                global_width,
-                prompt_embeds.dtype,
-                device,
-                generator,
-            )
-        
-        if image_bg is not None:
-            mask_condition_bg = self.mask_processor.preprocess(
-                mask_bg, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
-            )
-            if masked_image_latents is None:
-                masked_image_bg = init_image_bg * (mask_condition_bg < 0.5)
-            else:
-                masked_image_bg = masked_image_latents
-
-            mask_bg, masked_image_latents_bg = self.prepare_mask_latents(
-                mask_condition_bg,
-                masked_image_bg,
                 batch_size,
                 num_channels_latents,
                 num_images_per_prompt,
@@ -1508,19 +1464,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                         latents_2 = (1.0 - init_mask) * latents
 
                         latents = latents_1 + latents_2
-
-                if image_bg is not None:
-                    if i < ref_bg_injection_steps:
-                        init_mask_bg = mask_bg
-                        init_latents_proper_bg = image_latents_bg
-
-                        if i < len(timesteps) - 1:
-                            noise_timestep = timesteps[i + 1]
-                            init_latents_proper_bg = self.scheduler.scale_noise(
-                                init_latents_proper_bg, torch.tensor([noise_timestep]), noise_bg
-                            )
-
-                        latents = (1.0 - init_mask_bg) * init_latents_proper_bg + init_mask_bg * latents
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
