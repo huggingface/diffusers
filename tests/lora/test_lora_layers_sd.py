@@ -20,6 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
+from parameterized import parameterized
 from safetensors.torch import load_file
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -207,6 +208,19 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         for name, param in pipe.text_encoder.named_parameters():
             if "lora_" in name:
                 self.assertNotEqual(param.device, torch.device("cpu"))
+
+    @parameterized.expand([("simple",), ("weighted",), ("block_lora",), ("delete_adapter",)])
+    def test_lora_set_adapters_scenarios(self, scenario):
+        if torch.cuda.is_available():
+            expected_atol = 9e-2
+            expected_rtol = 9e-2
+        else:
+            expected_atol = 1e-3
+            expected_rtol = 1e-3
+
+        super()._test_lora_set_adapters_scenarios(
+            scenario=scenario, expected_atol=expected_atol, expected_rtol=expected_rtol
+        )
 
 
 @slow

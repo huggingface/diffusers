@@ -423,9 +423,6 @@ class PeftLoraLoaderMixinTests:
         Tests inference with LoRA scaling applied via attention_kwargs
         for different LoRA configurations.
         """
-        # TODO:
-        # Currently, the following fails:
-        # tests/lora/test_lora_layers_sdxl.py::StableDiffusionXLLoRATests::test_lora_scaling_1_text_and_denoiser
         if lora_components_to_add == "text_encoder_only":
             if not any("text_encoder" in k for k in self.pipeline_class._lora_loadable_modules):
                 pytest.skip(
@@ -1357,13 +1354,8 @@ class PeftLoraLoaderMixinTests:
             pipe.set_adapters(["adapter-1", "adapter-2"])
             output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            # Also disable the LoRA
-            # pipe.disable_lora()
-            # output_lora_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
             # --- Assert base multi-adapter behavior ---
             self.assertFalse(np.allclose(output_no_lora, output_adapter_1, atol=expected_atol, rtol=expected_rtol))
-            # self.assertTrue(np.allclose(output_no_lora, output_lora_disabled, atol=expected_atol, rtol=expected_rtol))
             self.assertFalse(np.allclose(output_adapter_1, output_adapter_2, atol=expected_atol, rtol=expected_rtol))
             self.assertFalse(
                 np.allclose(output_adapter_1, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
