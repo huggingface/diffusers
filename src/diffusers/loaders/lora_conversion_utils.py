@@ -1825,6 +1825,9 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     is_i2v_lora = any("k_img" in k for k in original_state_dict) and any("v_img" in k for k in original_state_dict)
     lora_down_key = "lora_A" if any("lora_A" in k for k in original_state_dict) else "lora_down"
     lora_up_key = "lora_B" if any("lora_B" in k for k in original_state_dict) else "lora_up"
+    has_time_projection_weight = any(
+        k.startswith("time_projection") and k.endswith(".weight") for k in original_state_dict
+    )
 
     for key in list(original_state_dict.keys()):
         if key.endswith((".diff", ".diff_b")) and "norm" in key:
@@ -1833,16 +1836,11 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             original_state_dict.pop(key)
             logger.debug(f"Removing {key} key from the state dict as it is a norm diff key. This is unsupported.")
 
-        if "time_projection" in key:
+        if "time_projection" in key and not has_time_projection_weight:
             # AccVideo lora has diff bias keys but not the weight keys. This causes a weird problem where
             # our lora config adds the time proj lora layers, but we don't have the weights for them.
             # CausVid lora has the weight keys and the bias keys.
-            # This mismatch causes problems with the automatic lora config detection. The best way out is
-            # to simply drop the time projection layer keys from the state dict. It is safe because
-            # the most important layers are QKVO projections anyway, and doing this does not seem to impact
-            # model quality in a quantifiable way.
             original_state_dict.pop(key)
-            logger.debug(f"Removing {key} key from the state dict.")
 
     # For the `diff_b` keys, we treat them as lora_bias.
     # https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraConfig.lora_bias
@@ -1918,6 +1916,22 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
     # Remaining.
     if original_state_dict:
+        if any("time_projection" in k for k in original_state_dict):
+            original_key = f"time_projection.1.{lora_down_key}.weight"
+            converted_key = "condition_embedder.time_proj.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"time_projection.1.{lora_up_key}.weight"
+            converted_key = "condition_embedder.time_proj.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            if "time_projection.1.diff_b" in original_state_dict:
+                converted_state_dict["condition_embedder.time_proj.lora_B.bias"] = original_state_dict.pop(
+                    "time_projection.1.diff_b"
+                )
+
         if any("head.head" in k for k in state_dict):
             converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(
                 f"head.head.{lora_down_key}.weight"
