@@ -72,8 +72,8 @@ EXAMPLE_DOC_STRING = """\
         ...     vae=vae,
         ...     torch_dtype=torch.bfloat16,
         ... )
-        >>> shift = 8.0  # 8.0 for T2V, 5.0 for I2V
-        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, shift=shift)
+        >>> flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
+        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
