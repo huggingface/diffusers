@@ -14,7 +14,7 @@ MEASUREMENTS_TABLE_NAME = "model_measurements"
 
 
 def _init_benchmark(conn, branch, commit_id, commit_msg):
-    metadata = f"diffusers-{commit_id}"
+    metadata = {"metadata": f"diffusers-{commit_id}"}
     repository = "huggingface/diffusers"
     with conn.cursor() as cur:
         cur.execute(
