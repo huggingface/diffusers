@@ -753,7 +753,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         image_ref_prod: Optional[PipelineImageInput] = None, # original prod image
         ratio_ref_prod: Optional[float] = 0.125, # modified for injecting prod image
         mask_image: PipelineImageInput = None, # original mask image for inpainting
-        mask_image_original: Optional[PipelineImageInput] = None, # modified for injecting original prod images
+        mask_image_original: Optional[Union[PipelineImageInput, List[PipelineImageInput]]] = None, # modified for injecting original prod images
         prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for injecting original prod images
         masked_image_latents: PipelineImageInput = None,
         control_image: PipelineImageInput = None,
@@ -781,7 +781,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         max_sequence_length: int = 512,
         iterations: Optional[int] = 1, # modified for applying gradient to mask_image
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
-        ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
+        ref_prod_injection_steps: Optional[Union[int, List[int]]] = 22, # modified for injecting ref product images
         inpainting_starting_step: Optional[int] = 0, # modified for starting inpainting
         inpainting_ending_step: Optional[int] = 0, # modified for starting inpainting
     ):
@@ -1139,13 +1139,29 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
         
         if image_ref_prod is not None:
-            mask_condition_original = self.mask_processor.preprocess(
-                mask_image_original, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
-            )
-            if masked_image_latents is None:
-                masked_image_original = init_image * (mask_condition_original < 0.5)
+            if len(mask_image_original) == 1:
+                mask_condition_original = self.mask_processor.preprocess(
+                    mask_image_original[0], height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
+                )
+                if masked_image_latents is None:
+                    masked_image_original = init_image * (mask_condition_original < 0.5)
+                else:
+                    masked_image_original = masked_image_latents
             else:
-                masked_image_original = masked_image_latents
+                if len(ref_prod_injection_steps) != len(mask_image_original):
+                    raise ValueError(f"The number of ref_prod_injection_steps ({ref_prod_injection_steps}) has to be equal to the number of masks ({mask_image_original})")
+                
+                mask_condition_original = []
+                for tmp_mask_image_original in mask_image_original:
+                    tmp_mask_condition_original = self.mask_processor.preprocess(
+                        tmp_mask_image_original, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
+                    )
+                    mask_condition_original.append(tmp_mask_condition_original)
+                    if masked_image_latents is None:
+                        masked_image_original = init_image * (tmp_mask_condition_original < 0.5)
+                    else:
+                        masked_image_original = masked_image_latents
+
 
         mask, masked_image_latents = self.prepare_mask_latents(
             mask_condition,
@@ -1178,18 +1194,36 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 masks_prod.append(tmp_mask)
 
         if image_ref_prod is not None:
-            mask_original, _ = self.prepare_mask_latents(
-                mask_condition_original,
-                masked_image_original,
-                batch_size,
-                num_channels_latents,
-                num_images_per_prompt,
-                global_height,
-                global_width,
-                prompt_embeds.dtype,
-                device,
-                generator,
-            )
+            if len(mask_image_original) == 1:
+                mask_original, _ = self.prepare_mask_latents(
+                    mask_condition_original,
+                    masked_image_original,
+                    batch_size,
+                    num_channels_latents,
+                    num_images_per_prompt,
+                    global_height,
+                    global_width,
+                    prompt_embeds.dtype,
+                    device,
+                    generator,
+                )
+            else:
+                mask_original = []
+                for tmp_mask_condition_original in mask_condition_original:
+                    tmp_mask_original, _ = self.prepare_mask_latents(
+                        tmp_mask_condition_original,
+                        masked_image_original,
+                        batch_size,
+                        num_channels_latents,
+                        num_images_per_prompt,
+                        global_height,
+                        global_width,
+                        prompt_embeds.dtype,
+                        device,
+                        generator,
+                    )
+                    mask_original.append(tmp_mask_original)
+
             
         def apply_dilate_to_mask_image(mask,iterations):
             kernel = np.ones((3, 3), np.uint8)
@@ -1474,11 +1508,22 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         
                         latents = latents_1 + latents_2
                 """
-                if i < ref_prod_injection_steps:
-                    init_mask_ref_prod = mask_original
-                    latents = (1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents
+                init_mask_ref_prod = mask_original
+                if len(mask_image_original) == 1:
+                    if i < ref_prod_injection_steps:
+                        latents = (1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents
+                    else:
+                        latents = (1 - init_mask) * init_latents_proper + init_mask * latents
                 else:
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                    init_mask_ref_prod_all = torch.zeros_like(init_mask)
+                    for tmp_ref_prod_injection_steps, tmp_init_mask_ref_prod in (ref_prod_injection_steps,init_mask_ref_prod):
+                        if i < tmp_ref_prod_injection_steps:
+                             init_mask_ref_prod_all += tmp_init_mask_ref_prod
+                    
+                    latents = (1 - (init_mask - init_mask_ref_prod_all)) * init_latents_proper + (init_mask - init_mask_ref_prod_all) * latents
+                    
+                             
+
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
