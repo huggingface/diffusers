@@ -1826,23 +1826,23 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     lora_down_key = "lora_A" if any("lora_A" in k for k in original_state_dict) else "lora_down"
     lora_up_key = "lora_B" if any("lora_B" in k for k in original_state_dict) else "lora_up"
 
-    diff_keys = [k for k in original_state_dict if k.endswith((".diff_b", ".diff"))]
-    if diff_keys:
-        for diff_k in diff_keys:
-            param = original_state_dict[diff_k]
-            # The magnitudes of the .diff-ending weights are very low (most are below 1e-4, some are upto 1e-3,
-            # and 2 of them are about 1.6e-2 [the case with AccVideo lora]). The low magnitudes mostly correspond
-            # to norm layers. Ignoring them is the best option at the moment until a better solution is found. It
-            # is okay to ignore because they do not affect the model output in a significant manner.
-            threshold = 1.6e-2
-            absdiff = param.abs().max() - param.abs().min()
-            all_zero = torch.all(param == 0).item()
-            all_absdiff_lower_than_threshold = absdiff < threshold
-            if all_zero or all_absdiff_lower_than_threshold:
-                logger.debug(
-                    f"Removed {diff_k} key from the state dict as it's all zeros, or values lower than hardcoded threshold."
-                )
-                original_state_dict.pop(diff_k)
+    for key in list(original_state_dict.keys()):
+        if key.endswith((".diff", ".diff_b")) and "norm" in key:
+            # NOTE: we don't support this because norm layer diff keys are just zeroed values. We can support it
+            # in future if needed and they are not zeroed.
+            original_state_dict.pop(key)
+            logger.debug(f"Removing {key} key from the state dict as it is a norm diff key. This is unsupported.")
+
+        if "time_projection" in key:
+            # AccVideo lora has diff bias keys but not the weight keys. This causes a weird problem where
+            # our lora config adds the time proj lora layers, but we don't have the weights for them.
+            # CausVid lora has the weight keys and the bias keys.
+            # This mismatch causes problems with the automatic lora config detection. The best way out is
+            # to simply drop the time projection layer keys from the state dict. It is safe because
+            # the most important layers are QKVO projections anyway, and doing this does not seem to impact
+            # model quality in a quantifiable way.
+            original_state_dict.pop(key)
+            logger.debug(f"Removing {key} key from the state dict.")
 
     # For the `diff_b` keys, we treat them as lora_bias.
     # https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraConfig.lora_bias
@@ -1918,22 +1918,6 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
     # Remaining.
     if original_state_dict:
-        if any("time_projection" in k for k in original_state_dict):
-            original_key = f"time_projection.1.{lora_down_key}.weight"
-            converted_key = "condition_embedder.time_proj.lora_A.weight"
-            if original_key in original_state_dict:
-                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
-
-            original_key = f"time_projection.1.{lora_up_key}.weight"
-            converted_key = "condition_embedder.time_proj.lora_B.weight"
-            if original_key in original_state_dict:
-                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
-
-            if "time_projection.1.diff_b" in original_state_dict:
-                converted_state_dict["condition_embedder.time_proj.lora_B.bias"] = original_state_dict.pop(
-                    "time_projection.1.diff_b"
-                )
-
         if any("head.head" in k for k in state_dict):
             converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(
                 f"head.head.{lora_down_key}.weight"
