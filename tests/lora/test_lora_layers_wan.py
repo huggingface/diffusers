@@ -19,17 +19,8 @@ import torch
 from parameterized import parameterized
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import (
-    AutoencoderKLWan,
-    FlowMatchEulerDiscreteScheduler,
-    WanPipeline,
-    WanTransformer3DModel,
-)
-from diffusers.utils.testing_utils import (
-    floats_tensor,
-    require_peft_backend,
-    skip_mps,
-)
+from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanPipeline, WanTransformer3DModel
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps
 
 
 sys.path.append(".")

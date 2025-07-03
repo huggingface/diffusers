@@ -21,18 +21,13 @@ import numpy as np
 import pytest
 import safetensors.torch
 import torch
+from parameterized import parameterized
 from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanVACEPipeline, WanVACETransformer3DModel
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import (
-    floats_tensor,
-    require_peft_backend,
-    require_peft_version_greater,
-    skip_mps,
-    torch_device,
-)
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps, torch_device
 
 
 if is_peft_available():
@@ -120,42 +115,28 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
-        super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3)
+    @parameterized.expand([("simple",), ("weighted",), ("block_lora",), ("delete_adapter",)])
+    def test_lora_set_adapters_scenarios(self, scenario):
+        super()._test_lora_set_adapters_scenarios(scenario, expected_atol=9e-3)
 
-    def test_simple_inference_with_text_denoiser_lora_unfused(self):
-        super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
-
-    @unittest.skip("Not supported in Wan VACE.")
-    def test_simple_inference_with_text_denoiser_block_scale(self):
-        pass
-
-    @unittest.skip("Not supported in Wan VACE.")
-    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
-        pass
+    @parameterized.expand(
+        [
+            # Test actions on text_encoder LoRA only
+            ("fused", "text_encoder_only"),
+            ("unloaded", "text_encoder_only"),
+            ("save_load", "text_encoder_only"),
+            # Test actions on both text_encoder and denoiser LoRA
+            ("fused", "text_and_denoiser"),
+            ("unloaded", "text_and_denoiser"),
+            ("unfused", "text_and_denoiser"),
+            ("save_load", "text_and_denoiser"),
+        ]
+    )
+    def test_lora_actions(self, action, components_to_add):
+        super()._test_lora_actions(action, components_to_add, expected_atol=9e-3)
 
     @unittest.skip("Not supported in Wan VACE.")
     def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_partial_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_text_lora_save_load(self):
         pass
 
     @pytest.mark.xfail(
@@ -166,7 +147,6 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_layerwise_casting_inference_denoiser(self):
         super().test_layerwise_casting_inference_denoiser()
 
-    @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules_wanvace(self):
         scheduler_cls = self.scheduler_classes[0]
         exclude_module_name = "vace_blocks.0.proj_out"
