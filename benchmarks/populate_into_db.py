@@ -63,12 +63,16 @@ if __name__ == "__main__":
         print(f"Problem during DB init: {e}")
         sys.exit(1)
 
-    benchmark_id = _init_benchmark(
-        conn=conn,
-        branch=args.branch,
-        commit_id=args.commit_id,
-        commit_msg=args.commit_msg,
-    )
+    try:
+        benchmark_id = _init_benchmark(
+            conn=conn,
+            branch=args.branch,
+            commit_id=args.commit_id,
+            commit_msg=args.commit_msg,
+        )
+    except Exception as e:
+        print(f"Problem during initializing benchmark: {e}")
+        sys.exit(1)
 
     cur = conn.cursor()
 
@@ -153,3 +157,4 @@ if __name__ == "__main__":
         conn.close()
     except Exception as e:
         print(f"Exception: {e}")
+        sys.exit(1)
