@@ -752,7 +752,6 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         image: PipelineImageInput = None,
         image_ref_prod: Optional[PipelineImageInput] = None, # original prod image
         ratio_ref_prod: Optional[float] = 0.125, # modified for injecting prod image
-        bg_flexible_strength: Optional[float] = 0.0, # modified for injecting prod image
         mask_image: PipelineImageInput = None, # original mask image for inpainting
         mask_image_original: Optional[PipelineImageInput] = None, # modified for injecting original prod images
         prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for injecting original prod images
@@ -1477,9 +1476,9 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 """
                 if i < ref_prod_injection_steps:
                     init_mask_ref_prod = mask_original
-                    latents = (1.0-bg_flexible_strength) * ((1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents) + bg_flexible_strength * latents
+                    latents = (1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents
                 else:
-                    latents = (1.0-bg_flexible_strength) * ((1 - init_mask) * init_latents_proper + init_mask * latents) + bg_flexible_strength * latents
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
