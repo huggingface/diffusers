@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import torch
 
+from ..configuration_utils import register_to_config
 from ..hooks import HookRegistry
 from ..hooks.smoothed_energy_guidance_utils import SmoothedEnergyGuidanceConfig, _apply_smoothed_energy_guidance_hook
 from .guider_utils import BaseGuidance, rescale_noise_cfg
@@ -76,6 +77,7 @@ class SmoothedEnergyGuidance(BaseGuidance):
 
     _input_predictions = ["pred_cond", "pred_uncond", "pred_cond_seg"]
 
+    @register_to_config
     def __init__(
         self,
         guidance_scale: float = 7.5,

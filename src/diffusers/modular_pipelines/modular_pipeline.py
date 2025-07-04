@@ -1911,7 +1911,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             loader.update(unet=new_unet_model, text_encoder=new_text_encoder)
 
             # Update configuration values
-            loader.update(requires_safety_checker=False, guidance_rescale=0.7)
+            loader.update(requires_safety_checker=False)
 
             # Update both components and configs together
             loader.update(unet=new_unet_model, requires_safety_checker=False)

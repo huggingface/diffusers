@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import torch
 
+from ..configuration_utils import register_to_config
 from .guider_utils import BaseGuidance, rescale_noise_cfg
 
 
@@ -49,6 +50,7 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
 
     _input_predictions = ["pred_cond", "pred_uncond"]
 
+    @register_to_config
     def __init__(
         self,
         guidance_scale: float = 7.5,
