@@ -518,11 +518,6 @@ class STORKScheduler(SchedulerMixin, ConfigMixin):
             result = (result[0].to(original_model_output_dtype),)
         return result
         
-
-
-    ####################################
-    # Main phase for the STORK methods #
-    ####################################
     def step_flow_matching_2(
         self,
         model_output: torch.Tensor,
@@ -693,7 +688,7 @@ class STORKScheduler(SchedulerMixin, ConfigMixin):
         ci3 = t_start
 
         # Coefficients of ROCK4
-        ms, fpa, fpb, fpbe, recf = self.coeff_rock4()
+        ms, fpa, fpb, fpbe, recf = self.coeff_stork4()
         # Choose the degree that's in the precomputed table
         mdeg, mp = self.mdegr(self.s, ms)
         mz = int(mp[0])
@@ -1088,7 +1083,7 @@ class STORKScheduler(SchedulerMixin, ConfigMixin):
         ci3 = t_start
 
         # Coefficients of ROCK4
-        ms, fpa, fpb, fpbe, recf = self.coeff_rock4()
+        ms, fpa, fpb, fpbe, recf = self.coeff_stork4()
         # Choose the degree that's in the precomputed table
         mdeg, mp = self.mdegr(self.s, ms)
         mz = int(mp[0])
@@ -1388,7 +1383,7 @@ class STORKScheduler(SchedulerMixin, ConfigMixin):
         
         return 4 * (j - 1) * (j + 4) / (3 * j * (j + 1) * (j + 2) * (j + 3))
 
-    def coeff_rock4(self):
+    def coeff_stork4(self):
         '''
         Load pre-computed coefficients of STORK4. The are based on the fourth order orthogonal Runge-Kutta-Chebyshev (ROCK4) method.
         Details of the coefficients can be found in https://epubs.siam.org/doi/abs/10.1137/S1064827500379549.
