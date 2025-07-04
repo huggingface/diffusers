@@ -934,6 +934,27 @@ class LoraBaseMixin:
         Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
         you want to load multiple adapters and free some GPU memory.
 
+        After offloading the LoRA adapters to CPU, as long as the rest of the model is still on GPU, the LoRA adapters
+        can no longer be used for inference, as that would cause a device mismatch. Remember to set the device back to
+        GPU before using those LoRA adapters for inference.
+
+        ```python
+        >>> pipe.load_lora_weights(path_1, adapter_name="adapter-1")
+        >>> pipe.load_lora_weights(path_2, adapter_name="adapter-2")
+        >>> pipe.set_adapters("adapter-1")
+        >>> image_1 = pipe(**kwargs)
+        >>> # switch to adapter-2, offload adapter-1
+        >>> pipeline.set_lora_device(adapter_names=["adapter-1"], device="cpu")
+        >>> pipeline.set_lora_device(adapter_names=["adapter-2"], device="cuda:0")
+        >>> pipe.set_adapters("adapter-2")
+        >>> image_2 = pipe(**kwargs)
+        >>> # switch back to adapter-1, offload adapter-2
+        >>> pipeline.set_lora_device(adapter_names=["adapter-2"], device="cpu")
+        >>> pipeline.set_lora_device(adapter_names=["adapter-1"], device="cuda:0")
+        >>> pipe.set_adapters("adapter-1")
+        >>> ...
+        ```
+
         Args:
             adapter_names (`List[str]`):
                 List of adapters to send device to.
@@ -949,6 +970,10 @@ class LoraBaseMixin:
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
                         for adapter_name in adapter_names:
+                            if adapter_name not in module.lora_A:
+                                # it is sufficient to check lora_A
+                                continue
+
                             module.lora_A[adapter_name].to(device)
                             module.lora_B[adapter_name].to(device)
                             # this is a param, not a module, so device placement is not in-place -> re-assign
