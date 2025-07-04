@@ -1140,7 +1140,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         
         if image_ref_prod is not None:
             if len(ref_prod_injection_steps) != len(mask_image_original):
-                    raise ValueError(f"The number of ref_prod_injection_steps ({ref_prod_injection_steps}) has to be equal to the number of masks ({mask_image_original})")
+                    raise ValueError(f"The number of ref_prod_injection_steps ({len(ref_prod_injection_steps)}) has to be equal to the number of masks ({len(mask_image_original)})")
                 
             if len(mask_image_original) == 1:
                 mask_condition_original = self.mask_processor.preprocess(

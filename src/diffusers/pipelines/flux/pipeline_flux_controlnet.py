@@ -1085,9 +1085,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             )
             init_image = init_image.to(dtype=torch.float32)
 
-            if len(mask_image) > 1:
-                if len(ref_prod_injection_steps) != len(mask_image):
-                    raise ValueError(f"The number of ref_prod_injection_steps ({ref_prod_injection_steps}) has to be equal to the number of masks ({mask_image})")
+            if len(ref_prod_injection_steps) != len(mask_image):
+                raise ValueError(f"The number of ref_prod_injection_steps ({len(ref_prod_injection_steps)}) has to be equal to the number of masks ({len(mask_image)})")
         else:
             init_image = None
 
