@@ -1265,7 +1265,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     else:
                         masked_image = masked_image_latents
                     
-                    tmp_mask, masked_image_latents = self.prepare_mask_latents(
+                    tmp_mask, _ = self.prepare_mask_latents(
                         mask_condition,
                         masked_image,
                         batch_size,
