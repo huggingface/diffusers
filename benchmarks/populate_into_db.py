@@ -2,10 +2,15 @@ import argparse
 import os
 import sys
 
+import gpustat
 import pandas as pd
 import psycopg2
 import psycopg2.extras
+from psycopg2.extensions import register_adapter
+from psycopg2.extras import Json
 
+
+register_adapter(dict, Json)
 
 FINAL_CSV_FILENAME = "collated_results.csv"
 # https://github.com/huggingface/transformers/blob/593e29c5e2a9b17baec010e8dc7c1431fed6e841/benchmark/init_db.sql#L27
@@ -14,7 +19,8 @@ MEASUREMENTS_TABLE_NAME = "model_measurements"
 
 
 def _init_benchmark(conn, branch, commit_id, commit_msg):
-    metadata = {"metadata": f"diffusers-{commit_id}"}
+    gpu_stats = gpustat.GPUStatCollection.new_query()
+    metadata = {"gpu_name": gpu_stats[0]["name"]}
     repository = "huggingface/diffusers"
     with conn.cursor() as cur:
         cur.execute(
