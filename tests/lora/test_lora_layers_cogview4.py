@@ -13,10 +13,8 @@
 # limitations under the License.
 
 import sys
-import tempfile
 import unittest
 
-import numpy as np
 import torch
 from parameterized import parameterized
 from transformers import AutoTokenizer, GlmModel
@@ -27,7 +25,6 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     skip_mps,
-    torch_device,
 )
 
 
@@ -113,40 +110,21 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
-        super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3)
-
-    def test_simple_inference_with_text_denoiser_lora_unfused(self):
-        super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
-
-    def test_simple_inference_save_pretrained(self):
-        """
-        Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
-        """
-        for scheduler_cls in self.scheduler_classes:
-            components, _, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                pipe.save_pretrained(tmpdirname)
-
-                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
-                pipe_from_pretrained.to(torch_device)
-
-            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
-
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
-            )
+    @parameterized.expand(
+        [
+            # Test actions on text_encoder LoRA only
+            ("fused", "text_encoder_only"),
+            ("unloaded", "text_encoder_only"),
+            ("save_load", "text_encoder_only"),
+            # Test actions on both text_encoder and denoiser LoRA
+            ("fused", "text_and_denoiser"),
+            ("unloaded", "text_and_denoiser"),
+            ("unfused", "text_and_denoiser"),
+            ("save_load", "text_and_denoiser"),
+        ]
+    )
+    def test_lora_actions(self, action, components_to_add):
+        super()._test_lora_actions(action, components_to_add, expected_atol=9e-3)
 
     @parameterized.expand([("block_level", True), ("leaf_level", False)])
     @require_torch_accelerator
@@ -156,33 +134,5 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         super()._test_group_offloading_inference_denoiser(offload_type, use_stream)
 
     @unittest.skip("Not supported in CogView4.")
-    def test_simple_inference_with_text_denoiser_block_scale(self):
-        pass
-
-    @unittest.skip("Not supported in CogView4.")
-    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
-        pass
-
-    @unittest.skip("Not supported in CogView4.")
     def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
-    def test_simple_inference_with_partial_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
-    def test_simple_inference_with_text_lora_save_load(self):
         pass

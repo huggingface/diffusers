@@ -265,11 +265,11 @@ jobs:
     - name: Run fast PyTorch LoRA tests with PEFT
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 6 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_peft_main \
           tests/lora/
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 6 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_models_lora_peft_main \
           tests/models/ -k "lora"
