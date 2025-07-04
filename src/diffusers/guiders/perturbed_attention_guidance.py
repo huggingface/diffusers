@@ -14,6 +14,7 @@
 
 from typing import List, Optional, Union
 
+from ..configuration_utils import register_to_config
 from ..hooks import LayerSkipConfig
 from .skip_layer_guidance import SkipLayerGuidance
 
@@ -70,6 +71,7 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
     # complex to support joint latent conditioning in a model-agnostic manner without specializing the implementation
     # for each model architecture.
 
+    @register_to_config
     def __init__(
         self,
         guidance_scale: float = 7.5,
