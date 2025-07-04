@@ -163,9 +163,9 @@ class FluxControlPipeline(
     TextualInversionLoaderMixin,
 ):
     r"""
-    The Flux pipeline for controllable text-to-image generation.
+    The Flux pipeline for controllable text-to-image generation with image conditions.
 
-    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
+    Reference: https://bfl.ai/flux-1-tools
 
     Args:
         transformer ([`FluxTransformer2DModel`]):
