@@ -1487,7 +1487,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                         )
 
                     if len(mask_image) == 1:    
-                        if i < ref_prod_injection_steps:
+                        if i < ref_prod_injection_steps[0]:
                             latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
                             latents_2 = (1.0 - init_mask) * latents
 
