@@ -1516,7 +1516,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         latents = (1 - init_mask) * init_latents_proper + init_mask * latents
                 else:
                     init_mask_ref_prod_all = torch.zeros_like(init_mask)
-                    for tmp_ref_prod_injection_steps, tmp_init_mask_ref_prod in (ref_prod_injection_steps,init_mask_ref_prod):
+                    for tmp_ref_prod_injection_steps, tmp_init_mask_ref_prod in zip(ref_prod_injection_steps,init_mask_ref_prod):
                         if i < tmp_ref_prod_injection_steps:
                              init_mask_ref_prod_all += tmp_init_mask_ref_prod
                     
