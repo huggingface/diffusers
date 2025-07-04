@@ -127,6 +127,35 @@ class PeftLoraLoaderMixinTests:
     text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
     denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
 
+    def test_simple_inference_save_pretrained_with_text_lora(self):
+        """
+        Tests a simple usecase where users could use saving utilities for text encoder (only)
+        LoRA through save_pretrained.
+        """
+        if not any("text_encoder" in k for k in self.pipeline_class._lora_loadable_modules):
+            pytest.skip("Test not supported.")
+        for scheduler_cls in self.scheduler_classes:
+            pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+                scheduler_cls
+            )
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
+            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                pipe.save_pretrained(tmpdirname)
+                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
+                pipe_from_pretrained.to(torch_device)
+                modules_to_save = self._get_modules_to_save(pipe, has_denoiser=False)
+
+            for module_name, module in modules_to_save.items():
+                self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
+
+            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertTrue(
+                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
+                "Loading from saved checkpoints should give same results.",
+            )
+
     def test_low_cpu_mem_usage_with_injection(self):
         """Tests if we can inject LoRA state dict with low_cpu_mem_usage."""
         for scheduler_cls in self.scheduler_classes:
