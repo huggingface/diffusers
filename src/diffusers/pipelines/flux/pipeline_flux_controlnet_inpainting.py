@@ -1510,7 +1510,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 """
                 init_mask_ref_prod = mask_original
                 if len(mask_image_original) == 1:
-                    if i < ref_prod_injection_steps:
+                    if i < ref_prod_injection_steps[0]:
                         latents = (1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents
                     else:
                         latents = (1 - init_mask) * init_latents_proper + init_mask * latents
