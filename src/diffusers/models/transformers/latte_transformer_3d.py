@@ -23,11 +23,12 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle
+from ..normalization import AdaLayerNorm, AdaLayerNormSingle
 
 
 class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["norm_out"]
 
     """
     A 3D Transformer model for video-like data, paper: https://huggingface.co/papers/2401.03048, official code:
@@ -149,8 +150,13 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
 
         # 4. Define output layers
         self.out_channels = in_channels if out_channels is None else out_channels
-        self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
+        self.norm_out = AdaLayerNorm(
+            embedding_dim=inner_dim,
+            output_dim=2 * inner_dim,
+            norm_elementwise_affine=False,
+            norm_eps=1e-6,
+            chunk_dim=1,
+        )
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
         # 5. Latte other blocks.
@@ -305,10 +311,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         embedded_timestep = embedded_timestep.repeat_interleave(
             num_frame, dim=0, output_size=embedded_timestep.shape[0] * num_frame
         ).view(-1, embedded_timestep.shape[-1])
-        shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
-        hidden_states = self.norm_out(hidden_states)
-        # Modulation
-        hidden_states = hidden_states * (1 + scale) + shift
+        hidden_states = self.norm_out(hidden_states, temb=embedded_timestep)
         hidden_states = self.proj_out(hidden_states)
 
         # unpatchify

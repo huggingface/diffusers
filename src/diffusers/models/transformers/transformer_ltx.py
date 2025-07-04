@@ -30,7 +30,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle, RMSNorm
+from ..normalization import AdaLayerNorm, AdaLayerNormSingle, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -328,6 +328,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["norm"]
+    _no_split_modules = ["norm_out"]
     _repeated_blocks = ["LTXVideoTransformerBlock"]
 
     @register_to_config
@@ -356,7 +357,6 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
 
         self.proj_in = nn.Linear(in_channels, inner_dim)
 
-        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
         self.time_embed = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
 
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
@@ -389,7 +389,13 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
             ]
         )
 
-        self.norm_out = nn.LayerNorm(inner_dim, eps=1e-6, elementwise_affine=False)
+        self.norm_out = AdaLayerNorm(
+            embedding_dim=inner_dim,
+            output_dim=2 * inner_dim,
+            norm_elementwise_affine=False,
+            norm_eps=1e-6,
+            chunk_dim=1,
+        )
         self.proj_out = nn.Linear(inner_dim, out_channels)
 
         self.gradient_checkpointing = False
@@ -464,11 +470,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
                     encoder_attention_mask=encoder_attention_mask,
                 )
 
-        scale_shift_values = self.scale_shift_table[None, None] + embedded_timestep[:, :, None]
-        shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
-
-        hidden_states = self.norm_out(hidden_states)
-        hidden_states = hidden_states * (1 + scale) + shift
+        hidden_states = self.norm_out(hidden_states, temb=embedded_timestep.squeeze(1))
         output = self.proj_out(hidden_states)
 
         if USE_PEFT_BACKEND:
