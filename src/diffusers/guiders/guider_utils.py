@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import torch
 
+from ..configuration_utils import ConfigMixin
 from ..utils import get_logger
 
 
@@ -23,12 +24,16 @@ if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
 
 
+GUIDER_CONFIG_NAME = "guider_config.json"
+
+
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class BaseGuidance:
+class BaseGuidance(ConfigMixin):
     r"""Base class providing the skeleton for implementing guidance techniques."""
 
+    config_name = GUIDER_CONFIG_NAME
     _input_predictions = None
     _identifier_key = "__guidance_identifier__"
 
