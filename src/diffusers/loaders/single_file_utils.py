@@ -126,6 +126,7 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "wan": ["model.diffusion_model.head.modulation", "head.modulation"],
     "wan_vae": "decoder.middle.0.residual.0.gamma",
+    "wan_vace": "vace_blocks.0.after_proj.bias",
     "hidream": "double_stream_blocks.0.block.adaLN_modulation.1.bias",
     "cosmos-1.0": [
         "net.x_embedder.proj.1.weight",
@@ -202,6 +203,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-t2v-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"},
     "wan-t2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-14B-Diffusers"},
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
+    "wan-vace-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-1.3B-diffusers"},
+    "wan-vace-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-14B-diffusers"},
     "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
     "cosmos-1.0-t2w-7B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-7B-Text2World"},
     "cosmos-1.0-t2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-14B-Text2World"},
@@ -716,7 +719,13 @@ def infer_diffusers_model_type(checkpoint):
         else:
             target_key = "patch_embedding.weight"
 
-        if checkpoint[target_key].shape[0] == 1536:
+        if CHECKPOINT_KEY_NAMES["wan_vace"] in checkpoint:
+            if checkpoint[target_key].shape[0] == 1536:
+                model_type = "wan-vace-1.3B"
+            elif checkpoint[target_key].shape[0] == 5120:
+                model_type = "wan-vace-14B"
+
+        elif checkpoint[target_key].shape[0] == 1536:
             model_type = "wan-t2v-1.3B"
         elif checkpoint[target_key].shape[0] == 5120 and checkpoint[target_key].shape[1] == 16:
             model_type = "wan-t2v-14B"
@@ -3132,6 +3141,9 @@ def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
         "img_emb.proj.1": "condition_embedder.image_embedder.ff.net.0.proj",
         "img_emb.proj.3": "condition_embedder.image_embedder.ff.net.2",
         "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
+        # For the VACE model
+        "before_proj": "proj_in",
+        "after_proj": "proj_out",
     }
 
     for key in list(checkpoint.keys()):
