@@ -826,10 +826,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         negative_prompt: Union[str, List[str]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None, # original prod image
-
         ratio_ref: Optional[float] = 0.1, # ratio of original prod images
-        mask_image: PipelineImageInput = None, # modified for injecting original prod images
-        
+        mask_image: Optional[Union[PipelineImageInput, List[PipelineImageInput]]] = None,# modified for injecting original prod images
         prod_masks_original: Optional[List[PipelineImageInput]] = None, # modified for averaging multiple copies
         masked_image_latents: PipelineImageInput = None,
         true_cfg_scale: float = 1.0,
@@ -863,7 +861,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         averaging_steps: Optional[int] = 2, # modified for applying averaging latents for multiple copies of same product
-        ref_prod_injection_steps: Optional[int] = 22, # modified for injecting ref product images
+        ref_prod_injection_steps: Optional[Union[int, List[int]]] = 22, # modified for injecting ref product images
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1075,7 +1073,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         if image is not None:
             if padding_mask_crop is not None:
                 crops_coords = self.mask_processor.get_crop_region(
-                    mask_image, global_width, global_height, pad=padding_mask_crop
+                    mask_image[0], global_width, global_height, pad=padding_mask_crop
                 )
                 resize_mode = "fill"
             else:
@@ -1086,6 +1084,10 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 image, height=global_height, width=global_width, crops_coords=crops_coords, resize_mode=resize_mode
             )
             init_image = init_image.to(dtype=torch.float32)
+
+            if len(mask_image) > 1:
+                if len(ref_prod_injection_steps) != len(mask_image):
+                    raise ValueError(f"The number of ref_prod_injection_steps ({ref_prod_injection_steps}) has to be equal to the number of masks ({mask_image})")
         else:
             init_image = None
 
@@ -1231,26 +1233,51 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
         # Prepare mask latents
         if image is not None:
-            mask_condition = self.mask_processor.preprocess(
-                mask_image, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
-            )
-            if masked_image_latents is None:
-                masked_image = init_image * (mask_condition < 0.5)
-            else:
-                masked_image = masked_image_latents
+            if len(mask_image) == 1:
+                mask_condition = self.mask_processor.preprocess(
+                    mask_image[0], height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
+                )
+                if masked_image_latents is None:
+                    masked_image = init_image * (mask_condition < 0.5)
+                else:
+                    masked_image = masked_image_latents
 
-            mask, masked_image_latents = self.prepare_mask_latents(
-                mask_condition,
-                masked_image,
-                batch_size,
-                num_channels_latents,
-                num_images_per_prompt,
-                global_height,
-                global_width,
-                prompt_embeds.dtype,
-                device,
-                generator,
-            )
+                mask, masked_image_latents = self.prepare_mask_latents(
+                    mask_condition,
+                    masked_image,
+                    batch_size,
+                    num_channels_latents,
+                    num_images_per_prompt,
+                    global_height,
+                    global_width,
+                    prompt_embeds.dtype,
+                    device,
+                    generator,
+                )
+            else:
+                mask = []
+                for tmp_mask_image in mask_image:
+                    mask_condition = self.mask_processor.preprocess(
+                        tmp_mask_image, height=global_height, width=global_width, resize_mode=resize_mode, crops_coords=crops_coords
+                    )
+                    if masked_image_latents is None:
+                        masked_image = init_image * (mask_condition < 0.5)
+                    else:
+                        masked_image = masked_image_latents
+                    
+                    tmp_mask, masked_image_latents = self.prepare_mask_latents(
+                        mask_condition,
+                        masked_image,
+                        batch_size,
+                        num_channels_latents,
+                        num_images_per_prompt,
+                        global_height,
+                        global_width,
+                        prompt_embeds.dtype,
+                        device,
+                        generator,
+                    )
+                    mask.append(tmp_mask)
 
         if prod_masks_original is not None:
             mask_conditions_prod = []
@@ -1450,21 +1477,32 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
                 # additional codes for injecting original prod images into latents
                 if image is not None:
-                    if i < ref_prod_injection_steps:
-                        init_mask = mask
-                        init_latents_proper = image_latents
+                    init_mask = mask
+                    init_latents_proper = image_latents
 
-                        if i < len(timesteps) - 1:
-                            noise_timestep = timesteps[i + 1]
-                            init_latents_proper = self.scheduler.scale_noise(
-                                init_latents_proper, torch.tensor([noise_timestep]), noise
-                            )
+                    if i < len(timesteps) - 1:
+                        noise_timestep = timesteps[i + 1]
+                        init_latents_proper = self.scheduler.scale_noise(
+                            init_latents_proper, torch.tensor([noise_timestep]), noise
+                        )
 
-                        latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
-                        latents_2 = (1.0 - init_mask) * latents
+                    if len(mask_image) == 1:    
+                        if i < ref_prod_injection_steps:
+                            latents_1 = init_mask * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
+                            latents_2 = (1.0 - init_mask) * latents
+
+                            latents = latents_1 + latents_2
+                    else:
+                        init_mask_all = torch.zeros_like(init_mask)
+                        for tmp_ref_prod_injection_steps, tmp_init_mask in (ref_prod_injection_steps, init_mask):
+                            if i < tmp_ref_prod_injection_steps:
+                                init_mask_all += tmp_init_mask
+                        
+                        latents_1 = init_mask_all * (ratio_ref * init_latents_proper + (1.0 - ratio_ref) * latents)
+                        latents_2 = (1.0 - init_mask_all) * latents
 
                         latents = latents_1 + latents_2
-
+                        
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
