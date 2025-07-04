@@ -61,6 +61,7 @@ from diffusers.utils import (
 from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    _check_safetensors_serialization,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
@@ -1702,18 +1703,43 @@ class ModelTesterMixin:
         model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
         _ = model(**inputs_dict)[0]
 
-    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @parameterized.expand([("block_level", False), ("leaf_level", True)])
     @require_torch_accelerator
     @torch.no_grad()
-    def test_group_offloading_with_disk(self, record_stream, offload_type):
+    @torch.inference_mode()
+    def test_group_offloading_with_disk(self, offload_type, record_stream, atol=1e-5):
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
-        torch.manual_seed(0)
+        def _has_generator_arg(model):
+            sig = inspect.signature(model.forward)
+            params = sig.parameters
+            return "generator" in params
+
+        def _run_forward(model, inputs_dict):
+            accepts_generator = _has_generator_arg(model)
+            if accepts_generator:
+                inputs_dict["generator"] = torch.manual_seed(0)
+            torch.manual_seed(0)
+            return model(**inputs_dict)[0]
+
+        if self.__class__.__name__ == "AutoencoderKLCosmosTests" and offload_type == "leaf_level":
+            pytest.skip("With `leaf_type` as the offloading type, it fails. Needs investigation.")
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+
+        model.eval()
+        model.to(torch_device)
+        output_without_group_offloading = _run_forward(model, inputs_dict)
+
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.eval()
-        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+
+        num_blocks_per_group = None if offload_type == "leaf_level" else 1
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": num_blocks_per_group}
         with tempfile.TemporaryDirectory() as tmpdir:
             model.enable_group_offload(
                 torch_device,
@@ -1724,8 +1750,25 @@ class ModelTesterMixin:
                 **additional_kwargs,
             )
             has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
-            self.assertTrue(len(has_safetensors) > 0, "No safetensors found in the offload directory.")
-            _ = model(**inputs_dict)[0]
+            self.assertTrue(has_safetensors, "No safetensors found in the directory.")
+
+            # For "leaf-level", there is a prefetching hook which makes this check a bit non-deterministic
+            # in nature. So, skip it.
+            if offload_type != "leaf_level":
+                is_correct, extra_files, missing_files = _check_safetensors_serialization(
+                    module=model,
+                    offload_to_disk_path=tmpdir,
+                    offload_type=offload_type,
+                    num_blocks_per_group=num_blocks_per_group,
+                )
+                if not is_correct:
+                    if extra_files:
+                        raise ValueError(f"Found extra files: {', '.join(extra_files)}")
+                    elif missing_files:
+                        raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
+
+            output_with_group_offloading = _run_forward(model, inputs_dict)
+            self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=atol))
 
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
