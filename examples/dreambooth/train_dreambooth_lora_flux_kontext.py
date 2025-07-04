@@ -335,7 +335,6 @@ def parse_args(input_args=None):
         "--instance_prompt",
         type=str,
         default=None,
-        required=True,
         help="The prompt with identifier specifying the instance, e.g. 'photo of a TOK dog', 'in the style of TOK'",
     )
     parser.add_argument(
@@ -740,6 +739,7 @@ def parse_args(input_args=None):
         assert args.image_column is not None
         assert args.caption_column is not None
         assert args.dataset_name is not None
+        assert not args.train_text_encoder
 
     return args
 
@@ -870,7 +870,7 @@ class DreamBoothDataset(Dataset):
                 random_flip=args.random_flip,
             )
             self.pixel_values.append((image, bucket_idx))
-            if dest_image:
+            if dest_image is not None:
                 self.cond_pixel_values.append((dest_image, bucket_idx))
 
         self.num_instance_images = len(self.instance_images)
@@ -965,7 +965,7 @@ class DreamBoothDataset(Dataset):
         if dest_image is not None:
             dest_image = normalize(to_tensor(dest_image))
 
-        return (image, dest_image) if dest_image is not None else image
+        return (image, dest_image) if dest_image is not None else (image, None)
 
 
 def collate_fn(examples, with_prior_preservation=False):
@@ -1606,6 +1606,8 @@ def main(args):
         center_crop=args.center_crop,
         args=args,
     )
+    if args.cond_image_column is not None:
+        logger.info("I2I fine-tuning enabled.")
     batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=False)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -1645,6 +1647,7 @@ def main(args):
 
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
+        text_encoder_one.cpu(), text_encoder_two.cpu()
         del text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
         free_memory()
 
@@ -1676,6 +1679,20 @@ def main(args):
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
+    elif train_dataset.custom_instance_prompts and not args.train_text_encoder:
+        cached_text_embeddings = []
+        for batch in tqdm(train_dataloader, desc="Embedding prompts"):
+            batch_prompts = batch["prompts"]
+            prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
+                batch_prompts, text_encoders, tokenizers
+            )
+            cached_text_embeddings.append((prompt_embeds, pooled_prompt_embeds, text_ids))
+
+        if args.validation_prompt is None:
+            text_encoder_one.cpu(), text_encoder_two.cpu()
+            del text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
+            free_memory()
+
     vae_config_shift_factor = vae.config.shift_factor
     vae_config_scaling_factor = vae.config.scaling_factor
     vae_config_block_out_channels = vae.config.block_out_channels
@@ -1696,6 +1713,7 @@ def main(args):
                     cond_latents_cache.append(vae.encode(batch["cond_pixel_values"]).latent_dist)
 
         if args.validation_prompt is None:
+            vae.cpu()
             del vae
             free_memory()
 
@@ -1837,10 +1855,7 @@ def main(args):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     if not args.train_text_encoder:
-                        # Should find a way to precompute these.
-                        prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
-                            prompts, text_encoders, tokenizers
-                        )
+                        prompt_embeds, pooled_prompt_embeds, text_ids = cached_text_embeddings[step]
                     else:
                         tokens_one = tokenize_prompt(tokenizer_one, prompts, max_sequence_length=77)
                         tokens_two = tokenize_prompt(
@@ -1942,6 +1957,7 @@ def main(args):
                     height=model_input.shape[2],
                     width=model_input.shape[3],
                 )
+                orig_inp_shape = packed_noisy_model_input.shape
                 if has_image_input:
                     packed_cond_input = FluxKontextPipeline._pack_latents(
                         cond_model_input,
@@ -1968,6 +1984,8 @@ def main(args):
                     img_ids=latent_image_ids,
                     return_dict=False,
                 )[0]
+                if has_image_input:
+                    model_pred = model_pred[:, : orig_inp_shape[1]]
                 model_pred = FluxKontextPipeline._unpack_latents(
                     model_pred,
                     height=model_input.shape[2] * vae_scale_factor,
