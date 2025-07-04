@@ -31,9 +31,8 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
     Additional reading:
     - [Guiding a Diffusion Model with a Bad Version of Itself](https://huggingface.co/papers/2406.02507)
 
-    PAG is implemented as a specialization of the SkipLayerGuidance implementation due to similarities in the
-    configuration parameters and implementation details. However, it should be noted that PAG was published prior to
-    SLG becoming
+    PAG is implemented as a specialization of the SkipLayerGuidance due to similarities in the configuration parameters
+    and implementation details.
 
     Args:
         guidance_scale (`float`, defaults to `7.5`):
