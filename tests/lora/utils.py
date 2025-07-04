@@ -127,42 +127,12 @@ class PeftLoraLoaderMixinTests:
     text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
     denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
 
-    def test_simple_inference_save_pretrained_with_text_lora(self):
-        """
-        Tests a simple usecase where users could use saving utilities for text encoder (only)
-        LoRA through save_pretrained.
-        """
-        if not any("text_encoder" in k for k in self.pipeline_class._lora_loadable_modules):
-            pytest.skip("Test not supported.")
-        for scheduler_cls in self.scheduler_classes:
-            pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
-                scheduler_cls
-            )
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                pipe.save_pretrained(tmpdirname)
-                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
-                pipe_from_pretrained.to(torch_device)
-                modules_to_save = self._get_modules_to_save(pipe, has_denoiser=False)
-
-            for module_name, module in modules_to_save.items():
-                self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
-
-            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
-            )
-
     def test_low_cpu_mem_usage_with_injection(self):
         """Tests if we can inject LoRA state dict with low_cpu_mem_usage."""
         for scheduler_cls in self.scheduler_classes:
             pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
                 scheduler_cls
             )
-
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 inject_adapter_in_model(text_lora_config, pipe.text_encoder, low_cpu_mem_usage=True)
                 self.assertTrue(
@@ -223,7 +193,6 @@ class PeftLoraLoaderMixinTests:
             pipe, inputs, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
                 scheduler_cls
             )
-
             pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
@@ -261,6 +230,33 @@ class PeftLoraLoaderMixinTests:
                     ),
                     "Loading from saved checkpoints with `low_cpu_mem_usage` should give same results.",
                 )
+
+    def test_simple_inference_save_pretrained_with_text_lora(self):
+        """
+        Tests a simple usecase where users could use saving utilities for text encoder (only)
+        LoRA through save_pretrained.
+        """
+        if not any("text_encoder" in k for k in self.pipeline_class._lora_loadable_modules):
+            pytest.skip("Test not supported.")
+        for scheduler_cls in self.scheduler_classes:
+            pipe, inputs, _, text_lora_config, _ = self._setup_pipeline_and_get_base_output(scheduler_cls)
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
+            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                pipe.save_pretrained(tmpdirname)
+                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
+                pipe_from_pretrained.to(torch_device)
+                modules_to_save = self._get_modules_to_save(pipe, has_denoiser=False)
+
+            for module_name, module in modules_to_save.items():
+                self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
+
+            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertTrue(
+                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
+                "Loading from saved checkpoints should give same results.",
+            )
 
     def test_simple_inference_with_partial_text_lora(self):
         """
@@ -316,6 +312,106 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(
                 not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3),
                 "Removing adapters should change the output",
+            )
+
+    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
+        """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
+        if self.unet_kwargs is None:
+            pytest.skip("Test not supported.")
+
+        def updown_options(blocks_with_tf, layers_per_block, value):
+            """
+            Generate every possible combination for how a lora weight dict for the up/down part can be.
+            E.g. 2, {"block_1": 2}, {"block_1": [2,2,2]}, {"block_1": 2, "block_2": [2,2,2]}, ...
+            """
+            num_val = value
+            list_val = [value] * layers_per_block
+
+            node_opts = [None, num_val, list_val]
+            node_opts_foreach_block = [node_opts] * len(blocks_with_tf)
+
+            updown_opts = [num_val]
+            for nodes in product(*node_opts_foreach_block):
+                if all(n is None for n in nodes):
+                    continue
+                opt = {}
+                for b, n in zip(blocks_with_tf, nodes):
+                    if n is not None:
+                        opt["block_" + str(b)] = n
+                updown_opts.append(opt)
+            return updown_opts
+
+        def all_possible_dict_opts(unet, value):
+            """
+            Generate every possible combination for how a lora weight dict can be.
+            E.g. 2, {"unet: {"down": 2}}, {"unet: {"down": [2,2,2]}}, {"unet: {"mid": 2, "up": [2,2,2]}}, ...
+            """
+
+            down_blocks_with_tf = [i for i, d in enumerate(unet.down_blocks) if hasattr(d, "attentions")]
+            up_blocks_with_tf = [i for i, u in enumerate(unet.up_blocks) if hasattr(u, "attentions")]
+
+            layers_per_block = unet.config.layers_per_block
+
+            text_encoder_opts = [None, value]
+            text_encoder_2_opts = [None, value]
+            mid_opts = [None, value]
+            down_opts = [None] + updown_options(down_blocks_with_tf, layers_per_block, value)
+            up_opts = [None] + updown_options(up_blocks_with_tf, layers_per_block + 1, value)
+
+            opts = []
+
+            for t1, t2, d, m, u in product(text_encoder_opts, text_encoder_2_opts, down_opts, mid_opts, up_opts):
+                if all(o is None for o in (t1, t2, d, m, u)):
+                    continue
+                opt = {}
+                if t1 is not None:
+                    opt["text_encoder"] = t1
+                if t2 is not None:
+                    opt["text_encoder_2"] = t2
+                if all(o is None for o in (d, m, u)):
+                    # no unet scaling
+                    continue
+                opt["unet"] = {}
+                if d is not None:
+                    opt["unet"]["down"] = d
+                if m is not None:
+                    opt["unet"]["mid"] = m
+                if u is not None:
+                    opt["unet"]["up"] = u
+                opts.append(opt)
+
+            return opts
+
+        pipe, _, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
+            self.scheduler_classes[0]
+        )
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+
+        if self.has_two_text_encoders or self.has_three_text_encoders:
+            lora_loadable_components = self.pipeline_class._lora_loadable_modules
+            if "text_encoder_2" in lora_loadable_components:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+
+        for scale_dict in all_possible_dict_opts(pipe.unet, value=1234):
+            # test if lora block scales can be set with this scale_dict
+            if not self.has_two_text_encoders and "text_encoder_2" in scale_dict:
+                del scale_dict["text_encoder_2"]
+
+            pipe.set_adapters("adapter-1", scale_dict)  # test will fail if this line throws an error
+
+    def test_simple_inference_with_dora(self):
+        for scheduler_cls in self.scheduler_classes:
+            pipe, inputs, output_no_dora_lora, text_lora_config, denoiser_lora_config = (
+                self._setup_pipeline_and_get_base_output(scheduler_cls, use_dora=True)
+            )
+            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+            output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            self.assertFalse(
+                np.allclose(output_dora_lora, output_no_dora_lora, atol=1e-3, rtol=1e-3),
+                "DoRA lora should change the output",
             )
 
     def _test_lora_actions(self, action, lora_components_to_add, expected_atol=1e-3, expected_rtol=1e-3):
@@ -506,6 +602,104 @@ class PeftLoraLoaderMixinTests:
                         "The scaling parameter was not correctly restored!",
                     )
 
+    def _test_lora_set_adapters_scenarios(self, scenario, expected_atol=1e-3, expected_rtol=1e-3):
+        for scheduler_cls in self.scheduler_classes:
+            pipe, inputs, output_no_lora, _ = self._setup_multi_adapter_pipeline(scheduler_cls)
+
+            # Run inference with each adapter individually and mixed
+            pipe.set_adapters("adapter-1")
+            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            pipe.set_adapters("adapter-2")
+            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            pipe.set_adapters(["adapter-1", "adapter-2"])
+            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            # --- Assert base multi-adapter behavior ---
+            self.assertFalse(np.allclose(output_no_lora, output_adapter_1, atol=expected_atol, rtol=expected_rtol))
+            self.assertFalse(np.allclose(output_adapter_1, output_adapter_2, atol=expected_atol, rtol=expected_rtol))
+            self.assertFalse(
+                np.allclose(output_adapter_1, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
+            )
+
+            # --- Scenario-specific logic ---
+            if scenario == "weighted":
+                pipe.set_adapters(["adapter-1", "adapter-2"], [0.5, 0.6])
+                output_weighted = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertFalse(
+                    np.allclose(output_weighted, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
+                )
+
+            elif scenario == "block_lora":
+                scales = {"unet": {"down": 0.8, "mid": 0.5, "up": 0.2}}
+                pipe.set_adapters("adapter-1", scales)
+                output_block_lora_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertFalse(
+                    np.allclose(output_block_lora_1, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
+                )
+
+                text_encoder_modules = [k for k in self.pipeline_class._lora_loadable_modules if "text_encoder" in k]
+                if text_encoder_modules:
+                    text_encoder_module_name = text_encoder_modules[0]
+                    scales_2 = {text_encoder_module_name: 2, "unet": {"down": 5}}
+                    pipe.set_adapters("adapter-1", scales_2)
+                    output_block_lora_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                    self.assertFalse(
+                        np.allclose(output_block_lora_2, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
+                    )
+
+            elif scenario == "delete_adapter":
+                pipe.set_adapters("adapter-2")
+                output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                pipe.delete_adapters("adapter-1")
+                output_after_delete = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                # After deleting adapter-1, the output should be the same as using only adapter-2
+                self.assertTrue(
+                    np.allclose(output_after_delete, output_adapter_2, atol=expected_atol, rtol=expected_rtol)
+                )
+
+            elif scenario == "fused_multi":
+                # 1. Fuse a single adapter
+                pipe.set_adapters("adapter-1")
+                pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
+                output_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertTrue(
+                    np.allclose(output_adapter_1, output_lora_1_fused, atol=expected_atol, rtol=expected_rtol)
+                )
+                pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
+
+                # 2. Fuse both adapters
+                pipe.set_adapters(["adapter-1", "adapter-2"])
+                pipe.fuse_lora(
+                    components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1", "adapter-2"]
+                )
+                self.assertTrue(pipe.num_fused_loras == 2, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
+
+                output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertTrue(
+                    np.allclose(output_all_lora_fused, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
+                )
+                pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
+                self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
+
+    @parameterized.expand([("simple",), ("weighted",), ("block_lora",), ("delete_adapter",), ("fused_multi",)])
+    def test_lora_set_adapters_scenarios(self, scenario, expected_atol=1e-3, expected_rtol=1e-3):
+        """
+        A unified test for various multi-adapter (and single-adapter) LoRA scenarios, including weighting,
+        block scaling, and adapter deletion.
+        """
+        for cls in inspect.getmro(self.__class__):
+            if "test_lora_set_adapters_scenarios" in cls.__dict__ and cls is not PeftLoraLoaderMixinTests:
+                # Skip this test if it is overwritten by child class. We need to do this because parameterized
+                # materializes the test methods on invocation which cannot be overridden.
+                return
+
+        if scenario == "block_lora" and self.unet_kwargs is None:
+            pytest.skip(f"Test not supported for {scenario=}.")
+
+        self._test_lora_set_adapters_scenarios(scenario, expected_atol, expected_rtol)
+
     def test_wrong_adapter_name_raises_error(self):
         adapter_name = "adapter-1"
         scheduler_cls = self.scheduler_classes[0]
@@ -548,93 +742,6 @@ class PeftLoraLoaderMixinTests:
         # test this works.
         pipe.set_adapters(adapter_name)
         _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
-        """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
-        if self.unet_kwargs is None:
-            pytest.skip("Test not supported.")
-
-        def updown_options(blocks_with_tf, layers_per_block, value):
-            """
-            Generate every possible combination for how a lora weight dict for the up/down part can be.
-            E.g. 2, {"block_1": 2}, {"block_1": [2,2,2]}, {"block_1": 2, "block_2": [2,2,2]}, ...
-            """
-            num_val = value
-            list_val = [value] * layers_per_block
-
-            node_opts = [None, num_val, list_val]
-            node_opts_foreach_block = [node_opts] * len(blocks_with_tf)
-
-            updown_opts = [num_val]
-            for nodes in product(*node_opts_foreach_block):
-                if all(n is None for n in nodes):
-                    continue
-                opt = {}
-                for b, n in zip(blocks_with_tf, nodes):
-                    if n is not None:
-                        opt["block_" + str(b)] = n
-                updown_opts.append(opt)
-            return updown_opts
-
-        def all_possible_dict_opts(unet, value):
-            """
-            Generate every possible combination for how a lora weight dict can be.
-            E.g. 2, {"unet: {"down": 2}}, {"unet: {"down": [2,2,2]}}, {"unet: {"mid": 2, "up": [2,2,2]}}, ...
-            """
-
-            down_blocks_with_tf = [i for i, d in enumerate(unet.down_blocks) if hasattr(d, "attentions")]
-            up_blocks_with_tf = [i for i, u in enumerate(unet.up_blocks) if hasattr(u, "attentions")]
-
-            layers_per_block = unet.config.layers_per_block
-
-            text_encoder_opts = [None, value]
-            text_encoder_2_opts = [None, value]
-            mid_opts = [None, value]
-            down_opts = [None] + updown_options(down_blocks_with_tf, layers_per_block, value)
-            up_opts = [None] + updown_options(up_blocks_with_tf, layers_per_block + 1, value)
-
-            opts = []
-
-            for t1, t2, d, m, u in product(text_encoder_opts, text_encoder_2_opts, down_opts, mid_opts, up_opts):
-                if all(o is None for o in (t1, t2, d, m, u)):
-                    continue
-                opt = {}
-                if t1 is not None:
-                    opt["text_encoder"] = t1
-                if t2 is not None:
-                    opt["text_encoder_2"] = t2
-                if all(o is None for o in (d, m, u)):
-                    # no unet scaling
-                    continue
-                opt["unet"] = {}
-                if d is not None:
-                    opt["unet"]["down"] = d
-                if m is not None:
-                    opt["unet"]["mid"] = m
-                if u is not None:
-                    opt["unet"]["up"] = u
-                opts.append(opt)
-
-            return opts
-
-        pipe, _, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
-            self.scheduler_classes[0]
-        )
-        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
-        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-
-        if self.has_two_text_encoders or self.has_three_text_encoders:
-            lora_loadable_components = self.pipeline_class._lora_loadable_modules
-            if "text_encoder_2" in lora_loadable_components:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-
-        for scale_dict in all_possible_dict_opts(pipe.unet, value=1234):
-            # test if lora block scales can be set with this scale_dict
-            if not self.has_two_text_encoders and "text_encoder_2" in scale_dict:
-                del scale_dict["text_encoder_2"]
-
-            pipe.set_adapters("adapter-1", scale_dict)  # test will fail if this line throws an error
 
     @skip_mps
     @pytest.mark.xfail(
@@ -725,7 +832,6 @@ class PeftLoraLoaderMixinTests:
             pipe, _, _, text_lora_config, denoiser_lora_config = self._setup_pipeline_and_get_base_output(
                 scheduler_cls
             )
-
             # 1.
             dicts_to_be_checked = {}
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
@@ -738,7 +844,6 @@ class PeftLoraLoaderMixinTests:
             else:
                 pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
                 dicts_to_be_checked.update({"transformer": ["adapter-1"]})
-
             self.assertDictEqual(pipe.get_list_adapters(), dicts_to_be_checked)
 
             # 2.
@@ -753,12 +858,11 @@ class PeftLoraLoaderMixinTests:
             else:
                 pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
                 dicts_to_be_checked.update({"transformer": ["adapter-1", "adapter-2"]})
-
             self.assertDictEqual(pipe.get_list_adapters(), dicts_to_be_checked)
 
-            # 3.
             pipe.set_adapters(["adapter-1", "adapter-2"])
 
+            # 3.
             dicts_to_be_checked = {}
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 dicts_to_be_checked = {"text_encoder": ["adapter-1", "adapter-2"]}
@@ -767,11 +871,7 @@ class PeftLoraLoaderMixinTests:
                 dicts_to_be_checked.update({"unet": ["adapter-1", "adapter-2"]})
             else:
                 dicts_to_be_checked.update({"transformer": ["adapter-1", "adapter-2"]})
-
-            self.assertDictEqual(
-                pipe.get_list_adapters(),
-                dicts_to_be_checked,
-            )
+            self.assertDictEqual(pipe.get_list_adapters(), dicts_to_be_checked)
 
             # 4.
             dicts_to_be_checked = {}
@@ -818,19 +918,6 @@ class PeftLoraLoaderMixinTests:
                     np.allclose(output_no_lora, outputs_lora_1, atol=expected_atol, rtol=expected_rtol),
                     "LoRA should change the output",
                 )
-
-    def test_simple_inference_with_dora(self):
-        for scheduler_cls in self.scheduler_classes:
-            pipe, inputs, output_no_dora_lora, text_lora_config, denoiser_lora_config = (
-                self._setup_pipeline_and_get_base_output(scheduler_cls, use_dora=True)
-            )
-            pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
-            output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            self.assertFalse(
-                np.allclose(output_dora_lora, output_no_dora_lora, atol=1e-3, rtol=1e-3),
-                "DoRA lora should change the output",
-            )
 
     def test_missing_keys_warning(self):
         scheduler_cls = self.scheduler_classes[0]
@@ -1368,104 +1455,6 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(output_lora_exclude_modules, output_lora_pretrained, atol=1e-3, rtol=1e-3),
                 "Lora outputs should match.",
             )
-
-    def _test_lora_set_adapters_scenarios(self, scenario, expected_atol=1e-3, expected_rtol=1e-3):
-        for scheduler_cls in self.scheduler_classes:
-            pipe, inputs, output_no_lora, _ = self._setup_multi_adapter_pipeline(scheduler_cls)
-
-            # Run inference with each adapter individually and mixed
-            pipe.set_adapters("adapter-1")
-            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            pipe.set_adapters("adapter-2")
-            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            pipe.set_adapters(["adapter-1", "adapter-2"])
-            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-            # --- Assert base multi-adapter behavior ---
-            self.assertFalse(np.allclose(output_no_lora, output_adapter_1, atol=expected_atol, rtol=expected_rtol))
-            self.assertFalse(np.allclose(output_adapter_1, output_adapter_2, atol=expected_atol, rtol=expected_rtol))
-            self.assertFalse(
-                np.allclose(output_adapter_1, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
-            )
-
-            # --- Scenario-specific logic ---
-            if scenario == "weighted":
-                pipe.set_adapters(["adapter-1", "adapter-2"], [0.5, 0.6])
-                output_weighted = pipe(**inputs, generator=torch.manual_seed(0))[0]
-                self.assertFalse(
-                    np.allclose(output_weighted, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
-                )
-
-            elif scenario == "block_lora":
-                scales = {"unet": {"down": 0.8, "mid": 0.5, "up": 0.2}}
-                pipe.set_adapters("adapter-1", scales)
-                output_block_lora_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-                self.assertFalse(
-                    np.allclose(output_block_lora_1, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
-                )
-
-                text_encoder_modules = [k for k in self.pipeline_class._lora_loadable_modules if "text_encoder" in k]
-                if text_encoder_modules:
-                    text_encoder_module_name = text_encoder_modules[0]
-                    scales_2 = {text_encoder_module_name: 2, "unet": {"down": 5}}
-                    pipe.set_adapters("adapter-1", scales_2)
-                    output_block_lora_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-                    self.assertFalse(
-                        np.allclose(output_block_lora_2, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
-                    )
-
-            elif scenario == "delete_adapter":
-                pipe.set_adapters("adapter-2")
-                output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-                pipe.delete_adapters("adapter-1")
-                output_after_delete = pipe(**inputs, generator=torch.manual_seed(0))[0]
-                # After deleting adapter-1, the output should be the same as using only adapter-2
-                self.assertTrue(
-                    np.allclose(output_after_delete, output_adapter_2, atol=expected_atol, rtol=expected_rtol)
-                )
-
-            elif scenario == "fused_multi":
-                # 1. Fuse a single adapter
-                pipe.set_adapters("adapter-1")
-                pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
-                output_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
-                self.assertTrue(
-                    np.allclose(output_adapter_1, output_lora_1_fused, atol=expected_atol, rtol=expected_rtol)
-                )
-                pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
-
-                # 2. Fuse both adapters
-                pipe.set_adapters(["adapter-1", "adapter-2"])
-                pipe.fuse_lora(
-                    components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1", "adapter-2"]
-                )
-                self.assertTrue(pipe.num_fused_loras == 2, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
-
-                output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
-                self.assertTrue(
-                    np.allclose(output_all_lora_fused, output_adapter_mixed, atol=expected_atol, rtol=expected_rtol)
-                )
-                pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
-                self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
-
-    @parameterized.expand([("simple",), ("weighted",), ("block_lora",), ("delete_adapter",), ("fused_multi",)])
-    def test_lora_set_adapters_scenarios(self, scenario, expected_atol=1e-3, expected_rtol=1e-3):
-        """
-        A unified test for various multi-adapter (and single-adapter) LoRA scenarios, including weighting,
-        block scaling, and adapter deletion.
-        """
-        for cls in inspect.getmro(self.__class__):
-            if "test_lora_set_adapters_scenarios" in cls.__dict__ and cls is not PeftLoraLoaderMixinTests:
-                # Skip this test if it is overwritten by child class. We need to do this because parameterized
-                # materializes the test methods on invocation which cannot be overridden.
-                return
-
-        if scenario == "block_lora" and self.unet_kwargs is None:
-            pytest.skip(f"Test not supported for {scenario=}.")
-
-        self._test_lora_set_adapters_scenarios(scenario, expected_atol, expected_rtol)
 
     def _test_group_offloading_inference_denoiser(self, offload_type, use_stream):
         from diffusers.hooks.group_offloading import _get_top_level_group_offload_hook
