@@ -72,6 +72,7 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
     # for each model architecture.
 
     def __init__(
+        self,
         guidance_scale: float = 7.5,
         perturbed_guidance_scale: float = 2.8,
         perturbed_guidance_start: float = 0.01,
@@ -106,6 +107,7 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
             skip_layer_guidance_start=perturbed_guidance_start,
             skip_layer_guidance_stop=perturbed_guidance_stop,
             skip_layer_guidance_layers=perturbed_guidance_layers,
+            skip_layer_config=skip_layer_config,
             guidance_rescale=guidance_rescale,
             use_original_formulation=use_original_formulation,
             start=start,
