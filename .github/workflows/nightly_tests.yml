@@ -248,7 +248,7 @@ jobs:
           BIG_GPU_MEMORY: 40
         run: |
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -m "big_gpu_with_torch_cuda" \
+            -m "big_accelerator" \
             --make-reports=tests_big_gpu_torch_cuda \
             --report-log=tests_big_gpu_torch_cuda.log \
             tests/

@@ -17,7 +17,6 @@ import inspect
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -268,7 +267,6 @@ class MochiPipelineFastTests(PipelineTesterMixin, FasterCacheTesterMixin, unitte
 @nightly
 @require_torch_accelerator
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class MochiPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
