@@ -25,7 +25,7 @@ from diffusers.utils.testing_utils import (
 )
 
 
-class MagiTransformer3DModelText2VideoSingleFileTest(unittest.TestCase):
+class Magi1Transformer3DModelText2VideoSingleFileTest(unittest.TestCase):
     model_class = Magi1Transformer3DModel
     ckpt_path = "https://huggingface.co/sand-ai/MAGI-1/blob/main/transformer/diffusion_pytorch_model.safetensors"
     repo_id = "sand-ai/MAGI-1"
