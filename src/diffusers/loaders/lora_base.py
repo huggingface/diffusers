@@ -939,8 +939,8 @@ class LoraBaseMixin:
         GPU before using those LoRA adapters for inference.
 
         ```python
-        >>> pipe.load_lora_weights(<path-1>, adapter_name="adapter-1")
-        >>> pipe.load_lora_weights(<path-1>, adapter_name="adapter-2")
+        >>> pipe.load_lora_weights(path_1, adapter_name="adapter-1")
+        >>> pipe.load_lora_weights(path_2, adapter_name="adapter-2")
         >>> pipe.set_adapters("adapter-1")
         >>> image_1 = pipe(**kwargs)
         >>> # switch to adapter-2, offload adapter-1
