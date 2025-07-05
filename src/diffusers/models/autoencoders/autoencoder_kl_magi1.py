@@ -34,7 +34,7 @@ from .vae import DecoderOutput, DiagonalGaussianDistribution
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class Magi1AttnProcessor2_0:
+class Magi1VAEAttnProcessor2_0:
     def __init__(self, dim, num_heads=8):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
@@ -80,7 +80,7 @@ class Magi1AttnProcessor2_0:
         return hidden_states + identity
 
 
-class Magi1TransformerBlock(nn.Module):
+class Magi1VAETransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -99,7 +99,7 @@ class Magi1TransformerBlock(nn.Module):
             bias=True,
             cross_attention_dim=None,
             out_bias=True,
-            processor=Magi1AttnProcessor2_0(dim, num_heads),
+            processor=Magi1VAEAttnProcessor2_0(dim, num_heads),
         )
 
         self.drop_path = nn.Identity()
@@ -154,7 +154,7 @@ class Magi1Encoder3d(nn.Module):
         # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
-                Magi1TransformerBlock(
+                Magi1VAETransformerBlock(
                     inner_dim,
                     num_attention_heads,
                     ffn_dim,
@@ -241,7 +241,7 @@ class Magi1Decoder3d(nn.Module):
         # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
-                Magi1TransformerBlock(
+                Magi1VAETransformerBlock(
                     inner_dim,
                     num_attention_heads,
                     ffn_dim,
@@ -317,7 +317,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     _supports_gradient_checkpointing = False
     _skip_layerwise_casting_patterns = ["patch_embedding", "norm"]
-    _no_split_modules = ["Magi1TransformerBlock"]
+    _no_split_modules = ["Magi1VAETransformerBlock"]
     _keep_in_fp32_modules = ["qkv_norm", "norm1", "norm2"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
