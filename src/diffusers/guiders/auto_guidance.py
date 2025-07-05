@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -66,7 +66,7 @@ class AutoGuidance(BaseGuidance):
         self,
         guidance_scale: float = 7.5,
         auto_guidance_layers: Optional[Union[int, List[int]]] = None,
-        auto_guidance_config: Union[LayerSkipConfig, List[LayerSkipConfig]] = None,
+        auto_guidance_config: Union[LayerSkipConfig, List[LayerSkipConfig], Dict[str, Any]] = None,
         dropout: Optional[float] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
@@ -104,6 +104,9 @@ class AutoGuidance(BaseGuidance):
                 LayerSkipConfig(layer, fqn="auto", dropout=dropout) for layer in auto_guidance_layers
             ]
 
+        if isinstance(auto_guidance_config, dict):
+            auto_guidance_config = LayerSkipConfig.from_dict(auto_guidance_config)
+
         if isinstance(auto_guidance_config, LayerSkipConfig):
             auto_guidance_config = [auto_guidance_config]
 
@@ -111,6 +114,8 @@ class AutoGuidance(BaseGuidance):
             raise ValueError(
                 f"Expected `auto_guidance_config` to be a LayerSkipConfig or a list of LayerSkipConfig, but got {type(auto_guidance_config)}."
             )
+        elif isinstance(next(iter(auto_guidance_config), None), dict):
+            auto_guidance_config = [LayerSkipConfig.from_dict(config) for config in auto_guidance_config]
 
         self.auto_guidance_config = auto_guidance_config
         self._auto_guidance_hook_names = [f"AutoGuidance_{i}" for i in range(len(self.auto_guidance_config))]

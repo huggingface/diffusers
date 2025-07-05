@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ..configuration_utils import register_to_config
 from ..hooks import LayerSkipConfig
+from ..utils import get_logger
 from .skip_layer_guidance import SkipLayerGuidance
+
+
+logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class PerturbedAttentionGuidance(SkipLayerGuidance):
@@ -48,8 +52,8 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
             The fraction of the total number of denoising steps after which perturbed attention guidance stops.
         perturbed_guidance_layers (`int` or `List[int]`, *optional*):
             The layer indices to apply perturbed attention guidance to. Can be a single integer or a list of integers.
-            If not provided, `skip_layer_config` must be provided.
-        skip_layer_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
+            If not provided, `perturbed_guidance_config` must be provided.
+        perturbed_guidance_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
             The configuration for the perturbed attention guidance. Can be a single `LayerSkipConfig` or a list of
             `LayerSkipConfig`. If not provided, `perturbed_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
@@ -79,19 +83,20 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
         perturbed_guidance_start: float = 0.01,
         perturbed_guidance_stop: float = 0.2,
         perturbed_guidance_layers: Optional[Union[int, List[int]]] = None,
-        skip_layer_config: Union[LayerSkipConfig, List[LayerSkipConfig]] = None,
+        perturbed_guidance_config: Union[LayerSkipConfig, List[LayerSkipConfig], Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
     ):
-        if skip_layer_config is None:
+        if perturbed_guidance_config is None:
             if perturbed_guidance_layers is None:
                 raise ValueError(
-                    "`perturbed_guidance_layers` must be provided if `skip_layer_config` is not specified."
+                    "`perturbed_guidance_layers` must be provided if `perturbed_guidance_config` is not specified."
                 )
-            skip_layer_config = LayerSkipConfig(
+            perturbed_guidance_config = LayerSkipConfig(
                 indices=perturbed_guidance_layers,
+                fqn="auto",
                 skip_attention=False,
                 skip_attention_scores=True,
                 skip_ff=False,
@@ -99,8 +104,31 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
         else:
             if perturbed_guidance_layers is not None:
                 raise ValueError(
-                    "`perturbed_guidance_layers` should not be provided if `skip_layer_config` is specified."
+                    "`perturbed_guidance_layers` should not be provided if `perturbed_guidance_config` is specified."
                 )
+
+        if isinstance(perturbed_guidance_config, dict):
+            perturbed_guidance_config = LayerSkipConfig.from_dict(perturbed_guidance_config)
+
+        if isinstance(perturbed_guidance_config, LayerSkipConfig):
+            perturbed_guidance_config = [perturbed_guidance_config]
+
+        if not isinstance(perturbed_guidance_config, list):
+            raise ValueError(
+                "`perturbed_guidance_config` must be a `LayerSkipConfig`, a list of `LayerSkipConfig`, or a dict that can be converted to a `LayerSkipConfig`."
+            )
+        elif isinstance(next(iter(perturbed_guidance_config), None), dict):
+            perturbed_guidance_config = [LayerSkipConfig.from_dict(config) for config in perturbed_guidance_config]
+
+        for config in perturbed_guidance_config:
+            if config.skip_attention or not config.skip_attention_scores or config.skip_ff:
+                logger.warning(
+                    "Perturbed Attention Guidance is designed to perturb attention scores, so `skip_attention` should be False, `skip_attention_scores` should be True, and `skip_ff` should be False. "
+                    "Please check your configuration. Modifying the config to match the expected values."
+                )
+            config.skip_attention = False
+            config.skip_attention_scores = True
+            config.skip_ff = False
 
         super().__init__(
             guidance_scale=guidance_scale,
@@ -108,7 +136,7 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
             skip_layer_guidance_start=perturbed_guidance_start,
             skip_layer_guidance_stop=perturbed_guidance_stop,
             skip_layer_guidance_layers=perturbed_guidance_layers,
-            skip_layer_config=skip_layer_config,
+            skip_layer_config=perturbed_guidance_config,
             guidance_rescale=guidance_rescale,
             use_original_formulation=use_original_formulation,
             start=start,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Callable, List, Optional
 
 import torch
@@ -77,6 +77,13 @@ class LayerSkipConfig:
             raise ValueError(
                 "Cannot set `skip_attention_scores` to True when `dropout` is not 1.0. Please set `dropout` to 1.0."
             )
+
+    def to_dict(self):
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(data: dict) -> "LayerSkipConfig":
+        return LayerSkipConfig(**data)
 
 
 class AttentionScoreSkipFunctionMode(torch.overrides.TorchFunctionMode):

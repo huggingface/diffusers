@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -95,7 +95,7 @@ class SkipLayerGuidance(BaseGuidance):
         skip_layer_guidance_start: float = 0.01,
         skip_layer_guidance_stop: float = 0.2,
         skip_layer_guidance_layers: Optional[Union[int, List[int]]] = None,
-        skip_layer_config: Union[LayerSkipConfig, List[LayerSkipConfig]] = None,
+        skip_layer_config: Union[LayerSkipConfig, List[LayerSkipConfig], Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -135,6 +135,9 @@ class SkipLayerGuidance(BaseGuidance):
                 )
             skip_layer_config = [LayerSkipConfig(layer, fqn="auto") for layer in skip_layer_guidance_layers]
 
+        if isinstance(skip_layer_config, dict):
+            skip_layer_config = LayerSkipConfig.from_dict(skip_layer_config)
+
         if isinstance(skip_layer_config, LayerSkipConfig):
             skip_layer_config = [skip_layer_config]
 
@@ -142,6 +145,8 @@ class SkipLayerGuidance(BaseGuidance):
             raise ValueError(
                 f"Expected `skip_layer_config` to be a LayerSkipConfig or a list of LayerSkipConfig, but got {type(skip_layer_config)}."
             )
+        elif isinstance(next(iter(skip_layer_config), None), dict):
+            skip_layer_config = [LayerSkipConfig.from_dict(config) for config in skip_layer_config]
 
         self.skip_layer_config = skip_layer_config
         self._skip_layer_hook_names = [f"SkipLayerGuidance_{i}" for i in range(len(self.skip_layer_config))]

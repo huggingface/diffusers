@@ -125,6 +125,9 @@ class SmoothedEnergyGuidance(BaseGuidance):
                 )
             seg_guidance_config = [SmoothedEnergyGuidanceConfig(layer, fqn="auto") for layer in seg_guidance_layers]
 
+        if isinstance(seg_guidance_config, dict):
+            seg_guidance_config = SmoothedEnergyGuidanceConfig.from_dict(seg_guidance_config)
+
         if isinstance(seg_guidance_config, SmoothedEnergyGuidanceConfig):
             seg_guidance_config = [seg_guidance_config]
 
@@ -132,6 +135,8 @@ class SmoothedEnergyGuidance(BaseGuidance):
             raise ValueError(
                 f"Expected `seg_guidance_config` to be a SmoothedEnergyGuidanceConfig or a list of SmoothedEnergyGuidanceConfig, but got {type(seg_guidance_config)}."
             )
+        elif isinstance(next(iter(seg_guidance_config), None), dict):
+            seg_guidance_config = [SmoothedEnergyGuidanceConfig.from_dict(config) for config in seg_guidance_config]
 
         self.seg_guidance_config = seg_guidance_config
         self._seg_layer_hook_names = [f"SmoothedEnergyGuidance_{i}" for i in range(len(self.seg_guidance_config))]
