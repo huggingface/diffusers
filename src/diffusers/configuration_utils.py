@@ -601,6 +601,10 @@ class ConfigMixin:
                 value = value.tolist()
             elif isinstance(value, Path):
                 value = value.as_posix()
+            elif hasattr(value, "to_dict") and callable(value.to_dict):
+                value = value.to_dict()
+            elif isinstance(value, list):
+                value = [to_json_saveable(v) for v in value]
             return value
 
         if "quantization_config" in config_dict:

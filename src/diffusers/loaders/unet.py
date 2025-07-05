@@ -22,7 +22,6 @@ import torch
 import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..models.embeddings import (
     ImageProjection,
     IPAdapterFaceIDImageProjection,
@@ -132,6 +131,8 @@ class UNet2DConditionLoadersMixin:
         )
         ```
         """
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
