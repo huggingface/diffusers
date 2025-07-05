@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import List, Optional
 
 import torch
@@ -50,6 +50,13 @@ class SmoothedEnergyGuidanceConfig:
     indices: List[int]
     fqn: str = "auto"
     _query_proj_identifiers: List[str] = None
+
+    def to_dict(self):
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(data: dict) -> "SmoothedEnergyGuidanceConfig":
+        return SmoothedEnergyGuidanceConfig(**data)
 
 
 class SmoothedEnergyGuidanceHook(ModelHook):
