@@ -740,6 +740,8 @@ def parse_args(input_args=None):
         assert args.caption_column is not None
         assert args.dataset_name is not None
         assert not args.train_text_encoder
+        if args.validation_prompt is not None:
+            assert args.validation_image is None and os.path.exists(args.validation_image)
 
     return args
 
