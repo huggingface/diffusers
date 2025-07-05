@@ -205,6 +205,21 @@ class AutoencoderKLLTXVideo(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AutoencoderKLMagi1(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AutoencoderKLMagvit(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -716,6 +731,21 @@ class Lumina2Transformer2DModel(metaclass=DummyObject):
 
 
 class LuminaNextDiT2DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class Magi1Transformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
