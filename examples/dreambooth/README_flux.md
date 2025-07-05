@@ -294,6 +294,41 @@ accelerate launch train_dreambooth_lora_flux_kontext.py \
 Fine-tuning Kontext on the T2I task can be useful when working with specific styles/subjects where it may not
 perform as expected.
 
+Image-guided fine-tuning (I2I) is also supported. To start, you must have a dataset containing triplets:
+
+* Condition image
+* Target image
+* Instruction
+
+[kontext-community/relighting](https://huggingface.co/datasets/kontext-community/relighting) is a good example of such a dataset. If you are using such a dataset, you can use the command below to launch training:
+
+```bash
+accelerate launch train_dreambooth_lora_flux_kontext.py \
+  --pretrained_model_name_or_path=black-forest-labs/FLUX.1-Kontext-dev  \
+  --output_dir="kontext-i2i" \
+  --dataset_name="kontext-community/relighting" \
+  --image_column="output" --cond_image_column="file_name" --caption_column="instruction" \
+  --mixed_precision="bf16" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --guidance_scale=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --optimizer="adamw" \
+  --use_8bit_adam \
+  --cache_latents \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=500 \
+  --seed="0" 
+```
+
+More generally, when performing I2I fine-tuning, we expect you to:
+
+* Have a dataset `kontext-community/relighting`
+* Supply `image_column`, `cond_image_column`, and `caption_column` values when launching training
+
 ### Misc notes
 
 * By default, we use `mode` as the value of `--vae_encode_mode` argument. This is because Kontext uses `mode()` of the distribution predicted by the VAE instead of sampling from it.
