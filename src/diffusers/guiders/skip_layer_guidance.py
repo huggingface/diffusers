@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import torch
 
+from ..configuration_utils import register_to_config
 from ..hooks import HookRegistry, LayerSkipConfig
 from ..hooks.layer_skip import _apply_layer_skip_hook
 from .guider_utils import BaseGuidance, rescale_noise_cfg
@@ -86,6 +87,7 @@ class SkipLayerGuidance(BaseGuidance):
 
     _input_predictions = ["pred_cond", "pred_uncond", "pred_cond_skip"]
 
+    @register_to_config
     def __init__(
         self,
         guidance_scale: float = 7.5,
