@@ -233,9 +233,6 @@ class PeftAdapterMixin:
             is_control_lora = "lora_controlnet" in state_dict
             if is_control_lora:
                 state_dict = convert_control_lora_state_dict_to_peft(state_dict)
-                with open("state_dict1.txt", "w") as f:
-                    for key, val in state_dict.items():
-                        f.write(f"{key}: {val.shape}\n")
 
             rank = {}
             for key, val in state_dict.items():
