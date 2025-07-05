@@ -27,6 +27,7 @@ from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
     check_peft_version,
+    convert_control_lora_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
@@ -227,6 +228,15 @@ class PeftAdapterMixin:
             if "lora_A" not in first_key:
                 state_dict = convert_unet_state_dict_to_peft(state_dict)
 
+            # Control LoRA from SAI is different from BFL Control LoRA
+            # https://huggingface.co/stabilityai/control-lora/
+            is_control_lora = "lora_controlnet" in state_dict
+            if is_control_lora:
+                state_dict = convert_control_lora_state_dict_to_peft(state_dict)
+                with open("state_dict1.txt", "w") as f:
+                    for key, val in state_dict.items():
+                        f.write(f"{key}: {val.shape}\n")
+
             rank = {}
             for key, val in state_dict.items():
                 # Cannot figure out rank from lora layers that don't have at least 2 dimensions.
@@ -257,6 +267,9 @@ class PeftAdapterMixin:
                 model_state_dict=self.state_dict(),
                 adapter_name=adapter_name,
             )
+            if is_control_lora:
+                lora_config.modules_to_save = lora_config.exclude_modules
+                lora_config.exclude_modules = []
 
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
