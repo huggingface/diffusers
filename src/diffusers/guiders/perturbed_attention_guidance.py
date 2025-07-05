@@ -118,9 +118,7 @@ class PerturbedAttentionGuidance(SkipLayerGuidance):
                 "`perturbed_guidance_config` must be a `LayerSkipConfig`, a list of `LayerSkipConfig`, or a dict that can be converted to a `LayerSkipConfig`."
             )
         elif isinstance(next(iter(perturbed_guidance_config), None), dict):
-                perturbed_guidance_config = [
-                    LayerSkipConfig.from_dict(config) for config in perturbed_guidance_config
-                ]
+            perturbed_guidance_config = [LayerSkipConfig.from_dict(config) for config in perturbed_guidance_config]
 
         for config in perturbed_guidance_config:
             if config.skip_attention or not config.skip_attention_scores or config.skip_ff:
