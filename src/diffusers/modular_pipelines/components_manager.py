@@ -150,7 +150,7 @@ class AutoOffloadStrategy:
     the available memory on the device.
     """
 
-    # YiYi TODO: instead of memory_reserve_margin, we should let user set the maximum_total_models_size to keep on device 
+    # YiYi TODO: instead of memory_reserve_margin, we should let user set the maximum_total_models_size to keep on device
     # the actual memory usage would be higher. But it's simpler this way, and can be tested
     def __init__(self, memory_reserve_margin="3GB"):
         self.memory_reserve_margin = convert_file_size_to_int(memory_reserve_margin)

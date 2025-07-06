@@ -19,7 +19,6 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -343,7 +342,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         pipeline_class = getattr(diffusers_module, pipeline_class_name)
 
         modular_pipeline = pipeline_class(
-            blocks=deepcopy(self), 
+            blocks=deepcopy(self),
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             components_manager=components_manager,
             collection=collection,
@@ -1686,11 +1685,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
             for name, value in config_dict.items():
                 # all the components in modular_model_index.json are from_pretrained components
-                if (
-                    name in self._component_specs
-                    and isinstance(value, (tuple, list))
-                    and len(value) == 3
-                ):
+                if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 3:
                     library, class_name, component_spec_dict = value
                     component_spec = self._dict_to_component_spec(name, component_spec_dict)
                     component_spec.default_creation_method = "from_pretrained"
@@ -1794,15 +1789,16 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
         **kwargs,
-    ):  
+    ):
         from ..pipelines.pipeline_loading_utils import _get_pipeline_class
+
         try:
             blocks = ModularPipelineBlocks.from_pretrained(
                 pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs
             )
         except EnvironmentError:
             blocks = None
-        
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -1818,32 +1814,28 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             "local_files_only": local_files_only,
             "revision": revision,
         }
-        
-        config_dict = cls.load_config(pretrained_model_name_or_path, **kwargs)
+
+        config_dict = cls.load_config(pretrained_model_name_or_path, **load_config_kwargs)
         pipeline_class = _get_pipeline_class(cls, config=config_dict)
 
         pipeline = pipeline_class(
-            blocks=blocks, 
-            pretrained_model_name_or_path=pretrained_model_name_or_path, 
-            components_manager=components_manager, 
-            collection=collection, 
-            **kwargs
+            blocks=blocks,
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            components_manager=components_manager,
+            collection=collection,
+            **kwargs,
         )
         return pipeline
 
     # YiYi TODO:
     # 1. should support save some components too! currently only modular_model_index.json is saved
     # 2. maybe order the json file to make it more readable: configs first, then components
-    def save_pretrained(
-        self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs
-    ):
-
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
 
     @property
     def doc(self):
         return self.blocks.doc
-
 
     def register_components(self, **kwargs):
         """
@@ -1868,7 +1860,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         Notes:
             - Components must be created from ComponentSpec (have _diffusers_load_id attribute)
-            - When registering None for a component, it sets attribute to None but still syncs specs with the modular_model_index.json config
+            - When registering None for a component, it sets attribute to None but still syncs specs with the
+              modular_model_index.json config
         """
         for name, module in kwargs.items():
             # current component spec
@@ -1884,12 +1877,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             # make sure the component is created from ComponentSpec
             if module is not None and not hasattr(module, "_diffusers_load_id"):
                 raise ValueError("`ModularPipeline` only supports components created from `ComponentSpec`.")
-            
+
             if module is not None:
                 # actual library and class name of the module
                 library, class_name = _fetch_class_library_tuple(module)  # e.g. ("diffusers", "UNet2DConditionModel")
             else:
-            # if module is None, e.g. self.register_components(unet=None) during __init__
+                # if module is None, e.g. self.register_components(unet=None) during __init__
                 # we do not update the spec,
                 # but we still need to update the modular_model_index.json config based on component spec
                 library, class_name = None, None
@@ -1948,7 +1941,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             # add to component manager if one is attached
             if module is not None and module._diffusers_load_id != "null" and self._components_manager is not None:
                 self._components_manager.add(name, module, self._collection)
-
 
     @property
     def device(self) -> torch.device:
@@ -2394,12 +2386,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 )
         return self
 
-
     @staticmethod
     def _component_spec_to_dict(component_spec: ComponentSpec) -> Any:
         """
-        Convert a ComponentSpec into a JSON‐serializable dict for saving in `modular_model_index.json`.
-        If the default_creation_method is not from_pretrained, return None.
+        Convert a ComponentSpec into a JSON‐serializable dict for saving in `modular_model_index.json`. If the
+        default_creation_method is not from_pretrained, return None.
 
         This dict contains:
           - "type_hint": Tuple[str, str]
@@ -2423,30 +2414,19 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             Dict[str, Any]: A mapping suitable for JSON serialization.
 
         Example:
-            >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec 
-            >>> from diffusers import UNet2DConditionModel 
-            >>> spec = ComponentSpec(
-                ... name="unet", 
-                ... type_hint=UNet2DConditionModel,
-                ... config=None, 
-                ... repo="path/to/repo", 
-                ... subfolder="subfolder", 
-                ... variant=None, 
-                ... revision=None,
-                ... default_creation_method="from_pretrained", 
-            ... ) 
-            >>> ModularPipeline._component_spec_to_dict(spec) 
-            {
-                "type_hint": ("diffusers", "UNet2DConditionModel"), 
-                "repo": "path/to/repo", 
-                "subfolder": "subfolder", 
-                "variant": None, 
-                "revision": None,
+            >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec >>> from diffusers import
+            UNet2DConditionModel >>> spec = ComponentSpec(
+                ... name="unet", ... type_hint=UNet2DConditionModel, ... config=None, ... repo="path/to/repo", ...
+                subfolder="subfolder", ... variant=None, ... revision=None, ...
+                default_creation_method="from_pretrained",
+            ... ) >>> ModularPipeline._component_spec_to_dict(spec) {
+                "type_hint": ("diffusers", "UNet2DConditionModel"), "repo": "path/to/repo", "subfolder": "subfolder",
+                "variant": None, "revision": None,
             }
         """
         if component_spec.default_creation_method != "from_pretrained":
             return None
-        
+
         if component_spec.type_hint is not None:
             lib_name, cls_name = _fetch_class_library_tuple(component_spec.type_hint)
         else:
@@ -2466,8 +2446,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         """
         Reconstruct a ComponentSpec from a loading specdict.
 
-        This method converts a dictionary representation back into a ComponentSpec object.
-        The dict should contain:
+        This method converts a dictionary representation back into a ComponentSpec object. The dict should contain:
           - "type_hint": Tuple[str, str]
               Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
           - All loading fields defined by `component_spec.loading_fields()`, typically:
@@ -2491,23 +2470,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             ComponentSpec: A reconstructed ComponentSpec object.
 
         Example:
-            >>> spec_dict = {
-            ...     "type_hint": ("diffusers", "UNet2DConditionModel"),
-            ...     "repo": "stabilityai/stable-diffusion-xl",
-            ...     "subfolder": "unet",
-            ...     "variant": None,
-            ...     "revision": None,
-            ... }
-            >>> ModularPipeline._dict_to_component_spec("unet", spec_dict)
-            ComponentSpec(
-                name="unet",
-                type_hint=UNet2DConditionModel,
-                config=None,
-                repo="stabilityai/stable-diffusion-xl",
-                subfolder="unet",
-                variant=None,
-                revision=None,
-                default_creation_method="from_pretrained"
+            >>> spec_dict = { ... "type_hint": ("diffusers", "UNet2DConditionModel"), ... "repo":
+            "stabilityai/stable-diffusion-xl", ... "subfolder": "unet", ... "variant": None, ... "revision": None, ...
+            } >>> ModularPipeline._dict_to_component_spec("unet", spec_dict) ComponentSpec(
+                name="unet", type_hint=UNet2DConditionModel, config=None, repo="stabilityai/stable-diffusion-xl",
+                subfolder="unet", variant=None, revision=None, default_creation_method="from_pretrained"
             )
         """
         # make a shallow copy so we can pop() safely
