@@ -72,7 +72,6 @@ class Magi1VAEAttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        identity = hidden_states
         batch_size, time_height_width, channels = hidden_states.size()
 
         # compute query, key, value
@@ -100,7 +99,7 @@ class Magi1VAEAttnProcessor2_0:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
 
-        return hidden_states + identity
+        return hidden_states
 
 
 class Magi1VAETransformerBlock(nn.Module):
