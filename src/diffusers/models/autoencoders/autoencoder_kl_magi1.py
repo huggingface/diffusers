@@ -355,7 +355,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = False
     _skip_layerwise_casting_patterns = ["patch_embedding", "norm"]
     _no_split_modules = ["Magi1VAETransformerBlock"]
-    _keep_in_fp32_modules = ["qkv_norm", "norm1", "norm2"]
+    #_keep_in_fp32_modules = ["qkv_norm", "norm1", "norm2"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
@@ -557,7 +557,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         out = self.decoder(z)
 
-        out = torch.clamp(out, min=-1.0, max=1.0)
         if not return_dict:
             return (out,)
 
