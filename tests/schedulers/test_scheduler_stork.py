@@ -23,7 +23,6 @@ class STORKSchedulerTest(SchedulerCommonTest):
         config.update(**kwargs)
         return config
 
-
     def check_over_configs(self, time_step=0, **config):
         kwargs = dict(self.forward_default_kwargs)
         num_inference_steps = kwargs.pop("num_inference_steps", None)
@@ -31,7 +30,6 @@ class STORKSchedulerTest(SchedulerCommonTest):
         residual = 0.1 * sample
 
         for scheduler_class in self.scheduler_classes:
-
             scheduler_config = self.get_scheduler_config(**config, prediction_type="epsilon")
             scheduler = scheduler_class(**scheduler_config)
             scheduler.set_timesteps(num_inference_steps)
@@ -51,8 +49,6 @@ class STORKSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "STORK4 noise scheduler outputs are not identical"
 
-
-
             scheduler_config = self.get_scheduler_config(**config, prediction_type="flow_prediction")
             scheduler = scheduler_class(**scheduler_config)
             scheduler.set_timesteps(num_inference_steps)
@@ -65,12 +61,16 @@ class STORKSchedulerTest(SchedulerCommonTest):
             output = scheduler.step_flow_matching_2(residual, time_step, sample, return_dict=True).prev_sample
             new_output = new_scheduler.step_flow_matching_2(residual, time_step, sample, return_dict=True).prev_sample
 
-            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "STORK2 flow matching scheduler outputs are not identical"
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, (
+                "STORK2 flow matching scheduler outputs are not identical"
+            )
 
             output = scheduler.step_flow_matching_4(residual, time_step, sample, return_dict=True).prev_sample
             new_output = new_scheduler.step_flow_matching_4(residual, time_step, sample, return_dict=True).prev_sample
 
-            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "STORK4 flow matching scheduler outputs are not identical"
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, (
+                "STORK4 flow matching scheduler outputs are not identical"
+            )
 
     @unittest.skip("Test not supported.")
     def test_from_save_pretrained(self):
@@ -114,7 +114,6 @@ class STORKSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "STORK4 noise scheduler outputs are not identical"
 
-
             scheduler_config = self.get_scheduler_config(prediction_type="flow_prediction")
             scheduler = scheduler_class(**scheduler_config)
             scheduler.set_timesteps(num_inference_steps)
@@ -134,13 +133,16 @@ class STORKSchedulerTest(SchedulerCommonTest):
             output = scheduler.step_flow_matching_2(residual, time_step, sample, return_dict=True).prev_sample
             new_output = new_scheduler.step_flow_matching_2(residual, time_step, sample, return_dict=True).prev_sample
 
-            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "STORK2 flow matching scheduler outputs are not identical"
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, (
+                "STORK2 flow matching scheduler outputs are not identical"
+            )
 
             output = scheduler.step_flow_matching_4(residual, time_step, sample, return_dict=True).prev_sample
             new_output = new_scheduler.step_flow_matching_4(residual, time_step, sample, return_dict=True).prev_sample
 
-            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "STORK4 flow matching scheduler outputs are not identical"
-
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, (
+                "STORK4 flow matching scheduler outputs are not identical"
+            )
 
     def test_timesteps(self):
         for timesteps in [100, 1000]:
@@ -161,12 +163,28 @@ class STORKSchedulerTest(SchedulerCommonTest):
         )
 
         # Test for flow matching based models
-        scheduler_config = self.get_scheduler_config(prediction_type="flow_prediction", shift=3.0, time_shift_type="exponential")
+        scheduler_config = self.get_scheduler_config(
+            prediction_type="flow_prediction", shift=3.0, time_shift_type="exponential"
+        )
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(10)
         assert torch.allclose(
             scheduler.timesteps,
-            torch.Tensor([1000.0000, 980.0647, 960.1293, 913.3490, 857.6923, 790.3683, 707.2785, 602.1506, 464.8760, 278.0488, 8.9286]),
+            torch.Tensor(
+                [
+                    1000.0000,
+                    980.0647,
+                    960.1293,
+                    913.3490,
+                    857.6923,
+                    790.3683,
+                    707.2785,
+                    602.1506,
+                    464.8760,
+                    278.0488,
+                    8.9286,
+                ]
+            ),
         )
 
     def test_betas(self):
@@ -176,7 +194,6 @@ class STORKSchedulerTest(SchedulerCommonTest):
     def test_schedules(self):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
-
 
     def test_time_indices(self):
         for t in [1, 5, 10]:
