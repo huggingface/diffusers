@@ -146,7 +146,7 @@ def convert_magi_vae():
 
     converted_state_dict = convert_vae_state_dict(checkpoint)
 
-    missing_keys, unexpected_keys = vae.load_state_dict(converted_state_dict, strict=True)
+    vae.load_state_dict(converted_state_dict, strict=True)
 
     return vae
 
@@ -159,115 +159,82 @@ def convert_vae_state_dict(checkpoint):
     """
     state_dict = {}
 
-    if "encoder.patch_embed.proj.weight" in checkpoint:
-        state_dict["encoder.patch_embedding.weight"] = checkpoint["encoder.patch_embed.proj.weight"]
-        state_dict["encoder.patch_embedding.bias"] = checkpoint["encoder.patch_embed.proj.bias"]
+    state_dict["encoder.patch_embedding.weight"] = checkpoint["encoder.patch_embed.proj.weight"]
+    state_dict["encoder.patch_embedding.bias"] = checkpoint["encoder.patch_embed.proj.bias"]
 
-    if "encoder.pos_embed" in checkpoint:
-        state_dict["encoder.pos_embed"] = checkpoint["encoder.pos_embed"]
+    state_dict["encoder.pos_embed"] = checkpoint["encoder.pos_embed"]
 
-    if "encoder.cls_token" in checkpoint:
-        state_dict["encoder.cls_token"] = checkpoint["encoder.cls_token"]
+    state_dict["encoder.cls_token"] = checkpoint["encoder.cls_token"]
 
     for i in range(24):
-        if f"encoder.blocks.{i}.attn.qkv.weight" not in checkpoint:
-            continue
+        qkv_weight = checkpoint[f"encoder.blocks.{i}.attn.qkv.weight"]
+        qkv_bias = checkpoint[f"encoder.blocks.{i}.attn.qkv.bias"]
 
-        if f"encoder.blocks.{i}.attn.qkv.weight" in checkpoint:
-            qkv_weight = checkpoint[f"encoder.blocks.{i}.attn.qkv.weight"]
-            qkv_bias = checkpoint[f"encoder.blocks.{i}.attn.qkv.bias"]
+        q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
+        q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
 
-            q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
-            q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
+        state_dict[f"encoder.blocks.{i}.attn.to_q.weight"] = q_weight
+        state_dict[f"encoder.blocks.{i}.attn.to_q.bias"] = q_bias
+        state_dict[f"encoder.blocks.{i}.attn.to_k.weight"] = k_weight
+        state_dict[f"encoder.blocks.{i}.attn.to_k.bias"] = k_bias
+        state_dict[f"encoder.blocks.{i}.attn.to_v.weight"] = v_weight
+        state_dict[f"encoder.blocks.{i}.attn.to_v.bias"] = v_bias
 
-            state_dict[f"encoder.blocks.{i}.attn.to_q.weight"] = q_weight
-            state_dict[f"encoder.blocks.{i}.attn.to_q.bias"] = q_bias
-            state_dict[f"encoder.blocks.{i}.attn.to_k.weight"] = k_weight
-            state_dict[f"encoder.blocks.{i}.attn.to_k.bias"] = k_bias
-            state_dict[f"encoder.blocks.{i}.attn.to_v.weight"] = v_weight
-            state_dict[f"encoder.blocks.{i}.attn.to_v.bias"] = v_bias
+        state_dict[f"encoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[f"encoder.blocks.{i}.attn.proj.weight"]
+        state_dict[f"encoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[f"encoder.blocks.{i}.attn.proj.bias"]
 
-        if f"encoder.blocks.{i}.attn.proj.weight" in checkpoint:
-            state_dict[f"encoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[f"encoder.blocks.{i}.attn.proj.weight"]
-            state_dict[f"encoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[f"encoder.blocks.{i}.attn.proj.bias"]
+        state_dict[f"encoder.blocks.{i}.norm2.weight"] = checkpoint[f"encoder.blocks.{i}.norm2.weight"]
+        state_dict[f"encoder.blocks.{i}.norm2.bias"] = checkpoint[f"encoder.blocks.{i}.norm2.bias"]
 
-        if f"encoder.blocks.{i}.norm2.weight" in checkpoint:
-            state_dict[f"encoder.blocks.{i}.norm2.weight"] = checkpoint[f"encoder.blocks.{i}.norm2.weight"]
-            state_dict[f"encoder.blocks.{i}.norm2.bias"] = checkpoint[f"encoder.blocks.{i}.norm2.bias"]
+        state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[f"encoder.blocks.{i}.mlp.fc1.weight"]
+        state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc1.bias"]
+        state_dict[f"encoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.weight"]
 
-        if f"encoder.blocks.{i}.mlp.fc1.weight" in checkpoint:
-            state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[
-                f"encoder.blocks.{i}.mlp.fc1.weight"
-            ]
-            state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc1.bias"]
-        if f"encoder.blocks.{i}.mlp.fc2.weight" in checkpoint:
-            state_dict[f"encoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.weight"]
+        state_dict[f"encoder.blocks.{i}.proj_out.net.2.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.bias"]
 
-            if f"encoder.blocks.{i}.mlp.fc2.bias" in checkpoint:
-                state_dict[f"encoder.blocks.{i}.proj_out.net.2.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc2.bias"]
+    state_dict["encoder.norm_out.weight"] = checkpoint["encoder.norm.weight"]
+    state_dict["encoder.norm_out.bias"] = checkpoint["encoder.norm.bias"]
 
-    if "encoder.norm.weight" in checkpoint:
-        state_dict["encoder.norm_out.weight"] = checkpoint["encoder.norm.weight"]
-        state_dict["encoder.norm_out.bias"] = checkpoint["encoder.norm.bias"]
+    state_dict["encoder.linear_out.weight"] = checkpoint["encoder.last_layer.weight"]
+    state_dict["encoder.linear_out.bias"] = checkpoint["encoder.last_layer.bias"]
 
-    if "encoder.last_layer.weight" in checkpoint:
-        state_dict["encoder.linear_out.weight"] = checkpoint["encoder.last_layer.weight"]
-        state_dict["encoder.linear_out.bias"] = checkpoint["encoder.last_layer.bias"]
+    state_dict["decoder.proj_in.weight"] = checkpoint["decoder.proj_in.weight"]
+    state_dict["decoder.proj_in.bias"] = checkpoint["decoder.proj_in.bias"]
 
-    if "decoder.proj_in.weight" in checkpoint:
-        state_dict["decoder.proj_in.weight"] = checkpoint["decoder.proj_in.weight"]
-        state_dict["decoder.proj_in.bias"] = checkpoint["decoder.proj_in.bias"]
+    state_dict["decoder.pos_embed"] = checkpoint["decoder.pos_embed"]
 
-    if "decoder.pos_embed" in checkpoint:
-        state_dict["decoder.pos_embed"] = checkpoint["decoder.pos_embed"]
-
-    if "decoder.cls_token" in checkpoint:
-        state_dict["decoder.cls_token"] = checkpoint["decoder.cls_token"]
+    state_dict["decoder.cls_token"] = checkpoint["decoder.cls_token"]
 
     for i in range(24):
-        if f"decoder.blocks.{i}.attn.qkv.weight" not in checkpoint:
-            continue
+        qkv_weight = checkpoint[f"decoder.blocks.{i}.attn.qkv.weight"]
+        qkv_bias = checkpoint[f"decoder.blocks.{i}.attn.qkv.bias"]
 
-        if f"decoder.blocks.{i}.attn.qkv.weight" in checkpoint:
-            qkv_weight = checkpoint[f"decoder.blocks.{i}.attn.qkv.weight"]
-            qkv_bias = checkpoint[f"decoder.blocks.{i}.attn.qkv.bias"]
+        q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
+        q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
 
-            q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
-            q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
+        state_dict[f"decoder.blocks.{i}.attn.to_q.weight"] = q_weight
+        state_dict[f"decoder.blocks.{i}.attn.to_q.bias"] = q_bias
+        state_dict[f"decoder.blocks.{i}.attn.to_k.weight"] = k_weight
+        state_dict[f"decoder.blocks.{i}.attn.to_k.bias"] = k_bias
+        state_dict[f"decoder.blocks.{i}.attn.to_v.weight"] = v_weight
+        state_dict[f"decoder.blocks.{i}.attn.to_v.bias"] = v_bias
 
-            state_dict[f"decoder.blocks.{i}.attn.to_q.weight"] = q_weight
-            state_dict[f"decoder.blocks.{i}.attn.to_q.bias"] = q_bias
-            state_dict[f"decoder.blocks.{i}.attn.to_k.weight"] = k_weight
-            state_dict[f"decoder.blocks.{i}.attn.to_k.bias"] = k_bias
-            state_dict[f"decoder.blocks.{i}.attn.to_v.weight"] = v_weight
-            state_dict[f"decoder.blocks.{i}.attn.to_v.bias"] = v_bias
+        state_dict[f"decoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[f"decoder.blocks.{i}.attn.proj.weight"]
+        state_dict[f"decoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[f"decoder.blocks.{i}.attn.proj.bias"]
 
-        if f"decoder.blocks.{i}.attn.proj.weight" in checkpoint:
-            state_dict[f"decoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[f"decoder.blocks.{i}.attn.proj.weight"]
-            state_dict[f"decoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[f"decoder.blocks.{i}.attn.proj.bias"]
+        state_dict[f"decoder.blocks.{i}.norm2.weight"] = checkpoint[f"decoder.blocks.{i}.norm2.weight"]
+        state_dict[f"decoder.blocks.{i}.norm2.bias"] = checkpoint[f"decoder.blocks.{i}.norm2.bias"]
 
-        if f"decoder.blocks.{i}.norm2.weight" in checkpoint:
-            state_dict[f"decoder.blocks.{i}.norm2.weight"] = checkpoint[f"decoder.blocks.{i}.norm2.weight"]
-            state_dict[f"decoder.blocks.{i}.norm2.bias"] = checkpoint[f"decoder.blocks.{i}.norm2.bias"]
+        state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[f"decoder.blocks.{i}.mlp.fc1.weight"]
+        state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc1.bias"]
+        state_dict[f"decoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.weight"]
+        state_dict[f"decoder.blocks.{i}.proj_out.net.2.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.bias"]
 
-        if f"decoder.blocks.{i}.mlp.fc1.weight" in checkpoint:
-            state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[
-                f"decoder.blocks.{i}.mlp.fc1.weight"
-            ]
-            state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc1.bias"]
-        if f"decoder.blocks.{i}.mlp.fc2.weight" in checkpoint:
-            state_dict[f"decoder.blocks.{i}.proj_out.net.2.weight"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.weight"]
+    state_dict["decoder.norm_out.weight"] = checkpoint["decoder.norm.weight"]
+    state_dict["decoder.norm_out.bias"] = checkpoint["decoder.norm.bias"]
 
-            if f"decoder.blocks.{i}.mlp.fc2.bias" in checkpoint:
-                state_dict[f"decoder.blocks.{i}.proj_out.net.2.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc2.bias"]
-
-    if "decoder.norm.weight" in checkpoint:
-        state_dict["decoder.norm_out.weight"] = checkpoint["decoder.norm.weight"]
-        state_dict["decoder.norm_out.bias"] = checkpoint["decoder.norm.bias"]
-
-    if "decoder.last_layer.weight" in checkpoint:
-        state_dict["decoder.conv_out.weight"] = checkpoint["decoder.last_layer.weight"]
-        state_dict["decoder.conv_out.bias"] = checkpoint["decoder.last_layer.bias"]
+    state_dict["decoder.conv_out.weight"] = checkpoint["decoder.last_layer.weight"]
+    state_dict["decoder.conv_out.bias"] = checkpoint["decoder.last_layer.bias"]
 
     return state_dict
 

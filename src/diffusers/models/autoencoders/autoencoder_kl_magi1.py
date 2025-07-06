@@ -37,7 +37,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def resize_pos_embed(posemb, src_shape, target_shape):
     posemb = posemb.reshape(1, src_shape[0], src_shape[1], src_shape[2], -1)
     posemb = posemb.permute(0, 4, 1, 2, 3)
-    posemb = nn.functional.interpolate(posemb, size=target_shape, mode='trilinear', align_corners=False)
+    posemb = nn.functional.interpolate(posemb, size=target_shape, mode="trilinear", align_corners=False)
     posemb = posemb.permute(0, 2, 3, 4, 1)
     posemb = posemb.reshape(1, target_shape[0] * target_shape[1] * target_shape[2], -1)
     return posemb
@@ -196,9 +196,11 @@ class Magi1Encoder3d(nn.Module):
         if latentT != self.patch_size[0] or latentH != self.patch_size[1] or latentW != self.patch_size[2]:
             pos_embed = resize_pos_embed(
                 self.pos_embed[:, 1:, :],
-                src_shape=(self.num_frames // self.patch_size[0],
-                           self.height // self.patch_size[1],
-                           self.width // self.patch_size[2]),
+                src_shape=(
+                    self.num_frames // self.patch_size[0],
+                    self.height // self.patch_size[1],
+                    self.width // self.patch_size[2],
+                ),
                 target_shape=(latentT, latentH, latentW),
             )
             pos_embed = torch.cat((self.pos_embed[:, 0:1, :], pos_embed), dim=1)
@@ -299,9 +301,11 @@ class Magi1Decoder3d(nn.Module):
         if latentT != self.patch_size[0] or latentH != self.patch_size[1] or latentW != self.patch_size[2]:
             pos_embed = resize_pos_embed(
                 self.pos_embed[:, 1:, :],
-                src_shape=(self.num_frames // self.patch_size[0],
-                           self.height // self.patch_size[1],
-                           self.width // self.patch_size[2]),
+                src_shape=(
+                    self.num_frames // self.patch_size[0],
+                    self.height // self.patch_size[1],
+                    self.width // self.patch_size[2],
+                ),
                 target_shape=(latentT, latentH, latentW),
             )
             pos_embed = torch.cat((self.pos_embed[:, 0:1, :], pos_embed), dim=1)
@@ -355,7 +359,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = False
     _skip_layerwise_casting_patterns = ["patch_embedding", "norm"]
     _no_split_modules = ["Magi1VAETransformerBlock"]
-    #_keep_in_fp32_modules = ["qkv_norm", "norm1", "norm2"]
+    # _keep_in_fp32_modules = ["qkv_norm", "norm1", "norm2"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
