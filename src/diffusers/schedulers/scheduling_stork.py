@@ -38,7 +38,7 @@ class STORKSchedulerOutput(BaseOutput):
 
 
 current_file = Path(__file__)
-CONSTANTSFOLDER = f"{current_file.parent.parent}"
+CONSTANTSFOLDER = f"{current_file.parent}/stork_parameters"
 
 
 
@@ -120,6 +120,7 @@ class STORKScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas: Optional[bool] = False,
         use_exponential_sigmas: Optional[bool] = False,
         use_beta_sigmas: Optional[bool] = False,
+        set_alpha_to_one: bool = False,
     ):
         
         super().__init__()
@@ -160,7 +161,6 @@ class STORKScheduler(SchedulerMixin, ConfigMixin):
         self.solver_order = solver_order
         self.prediction_type = prediction_type
 
-
         # Set the betas for noise-based models
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -171,6 +171,13 @@ class STORKScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         else:
             raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
+        
+        self.alphas = 1.0 - self.betas
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+
+        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
         
         # Noise-based models epsilon to avoid numerical issues
         self.stopping_eps = stopping_eps
@@ -1452,3 +1459,20 @@ class STORKScheduler(SchedulerMixin, ConfigMixin):
                 mp[1] = mp[1] + ms[i] * 2 - 1
 
         return mdeg, mp
+    
+
+    
+    def scale_model_input(self, sample: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.Tensor`):
+                The input sample.
+
+        Returns:
+            `torch.Tensor`:
+                A scaled input sample.
+        """
+        return sample
