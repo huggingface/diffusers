@@ -43,7 +43,6 @@ def resize_pos_embed(posemb, src_shape, target_shape):
     return posemb
 
 
-
 class Magi1VAEAttnProcessor2_0:
     def __init__(self, dim, num_heads=8):
         if not hasattr(F, "scaled_dot_product_attention"):
