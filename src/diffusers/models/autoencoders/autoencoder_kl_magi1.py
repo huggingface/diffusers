@@ -34,6 +34,15 @@ from .vae import DecoderOutput, DiagonalGaussianDistribution
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def resize_pos_embed(posemb, src_shape, target_shape):
+    posemb = posemb.reshape(1, src_shape[0], src_shape[1], src_shape[2], -1)
+    posemb = posemb.permute(0, 4, 1, 2, 3)
+    posemb = nn.functional.interpolate(posemb, size=target_shape, mode='trilinear', align_corners=False)
+    posemb = posemb.permute(0, 2, 3, 4, 1)
+    posemb = posemb.reshape(1, target_shape[0] * target_shape[1] * target_shape[2], -1)
+    return posemb
+
+
 class Magi1VAEAttnProcessor2_0:
     def __init__(self, dim, num_heads=8):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -131,9 +140,13 @@ class Magi1Encoder3d(nn.Module):
     ):
         super().__init__()
         self.z_dim = z_dim
+        self.height = height
+        self.width = width
+        self.num_frames = num_frames
 
         # 1. Patch & position embedding
         self.patch_embedding = nn.Conv3d(3, inner_dim, kernel_size=patch_size, stride=patch_size)
+        self.patch_size = patch_size
 
         self.cls_token_nums = 1
         self.cls_token = nn.Parameter(torch.zeros(1, 1, inner_dim))
@@ -144,9 +157,6 @@ class Magi1Encoder3d(nn.Module):
         post_patch_height = height // p_h
         post_patch_width = width // p_w
         num_patches = post_patch_num_frames * post_patch_height * post_patch_width
-
-        # 1. Patch & position embedding
-        self.patch_embedding = nn.Conv3d(3, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.cls_token_nums, inner_dim))
         self.pos_drop = nn.Dropout(p=0.0)
@@ -183,7 +193,19 @@ class Magi1Encoder3d(nn.Module):
         cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         x = torch.cat((cls_tokens, x), dim=1)
 
-        x = x + self.pos_embed
+        if latentT != self.patch_size[0] or latentH != self.patch_size[1] or latentW != self.patch_size[2]:
+            pos_embed = resize_pos_embed(
+                self.pos_embed[:, 1:, :],
+                src_shape=(self.num_frames // self.patch_size[0],
+                           self.height // self.patch_size[1],
+                           self.width // self.patch_size[2]),
+                target_shape=(latentT, latentH, latentW),
+            )
+            pos_embed = torch.cat((self.pos_embed[:, 0:1, :], pos_embed), dim=1)
+        else:
+            pos_embed = self.pos_embed
+
+        x = x + pos_embed
         x = self.pos_drop(x)
 
         ## transformer blocks
@@ -221,6 +243,9 @@ class Magi1Decoder3d(nn.Module):
         super().__init__()
         self.z_dim = z_dim
         self.patch_size = patch_size
+        self.height = height
+        self.width = width
+        self.num_frames = num_frames
 
         # init block
         self.proj_in = nn.Linear(z_dim, inner_dim)
@@ -271,7 +296,19 @@ class Magi1Decoder3d(nn.Module):
         cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         x = torch.cat((cls_tokens, x), dim=1)
 
-        x = x + self.pos_embed
+        if latentT != self.patch_size[0] or latentH != self.patch_size[1] or latentW != self.patch_size[2]:
+            pos_embed = resize_pos_embed(
+                self.pos_embed[:, 1:, :],
+                src_shape=(self.num_frames // self.patch_size[0],
+                           self.height // self.patch_size[1],
+                           self.width // self.patch_size[2]),
+                target_shape=(latentT, latentH, latentW),
+            )
+            pos_embed = torch.cat((self.pos_embed[:, 0:1, :], pos_embed), dim=1)
+        else:
+            pos_embed = self.pos_embed
+
+        x = x + pos_embed
         x = self.pos_drop(x)
 
         ## transformer blocks
@@ -479,15 +516,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
             return self.tiled_encode(x)
 
-        iter_ = 1 + (num_frame - 1) // 4
-        for i in range(iter_):
-            if i == 0:
-                out = self.encoder(x[:, :, :1, :, :])
-            else:
-                out_ = self.encoder(
-                    x[:, :, 1 + 4 * (i - 1) : 1 + 4 * i, :, :],
-                )
-                out = torch.cat([out, out_], 2)
+        out = self.encoder(x)
 
         return out
 
