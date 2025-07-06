@@ -19,6 +19,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -55,9 +56,15 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-MODULAR_LOADER_MAPPING = OrderedDict(
+MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
-        ("stable-diffusion-xl", "StableDiffusionXLModularLoader"),
+        ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
+    ]
+)
+
+MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
+    [
+        ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
     ]
 )
 
@@ -73,7 +80,7 @@ class PipelineState:
     input_kwargs: Dict[str, List[str]] = field(default_factory=dict)
     intermediate_kwargs: Dict[str, List[str]] = field(default_factory=dict)
 
-    def add_input(self, key: str, value: Any, kwargs_type: str = None):
+    def set_input(self, key: str, value: Any, kwargs_type: str = None):
         """
         Add an input to the pipeline state with optional metadata.
 
@@ -89,7 +96,7 @@ class PipelineState:
             else:
                 self.input_kwargs[kwargs_type].append(key)
 
-    def add_intermediate(self, key: str, value: Any, kwargs_type: str = None):
+    def set_intermediate(self, key: str, value: Any, kwargs_type: str = None):
         """
         Add an intermediate value to the pipeline state with optional metadata.
 
@@ -329,25 +336,18 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         collection: Optional[str] = None,
     ):
         """
-        create a ModularLoader, optionally accept modular_repo to load from hub.
+        create a ModularPipeline, optionally accept modular_repo to load from hub.
         """
-        loader_class_name = MODULAR_LOADER_MAPPING.get(self.model_name, ModularLoader.__name__)
+        pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(self.model_name, ModularPipeline.__name__)
         diffusers_module = importlib.import_module("diffusers")
-        loader_class = getattr(diffusers_module, loader_class_name)
+        pipeline_class = getattr(diffusers_module, pipeline_class_name)
 
-        # Create deep copies to avoid modifying the original specs
-        component_specs = deepcopy(self.expected_components)
-        config_specs = deepcopy(self.expected_configs)
-        # Create the loader with the updated specs
-        specs = component_specs + config_specs
-
-        loader = loader_class(
-            specs=specs,
+        modular_pipeline = pipeline_class(
+            blocks=deepcopy(self), 
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             components_manager=components_manager,
             collection=collection,
         )
-        modular_pipeline = ModularPipeline(blocks=deepcopy(self), loader=loader)
         return modular_pipeline
 
 
@@ -512,12 +512,12 @@ class PipelineBlock(ModularPipelineBlocks):
                             data[input_param.kwargs_type][k] = v
         return BlockState(**data)
 
-    def add_block_state(self, state: PipelineState, block_state: BlockState):
+    def set_block_state(self, state: PipelineState, block_state: BlockState):
         for output_param in self.intermediate_outputs:
             if not hasattr(block_state, output_param.name):
                 raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")
             param = getattr(block_state, output_param.name)
-            state.add_intermediate(output_param.name, param, output_param.kwargs_type)
+            state.set_intermediate(output_param.name, param, output_param.kwargs_type)
 
         for input_param in self.intermediate_inputs:
             if hasattr(block_state, input_param.name):
@@ -525,7 +525,7 @@ class PipelineBlock(ModularPipelineBlocks):
                 # Only add if the value is different from what's in the state
                 current_value = state.get_intermediate(input_param.name)
                 if current_value is not param:  # Using identity comparison to check if object was modified
-                    state.add_intermediate(input_param.name, param, input_param.kwargs_type)
+                    state.set_intermediate(input_param.name, param, input_param.kwargs_type)
 
         for input_param in self.intermediate_inputs:
             if input_param.name and hasattr(block_state, input_param.name):
@@ -533,7 +533,7 @@ class PipelineBlock(ModularPipelineBlocks):
                 # Only add if the value is different from what's in the state
                 current_value = state.get_intermediate(input_param.name)
                 if current_value is not param:  # Using identity comparison to check if object was modified
-                    state.add_intermediate(input_param.name, param, input_param.kwargs_type)
+                    state.set_intermediate(input_param.name, param, input_param.kwargs_type)
             elif input_param.kwargs_type:
                 # if it is a kwargs type, e.g. "guider_input_fields", it is likely to be a list of parameters
                 # we need to first find out which inputs are and loop through them.
@@ -541,7 +541,7 @@ class PipelineBlock(ModularPipelineBlocks):
                 for param_name, current_value in intermediate_kwargs.items():
                     param = getattr(block_state, param_name)
                     if current_value is not param:  # Using identity comparison to check if object was modified
-                        state.add_intermediate(param_name, param, input_param.kwargs_type)
+                        state.set_intermediate(param_name, param, input_param.kwargs_type)
 
 
 def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
@@ -610,7 +610,6 @@ def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) ->
     return list(combined_dict.values())
 
 
-# YiYi TODO: change blocks attribute to a different name, so it is not confused with the blocks attribute in ModularPipeline
 class AutoPipelineBlocks(ModularPipelineBlocks):
     """
     A class that automatically selects a block to run based on the inputs.
@@ -1524,12 +1523,12 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                             data[input_param.kwargs_type][k] = v
         return BlockState(**data)
 
-    def add_block_state(self, state: PipelineState, block_state: BlockState):
+    def set_block_state(self, state: PipelineState, block_state: BlockState):
         for output_param in self.intermediate_outputs:
             if not hasattr(block_state, output_param.name):
                 raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")
             param = getattr(block_state, output_param.name)
-            state.add_intermediate(output_param.name, param, output_param.kwargs_type)
+            state.set_intermediate(output_param.name, param, output_param.kwargs_type)
 
         for input_param in self.intermediate_inputs:
             if input_param.name and hasattr(block_state, input_param.name):
@@ -1537,7 +1536,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 # Only add if the value is different from what's in the state
                 current_value = state.get_intermediate(input_param.name)
                 if current_value is not param:  # Using identity comparison to check if object was modified
-                    state.add_intermediate(input_param.name, param, input_param.kwargs_type)
+                    state.set_intermediate(input_param.name, param, input_param.kwargs_type)
             elif input_param.kwargs_type:
                 # if it is a kwargs type, e.g. "guider_input_fields", it is likely to be a list of parameters
                 # we need to first find out which inputs are and loop through them.
@@ -1547,7 +1546,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                         continue
                     param = getattr(block_state, param_name)
                     if current_value is not param:  # Using identity comparison to check if object was modified
-                        state.add_intermediate(param_name, param, input_param.kwargs_type)
+                        state.set_intermediate(param_name, param, input_param.kwargs_type)
 
     @property
     def doc(self):
@@ -1643,123 +1642,22 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 # 2. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
 # 3. do we need ConfigSpec? seems pretty unnecessrary for loader, can just add and kwargs to the loader
 # 4. add validator for methods where we accpet kwargs to be passed to from_pretrained()
-class ModularLoader(ConfigMixin, PushToHubMixin):
+class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
-    Base class for all Modular pipelines loaders.
+    Base class for all Modular pipelines.
 
+    Args:
+        blocks: ModularPipelineBlocks, the blocks to be used in the pipeline
     """
 
     config_name = "modular_model_index.json"
     hf_device_map = None
 
-    def register_components(self, **kwargs):
-        """
-        Register components with their corresponding specifications.
-
-        This method is responsible for:
-        1. Sets component objects as attributes on the loader (e.g., self.unet = unet)
-        2. Updates the modular_model_index.json configuration for serialization
-        4. Adds components to the component manager if one is attached
-
-        This method is called when:
-        - Components are first initialized in __init__:
-           - from_pretrained components not loaded during __init__ so they are registered as None;
-           - non from_pretrained components are created during __init__ and registered as the object itself
-        - Components are updated with the `update()` method: e.g. loader.update(unet=unet) or
-          loader.update(guider=guider_spec)
-        - (from_pretrained) Components are loaded with the `load()` method: e.g. loader.load(names=["unet"])
-
-        Args:
-            **kwargs: Keyword arguments where keys are component names and values are component objects.
-                      E.g., register_components(unet=unet_model, text_encoder=encoder_model)
-
-        Notes:
-            - Components must be created from ComponentSpec (have _diffusers_load_id attribute)
-            - When registering None for a component, it updates the modular_model_index.json config but sets attribute
-              to None
-        """
-        for name, module in kwargs.items():
-            # current component spec
-            component_spec = self._component_specs.get(name)
-            if component_spec is None:
-                logger.warning(f"ModularLoader.register_components: skipping unknown component '{name}'")
-                continue
-
-            # check if it is the first time registration, i.e. calling from __init__
-            is_registered = hasattr(self, name)
-
-            # make sure the component is created from ComponentSpec
-            if module is not None and not hasattr(module, "_diffusers_load_id"):
-                raise ValueError("`ModularLoader` only supports components created from `ComponentSpec`.")
-
-            if module is not None:
-                # actual library and class name of the module
-                library, class_name = _fetch_class_library_tuple(module)  # e.g. ("diffusers", "UNet2DConditionModel")
-
-                # extract the loading spec from the updated component spec that'll be used as part of modular_model_index.json config
-                # e.g. {"repo": "stabilityai/stable-diffusion-2-1",
-                #       "type_hint": ("diffusers", "UNet2DConditionModel"),
-                #       "subfolder": "unet",
-                #       "variant": None,
-                #       "revision": None}
-                component_spec_dict = self._component_spec_to_dict(component_spec)
-
-            else:
-                # if module is None, e.g. self.register_components(unet=None) during __init__
-                # we do not update the spec,
-                # but we still need to update the modular_model_index.json config based oncomponent spec
-                library, class_name = None, None
-                component_spec_dict = self._component_spec_to_dict(component_spec)
-            register_dict = {name: (library, class_name, component_spec_dict)}
-
-            # set the component as attribute
-            # if it is not set yet, just set it and skip the process to check and warn below
-            if not is_registered:
-                self.register_to_config(**register_dict)
-                setattr(self, name, module)
-                if module is not None and module._diffusers_load_id != "null" and self._components_manager is not None:
-                    self._components_manager.add(name, module, self._collection)
-                continue
-
-            current_module = getattr(self, name, None)
-            # skip if the component is already registered with the same object
-            if current_module is module:
-                logger.info(
-                    f"ModularLoader.register_components: {name} is already registered with same object, skipping"
-                )
-                continue
-
-            # warn if unregister
-            if current_module is not None and module is None:
-                logger.info(
-                    f"ModularLoader.register_components: setting '{name}' to None "
-                    f"(was {current_module.__class__.__name__})"
-                )
-            # same type, new instance → replace but send debug log
-            elif (
-                current_module is not None
-                and module is not None
-                and isinstance(module, current_module.__class__)
-                and current_module != module
-            ):
-                logger.debug(
-                    f"ModularLoader.register_components: replacing existing '{name}' "
-                    f"(same type {type(current_module).__name__}, new instance)"
-                )
-
-            # update modular_model_index.json config
-            self.register_to_config(**register_dict)
-            # finally set models
-            setattr(self, name, module)
-            # add to component manager if one is attached
-            if module is not None and module._diffusers_load_id != "null" and self._components_manager is not None:
-                self._components_manager.add(name, module, self._collection)
-
     # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
     def __init__(
         self,
-        specs: List[Union[ComponentSpec, ConfigSpec]],
-        pretrained_model_name_or_path: Optional[str] = None,
+        blocks: Optional[ModularPipelineBlocks] = None,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
         components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
         **kwargs,
@@ -1767,25 +1665,35 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         """
         Initialize the loader with a list of component specs and config specs.
         """
+        if blocks is None:
+            blocks_class_name = MODULAR_PIPELINE_BLOCKS_MAPPING.get(self.__class__.__name__)
+            if blocks_class_name is not None:
+                diffusers_module = importlib.import_module("diffusers")
+                blocks_class = getattr(diffusers_module, blocks_class_name)
+                blocks = blocks_class()
+            else:
+                logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
+
+        self.blocks = blocks
         self._components_manager = components_manager
         self._collection = collection
-        self._component_specs = {spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ComponentSpec)}
-        self._config_specs = {spec.name: deepcopy(spec) for spec in specs if isinstance(spec, ConfigSpec)}
+        self._component_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_components}
+        self._config_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_configs}
 
         # update component_specs and config_specs from modular_repo
         if pretrained_model_name_or_path is not None:
             config_dict = self.load_config(pretrained_model_name_or_path, **kwargs)
 
             for name, value in config_dict.items():
-                # only update component_spec for from_pretrained components
+                # all the components in modular_model_index.json are from_pretrained components
                 if (
                     name in self._component_specs
-                    and self._component_specs[name].default_creation_method == "from_pretrained"
                     and isinstance(value, (tuple, list))
                     and len(value) == 3
                 ):
                     library, class_name, component_spec_dict = value
                     component_spec = self._dict_to_component_spec(name, component_spec_dict)
+                    component_spec.default_creation_method = "from_pretrained"
                     self._component_specs[name] = component_spec
 
                 elif name in self._config_specs:
@@ -1804,6 +1712,243 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         for name, config_spec in self._config_specs.items():
             default_configs[name] = config_spec.default
         self.register_to_config(**default_configs)
+
+        self.register_to_config(_blocks_class_name=self.blocks.__class__.__name__ if self.blocks is not None else None)
+
+    @property
+    def default_call_parameters(self) -> Dict[str, Any]:
+        params = {}
+        for input_param in self.blocks.inputs:
+            params[input_param.name] = input_param.default
+        return params
+
+    def __call__(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
+        """
+        Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
+        """
+        if state is None:
+            state = PipelineState()
+
+        # Make a copy of the input kwargs
+        passed_kwargs = kwargs.copy()
+
+        # Add inputs to state, using defaults if not provided in the kwargs or the state
+        # if same input already in the state, will override it if provided in the kwargs
+
+        intermediate_inputs = [inp.name for inp in self.blocks.intermediate_inputs]
+        for expected_input_param in self.blocks.inputs:
+            name = expected_input_param.name
+            default = expected_input_param.default
+            kwargs_type = expected_input_param.kwargs_type
+            if name in passed_kwargs:
+                if name not in intermediate_inputs:
+                    state.set_input(name, passed_kwargs.pop(name), kwargs_type)
+                else:
+                    state.set_input(name, passed_kwargs[name], kwargs_type)
+            elif name not in state.inputs:
+                state.set_input(name, default, kwargs_type)
+
+        for expected_intermediate_param in self.blocks.intermediate_inputs:
+            name = expected_intermediate_param.name
+            kwargs_type = expected_intermediate_param.kwargs_type
+            if name in passed_kwargs:
+                state.set_intermediate(name, passed_kwargs.pop(name), kwargs_type)
+
+        # Warn about unexpected inputs
+        if len(passed_kwargs) > 0:
+            warnings.warn(f"Unexpected input '{passed_kwargs.keys()}' provided. This input will be ignored.")
+        # Run the pipeline
+        with torch.no_grad():
+            try:
+                _, state = self.blocks(self, state)
+            except Exception:
+                error_msg = f"Error in block: ({self.blocks.__class__.__name__}):\n"
+                logger.error(error_msg)
+                raise
+
+        if output is None:
+            return state
+
+        elif isinstance(output, str):
+            return state.get_intermediate(output)
+
+        elif isinstance(output, (list, tuple)):
+            return state.get_intermediates(output)
+        else:
+            raise ValueError(f"Output '{output}' is not a valid output type")
+
+    def load_default_components(self, **kwargs):
+        names = [
+            name
+            for name in self._component_specs.keys()
+            if self._component_specs[name].default_creation_method == "from_pretrained"
+        ]
+        self.load_components(names=names, **kwargs)
+
+    @classmethod
+    @validate_hf_hub_args
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
+        trust_remote_code: Optional[bool] = None,
+        components_manager: Optional[ComponentsManager] = None,
+        collection: Optional[str] = None,
+        **kwargs,
+    ):  
+        from ..pipelines.pipeline_loading_utils import _get_pipeline_class
+        try:
+            blocks = ModularPipelineBlocks.from_pretrained(
+                pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs
+            )
+        except EnvironmentError:
+            blocks = None
+        
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        token = kwargs.pop("token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "proxies": proxies,
+            "token": token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+        }
+        
+        config_dict = cls.load_config(pretrained_model_name_or_path, **kwargs)
+        pipeline_class = _get_pipeline_class(cls, config=config_dict)
+
+        pipeline = pipeline_class(
+            blocks=blocks, 
+            pretrained_model_name_or_path=pretrained_model_name_or_path, 
+            components_manager=components_manager, 
+            collection=collection, 
+            **kwargs
+        )
+        return pipeline
+
+    # YiYi TODO:
+    # 1. should support save some components too! currently only modular_model_index.json is saved
+    # 2. maybe order the json file to make it more readable: configs first, then components
+    def save_pretrained(
+        self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs
+    ):
+
+        self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
+
+    @property
+    def doc(self):
+        return self.blocks.doc
+
+
+    def register_components(self, **kwargs):
+        """
+        Register components with their corresponding specifications.
+
+        This method is responsible for:
+        1. Sets component objects as attributes on the loader (e.g., self.unet = unet)
+        2. Updates the modular_model_index.json configuration for serialization (only for from_pretrained components)
+        3. Adds components to the component manager if one is attached (only for from_pretrained components)
+
+        This method is called when:
+        - Components are first initialized in __init__:
+           - from_pretrained components not loaded during __init__ so they are registered as None;
+           - non from_pretrained components are created during __init__ and registered as the object itself
+        - Components are updated with the `update()` method: e.g. loader.update(unet=unet) or
+          loader.update(guider=guider_spec)
+        - (from_pretrained) Components are loaded with the `load()` method: e.g. loader.load(names=["unet"])
+
+        Args:
+            **kwargs: Keyword arguments where keys are component names and values are component objects.
+                      E.g., register_components(unet=unet_model, text_encoder=encoder_model)
+
+        Notes:
+            - Components must be created from ComponentSpec (have _diffusers_load_id attribute)
+            - When registering None for a component, it sets attribute to None but still syncs specs with the modular_model_index.json config
+        """
+        for name, module in kwargs.items():
+            # current component spec
+            component_spec = self._component_specs.get(name)
+            if component_spec is None:
+                logger.warning(f"ModularPipeline.register_components: skipping unknown component '{name}'")
+                continue
+
+            # check if it is the first time registration, i.e. calling from __init__
+            is_registered = hasattr(self, name)
+            is_from_pretrained = component_spec.default_creation_method == "from_pretrained"
+
+            # make sure the component is created from ComponentSpec
+            if module is not None and not hasattr(module, "_diffusers_load_id"):
+                raise ValueError("`ModularPipeline` only supports components created from `ComponentSpec`.")
+            
+            if module is not None:
+                # actual library and class name of the module
+                library, class_name = _fetch_class_library_tuple(module)  # e.g. ("diffusers", "UNet2DConditionModel")
+            else:
+            # if module is None, e.g. self.register_components(unet=None) during __init__
+                # we do not update the spec,
+                # but we still need to update the modular_model_index.json config based on component spec
+                library, class_name = None, None
+
+            # extract the loading spec from the updated component spec that'll be used as part of modular_model_index.json config
+            # e.g. {"repo": "stabilityai/stable-diffusion-2-1",
+            #       "type_hint": ("diffusers", "UNet2DConditionModel"),
+            #       "subfolder": "unet",
+            #       "variant": None,
+            #       "revision": None}
+            component_spec_dict = self._component_spec_to_dict(component_spec)
+
+            register_dict = {name: (library, class_name, component_spec_dict)}
+
+            # set the component as attribute
+            # if it is not set yet, just set it and skip the process to check and warn below
+            if not is_registered:
+                if is_from_pretrained:
+                    self.register_to_config(**register_dict)
+                setattr(self, name, module)
+                if module is not None and module._diffusers_load_id != "null" and self._components_manager is not None:
+                    self._components_manager.add(name, module, self._collection)
+                continue
+
+            current_module = getattr(self, name, None)
+            # skip if the component is already registered with the same object
+            if current_module is module:
+                logger.info(
+                    f"ModularPipeline.register_components: {name} is already registered with same object, skipping"
+                )
+                continue
+
+            # warn if unregister
+            if current_module is not None and module is None:
+                logger.info(
+                    f"ModularPipeline.register_components: setting '{name}' to None "
+                    f"(was {current_module.__class__.__name__})"
+                )
+            # same type, new instance → replace but send debug log
+            elif (
+                current_module is not None
+                and module is not None
+                and isinstance(module, current_module.__class__)
+                and current_module != module
+            ):
+                logger.debug(
+                    f"ModularPipeline.register_components: replacing existing '{name}' "
+                    f"(same type {type(current_module).__name__}, new instance)"
+                )
+
+            # update modular_model_index.json config
+            if is_from_pretrained:
+                self.register_to_config(**register_dict)
+            # finally set models
+            setattr(self, name, module)
+            # add to component manager if one is attached
+            if module is not None and module._diffusers_load_id != "null" and self._components_manager is not None:
+                self._components_manager.add(name, module, self._collection)
+
 
     @property
     def device(self) -> torch.device:
@@ -1885,7 +2030,10 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         # return only components we've actually set as attributes on self
         return {name: getattr(self, name) for name in self._component_specs.keys() if hasattr(self, name)}
 
-    def update(self, **kwargs):
+    def get_component_spec(self, name: str) -> ComponentSpec:
+        return deepcopy(self._component_specs[name])
+
+    def update_components(self, **kwargs):
         """
         Update components and configuration values after the loader has been instantiated.
 
@@ -1938,7 +2086,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
 
         for name, component in passed_components.items():
             if not hasattr(component, "_diffusers_load_id"):
-                raise ValueError("`ModularLoader` only supports components created from `ComponentSpec`.")
+                raise ValueError("`ModularPipeline` only supports components created from `ComponentSpec`.")
 
             # YiYi TODO: remove this if we remove support for non config mixin components in `create()` method
             if component._diffusers_load_id == "null" and not isinstance(component, ConfigMixin):
@@ -1953,7 +2101,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 component, current_component_spec.type_hint
             ):
                 logger.warning(
-                    f"ModularLoader.update: adding {name} with new type: {component.__class__.__name__}, previous type: {current_component_spec.type_hint.__name__}"
+                    f"ModularPipeline.update: adding {name} with new type: {component.__class__.__name__}, previous type: {current_component_spec.type_hint.__name__}"
                 )
             # update _component_specs based on the new component
             new_component_spec = ComponentSpec.from_component(name, component)
@@ -1975,7 +2123,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 created_components[name], current_component_spec.type_hint
             ):
                 logger.warning(
-                    f"ModularLoader.update: adding {name} with new type: {created_components[name].__class__.__name__}, previous type: {current_component_spec.type_hint.__name__}"
+                    f"ModularPipeline.update: adding {name} with new type: {created_components[name].__class__.__name__}, previous type: {current_component_spec.type_hint.__name__}"
                 )
             # update _component_specs based on the user passed component_spec
             self._component_specs[name] = component_spec
@@ -1989,7 +2137,7 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         self.register_to_config(**config_to_register)
 
     # YiYi TODO: support map for additional from_pretrained kwargs
-    def load(self, names: Union[List[str], str], **kwargs):
+    def load_components(self, names: Union[List[str], str], **kwargs):
         """
         Load selected components from specs.
 
@@ -2246,58 +2394,16 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
                 )
         return self
 
-    # YiYi TODO:
-    # 1. should support save some components too! currently only modular_model_index.json is saved
-    # 2. maybe order the json file to make it more readable: configs first, then components
-    def save_pretrained(
-        self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, spec_only: bool = True, **kwargs
-    ):
-        component_names = list(self._component_specs.keys())
-        config_names = list(self._config_specs.keys())
-        self.register_to_config(_components_names=component_names, _configs_names=config_names)
-        self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
-        config = dict(self.config)
-        config.pop("_components_names", None)
-        config.pop("_configs_names", None)
-        self._internal_dict = FrozenDict(config)
-
-    @classmethod
-    @validate_hf_hub_args
-    def from_pretrained(
-        cls,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
-        spec_only: bool = True,
-        components_manager: Optional[ComponentsManager] = None,
-        collection: Optional[str] = None,
-        **kwargs,
-    ):
-        config_dict = cls.load_config(pretrained_model_name_or_path, **kwargs)
-        expected_component = set(config_dict.pop("_components_names"))
-        expected_config = set(config_dict.pop("_configs_names"))
-
-        component_specs = []
-        config_specs = []
-        for name, value in config_dict.items():
-            if name in expected_component and isinstance(value, (tuple, list)) and len(value) == 3:
-                library, class_name, component_spec_dict = value
-                # only pick up pretrained components from the repo
-                if component_spec_dict.get("repo", None) is not None:
-                    component_spec = cls._dict_to_component_spec(name, component_spec_dict)
-                    component_specs.append(component_spec)
-
-            elif name in expected_config:
-                config_specs.append(ConfigSpec(name=name, default=value))
-
-        return cls(component_specs + config_specs, components_manager=components_manager, collection=collection)
 
     @staticmethod
     def _component_spec_to_dict(component_spec: ComponentSpec) -> Any:
         """
         Convert a ComponentSpec into a JSON‐serializable dict for saving in `modular_model_index.json`.
+        If the default_creation_method is not from_pretrained, return None.
 
         This dict contains:
           - "type_hint": Tuple[str, str]
-              The fully‐qualified module path and class name of the component.
+              Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
           - All loading fields defined by `component_spec.loading_fields()`, typically:
               - "repo": Optional[str]
                   The model repository (e.g., "stabilityai/stable-diffusion-xl").
@@ -2317,23 +2423,36 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             Dict[str, Any]: A mapping suitable for JSON serialization.
 
         Example:
-            >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec >>> from diffusers.models.unet
-            import UNet2DConditionModel >>> spec = ComponentSpec( ... name="unet", ... type_hint=UNet2DConditionModel,
-            ... config=None, ... repo="path/to/repo", ... subfolder="subfolder", ... variant=None, ... revision=None,
-            ... default_creation_method="from_pretrained", ... ) >>> ModularLoader._component_spec_to_dict(spec) {
-                "type_hint": ("diffusers.models.unet", "UNet2DConditionModel"), "repo": "path/to/repo", "subfolder":
-                "subfolder", "variant": None, "revision": None,
+            >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec 
+            >>> from diffusers import UNet2DConditionModel 
+            >>> spec = ComponentSpec(
+                ... name="unet", 
+                ... type_hint=UNet2DConditionModel,
+                ... config=None, 
+                ... repo="path/to/repo", 
+                ... subfolder="subfolder", 
+                ... variant=None, 
+                ... revision=None,
+                ... default_creation_method="from_pretrained", 
+            ... ) 
+            >>> ModularPipeline._component_spec_to_dict(spec) 
+            {
+                "type_hint": ("diffusers", "UNet2DConditionModel"), 
+                "repo": "path/to/repo", 
+                "subfolder": "subfolder", 
+                "variant": None, 
+                "revision": None,
             }
         """
+        if component_spec.default_creation_method != "from_pretrained":
+            return None
+        
         if component_spec.type_hint is not None:
             lib_name, cls_name = _fetch_class_library_tuple(component_spec.type_hint)
         else:
             lib_name = None
             cls_name = None
-        if component_spec.default_creation_method == "from_pretrained":
-            load_spec_dict = {k: getattr(component_spec, k) for k in component_spec.loading_fields()}
-        else:
-            load_spec_dict = {}
+        load_spec_dict = {k: getattr(component_spec, k) for k in component_spec.loading_fields()}
         return {
             "type_hint": (lib_name, cls_name),
             **load_spec_dict,
@@ -2345,7 +2464,51 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
         spec_dict: Dict[str, Any],
     ) -> ComponentSpec:
         """
-        Reconstruct a ComponentSpec from a dict.
+        Reconstruct a ComponentSpec from a loading specdict.
+
+        This method converts a dictionary representation back into a ComponentSpec object.
+        The dict should contain:
+          - "type_hint": Tuple[str, str]
+              Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
+          - All loading fields defined by `component_spec.loading_fields()`, typically:
+              - "repo": Optional[str]
+                  The model repository (e.g., "stabilityai/stable-diffusion-xl").
+              - "subfolder": Optional[str]
+                  A subfolder within the repo where this component lives.
+              - "variant": Optional[str]
+                  An optional variant identifier for the model.
+              - "revision": Optional[str]
+                  A specific git revision (commit hash, tag, or branch).
+              - ... any other loading fields defined on the spec.
+
+        Args:
+            name (str):
+                The name of the component.
+            specdict (Dict[str, Any]):
+                A dictionary containing the component specification data.
+
+        Returns:
+            ComponentSpec: A reconstructed ComponentSpec object.
+
+        Example:
+            >>> spec_dict = {
+            ...     "type_hint": ("diffusers", "UNet2DConditionModel"),
+            ...     "repo": "stabilityai/stable-diffusion-xl",
+            ...     "subfolder": "unet",
+            ...     "variant": None,
+            ...     "revision": None,
+            ... }
+            >>> ModularPipeline._dict_to_component_spec("unet", spec_dict)
+            ComponentSpec(
+                name="unet",
+                type_hint=UNet2DConditionModel,
+                config=None,
+                repo="stabilityai/stable-diffusion-xl",
+                subfolder="unet",
+                variant=None,
+                revision=None,
+                default_creation_method="from_pretrained"
+            )
         """
         # make a shallow copy so we can pop() safely
         spec_dict = spec_dict.copy()
@@ -2362,132 +2525,3 @@ class ModularLoader(ConfigMixin, PushToHubMixin):
             type_hint=type_hint,
             **spec_dict,
         )
-
-
-class ModularPipeline:
-    """
-    Base class for all Modular pipelines.
-
-    Args:
-        blocks: ModularPipelineBlocks, the blocks to be used in the pipeline
-        loader: ModularLoader, the loader to be used in the pipeline
-    """
-
-    def __init__(self, blocks: ModularPipelineBlocks, loader: ModularLoader):
-        self.blocks = blocks
-        self.loader = loader
-
-    def __repr__(self):
-        return f"ModularPipeline(\n  blocks={repr(self.blocks)},\n  loader={repr(self.loader)}\n)"
-
-    @property
-    def default_call_parameters(self) -> Dict[str, Any]:
-        params = {}
-        for input_param in self.blocks.inputs:
-            params[input_param.name] = input_param.default
-        return params
-
-    def __call__(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
-        """
-        Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
-        """
-        if state is None:
-            state = PipelineState()
-
-        # Make a copy of the input kwargs
-        passed_kwargs = kwargs.copy()
-
-        # Add inputs to state, using defaults if not provided in the kwargs or the state
-        # if same input already in the state, will override it if provided in the kwargs
-
-        intermediate_inputs = [inp.name for inp in self.blocks.intermediate_inputs]
-        for expected_input_param in self.blocks.inputs:
-            name = expected_input_param.name
-            default = expected_input_param.default
-            kwargs_type = expected_input_param.kwargs_type
-            if name in passed_kwargs:
-                if name not in intermediate_inputs:
-                    state.add_input(name, passed_kwargs.pop(name), kwargs_type)
-                else:
-                    state.add_input(name, passed_kwargs[name], kwargs_type)
-            elif name not in state.inputs:
-                state.add_input(name, default, kwargs_type)
-
-        for expected_intermediate_param in self.blocks.intermediate_inputs:
-            name = expected_intermediate_param.name
-            kwargs_type = expected_intermediate_param.kwargs_type
-            if name in passed_kwargs:
-                state.add_intermediate(name, passed_kwargs.pop(name), kwargs_type)
-
-        # Warn about unexpected inputs
-        if len(passed_kwargs) > 0:
-            warnings.warn(f"Unexpected input '{passed_kwargs.keys()}' provided. This input will be ignored.")
-        # Run the pipeline
-        with torch.no_grad():
-            try:
-                pipeline, state = self.blocks(self.loader, state)
-            except Exception:
-                error_msg = f"Error in block: ({self.blocks.__class__.__name__}):\n"
-                logger.error(error_msg)
-                raise
-
-        if output is None:
-            return state
-
-        elif isinstance(output, str):
-            return state.get_intermediate(output)
-
-        elif isinstance(output, (list, tuple)):
-            return state.get_intermediates(output)
-        else:
-            raise ValueError(f"Output '{output}' is not a valid output type")
-
-    def load_default_components(self, **kwargs):
-        names = [
-            name
-            for name in self.loader._component_specs.keys()
-            if self.loader._component_specs[name].default_creation_method == "from_pretrained"
-        ]
-        self.loader.load(names=names, **kwargs)
-
-    def load_components(self, names: Union[List[str], str], **kwargs):
-        self.loader.load(names=names, **kwargs)
-
-    def update_components(self, **kwargs):
-        self.loader.update(**kwargs)
-
-    @classmethod
-    @validate_hf_hub_args
-    def from_pretrained(
-        cls,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
-        trust_remote_code: Optional[bool] = None,
-        components_manager: Optional[ComponentsManager] = None,
-        collection: Optional[str] = None,
-        **kwargs,
-    ):
-        blocks = ModularPipelineBlocks.from_pretrained(
-            pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs
-        )
-        pipeline = blocks.init_pipeline(
-            pretrained_model_name_or_path, components_manager=components_manager, collection=collection, **kwargs
-        )
-        return pipeline
-
-    def save_pretrained(
-        self, save_directory: Optional[Union[str, os.PathLike]] = None, push_to_hub: bool = False, **kwargs
-    ):
-        self.blocks.save_pretrained(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
-        self.loader.save_pretrained(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
-
-    @property
-    def doc(self):
-        return self.blocks.doc
-
-    def to(self, *args, **kwargs):
-        self.loader.to(*args, **kwargs)
-        return self
-
-    @property
-    def components(self):
-        return self.loader.components

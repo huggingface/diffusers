@@ -22,7 +22,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["encoders"] = ["StableDiffusionXLTextEncoderStep"]
-    _import_structure["modular_blocks_presets"] = [
+    _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
         "AUTO_BLOCKS",
         "CONTROLNET_BLOCKS",
@@ -36,7 +36,7 @@ else:
         "StableDiffusionXLAutoIPAdapterStep",
         "StableDiffusionXLAutoVaeEncoderStep",
     ]
-    _import_structure["modular_loader"] = ["StableDiffusionXLModularLoader"]
+    _import_structure["modular_pipeline"] = ["StableDiffusionXLModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -48,7 +48,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .encoders import (
             StableDiffusionXLTextEncoderStep,
         )
-        from .modular_blocks_presets import (
+        from .modular_blocks import (
             ALL_BLOCKS,
             AUTO_BLOCKS,
             CONTROLNET_BLOCKS,
@@ -62,7 +62,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLAutoIPAdapterStep,
             StableDiffusionXLAutoVaeEncoderStep,
         )
-        from .modular_loader import StableDiffusionXLModularLoader
+        from .modular_pipeline import StableDiffusionXLModularPipeline
 else:
     import sys
 

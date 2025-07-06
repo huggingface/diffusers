@@ -29,7 +29,7 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_loader import StableDiffusionXLModularLoader
+from .modular_pipeline import StableDiffusionXLModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -66,7 +66,7 @@ class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
+    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
         block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
 
         return components, block_state
@@ -131,7 +131,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
                 )
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
+    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
         self.check_inputs(components, block_state)
 
         block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
@@ -202,7 +202,7 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
 
     @torch.no_grad()
     def __call__(
-        self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int
+        self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int
     ) -> PipelineState:
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
@@ -347,7 +347,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
         return extra_kwargs
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
+    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
         extra_controlnet_kwargs = self.prepare_extra_kwargs(
             components.controlnet.forward, **block_state.controlnet_kwargs
         )
@@ -494,7 +494,7 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
         return extra_kwargs
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
+    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         block_state.extra_step_kwargs = self.prepare_extra_kwargs(
             components.scheduler.step, generator=block_state.generator, eta=block_state.eta
@@ -595,7 +595,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
                 raise ValueError(f"noise is required for this step {self.__class__.__name__}")
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, block_state: BlockState, i: int, t: int):
+    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
         self.check_inputs(components, block_state)
 
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -677,7 +677,7 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.disable_guidance = True if components.unet.config.time_cond_proj_dim is not None else False
@@ -698,7 +698,7 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 ):
                     progress_bar.update()
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 

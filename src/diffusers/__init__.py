@@ -240,7 +240,6 @@ else:
         [
             "ComponentsManager",
             "ComponentSpec",
-            "ModularLoader",
             "ModularPipeline",
             "ModularPipelineBlocks",
         ]
@@ -360,7 +359,7 @@ else:
     _import_structure["modular_pipelines"].extend(
         [
             "StableDiffusionXLAutoBlocks",
-            "StableDiffusionXLModularLoader",
+            "StableDiffusionXLModularPipeline",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -881,7 +880,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             ComponentsManager,
             ComponentSpec,
-            ModularLoader,
             ModularPipeline,
             ModularPipelineBlocks,
         )
@@ -983,7 +981,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_pipelines import (
             StableDiffusionXLAutoBlocks,
-            StableDiffusionXLModularLoader,
+            StableDiffusionXLModularPipeline,
         )
         from .pipelines import (
             AllegroPipeline,

@@ -29,7 +29,6 @@ else:
         "AutoPipelineBlocks",
         "SequentialPipelineBlocks",
         "LoopSequentialPipelineBlocks",
-        "ModularLoader",
         "PipelineState",
         "BlockState",
     ]
@@ -40,7 +39,7 @@ else:
         "OutputParam",
         "InsertableDict",
     ]
-    _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularLoader"]
+    _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -55,7 +54,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineBlocks,
             BlockState,
             LoopSequentialPipelineBlocks,
-            ModularLoader,
             ModularPipeline,
             ModularPipelineBlocks,
             PipelineBlock,
@@ -71,7 +69,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .stable_diffusion_xl import (
             StableDiffusionXLAutoBlocks,
-            StableDiffusionXLModularLoader,
+            StableDiffusionXLModularPipeline,
         )
 else:
     import sys

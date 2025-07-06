@@ -107,7 +107,7 @@ def __call__(self, components, state):
     # You can access them like: block_state.image, block_state.processed_image
     
     # Update the pipeline state with your updated block_states
-    self.add_block_state(state, block_state)
+    self.set_block_state(state, block_state)
     return components, state
 ```
 
@@ -140,7 +140,7 @@ When you convert your blocks into a pipeline using `blocks.init_pipeline()`, the
 
 That's all you need to define in order to create a `PipelineBlock`. There is no hidden complexity. In fact we are going to create a helper function that take exactly these variables as input and return a pipeline block. We will use this helper function through out the tutorial to create test blocks
 
-Note that for `__call__` method, the only part you should implement differently is the part between `self.get_block_state()` and `self.add_block_state()`, which can be abstracted into a simple function that takes `block_state` and returns the updated state. Our helper function accepts a `block_fn` that does exactly that.
+Note that for `__call__` method, the only part you should implement differently is the part between `self.get_block_state()` and `self.set_block_state()`, which can be abstracted into a simple function that takes `block_state` and returns the updated state. Our helper function accepts a `block_fn` that does exactly that.
 
 **Helper Function**
 
@@ -172,7 +172,7 @@ def make_block(inputs=[], intermediate_inputs=[], intermediate_outputs=[], block
             block_state = self.get_block_state(state)
             if block_fn is not None:
                 block_state = block_fn(block_state, state)
-            self.add_block_state(state, block_state)
+            self.set_block_state(state, block_state)
             return components, state
     
     return TestBlock
@@ -403,7 +403,7 @@ class DenoiseLoop(PipelineBlock):
         for t in range(block_state.num_inference_steps):
             # ... loop logic here
             pass
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
         return components, state
 ```
 
@@ -455,7 +455,7 @@ class LoopWrapper(LoopSequentialPipelineBlocks):
         for i in range(block_state.num_steps):
             # loop_step executes all registered blocks in sequence
             components, block_state = self.loop_step(components, block_state, i=i)
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
         return components, state
 ```
 
@@ -464,7 +464,7 @@ class LoopWrapper(LoopSequentialPipelineBlocks):
 Loop blocks are standard `PipelineBlock`s, but their `__call__` method works differently:
 * It receives the iteration variable (e.g., `i`) passed by the loop wrapper
 * It works directly with `block_state` instead of pipeline state
-* No need to call `self.get_block_state()` or `self.add_block_state()`
+* No need to call `self.get_block_state()` or `self.set_block_state()`
 
 ```py
 class LoopBlock(PipelineBlock):

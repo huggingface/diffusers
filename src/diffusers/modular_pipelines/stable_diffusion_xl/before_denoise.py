@@ -30,7 +30,7 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
-from .modular_loader import StableDiffusionXLModularLoader
+from .modular_pipeline import StableDiffusionXLModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -338,7 +338,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
                     )
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -388,7 +388,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
                     [negative_ip_adapter_embed] * block_state.num_images_per_prompt, dim=0
                 )
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -491,7 +491,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
             return timesteps, num_inference_steps
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.device = components._execution_device
@@ -537,7 +537,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
             )
             block_state.timesteps = block_state.timesteps[: block_state.num_inference_steps]
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -576,7 +576,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.device = components._execution_device
@@ -606,7 +606,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
             )
             block_state.timesteps = block_state.timesteps[: block_state.num_inference_steps]
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
         return components, state
 
 
@@ -851,7 +851,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         return mask, masked_image_latents
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
@@ -900,7 +900,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             block_state.generator,
         )
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -961,7 +961,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
@@ -981,7 +981,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
                 block_state.add_noise,
             )
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -1066,7 +1066,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
         return latents
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         if block_state.dtype is None:
@@ -1091,7 +1091,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
             block_state.latents,
         )
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -1249,7 +1249,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
         return emb
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -1304,7 +1304,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
                 block_state.guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
             ).to(device=block_state.device, dtype=block_state.latents.dtype)
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
         return components, state
 
 
@@ -1420,7 +1420,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         return emb
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -1475,7 +1475,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
                 block_state.guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
             ).to(device=block_state.device, dtype=block_state.latents.dtype)
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
         return components, state
 
 
@@ -1590,7 +1590,7 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         return image
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         # (1) prepare controlnet inputs
@@ -1693,7 +1693,7 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         block_state.controlnet_cond = block_state.control_image
         block_state.conditioning_scale = block_state.controlnet_conditioning_scale
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -1824,7 +1824,7 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         return image
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         controlnet = unwrap_module(components.controlnet)
@@ -1904,6 +1904,6 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         block_state.controlnet_cond = block_state.control_image
         block_state.conditioning_scale = block_state.controlnet_conditioning_scale
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state

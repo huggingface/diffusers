@@ -23,7 +23,7 @@ from ...loaders import ModularIPAdapterMixin, StableDiffusionXLLoraLoaderMixin, 
 from ...pipelines.pipeline_utils import StableDiffusionMixin
 from ...pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from ...utils import logging
-from ..modular_pipeline import ModularLoader
+from ..modular_pipeline import ModularPipeline
 from ..modular_pipeline_utils import InputParam, OutputParam
 
 
@@ -32,13 +32,13 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # YiYi TODO: move to a different file? stable_diffusion_xl_module should have its own folder?
 # YiYi Notes: model specific components:
-## (1) it should inherit from ModularLoader
+## (1) it should inherit from ModularPipeline
 ## (2) acts like a container that holds components and configs
 ## (3) define default config (related to components), e.g. default_sample_size, vae_scale_factor, num_channels_unet, num_channels_latents
 ## (4) inherit from model-specic loader class (e.g. StableDiffusionXLLoraLoaderMixin)
 ## (5) how to use together with Components_manager?
-class StableDiffusionXLModularLoader(
-    ModularLoader,
+class StableDiffusionXLModularPipeline(
+    ModularPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,

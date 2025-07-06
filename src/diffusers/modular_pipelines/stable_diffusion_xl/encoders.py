@@ -37,7 +37,7 @@ from ...utils import (
 )
 from ..modular_pipeline import PipelineBlock, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
-from .modular_loader import StableDiffusionXLModularLoader
+from .modular_pipeline import StableDiffusionXLModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -65,8 +65,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
         return (
             "IP Adapter step that prepares ip adapter image embeddings.\n"
             "Note that this step only prepares the embeddings - in order for it to work correctly, "
-            "you need to load ip adapter weights into unet via ModularPipeline.loader.\n"
-            "e.g. pipeline.loader.load_ip_adapter() and pipeline.loader.set_ip_adapter_scale().\n"
+            "you need to load ip adapter weights into unet via ModularPipeline.load_ip_adapter() and pipeline.set_ip_adapter_scale().\n"
             "See [ModularIPAdapterMixin](https://huggingface.co/docs/diffusers/api/loaders/ip_adapter#diffusers.loaders.ModularIPAdapterMixin)"
             " for more details"
         )
@@ -191,7 +190,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
         return ip_adapter_image_embeds
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.prepare_unconditional_embeds = components.guider.num_conditions > 1
@@ -212,7 +211,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
                 block_state.negative_ip_adapter_embeds.append(negative_image_embeds)
                 block_state.ip_adapter_embeds[i] = image_embeds
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
         return components, state
 
 
@@ -537,7 +536,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         # Get inputs and intermediates
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
@@ -573,7 +572,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             clip_skip=block_state.clip_skip,
         )
         # Add outputs
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
         return components, state
 
 
@@ -663,7 +662,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         return image_latents
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.preprocess_kwargs = block_state.preprocess_kwargs or {}
         block_state.device = components._execution_device
@@ -687,7 +686,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
             components, image=block_state.image, generator=block_state.generator
         )
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -841,7 +840,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         return mask, masked_image_latents
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularLoader, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
@@ -898,6 +897,6 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
             block_state.generator,
         )
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state

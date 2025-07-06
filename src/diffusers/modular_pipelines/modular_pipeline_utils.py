@@ -191,7 +191,7 @@ class ComponentSpec:
     # YiYi TODO: I think we should only support ConfigMixin for this method (after we make guider and image_processors config mixin)
     # otherwise we cannot do spec -> spec.create() -> component -> ComponentSpec.from_component(component)
     # the config info is lost in the process
-    # remove error check in from_component spec and ModularLoader.update() if we remove support for non configmixin in `create()` method
+    # remove error check in from_component spec and ModularPipeline.update_components() if we remove support for non configmixin in `create()` method
     def create(self, config: Optional[Union[FrozenDict, Dict[str, Any]]] = None, **kwargs) -> Any:
         """Create component using from_config with config."""
 

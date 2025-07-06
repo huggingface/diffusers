@@ -31,10 +31,12 @@ Pipeline blocks are the fundamental building blocks of the Modular Diffusers sys
 
 - [`PipelineBlock`]: The most granular block - you define the computation logic.
 - [`SequentialPipelineBlocks`]: A multi-block composed of multiple blocks that run sequentially, passing outputs as inputs to the next block.
-- [`LoopSequentialPipelineBlocks`]: A special type of multi-block that forms loops.
+- [`LoopSequentialPipelineBlocks`]: A special type of `SequentialPipelineBlocks` that runs the same sequence of blocks multiple times (loops), typically used for iterative processes like denoising steps in diffusion models.
 - [`AutoPipelineBlocks`]: A multi-block composed of multiple blocks that are selected at runtime based on the inputs.
 
-All blocks have a consistent interface defining their requirements (components, configs, inputs, outputs) and computation logic. They can be used standalone or combined into larger blocks. Blocks are designed to be assembled into workflows for tasks such as image generation, video creation, and inpainting.
+All blocks have a consistent interface defining their requirements (components, configs, inputs, outputs) and computation logic. They can be defined standalone or combined into larger blocks - They are designed to be assembled into workflows for tasks such as image generation, video creation, and inpainting. However, blocks aren't runnable on thier own and they need to be converted into a a ModularPipeline to actually run. 
+
+**Blocks vs Pipelines**: Blocks are just definitions - they define what components, inputs/outputs, and computation logics are needed, but they don't actually run anything. To execute blocks, you need to put them into a `ModularPipeline`. See the [ModularPipeline from ModularPipelineBlocks](#modularpipeline-from-modularpipelineblocks) section for how to create and run pipelines.
 
 It is very easy to use a `ModularPipelineBlocks` officially supported in 🧨 Diffusers
 
@@ -321,10 +323,10 @@ In standard `model_index.json`, each component entry is a `(library, class)` tup
 ],
 ```
 
-In `modular_model_index.json`, each component entry contains 3 elements: `(library, class, loading_specs {})`
+In `modular_model_index.json`, each component entry contains 3 elements: `(library, class, loading_specs_dict)`
 
 - `library` and `class`: Information about the actual component loaded in the pipeline at the time of saving (will be `null` if not loaded)
-- `loading_specs`: A dictionary containing all information required to load this component, including `repo`, `revision`, `subfolder`, `variant`, and `type_hint`. 
+- `loading_specs_dict`: A dictionary containing all information required to load this component, including `repo`, `revision`, `subfolder`, `variant`, and `type_hint`. 
 
 ```py
 "text_encoder": [
@@ -342,21 +344,8 @@ In `modular_model_index.json`, each component entry contains 3 elements: `(libra
   }
 ],
 ```
-Some components may not have `repo` field, they cannot be loaded from a repository and can only be created with default config from the pipeline
 
-```py
-  "image_processor": [
-    "diffusers",
-    "VaeImageProcessor",
-    {
-      "type_hint": [
-        "diffusers",
-        "VaeImageProcessor"
-      ]
-    }
-  ],
-```
-Unlike standard repositories where components must be in subfolders within the same repo, modular repositories can fetch components from different repositories based on the `loading_specs` dictionary. e.g. the `text_encoder` component will be fetched from the "text_encoder" folder in `stabilityai/stable-diffusion-xl-base-1.0` while other components come from different repositories.
+Unlike standard repositories where components must be in subfolders within the same repo, modular repositories can fetch components from different repositories based on the `loading_specs_dict`. e.g. the `text_encoder` component will be fetched from the "text_encoder" folder in `stabilityai/stable-diffusion-xl-base-1.0` while other components come from different repositories.
 
 
 ### Creating a `ModularPipeline` from `ModularPipelineBlocks`
@@ -370,7 +359,7 @@ Let's convert our `t2i_blocks` (which we created earlier) into a runnable `Modul
 t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 
 # Now convert it to a ModularPipeline
-modular_repo_id = "YiYiXu/modular-loader-t2i"
+modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id)
 ```
 
@@ -398,22 +387,36 @@ You can read more about Components Manager [here](TODO)
 You can create a `ModularPipeline` from a HuggingFace Hub repository with `from_pretrained` method, as long as it's a modular repo:
 
 ```py
-# YiYi TODO: this is not yet supported actually 😢, need to add support
 from diffusers import ModularPipeline
-pipeline = ModularPipeline.from_pretrained(repo_id, components_manager=..., collection=...)
+pipeline = ModularPipeline.from_pretrained( "YiYiXu/modular-loader-t2i-0704")
 ```
 
 Loading custom code is also supported:
 
 ```py
 from diffusers import ModularPipeline
-modular_repo_id = "YiYiXu/modular-diffdiff"
+modular_repo_id = "YiYiXu/modular-diffdiff-0704"
 diffdiff_pipeline = ModularPipeline.from_pretrained(modular_repo_id, trust_remote_code=True)
 ```
 
+This modular repository contains custom code. The [`config.json`](https://huggingface.co/YiYiXu/modular-diffdiff-0704/blob/main/config.json) file defines a custom `DiffDiffBlocks` class and points to its implementation:
+
+```json
+{
+  "_class_name": "DiffDiffBlocks",
+  "auto_map": {
+    "ModularPipelineBlocks": "block.DiffDiffBlocks"
+  }
+}
+```
+
+The `auto_map` tells the pipeline where to find the custom blocks definition - in this case, it's looking for `DiffDiffBlocks` in the `block.py` file. The actual `DiffDiffBlocks` class is defined in [`block.py`](https://huggingface.co/YiYiXu/modular-diffdiff-0704/blob/main/block.py) within the repository.
+
+When `diffdiff_pipeline.blocks` is created, it's based on the `DiffDiffBlocks` definition from the custom code in the repository, allowing you to use specialized blocks that aren't part of the standard diffusers library.
+
 ### Loading components into a `ModularPipeline`
 
-Unlike `DiffusionPipeline`, when you create a `ModularPipeline` instance (whether using `from_pretrained` or converting from pipeline blocks), its components aren't loaded automatically. You need to explicitly load model components using `load_components`:
+Unlike `DiffusionPipeline`, when you create a `ModularPipeline` instance (whether using `from_pretrained` or converting from pipeline blocks), its components aren't loaded automatically. You need to explicitly load model components using `load_default_components` or `load_components(names=..,)`:
 
 ```py
 # This will load ALL the expected components into pipeline
@@ -428,49 +431,15 @@ All expected components are now loaded into the pipeline. You can also partially
 >>> t2i_pipeline.load_components(names=["unet", "vae"], torch_dtype=torch.float16)
 ```
 
-You can inspect the `loader` attribute of a pipeline to understand what components are expected to load, which ones are already loaded, how they were loaded, and what loading specs are available. The loader is synced with the `modular_model_index.json` from the repository you used during `init_pipeline()` - it takes the loading specs that match the pipeline's component requirements.
-
-For example, if your pipeline needs a `text_encoder` component, the loader will include the loading spec for `text_encoder` from the modular repo. If the pipeline doesn't need a component (like `controlnet` in a basic text-to-image pipeline), that component won't appear in the loader even if it exists in the modular repo.
-
-The loader has the same structure as `modular_model_index.json` - each component entry contains the `(library, class, loading_specs)` format. You'll need to understand that structure to properly read the loading status below.
-
-<Tip>
-
-💡 **How to read the loader**: 
-- **`library` and `class` fields**: Show info about actually loaded components. If `null`, the component is not loaded yet.
-- **`loading_specs`**: If it does not have `repo` field or if it is `null`, the component cannot be loaded from a repository and can only be created with default config by the pipeline.
-
-</Tip>
-
-Let's inspect the `t2i_pipeline.loader`, you can see all the components expected to load are listed as entries in the loader. The `guider` and `image_processor` components were created using default config (their `library` and `class` field are populated, this means they are initialized, but their loading spec dict is missing loading related fields). The `vae` and `unet` components were loaded using their respective loading specs. The rest of the components (scheduler, text_encoder, text_encoder_2, tokenizer, tokenizer_2) are not loaded yet (their `library`, `class` fields are `null`), but you can examine their loading specs to see where they would be loaded from when you call `load_components()`.
-
+You can inspect the pipeline's loading status by simply printing the pipeline itself. It helps you understand what components are expected to load, which ones are already loaded, how they were loaded, and what loading specs are available. Let's print out the `t2i_pipeline`:
 
 ```py
->>> t2i_pipeline.loader
-StableDiffusionXLModularLoader {
-  "_class_name": "StableDiffusionXLModularLoader",
-  "_diffusers_version": "0.34.0.dev0",
+>>> t2i_pipeline
+StableDiffusionXLModularPipeline {
+  "_blocks_class_name": "SequentialPipelineBlocks",
+  "_class_name": "StableDiffusionXLModularPipeline",
+  "_diffusers_version": "0.35.0.dev0",
   "force_zeros_for_empty_prompt": true,
-  "guider": [
-    "diffusers",
-    "ClassifierFreeGuidance",
-    {
-      "type_hint": [
-        "diffusers",
-        "ClassifierFreeGuidance"
-      ]
-    }
-  ],
-  "image_processor": [
-    "diffusers",
-    "VaeImageProcessor",
-    {
-      "type_hint": [
-        "diffusers",
-        "VaeImageProcessor"
-      ]
-    }
-  ],
   "scheduler": [
     null,
     null,
@@ -572,31 +541,42 @@ StableDiffusionXLModularLoader {
 }
 ```
 
+You can see all the components that will be loaded using `from_pretrained` method are listed as entries. Each entry contains 3 elements: `(library, class, loading_specs_dict)`:
+
+- **`library` and `class`**: Show the actual loaded component info. If `null`, the component is not loaded yet.
+- **`loading_specs_dict`**: Contains all the information needed to load the component (repo, subfolder, variant, etc.)
+
+In this example:
+- **Loaded components**: `vae` and `unet` (their `library` and `class` fields show the actual loaded models)
+- **Not loaded yet**: `scheduler`, `text_encoder`, `text_encoder_2`, `tokenizer`, `tokenizer_2` (their `library` and `class` fields are `null`, but you can see their loading specs to know where they'll be loaded from when you call `load_components()`)
+
+You're looking at essentailly the pipeline's config dict that's synced with the `modular_model_index.json` from the repository you used during `init_pipeline()` - it takes the loading specs that match the pipeline's component requirements.
+
+For example, if your pipeline needs a `text_encoder` component, it will include the loading spec for `text_encoder` from the modular repo during the `init_pipeline`. If the pipeline doesn't need a component (like `controlnet` in a basic text-to-image pipeline), that component won't be included even if it exists in the modular repo.
+
 There are also a few properties that can provide a quick summary of component loading status: 
 
 ```py
 # All components expected by the pipeline
->>> t2i_pipeline.loader.component_names
+>>> t2i_pipeline.component_names
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'guider', 'scheduler', 'unet', 'vae', 'image_processor']
 
 # Components that are not loaded yet (will be loaded with from_pretrained)
->>> t2i_pipeline.loader.null_component_names
+>>> t2i_pipeline.null_component_names
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler']
 
 # Components that will be loaded from pretrained models
->>> t2i_pipeline.loader.pretrained_component_names
+>>> t2i_pipeline.pretrained_component_names
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler', 'unet', 'vae']
 
 # Components that are created with default config (no repo needed)
->>> t2i_pipeline.loader.config_component_names
+>>> t2i_pipeline.config_component_names
 ['guider', 'image_processor']
 ```
 
 ### Modifying Loading Specs
 
-When you call `pipeline.load_components(names=...)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. The pipeline's `loader` attribute is synced with these specs - it shows you exactly what will be loaded and from where.
-
-You can change where components are loaded from by default by modifying the `modular_model_index.json` in the repository. You can change any field in the loading specs: `repo`, `subfolder`, `variant`, `revision`, etc.
+When you call `pipeline.load_components(names=)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. You can change where components are loaded from by default by modifying the `modular_model_index.json` in the repository. You can change any field in the loading specs: `repo`, `subfolder`, `variant`, `revision`, etc.
 
 ```py
 # Original spec in modular_model_index.json
@@ -682,6 +662,31 @@ StableDiffusionXLModularLoader {
   ...
 }  
 ```
+<Tip>
+
+💡 **Modifying Component Specs**: You can get a copy of the current component spec from the pipeline using `get_component_spec()`. This makes it easy to modify the spec and updating components.
+
+```py
+>>> unet_spec = t2i_pipeline.get_component_spec("unet")
+>>> unet_spec
+ComponentSpec(
+    name='unet', 
+    type_hint=<class 'diffusers.models.unets.unet_2d_condition.UNet2DConditionModel'>, 
+    repo='RunDiffusion/Juggernaut-XL-v9', 
+    subfolder='unet', 
+    variant='fp16', 
+    default_creation_method='from_pretrained'
+)
+
+# Modify the spec to load from a different repository
+>>> unet_spec.repo = "stabilityai/stable-diffusion-xl-base-1.0"
+
+# Load the component with the modified spec
+>>> unet = unet_spec.load()
+```
+
+</Tip>
+
 
 ### Running a `ModularPipeline`
 
@@ -728,7 +733,7 @@ from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS
 # create pipeline from official blocks preset
 blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 
-modular_repo_id = "YiYiXu/modular-loader-t2i"
+modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
 pipeline.load_default_components(torch_dtype=torch.float16)
@@ -750,7 +755,7 @@ from diffusers.modular_pipelines.stable_diffusion_xl import IMAGE2IMAGE_BLOCKS
 # create pipeline from blocks preset
 blocks = SequentialPipelineBlocks.from_blocks_dict(IMAGE2IMAGE_BLOCKS)
 
-modular_repo_id = "YiYiXu/modular-loader-t2i"
+modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
 pipeline.load_default_components(torch_dtype=torch.float16)
@@ -775,7 +780,7 @@ from diffusers.utils import load_image
 # create pipeline from blocks preset
 blocks = SequentialPipelineBlocks.from_blocks_dict(INPAINT_BLOCKS)
 
-modular_repo_id = "YiYiXu/modular-loader-t2i"
+modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
 pipeline.load_default_components(torch_dtype=torch.float16)
@@ -809,7 +814,7 @@ For ControlNet, we provide one auto block you can place at the `denoise` step. L
 >>> from diffusers.modular_pipelines.stable_diffusion_xl import ALL_BLOCKS
 >>> ALL_BLOCKS["controlnet"]
 InsertableDict([
-  0: ('denoise', <class 'diffusers.modular_pipelines.stable_diffusion_xl.modular_blocks_presets.StableDiffusionXLAutoControlnetStep'>)
+  0: ('denoise', <class 'diffusers.modular_pipelines.stable_diffusion_xl.modular_blocks.StableDiffusionXLAutoControlnetStep'>)
 ])
 >>> controlnet_blocks = ALL_BLOCKS["controlnet"]["denoise"]()
 >>> controlnet_blocks
@@ -899,7 +904,7 @@ Let's walk through the steps:
 >>> from diffusers.modular_pipelines.stable_diffusion_xl import ALL_BLOCKS
 >>> ALL_BLOCKS["ip_adapter"]
 InsertableDict([
-  0: ('ip_adapter', <class 'diffusers.modular_pipelines.stable_diffusion_xl.modular_blocks_presets.StableDiffusionXLAutoIPAdapterStep'>)
+  0: ('ip_adapter', <class 'diffusers.modular_pipelines.stable_diffusion_xl.modular_blocks.StableDiffusionXLAutoIPAdapterStep'>)
 ])
 ```
 
@@ -932,8 +937,7 @@ StableDiffusionXLAutoIPAdapterStep(
   Sub-Blocks:
     • ip_adapter [trigger: ip_adapter_image] (StableDiffusionXLIPAdapterStep)
        Description: IP Adapter step that prepares ip adapter image embeddings.
-                   Note that this step only prepares the embeddings - in order for it to work correctly, you need to load ip adapter weights into unet via ModularPipeline.loader.
-                   e.g. pipeline.loader.load_ip_adapter() and pipeline.loader.set_ip_adapter_scale().
+                   Note that this step only prepares the embeddings - in order for it to work correctly, you need to load ip adapter weights into unet via ModularPipeline.load_ip_adapter() and pipeline.set_ip_adapter_scale().
                    See [ModularIPAdapterMixin](https://huggingface.co/docs/diffusers/api/loaders/ip_adapter#diffusers.loaders.ModularIPAdapterMixin) for more details
 
 )
@@ -958,12 +962,12 @@ modular_repo_id = "YiYiXu/modular-demo-auto"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
 pipeline.load_default_components(torch_dtype=torch.float16)
-pipeline.loader.load_ip_adapter(
+pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",
   weight_name="ip-adapter_sdxl.bin"
 )
-pipeline.loader.set_ip_adapter_scale(0.8)
+pipeline.set_ip_adapter_scale(0.8)
 pipeline.to("cuda")
 ```
 
@@ -1020,31 +1024,23 @@ components = ComponentsManager()
 components.enable_auto_cpu_offload(device="cuda")
 ```
 
-Since we have a modular setup where different pipelines may share components, we recommend using a standalone loader to load components all at once and add them to each pipeline with `update_components()`.
+Since we have a modular setup where different pipelines may share components, we recommend using a seperate `ModularPipeline` to load components all at once and add them to each pipeline with `update_components()`.
 
-
-<Tip>
-
-💡 **Load components without pipeline blocks**: 
-- `blocks.init_pipeline(repo)` creates a pipeline with a built-in loader that only includes components its blocks needs
-- `StableDiffusionXLModularLoader.from_pretrained(repo)` set up a standalone loader that includes everything in the repo's `modular_model_index.json`
-
-</Tip>
 
 ```py
-from diffusers import StableDiffusionXLModularLoader
+from diffusers import ModularPipeline
 t2i_repo = "YiYiXu/modular-demo-auto"
-t2i_loader = StableDiffusionXLModularLoader.from_pretrained(t2i_repo, components_manager=components, collection="t2i")
+t2i_loader_pipe = ModularPipeline.from_pretrained(t2i_repo, components_manager=components, collection="t2i")
 
 text_node = text_blocks.init_pipeline(t2i_repo, components_manager=components)
 decoder_node = decoder_blocks.init_pipeline(t2i_repo, components_manager=components)
 t2i_pipe = t2i_blocks.init_pipeline(t2i_repo, components_manager=components)
 ```
 
-We'll load components in `t2i_loader`. You can get the list of all loadable components from loader's `pretrained_component_names` property.
+We'll load components in `t2i_loader_pipe`. You can get the list of all loadable components from loader's `pretrained_component_names` property.
 
 ```py
->>> t2i_loader.pretrained_component_names
+>>> t2i_loader_pipe.pretrained_component_names
 ['controlnet', 'image_encoder', 'scheduler', 'text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'unet', 'vae']
 ```
 
@@ -1054,7 +1050,7 @@ It include controlnet and image_encoder for ip-adapter that we don't need now. B
 import torch
 # inspect before you load
 # t2i_loader
-t2i_loader.load(t2i_loader.pretrained_component_names, torch_dtype=torch.float16)
+t2i_loader_pipe.load_components(names=t2i_loader_pipe.pretrained_component_names, torch_dtype=torch.float16)
 ```
 All the models are registered to components manager under the collection "t2i".
 
@@ -1088,15 +1084,15 @@ Additional Component Info:
 ```
 
 Let's add the loaded components to each pipeline. We'll follow this pattern for each pipeline:
-1. Check what components the pipeline needs: inspect `pipeline.loader` or use `loader.null_component_names`
+1. Check what components the pipeline needs: inspect `pipeline` or use `pipeline.null_component_names`
 2. Get them from the components manager: use its `search_models()`/`get_one`/`get_components_from_names` method
 3. Update the pipeline: `pipeline.update_components()`
-4. Verify the components are loaded correctly: inspect `pipeline.loader` as well as components manager
+4. Verify the components are loaded correctly: inspect `pipeline` as well as components manager
 
 We will start with `decoder_node`. First, check what components it needs:
 
 ```py
->>> decoder_node.loader.null_component_names
+>>> decoder_node.null_component_names
 ['vae']
 ```
 The pipeline only needs a `vae`. Looking at the components manager table, there's only one VAE available:
@@ -1116,24 +1112,24 @@ decoder_node.update_components(vae=vae)
 Verify it's correctly loaded:
 
 ```py
-decoder_node.loader
+decoder_node
 ```
 Now let's do the same for `text_node`. Get the list of components the pipeline needs to load:
 
 ```py
->>> text_node.loader.null_component_names
+>>> text_node.null_component_names
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2']
 ```
 Pass the list directly to the components manager to get the components and add it to the pipeline
 
 ```py
-text_components = components.get_components_by_names(text_node.loader.null_component_names)
+text_components = components.get_components_by_names(text_node.null_component_names)
 # Add components to pipeline
 text_node.update_components(**text_components)
 
 # Verify components are loaded
-assert not text_node.loader.null_component_names
-text_node.loader
+assert not text_node.null_component_names
+text_node
 ```
 
 Finally, let's set up `t2i_pipe`:
@@ -1141,12 +1137,12 @@ Finally, let's set up `t2i_pipe`:
 ```py
 
 # Get unet & scheduler from components manager and add to pipeline
-comps = components.get_components_by_names(t2i_pipe.loader.null_component_names)
+comps = components.get_components_by_names(t2i_pipe.null_component_names)
 t2i_pipe.update_components(**comps)
 
 # Verify everything is loaded
-assert not t2i_pipe.loader.null_component_names
-t2i_pipe.loader
+assert not t2i_pipe.null_component_names
+t2i_pipe
 
 # Verify components manager hasn't changed (we only reused existing components)
 components
@@ -1183,7 +1179,7 @@ image.save("modular_part2_t2i.png")
 Now let's add a LoRA to our pipeline. With the modular approach we will be able to reuse intermediate outputs from blocks that otherwise needs to be re-run. Let's load the LoRA weights and see what happens:
 
 ```py
-t2i_loader.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy_face")
+t2i_loader_pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy_face")
 components
 ```
 Notice that the "Additional Component Info" section shows that only the `unet` component has the LoRA adapter loaded. This means we can skip the text encoding step and reuse the existing embeddings, making the generation much faster.
@@ -1231,12 +1227,12 @@ ipa_node = ipa_blocks.init_pipeline(t2i_repo, components_manager=components)
 comps = components.get_components_by_names(ipa_node.loader.null_component_names)
 ipa_node.update_components(**comps)
 
-t2i_loader.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
-t2i_loader.set_ip_adapter_scale(0.6)
+t2i_loader_pipe.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
+t2i_loader_pipe.set_ip_adapter_scale(0.6)
 
 # check it's correctly loaded
-assert not ipa_node.loader.null_component_names
-ipa_node.loader
+assert not ipa_node.null_component_names
+ipa_node
 # find out inputs/outputs 
 print(ipa_node.doc)
 
@@ -1305,7 +1301,7 @@ refiner_pipe = refiner_blocks.init_pipeline(refiner_repo, components_manager=com
 We want to reuse components from the t2i pipeline in the refiner as much as possible. First, let's check the loading status of the refiner pipeline to understand what components are needed:
 
 ```py
->>> refiner_pipe.loader
+>>> refiner_pipe
 ```
 
 Looking at the loader output, you can see that `text_encoder` and `tokenizer` have empty loading spec maps (their `repo` fields are `null`), this is because refiner pipeline does not use these two components so they are not listed in the `modular_model_index.json` in `refiner_repo`. The `unet` is different from the one we loaded for text-to-image. The remaining components: `vae`, `text_encoder_2`, `tokenizer_2`, and `scheduler` are already available in the t2i collection, we can reuse them instead of loading duplicates.
@@ -1314,7 +1310,7 @@ Looking at the loader output, you can see that `text_encoder` and `tokenizer` ha
 refiner_pipe.load_components(names="unet", torch_dtype=torch.float16)
 
 # verify loaded correctly
-refiner_pipe.loader
+refiner_pipe
 
 # veryfiy registered to components manager under refiner
 components

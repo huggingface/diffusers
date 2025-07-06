@@ -38,26 +38,6 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# YiYi Notes: copied from modeling_utils.py (decide later where to put this)
-def get_memory_footprint(self, return_buffers=True):
-    r"""
-    Get the memory footprint of a model. This will return the memory footprint of the current model in bytes. Useful to
-    benchmark the memory footprint of the current model and design some tests. Solution inspired from the PyTorch
-    discussions: https://discuss.pytorch.org/t/gpu-memory-that-model-uses/56822/2
-
-    Arguments:
-        return_buffers (`bool`, *optional*, defaults to `True`):
-            Whether to return the size of the buffer tensors in the computation of the memory footprint. Buffers are
-            tensors that do not require gradients and not registered as parameters. E.g. mean and std in batch norm
-            layers. Please see: https://discuss.pytorch.org/t/what-pytorch-means-by-buffers/120266/2
-    """
-    mem = sum([param.nelement() * param.element_size() for param in self.parameters()])
-    if return_buffers:
-        mem_bufs = sum([buf.nelement() * buf.element_size() for buf in self.buffers()])
-        mem = mem + mem_bufs
-    return mem
-
-
 class CustomOffloadHook(ModelHook):
     """
     A hook that offloads a model on the CPU until its forward pass is called. It ensures the model and its inputs are
@@ -170,6 +150,8 @@ class AutoOffloadStrategy:
     the available memory on the device.
     """
 
+    # YiYi TODO: instead of memory_reserve_margin, we should let user set the maximum_total_models_size to keep on device 
+    # the actual memory usage would be higher. But it's simpler this way, and can be tested
     def __init__(self, memory_reserve_margin="3GB"):
         self.memory_reserve_margin = convert_file_size_to_int(memory_reserve_margin)
 
@@ -177,7 +159,7 @@ class AutoOffloadStrategy:
         if len(hooks) == 0:
             return []
 
-        current_module_size = get_memory_footprint(model)
+        current_module_size = model.get_memory_footprint()
 
         mem_on_device = torch.cuda.mem_get_info(execution_device.index)[0]
         mem_on_device = mem_on_device - self.memory_reserve_margin
@@ -190,12 +172,13 @@ class AutoOffloadStrategy:
         # exlucde models that's not currently loaded on the device
         module_sizes = dict(
             sorted(
-                {hook.model_id: get_memory_footprint(hook.model) for hook in hooks}.items(),
+                {hook.model_id: hook.model.get_memory_footprint() for hook in hooks}.items(),
                 key=lambda x: x[1],
                 reverse=True,
             )
         )
 
+        # YiYi/Dhruv TODO: sort smallest to largest, and offload in that order we would tend to keep the larger models on GPU more often
         def search_best_candidate(module_sizes, min_memory_offload):
             """
             search the optimal combination of models to offload to cpu, given a dictionary of module sizes and a
@@ -652,7 +635,7 @@ class ComponentsManager:
             info.update(
                 {
                     "class_name": component.__class__.__name__,
-                    "size_gb": get_memory_footprint(component) / (1024**3),
+                    "size_gb": component.get_memory_footprint() / (1024**3),
                     "adapters": None,  # Default to None
                     "has_hook": has_hook,
                     "execution_device": execution_device,

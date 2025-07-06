@@ -505,7 +505,7 @@ We provide a auto controlnet input block that you can directly put into your wor
 
 
 ```py
->>> from diffusers.modular_pipelines.stable_diffusion_xl.modular_blocks_presets import StableDiffusionXLAutoControlNetInputStep
+>>> from diffusers.modular_pipelines.stable_diffusion_xl.modular_blocks import StableDiffusionXLAutoControlNetInputStep
 >>> control_input_block = StableDiffusionXLAutoControlNetInputStep()
 >>> print(control_input_block)
 ```
@@ -613,7 +613,7 @@ to use
 
 You can easily share your differential diffusion workflow on the hub, by creating a modular repo like this https://huggingface.co/YiYiXu/modular-diffdiff
 
-To create a Modular Repo and share on hub, you just need to run. Note that if your pipeline contains custom block, you need to manually upload the code to the hub. But we are working on a command line tool to help you upload it very easily.
+To create a Modular Repo and share on hub, you just need to run `save_pretrained()` along with the `push_to_hub=True` flag. Note that if your pipeline contains custom block, you need to manually upload the code to the hub. But we are working on a command line tool to help you upload it very easily.
 
 ```py
 dd_pipeline.save_pretrained("YiYiXu/test_modular_doc", push_to_hub=True)
@@ -626,7 +626,7 @@ With a modular repo, it is very easy for the community to use the workflow you j
 >>> import torch
 >>> from diffusers.utils import load_image
 >>> 
->>> repo_id = "YiYiXu/modular-diffdiff"
+>>> repo_id = "YiYiXu/modular-diffdiff-0704"
 >>> 
 >>> components = ComponentsManager()
 >>> 

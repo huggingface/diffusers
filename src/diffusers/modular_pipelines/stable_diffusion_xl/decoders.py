@@ -152,7 +152,7 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
             block_state.images, output_type=block_state.output_type
         )
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -212,6 +212,6 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
                 for i in block_state.images
             ]
 
-        self.add_block_state(state, block_state)
+        self.set_block_state(state, block_state)
 
         return components, state
