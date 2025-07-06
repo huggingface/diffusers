@@ -93,8 +93,7 @@ class Magi1VAEAttnProcessor2_0:
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
         # the output of sdpa = (batch, num_heads, seq_len, head_dim)
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        hidden_states = hidden_states.type_as(query)
+        hidden_states = hidden_states.reshape(batch_size, time_height_width, channels)
 
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
