@@ -229,6 +229,7 @@ class ComponentsManager:
 
     def __init__(self):
         self.components = OrderedDict()
+        # YiYi TODO: can remove once confirm we don't need this in mellon
         self.added_time = OrderedDict()  # Store when components were added
         self.collections = OrderedDict()  # collection_name -> set of component_names
         self.model_hooks = None

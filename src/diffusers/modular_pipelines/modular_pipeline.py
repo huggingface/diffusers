@@ -353,6 +353,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 class PipelineBlock(ModularPipelineBlocks):
     model_name = None
 
+    def __init__(self):
+        self.sub_blocks = InsertableDict()
+
     @property
     def description(self) -> str:
         """Description of the block. Must be implemented by subclasses."""
@@ -2129,6 +2132,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self.register_to_config(**config_to_register)
 
     # YiYi TODO: support map for additional from_pretrained kwargs
+    # YiYi/Dhruv TODO: consolidate load_components and load_default_components?
     def load_components(self, names: Union[List[str], str], **kwargs):
         """
         Load selected components from specs.
