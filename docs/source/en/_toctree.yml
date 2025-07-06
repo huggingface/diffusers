@@ -30,7 +30,8 @@
   - local: using-diffusers/push_to_hub
     title: Push files to the Hub
   title: Load pipelines and adapters
-- sections:
+- isExpanded: false
+  sections:
   - local: tutorials/using_peft_for_inference
     title: LoRA
   - local: using-diffusers/ip_adapter
@@ -44,7 +45,6 @@
   - local: using-diffusers/textual_inversion_inference
     title: Textual inversion
   title: Adapters
-  isExpanded: false
 - sections:
   - local: using-diffusers/unconditional_image_generation
     title: Unconditional image generation
@@ -652,6 +652,8 @@
       title: ScoreSdeVeScheduler
     - local: api/schedulers/score_sde_vp
       title: ScoreSdeVpScheduler
+    - local: api/schedulers/stork
+      title: STORKScheduler
     - local: api/schedulers/tcd
       title: TCDScheduler
     - local: api/schedulers/unipc
