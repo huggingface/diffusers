@@ -27,7 +27,7 @@ from ..utils import logging
 from . import BaseDiffusersCLICommand
 
 
-EXPECTED_PARENT_CLASSES = ["PipelineBlock"]
+EXPECTED_PARENT_CLASSES = ["ModularPipelineBlocks"]
 CONFIG = "config.json"
 
 

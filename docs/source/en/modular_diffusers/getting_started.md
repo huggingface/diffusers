@@ -10,15 +10,15 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Getting Started with Modular Diffusers: An Comprehensive Overview
+# Getting Started with Modular Diffusers: A Comprehensive Overview
 
-With Modular Diffusers, we introduce a unified pipeline system that simplifies how you work with diffusion models. Instead of creating separate pipelines for each task, Modular Diffusers let you:
+With Modular Diffusers, we introduce a unified pipeline system that simplifies how you work with diffusion models. Instead of creating separate pipelines for each task, Modular Diffusers lets you:
 
-**Write Only What's New**: You won't need to rewrite the entire pipeline from scratch. You can create pipeline blocks just for your new workflow's unique aspects and reuse existing blocks for existing functionalities. 
+**Write Only What's New**: You won't need to write an entire pipeline from scratch every time you have a new use case. You can create pipeline blocks just for your new workflow's unique aspects and reuse existing blocks for existing functionalities. 
 
-**Assemble Like LEGO®**: You can mix and match blocks in flexible ways. This allows you to write dedicated blocks for specific workflows, and then assemble different blocks into a pipeline that that can be used more conveniently for multiple workflows. 
+**Assemble Like LEGO®**: You can mix and match between blocks in flexible ways. This allows you to write dedicated blocks unique to specific workflows, and then assemble different blocks into a pipeline that can be used more conveniently for multiple workflows. 
 
-In this guide, we will focus on how to build pipelines this way using blocks we officially support at diffusers 🧨! We will show you how to write your own pipeline blocks and go into more details on how they work under the hood in this [guide](./write_own_pipeline_block.md). For advanced users who want to build complete workflows from scratch, we provide an end-to-end example in the [Developer Guide](./end_to_end.md) that covers everything from writing custom pipeline blocks to deploying your workflow as a UI node.
+In this guide, we will focus on how to build end-to-end pipelines using blocks we officially support at diffusers 🧨! We will show you how to write your own pipeline blocks and go into more details on how they work under the hood in this [guide](./write_own_pipeline_block.md). For advanced users who want to build complete workflows from scratch, we provide an end-to-end example in the [Developer Guide](./end_to_end.md) that covers everything from writing custom pipeline blocks to deploying your workflow as a UI node.
 
 Let's get started! The Modular Diffusers Framework consists of three main components:
 - ModularPipelineBlocks
@@ -40,12 +40,13 @@ It is very easy to use a `ModularPipelineBlocks` officially supported in 🧨 Di
 
 ```py
 from diffusers.modular_pipelines.stable_diffusion_xl import StableDiffusionXLTextEncoderStep
+
 text_encoder_block = StableDiffusionXLTextEncoderStep()
 ```
 
 This is a single `PipelineBlock`. You'll see that this text encoder block uses 2 text_encoders, 2 tokenizers as well as a guider component. It takes user inputs such as `prompt` and `negative_prompt`, and return text embeddings outputs such as `prompt_embeds` and `negative_prompt_embeds`.
 
-```
+```py
 >>> text_encoder_block
 StableDiffusionXLTextEncoderStep(
   Class: PipelineBlock
@@ -211,7 +212,7 @@ You can extract a block instance from the multi-block to use it independently. A
 >>> text_encoder_blocks
 ```
 
-the multi-block now has fewer components and no longer has the `text_encoder` block. If you check its docstring `t2i_blocks.doc`, you will see that it no longer accepts `prompt` as input - you will need to pass the embeddings instead.
+The multi-block now has fewer components and no longer has the `text_encoder` block. If you check its docstring `t2i_blocks.doc`, you will see that it no longer accepts `prompt` as input - you will need to pass the embeddings instead.
 
 ```py
 >>> t2i_blocks
@@ -294,7 +295,7 @@ This covers the essentials of pipeline blocks! You may have noticed that we have
 
 ## PipelineState & BlockState
 
-`PipelineState` and `BlockState` manage dataflow between pipeline blocks. `PipelineState` acts as the global state container that `ModularPipelineBlocks` operate on - each block gets a local view (`BlockState`) of the relevant variables it needs from `PipelineState`, performs its operations, and then updates PipelineState with any changes.
+`PipelineState` and `BlockState` manage dataflow between pipeline blocks. `PipelineState` acts as the global state container that `ModularPipelineBlocks` operate on - each block gets a local view (`BlockState`) of the relevant variables it needs from `PipelineState`, performs its operations, and then updates `PipelineState` as needed.
 
 <Tip>
 
@@ -310,11 +311,10 @@ You typically don't need to manually create or manage these state objects. The `
 
 `ModularPipeline` only works with modular repositories. You can find an example modular repo [here](https://huggingface.co/YiYiXu/modular-diffdiff).
 
-Instead of using a `model_index.json` to configure components loading in `DiffusionPipeline`. Modular repositories work with `modular_model_index.json`. Let's walk through the difference here.
+A `DiffusionPipeline` defines `model_index.json` to configure its components. However, repositories for Modular Diffusers work with `modular_model_index.json`. Let's walk through the differences here.
 
 In standard `model_index.json`, each component entry is a `(library, class)` tuple:
 
-```py
 "text_encoder": [
   "transformers",
   "CLIPTextModel"
@@ -428,7 +428,7 @@ All expected components are now loaded into the pipeline. You can also partially
 >>> t2i_pipeline.load_components(names=["unet", "vae"], torch_dtype=torch.float16)
 ```
 
-You can inspect the pipeline's loading status through its `loader` attribute to understand what components are expected to load, which ones are already loaded, how they were loaded, and what loading specs are available. The loader is synced with the `modular_model_index.json` from the repository you used during `init_pipeline()` - it takes the loading specs that match the pipeline's component requirements.
+You can inspect the `loader` attribute of a pipeline to understand what components are expected to load, which ones are already loaded, how they were loaded, and what loading specs are available. The loader is synced with the `modular_model_index.json` from the repository you used during `init_pipeline()` - it takes the loading specs that match the pipeline's component requirements.
 
 For example, if your pipeline needs a `text_encoder` component, the loader will include the loading spec for `text_encoder` from the modular repo. If the pipeline doesn't need a component (like `controlnet` in a basic text-to-image pipeline), that component won't appear in the loader even if it exists in the modular repo.
 
@@ -594,7 +594,7 @@ There are also a few properties that can provide a quick summary of component lo
 
 ### Modifying Loading Specs
 
-When you call `pipeline.load_components(names=)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. The pipeline's `loader` attribute is synced with these specs - it shows you exactly what will be loaded and from where.
+When you call `pipeline.load_components(names=...)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. The pipeline's `loader` attribute is synced with these specs - it shows you exactly what will be loaded and from where.
 
 You can change where components are loaded from by default by modifying the `modular_model_index.json` in the repository. You can change any field in the loading specs: `repo`, `subfolder`, `variant`, `revision`, etc.
 
@@ -714,7 +714,7 @@ t2i_pipeline.doc
 
 #### Text-to-Image, Image-to-Image, and Inpainting
 
-These are minimum inference example for our basic tasks: text-to-image, image-to-image and inpainting. The process to create different pipelines is the same - only difference is the block classes presets. The inference is also more or less same to standard pipelines, but please always check `.doc` for correct input names and remember to pass `output="images"`.
+These are minimum inference examples for basic tasks: text-to-image, image-to-image, and inpainting. The process to create different pipelines is the same - only difference is the block classes presets. The inference is also more or less same to standard pipelines, but please always check `.doc` for correct input names and remember to pass `output="images"`.
 
 
 <hfoptions id="basic-tasks">
