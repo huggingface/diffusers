@@ -43,26 +43,13 @@ def resize_pos_embed(posemb, src_shape, target_shape):
     return posemb
 
 
-class ManualLayerNorm(nn.Module):
-    def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
-        super(ManualLayerNorm, self).__init__()
-        self.normalized_shape = normalized_shape
-        self.eps = eps
-        self.elementwise_affine = elementwise_affine
-
-    def forward(self, x):
-        mean = x.mean(dim=-1, keepdim=True)
-        std = x.std(dim=-1, keepdim=True, unbiased=False)
-        x_normalized = (x - mean) / (std + self.eps)
-        return x_normalized
-
 
 class Magi1VAEAttnProcessor2_0:
     def __init__(self, dim, num_heads=8):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
-        self.qkv_norm = ManualLayerNorm(dim // num_heads, elementwise_affine=False)
+        self.qkv_norm = FP32LayerNorm(dim // num_heads, elementwise_affine=False)
 
     def __call__(
         self,
@@ -85,9 +72,9 @@ class Magi1VAEAttnProcessor2_0:
         query, key, value = qkv.chunk(3, dim=2)
 
         # Remove the extra dimension from chunking
-        query = query.squeeze(2)#.transpose(1, 2)
-        key = key.squeeze(2)#.transpose(1, 2)
-        value = value.squeeze(2)#.transpose(1, 2)
+        query = query.squeeze(2)
+        key = key.squeeze(2)
+        value = value.squeeze(2)
 
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
@@ -188,7 +175,7 @@ class Magi1Encoder3d(nn.Module):
 
         # output blocks
         self.norm_out = nn.LayerNorm(inner_dim)
-        self.linear_out = nn.Linear(inner_dim, z_dim * 2)  # Changed to z_dim * 2 for mean and logvar
+        self.linear_out = nn.Linear(inner_dim, z_dim * 2)
 
         trunc_normal_(self.pos_embed, std=0.02)
 
