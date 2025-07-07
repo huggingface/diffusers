@@ -427,7 +427,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         out_channels: int = 16,
         cross_attention_dim: int = 4096,
         freq_dim: int = 256,
-        ffn_dim: int = 4096,
+        ffn_dim: int = 12288,
         num_layers: int = 34,
         cross_attn_norm: bool = True,
         qk_norm: Optional[str] = "rms_norm_across_heads",
@@ -469,7 +469,9 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         if use_linear_projection:
             self.patch_embedding = nn.Linear(in_channels * math.prod(patch_size), inner_dim)
         else:
-            self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
+            self.patch_embedding = nn.Conv3d(
+                in_channels, inner_dim, kernel_size=patch_size, stride=patch_size, bias=False
+            )
 
         # 2. Condition embeddings
         self.condition_embedder = Magi1TimeTextImageEmbedding(
@@ -496,7 +498,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
 
         # 4. Output norm & projection
         self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
-        self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
+        self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size), bias=False)
         self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         self.gradient_checkpointing = False

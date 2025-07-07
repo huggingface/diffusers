@@ -311,14 +311,14 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
     else:
         config = {
             "in_channels": 16,
-            "out_channels": 64,
+            "out_channels": 16,
             "num_layers": 34,
             "num_attention_heads": 24,
             "attention_head_dim": 128,
             "cross_attention_dim": 4096,
             "freq_dim": 256,
-            "ffn_dim": 8192,
-            "patch_size": [1, 2, 2],
+            "ffn_dim": 12288,
+            "patch_size": (1, 2, 2),
             "use_linear_projection": False,
             "upcast_attention": False,
             "cross_attn_norm": True,
@@ -373,230 +373,164 @@ def convert_transformer_state_dict(checkpoint):
 
     print("Converting MAGI-1 checkpoint keys...")
 
-    if "x_embedder.weight" in checkpoint:
-        converted_state_dict["patch_embedding.weight"] = checkpoint["x_embedder.weight"]
-    if "x_embedder.bias" in checkpoint:
-        converted_state_dict["patch_embedding.bias"] = checkpoint["x_embedder.bias"]
+    converted_state_dict["patch_embedding.weight"] = checkpoint["x_embedder.weight"]
 
-    if "t_embedder.mlp.0.weight" in checkpoint:
-        converted_state_dict["condition_embedder.time_embedder.linear_1.weight"] = checkpoint[
-            "t_embedder.mlp.0.weight"
-        ]
-    if "t_embedder.mlp.0.bias" in checkpoint:
-        converted_state_dict["condition_embedder.time_embedder.linear_1.bias"] = checkpoint["t_embedder.mlp.0.bias"]
+    converted_state_dict["condition_embedder.time_embedder.linear_1.weight"] = checkpoint["t_embedder.mlp.0.weight"]
+    converted_state_dict["condition_embedder.time_embedder.linear_1.bias"] = checkpoint["t_embedder.mlp.0.bias"]
 
-    if "t_embedder.mlp.2.weight" in checkpoint:
-        converted_state_dict["condition_embedder.time_embedder.linear_2.weight"] = checkpoint[
-            "t_embedder.mlp.2.weight"
-        ]
-    if "t_embedder.mlp.2.bias" in checkpoint:
-        converted_state_dict["condition_embedder.time_embedder.linear_2.bias"] = checkpoint["t_embedder.mlp.2.bias"]
+    converted_state_dict["condition_embedder.time_embedder.linear_2.weight"] = checkpoint["t_embedder.mlp.2.weight"]
+    converted_state_dict["condition_embedder.time_embedder.linear_2.bias"] = checkpoint["t_embedder.mlp.2.bias"]
 
-    if "t_embedder.mlp.2.weight" in checkpoint:
-        converted_state_dict["condition_embedder.time_proj.weight"] = checkpoint["t_embedder.mlp.2.weight"]
-        converted_state_dict["condition_embedder.time_proj.bias"] = checkpoint["t_embedder.mlp.2.bias"]
+    converted_state_dict["condition_embedder.time_proj.weight"] = checkpoint["t_embedder.mlp.2.weight"]
+    converted_state_dict["condition_embedder.time_proj.bias"] = checkpoint["t_embedder.mlp.2.bias"]
 
-    if "y_embedder.y_proj_adaln.0.weight" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint[
-            "y_embedder.y_proj_adaln.0.weight"
-        ]
-    if "y_embedder.y_proj_adaln.0.bias" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint[
-            "y_embedder.y_proj_adaln.0.bias"
-        ]
+    converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint[
+        "y_embedder.y_proj_adaln.0.weight"
+    ]
+    converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint[
+        "y_embedder.y_proj_adaln.0.bias"
+    ]
 
-    if "y_embedder.y_proj_adaln.2.weight" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint[
-            "y_embedder.y_proj_adaln.2.weight"
-        ]
-    if "y_embedder.y_proj_adaln.2.bias" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint[
-            "y_embedder.y_proj_adaln.2.bias"
-        ]
+    converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint[
+        "y_embedder.y_proj_adaln.2.weight"
+    ]
+    converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint[
+        "y_embedder.y_proj_adaln.2.bias"
+    ]
 
-    if "y_embedder.y_proj_xattn.0.weight" in checkpoint:
-        converted_state_dict["condition_embedder.text_proj.weight"] = checkpoint["y_embedder.y_proj_xattn.0.weight"]
-    if "y_embedder.y_proj_xattn.0.bias" in checkpoint:
-        converted_state_dict["condition_embedder.text_proj.bias"] = checkpoint["y_embedder.y_proj_xattn.0.bias"]
+    converted_state_dict["condition_embedder.text_proj.weight"] = checkpoint["y_embedder.y_proj_xattn.0.weight"]
+    converted_state_dict["condition_embedder.text_proj.bias"] = checkpoint["y_embedder.y_proj_xattn.0.bias"]
 
-    if "y_embedder.null_caption_embedding" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.null_caption_embedding"] = checkpoint[
-            "y_embedder.null_caption_embedding"
-        ]
+    converted_state_dict["condition_embedder.text_embedder.null_caption_embedding"] = checkpoint[
+        "y_embedder.null_caption_embedding"
+    ]
 
-    if "videodit_blocks.final_layernorm.weight" in checkpoint:
-        converted_state_dict["norm_out.weight"] = checkpoint["videodit_blocks.final_layernorm.weight"]
-    if "videodit_blocks.final_layernorm.bias" in checkpoint:
-        converted_state_dict["norm_out.bias"] = checkpoint["videodit_blocks.final_layernorm.bias"]
+    converted_state_dict["norm_out.weight"] = checkpoint["videodit_blocks.final_layernorm.weight"]
+    converted_state_dict["norm_out.bias"] = checkpoint["videodit_blocks.final_layernorm.bias"]
 
-    if "final_linear.linear.weight" in checkpoint:
-        converted_state_dict["proj_out.weight"] = checkpoint["final_linear.linear.weight"]
-    if "final_linear.linear.bias" in checkpoint:
-        converted_state_dict["proj_out.bias"] = checkpoint["final_linear.linear.bias"]
+    converted_state_dict["proj_out.weight"] = checkpoint["final_linear.linear.weight"]
+    converted_state_dict["proj_out.bias"] = checkpoint["final_linear.linear.bias"]
 
-    if "rope.bands" in checkpoint:
-        converted_state_dict["rope.bands"] = checkpoint["rope.bands"]
+    converted_state_dict["rope.freqs"] = checkpoint["rope.bands"]
 
     for layer_idx in range(34):
         layer_prefix = f"videodit_blocks.layers.{layer_idx}"
         block_prefix = f"blocks.{layer_idx}"
 
-        layer_exists = any(key.startswith(layer_prefix) for key in checkpoint.keys())
-        if not layer_exists:
-            continue
+        converted_state_dict[f"{block_prefix}.norm1.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.norm1.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm1.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"
-            ]
-        if f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm1.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.q.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_q.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.q.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.linear_qkv.q.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.q.weight"
-            ]
-        if f"{layer_prefix}.self_attention.linear_qkv.q.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_q.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.q.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.k.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_k.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.k.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.linear_qkv.k.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.k.weight"
-            ]
-        if f"{layer_prefix}.self_attention.linear_qkv.k.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_k.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.k.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.v.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_v.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.v.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.linear_qkv.v.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.v.weight"
-            ]
-        if f"{layer_prefix}.self_attention.linear_qkv.v.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_v.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.v.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn1.to_v.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.v.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.linear_proj.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_proj.weight"
-            ]
-        if f"{layer_prefix}.self_attention.linear_proj.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.to_out.0.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_proj.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_proj.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_out.0.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_proj.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.q_layernorm.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.q_layernorm.weight"
-            ]
-        if f"{layer_prefix}.self_attention.q_layernorm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.q_layernorm.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm.weight{layer_prefix}.self_attention.q_layernorm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.k_layernorm.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.norm_k.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.k_layernorm.weight"
-            ]
-        if f"{layer_prefix}.self_attention.k_layernorm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn1.norm_k.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.k_layernorm.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_k.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.linear_qkv.qx.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
-            ]
-        if f"{layer_prefix}.self_attention.linear_qkv.qx.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.to_q.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.linear_qkv.qx.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.to_q.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.qx.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.linear_kv_xattn.weight" in checkpoint:
-            kv_weight = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.weight"]
-            k_weight, v_weight = kv_weight.chunk(2, dim=0)
-            converted_state_dict[f"{block_prefix}.attn2.to_k.weight"] = k_weight
-            converted_state_dict[f"{block_prefix}.attn2.to_v.weight"] = v_weight
+        kv_weight = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.weight"]
+        k_weight, v_weight = kv_weight.chunk(2, dim=0)
+        converted_state_dict[f"{block_prefix}.attn2.to_k.weight"] = k_weight
+        converted_state_dict[f"{block_prefix}.attn2.to_v.weight"] = v_weight
 
-        if f"{layer_prefix}.self_attention.linear_kv_xattn.bias" in checkpoint:
-            kv_bias = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.bias"]
-            k_bias, v_bias = kv_bias.chunk(2, dim=0)
-            converted_state_dict[f"{block_prefix}.attn2.to_k.bias"] = k_bias
-            converted_state_dict[f"{block_prefix}.attn2.to_v.bias"] = v_bias
+        kv_bias = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.bias"]
+        k_bias, v_bias = kv_bias.chunk(2, dim=0)
+        converted_state_dict[f"{block_prefix}.attn2.to_k.bias"] = k_bias
+        converted_state_dict[f"{block_prefix}.attn2.to_v.bias"] = v_bias
 
-        if f"{block_prefix}.attn1.to_out.0.weight" in converted_state_dict:
-            converted_state_dict[f"{block_prefix}.attn2.to_out.0.weight"] = converted_state_dict[
-                f"{block_prefix}.attn1.to_out.0.weight"
-            ]
-        if f"{block_prefix}.attn1.to_out.0.bias" in converted_state_dict:
-            converted_state_dict[f"{block_prefix}.attn2.to_out.0.bias"] = converted_state_dict[
-                f"{block_prefix}.attn1.to_out.0.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn2.to_out.0.weight"] = converted_state_dict[
+            f"{block_prefix}.attn1.to_out.0.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.to_out.0.bias"] = converted_state_dict[
+            f"{block_prefix}.attn1.to_out.0.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.q_layernorm_xattn.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"
-            ]
-        if f"{layer_prefix}.self_attention.q_layernorm_xattn.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.norm_q.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_q.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"
+        ]
 
-        if f"{layer_prefix}.self_attention.k_layernorm_xattn.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.norm_k.weight"] = checkpoint[
-                f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"
-            ]
-        if f"{layer_prefix}.self_attention.k_layernorm_xattn.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.attn2.norm_k.bias"] = checkpoint[
-                f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_k.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"
+        ]
 
-        if f"{layer_prefix}.self_attn_post_norm.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm2.weight"] = checkpoint[
-                f"{layer_prefix}.self_attn_post_norm.weight"
-            ]
-        if f"{layer_prefix}.self_attn_post_norm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm2.bias"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.bias"]
+        converted_state_dict[f"{block_prefix}.norm2.weight"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm2.bias"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.bias"]
 
-        if f"{layer_prefix}.mlp.layer_norm.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm3.weight"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.weight"]
-        if f"{layer_prefix}.mlp.layer_norm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm3.bias"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.bias"]
+        converted_state_dict[f"{block_prefix}.norm3.weight"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm3.bias"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.bias"]
 
-        if f"{layer_prefix}.mlp.linear_fc1.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.ff.net.0.proj.weight"] = checkpoint[
-                f"{layer_prefix}.mlp.linear_fc1.weight"
-            ]
-        if f"{layer_prefix}.mlp.linear_fc1.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.ff.net.0.proj.bias"] = checkpoint[
-                f"{layer_prefix}.mlp.linear_fc1.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.ff.net.0.proj.weight"] = checkpoint[
+            f"{layer_prefix}.mlp.linear_fc1.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.ff.net.0.proj.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc1.bias"]
 
-        if f"{layer_prefix}.mlp.linear_fc2.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.ff.net.2.weight"] = checkpoint[
-                f"{layer_prefix}.mlp.linear_fc2.weight"
-            ]
-        if f"{layer_prefix}.mlp.linear_fc2.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.ff.net.2.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.bias"]
+        converted_state_dict[f"{block_prefix}.ff.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
+        converted_state_dict[f"{block_prefix}.ff.net.2.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.bias"]
 
-        if f"{layer_prefix}.mlp_post_norm.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm4.weight"] = checkpoint[f"{layer_prefix}.mlp_post_norm.weight"]
-        if f"{layer_prefix}.mlp_post_norm.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.norm4.bias"] = checkpoint[f"{layer_prefix}.mlp_post_norm.bias"]
+        converted_state_dict[f"{block_prefix}.norm4.weight"] = checkpoint[f"{layer_prefix}.mlp_post_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm4.bias"] = checkpoint[f"{layer_prefix}.mlp_post_norm.bias"]
 
-        if f"{layer_prefix}.ada_modulate_layer.proj.0.weight" in checkpoint:
-            converted_state_dict[f"{block_prefix}.scale_shift_table.weight"] = checkpoint[
-                f"{layer_prefix}.ada_modulate_layer.proj.0.weight"
-            ]
-        if f"{layer_prefix}.ada_modulate_layer.proj.0.bias" in checkpoint:
-            converted_state_dict[f"{block_prefix}.scale_shift_table.bias"] = checkpoint[
-                f"{layer_prefix}.ada_modulate_layer.proj.0.bias"
-            ]
+        converted_state_dict[f"{block_prefix}.scale_shift_table.weight"] = checkpoint[
+            f"{layer_prefix}.ada_modulate_layer.proj.0.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.scale_shift_table.bias"] = checkpoint[
+            f"{layer_prefix}.ada_modulate_layer.proj.0.bias"
+        ]
 
     print(f"Converted {len(converted_state_dict)} parameters")
     return converted_state_dict
