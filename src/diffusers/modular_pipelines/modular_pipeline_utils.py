@@ -19,12 +19,13 @@ from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 from ..configuration_utils import ConfigMixin, FrozenDict
-from ..utils.import_utils import is_torch_available
-
+from ..utils import is_torch_available, logging
+import torch
 
 if is_torch_available():
     pass
 
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class InsertableDict(OrderedDict):
     def insert(self, key, value, index):
@@ -110,28 +111,58 @@ class ComponentSpec:
 
     @classmethod
     def from_component(cls, name: str, component: Any) -> Any:
-        """Create a ComponentSpec from a Component created by `create` or `load` method."""
+        """Create a ComponentSpec from a Component.
+        
+        Currently supports:
+        - Components created with `ComponentSpec.load()` method
+        - Components that are ConfigMixin subclasses but not nn.Modules (e.g. schedulers, guiders)
+        
+        Args:
+            name: Name of the component
+            component: Component object to create spec from
+            
+        Returns:
+            ComponentSpec object
+            
+        Raises:
+            ValueError: If component is not supported (e.g. nn.Module without load_id, non-ConfigMixin)
+        """
 
-        if not hasattr(component, "_diffusers_load_id"):
-            raise ValueError("Component is not created by `create` or `load` method")
-        # throw a error if component is created with `create` method but not a subclass of ConfigMixin
-        # YiYi TODO: remove this check if we remove support for non configmixin in `create()` method
-        if component._diffusers_load_id == "null" and not isinstance(component, ConfigMixin):
-            raise ValueError(
-                "We currently only support creating ComponentSpec from a component with "
-                "created with `ComponentSpec.load` method"
-                "or created with `ComponentSpec.create` and a subclass of ConfigMixin"
-            )
+        # Check if component was created with ComponentSpec.load()
+        if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id != "null":
+            # component has a usable load_id -> from_pretrained, no warning needed
+            default_creation_method = "from_pretrained"
+        else:
+            # Component doesn't have a usable load_id, check if it's a nn.Module
+            if isinstance(component, torch.nn.Module):
+                raise ValueError(
+                    "Cannot create ComponentSpec from a nn.Module that was not created with `ComponentSpec.load()` method."
+                )
+            # ConfigMixin objects without weights (e.g. scheduler & guider) can be recreated with from_config
+            elif isinstance(component, ConfigMixin):
+                # warn if component was not created with `ComponentSpec`
+                if not hasattr(component, "_diffusers_load_id"):
+                    logger.warning("Component was not created using `ComponentSpec`, defaulting to `from_config` creation method")
+                default_creation_method = "from_config"
+            else:
+                # Not a ConfigMixin and not created with `ComponentSpec.load()` method -> throw error
+                raise ValueError(
+                    f"Cannot create ComponentSpec from {name}({component.__class__.__name__}). Currently ComponentSpec.from_component() only supports: "
+                    f" - components created with `ComponentSpec.load()` method"
+                    f" - components that are a subclass of ConfigMixin but not a nn.Module (e.g. guider, scheduler)."
+                )
+
 
         type_hint = component.__class__
-        default_creation_method = "from_config" if component._diffusers_load_id == "null" else "from_pretrained"
 
         if isinstance(component, ConfigMixin) and default_creation_method == "from_config":
             config = component.config
         else:
             config = None
-
-        load_spec = cls.decode_load_id(component._diffusers_load_id)
+        if hasattr(component, "_diffusers_load_id") and component._diffusers_load_id != "null":
+            load_spec = cls.decode_load_id(component._diffusers_load_id)
+        else:
+            load_spec = {}
 
         return cls(
             name=name, type_hint=type_hint, config=config, default_creation_method=default_creation_method, **load_spec
