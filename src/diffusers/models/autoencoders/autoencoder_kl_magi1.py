@@ -17,7 +17,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.layers import trunc_normal_
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
@@ -27,7 +26,6 @@ from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import FP32LayerNorm
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
@@ -164,7 +162,8 @@ class Magi1Encoder3d(nn.Module):
 
         self.cls_token_nums = 1
         self.cls_token = nn.Parameter(torch.zeros(1, 1, inner_dim))
-        trunc_normal_(self.cls_token, std=0.02)
+        # `generator` as a parameter?
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
 
         p_t, p_h, p_w = patch_size
         post_patch_num_frames = num_frames // p_t
@@ -192,7 +191,8 @@ class Magi1Encoder3d(nn.Module):
         self.norm_out = nn.LayerNorm(inner_dim)
         self.linear_out = nn.Linear(inner_dim, z_dim * 2)
 
-        trunc_normal_(self.pos_embed, std=0.02)
+        # `generator` as a parameter?
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
         self.gradient_checkpointing = False
 
@@ -268,7 +268,8 @@ class Magi1Decoder3d(nn.Module):
 
         self.cls_token_nums = 1
         self.cls_token = nn.Parameter(torch.zeros(1, 1, inner_dim))
-        trunc_normal_(self.cls_token, std=0.02)
+        # `generator` as a parameter?
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
 
         p_t, p_h, p_w = patch_size
         post_patch_num_frames = num_frames // p_t
@@ -297,7 +298,8 @@ class Magi1Decoder3d(nn.Module):
         self.unpatch_channels = inner_dim // (patch_size[0] * patch_size[1] * patch_size[2])
         self.conv_out = nn.Conv3d(self.unpatch_channels, 3, 3, padding=1)
 
-        trunc_normal_(self.pos_embed, std=0.02)
+        # `generator` as a parameter?
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
         self.gradient_checkpointing = False
 
