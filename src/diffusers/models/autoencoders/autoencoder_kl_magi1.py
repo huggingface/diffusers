@@ -40,6 +40,7 @@ def resize_pos_embed(posemb, src_shape, target_shape):
     posemb = posemb.reshape(1, target_shape[0] * target_shape[1] * target_shape[2], -1)
     return posemb
 
+
 class Magi1VAELayerNorm(nn.Module):
     def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
         super(Magi1VAELayerNorm, self).__init__()
