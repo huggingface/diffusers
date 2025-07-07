@@ -28,6 +28,7 @@ from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanVACE
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
+    is_flaky,
     require_peft_backend,
     require_peft_version_greater,
     skip_mps,
@@ -215,3 +216,7 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 np.allclose(output_lora_exclude_modules, output_lora_pretrained, atol=1e-3, rtol=1e-3),
                 "Lora outputs should match.",
             )
+
+    @is_flaky
+    def test_simple_inference_with_text_denoiser_lora_and_scale(self):
+        super().test_simple_inference_with_text_denoiser_lora_and_scale()
