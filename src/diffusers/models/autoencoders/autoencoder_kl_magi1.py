@@ -71,15 +71,15 @@ class Magi1VAEAttnProcessor2_0:
         query, key, value = qkv.chunk(3, dim=2)
 
         # Remove the extra dimension from chunking
-        query = query.squeeze(2)
-        key = key.squeeze(2)
-        value = value.squeeze(2)
+        query = query.squeeze(2).transpose(1, 2)  # Shape: (batch_size, num_heads, time_height_width, head_dim)
+        key = key.squeeze(2).transpose(1, 2)    # Shape: (batch_size, num_heads, time_height_width, head_dim)
+        value = value.squeeze(2).transpose(1, 2)  # Shape: (batch_size, num_heads, time_height_width, head_dim)
 
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
         # the output of sdpa = (batch, num_heads, seq_len, head_dim)
-        hidden_states = hidden_states.reshape(batch_size, time_height_width, channels)
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
 
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
