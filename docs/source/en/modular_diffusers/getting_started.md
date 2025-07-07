@@ -605,9 +605,12 @@ When you call `pipeline.load_components(...)`/`pipeline.load_default_components(
 
 ### Updating components in a `ModularPipeline`
 
-Similar to `DiffusionPipeline`, You could load an components separately to replace the default one in the pipeline. But in Modular Diffusers system, you need to use `ComponentSpec` to load/create them.
+Similar to `DiffusionPipeline`, you can load components separately to replace the default ones in the pipeline. In Modular Diffusers, the approach depends on the component type:
 
-`ComponentSpec` defines how to create or load components and can actually create them using its `create()` method (for ConfigMixin objects) or `load()` method (wrapper around `from_pretrained()`). When a component is loaded with a ComponentSpec, it gets tagged with a unique ID that encodes its creation parameters, allowing you to always extract the original specification using `ComponentSpec.from_component()`. In Modular Diffusers, all pretrained models should be loaded using `ComponentSpec` objects.
+- **Pretrained components** (`default_creation_method='from_pretrained'`): Must use `ComponentSpec` to load them, as they get tagged with a unique ID that encodes their loading parameters
+- **Config components** (`default_creation_method='from_config'`): These are components that don't need loading specs - they're created during pipeline initialization with default config. To update them, you can either pass the object directly or pass a ComponentSpec directly (which will call `create()` under the hood).
+
+`ComponentSpec` defines how to create or load components and can actually create them using its `create()` method (for ConfigMixin objects) or `load()` method (wrapper around `from_pretrained()`). When a component is loaded with a ComponentSpec, it gets tagged with a unique ID that encodes its creation parameters, allowing you to always extract the original specification using `ComponentSpec.from_component()`.
 
 So instead of 
 
@@ -642,8 +645,8 @@ t2i_pipeline.update_components(unet=unet2)
 Not only is the `unet` component swapped, but its loading specs are also updated from "RunDiffusion/Juggernaut-XL-v9" to "stabilityai/stable-diffusion-xl-base-1.0". This means that if you save the pipeline now and load it back with `from_pretrained`, the new pipeline will by default load the SDXL original unet.
 
 ```
->>> t2i_pipeline.loader
-StableDiffusionXLModularLoader {
+>>> t2i_pipeline
+StableDiffusionXLModularPipeline {
   ...
   "unet": [
     "diffusers",
@@ -682,11 +685,239 @@ ComponentSpec(
 >>> unet_spec.repo = "stabilityai/stable-diffusion-xl-base-1.0"
 
 # Load the component with the modified spec
->>> unet = unet_spec.load()
+>>> unet = unet_spec.load(torch_dtype=torch.float16)
 ```
 
 </Tip>
 
+### Customizing Guidance Techniques
+
+Guiders are guidance techniques that can be applied during the denoising process to improve generation quality, control, and adherence to prompts. They work by modifying the noise predictions or model behavior to steer the generation process in desired directions. In diffusers, guiders are implemented as subclasses of `BaseGuidance` and can be easily integrated into modular pipelines, providing a flexible way to enhance generation quality without modifying the underlying diffusion models.
+
+**ClassifierFreeGuidance (CFG)** is the first and most common guidance technique, used in all our standard pipelines. But we offer many more guidance techniques beyond CFG, including **PerturbedAttentionGuidance (PAG)**, **SkipLayerGuidance (SLG)**, **SmoothedEnergyGuidance (SEG)**, and others that can provide even better results for specific use cases.
+
+This section demonstrates how to use guiders using the component updating methods we just learned. Since `BaseGuidance` components are stateless (similar to schedulers), they are typically created with default configurations during pipeline initialization using `default_creation_method='from_config'`. This means they don't require loading specs from the repository - you won't see guider listed in `modular_model_index.json` files.
+
+Let's take a look at the default guider configuration:
+
+```py
+>>> t2i_pipeline.get_component_spec("guider")
+ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.classifier_free_guidance.ClassifierFreeGuidance'>, description=None, config=FrozenDict([('guidance_scale', 7.5), ('guidance_rescale', 0.0), ('use_original_formulation', False), ('start', 0.0), ('stop', 1.0), ('_use_default_values', ['start', 'guidance_rescale', 'stop', 'use_original_formulation'])]), repo=None, subfolder=None, variant=None, revision=None, default_creation_method='from_config')
+```
+
+As you can see, the guider is configured to use `ClassifierFreeGuidance` with default parameters and `default_creation_method='from_config'`, meaning it's created during pipeline initialization rather than loaded from a repository. Let's verify this, here we run `init_pipeline()` without a modular repo, and there it is, a guider with the default configuration we just saw
+
+
+```py
+>>> pipeline = t2i_blocks.init_pipeline()
+>>> pipeline.guider
+ClassifierFreeGuidance {
+  "_class_name": "ClassifierFreeGuidance",
+  "_diffusers_version": "0.35.0.dev0",
+  "guidance_rescale": 0.0,
+  "guidance_scale": 7.5,
+  "start": 0.0,
+  "stop": 1.0,
+  "use_original_formulation": false
+}
+```
+
+#### Modify Parameters of the Same Guider Type
+
+To change parameters of the same guider type (e.g., adjusting the `guidance_scale` for CFG), you have two options:
+
+**Option 1: Use ComponentSpec.create() method**
+```python
+>>> guider_spec = t2i_pipeline.get_component_spec("guider")
+>>> guider = guider_spec.create(guidance_scale=10)
+>>> t2i_pipeline.update_components(guider=guider)
+```
+
+**Option 2: Pass ComponentSpec directly**
+```python
+>>> guider_spec = t2i_pipeline.get_component_spec("guider")
+>>> guider_spec.config["guidance_scale"] = 10
+>>> t2i_pipeline.update_components(guider=guider_spec)
+```
+
+Both approaches produce the same result:
+```python
+>>> t2i_pipeline.guider
+ClassifierFreeGuidance {
+  "_class_name": "ClassifierFreeGuidance",
+  "_diffusers_version": "0.35.0.dev0",
+  "guidance_rescale": 0.0,
+  "guidance_scale": 10,
+  "start": 0.0,
+  "stop": 1.0,
+  "use_original_formulation": false
+}
+```
+
+#### Switch to a Different Guider Type
+
+Since guiders are `from_config` components (ConfigMixin objects), you can pass guider objects directly to switch between different guidance techniques:
+
+```py
+from diffusers import LayerSkipConfig, PerturbedAttentionGuidance
+config = LayerSkipConfig(indices=[2, 9], fqn="mid_block.attentions.0.transformer_blocks", skip_attention=False, skip_attention_scores=True, skip_ff=False)
+guider = PerturbedAttentionGuidance(
+    guidance_scale=5.0, perturbed_guidance_scale=2.5, perturbed_guidance_config=config
+)
+t2i_pipeline.update_components(guider=guider)
+```
+
+Note that you will get a warning about changing the guider type, which is expected:
+
+```
+ModularPipeline.update_components: adding guider with new type: PerturbedAttentionGuidance, previous type: ClassifierFreeGuidance
+```
+
+<Tip>
+
+💡 **Component Loading Methods**: 
+- For `from_config` components (like guiders, schedulers): You can pass the object directly OR pass a ComponentSpec directly (which calls `create()` under the hood)
+- For `from_pretrained` components (like models): You must use ComponentSpec to ensure proper tagging and loading
+
+</Tip>
+
+Let's verify that the guider has been updated:
+
+```py
+>>> t2i_pipeline.guider
+PerturbedAttentionGuidance {
+  "_class_name": "PerturbedAttentionGuidance",
+  "_diffusers_version": "0.35.0.dev0",
+  "guidance_rescale": 0.0,
+  "guidance_scale": 5.0,
+  "perturbed_guidance_config": {
+    "dropout": 1.0,
+    "fqn": "mid_block.attentions.0.transformer_blocks",
+    "indices": [
+      2,
+      9
+    ],
+    "skip_attention": false,
+    "skip_attention_scores": true,
+    "skip_ff": false
+  },
+  "perturbed_guidance_layers": null,
+  "perturbed_guidance_scale": 2.5,
+  "perturbed_guidance_start": 0.01,
+  "perturbed_guidance_stop": 0.2,
+  "skip_layer_config": [
+    {
+      "dropout": 1.0,
+      "fqn": "mid_block.attentions.0.transformer_blocks",
+      "indices": [
+        2,
+        9
+      ],
+      "skip_attention": false,
+      "skip_attention_scores": true,
+      "skip_ff": false
+    }
+  ],
+  "skip_layer_guidance_layers": null,
+  "skip_layer_guidance_scale": 2.5,
+  "skip_layer_guidance_start": 0.01,
+  "skip_layer_guidance_stop": 0.2,
+  "start": 0.0,
+  "stop": 1.0,
+  "use_original_formulation": false
+}
+
+```
+
+The component spec has also been updated to reflect the new guider type:
+
+```py
+>>> t2i_pipeline.get_component_spec("guider")
+ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.perturbed_attention_guidance.PerturbedAttentionGuidance'>, description=None, config=FrozenDict([('guidance_scale', 5.0), ('perturbed_guidance_scale', 2.5), ('perturbed_guidance_start', 0.01), ('perturbed_guidance_stop', 0.2), ('perturbed_guidance_layers', None), ('perturbed_guidance_config', LayerSkipConfig(indices=[2, 9], fqn='mid_block.attentions.0.transformer_blocks', skip_attention=False, skip_attention_scores=True, skip_ff=False, dropout=1.0)), ('guidance_rescale', 0.0), ('use_original_formulation', False), ('start', 0.0), ('stop', 1.0), ('_use_default_values', ['use_original_formulation', 'perturbed_guidance_stop', 'stop', 'guidance_rescale', 'start', 'perturbed_guidance_layers', 'perturbed_guidance_start']), ('skip_layer_guidance_scale', 2.5), ('skip_layer_guidance_start', 0.01), ('skip_layer_guidance_stop', 0.2), ('skip_layer_guidance_layers', None), ('skip_layer_config', [LayerSkipConfig(indices=[2, 9], fqn='mid_block.attentions.0.transformer_blocks', skip_attention=False, skip_attention_scores=True, skip_ff=False, dropout=1.0)]), ('_class_name', 'PerturbedAttentionGuidance'), ('_diffusers_version', '0.35.0.dev0')]), repo=None, subfolder=None, variant=None, revision=None, default_creation_method='from_config')
+```
+
+However, the "guider" is still not included in the pipeline config and will not be saved into the `modular_model_index.json` since it remains a `from_config` component: 
+
+```py
+>>> assert "guider" not in  t2i_pipeline.config
+```
+
+#### Upload Custom Guider to Hub for Easy Loading & Sharing
+
+You can upload your customized guider to the Hub so that it can be loaded more easily:
+
+```py
+guider.push_to_hub("YiYiXu/modular-loader-t2i-guider", subfolder="pag_guider")
+```
+
+Voilà! Now you have a subfolder called `pag_guider` on that repository. Let's change our guider_spec to use `from_pretrained` as the default creation method and update the loading spec to use this subfolder we just created:
+
+```python
+guider_spec = t2i_pipeline.get_component_spec("guider")
+guider_spec.default_creation_method="from_pretrained"
+guider_spec.repo="YiYiXu/modular-loader-t2i-guider"
+guider_spec.subfolder="pag_guider"
+pag_guider = guider_spec.load()
+t2i_pipeline.update_components(guider=pag_guider)
+```
+
+You will get a warning about changing the creation method:
+
+```
+ModularPipeline.update_components: changing the default_creation_method of guider from from_config to from_pretrained.
+```
+
+Now not only the `guider` component and its component_spec are updated, but so is the pipeline config. Let's push it to a new repository:
+
+```py
+t2i_pipeline.push_to_hub("YiYiXu/modular-doc-guider")
+```
+
+If you check the `modular_model_index.json`, you'll see the guider is now included:
+
+```json
+{
+  "guider": [
+    "diffusers",
+    "PerturbedAttentionGuidance",
+    {
+      "repo": "YiYiXu/modular-loader-t2i-guider",
+      "revision": null,
+      "subfolder": "pag_guider",
+      "type_hint": [
+        "diffusers",
+        "PerturbedAttentionGuidance"
+      ],
+      "variant": null
+    }
+  ]
+}
+```
+
+Now when you create the pipeline from that repo directly, the `guider` is not automatically loaded anymore (since it's now a `from_pretrained` component), but when you run `load_default_components()`, the PAG guider will be loaded by default:
+
+```py
+t2i_pipeline = t2i_blocks.init_pipeline("YiYiXu/modular-doc-guider")
+assert t2i_pipeline.guider is None
+t2i_pipeline.load_default_components()
+t2i_pipeline.guider
+```
+
+Of course, you can also directly modify the `modular_model_index.json` to add a loading spec for the guider by pointing to a folder containing the desired guider config.
+
+
+<Tip>
+
+💡 **Guidance Techniques Summary**: 
+- **ClassifierFreeGuidance (CFG)**: The standard choice, best for general use and prompt adherence
+- **PerturbedAttentionGuidance (PAG)**: Enhances attention-based features by perturbing attention mechanisms
+- **SkipLayerGuidance (SLG)**: Improves structure and anatomy coherence by skipping specific layers
+- **SmoothedEnergyGuidance (SEG)**: Helps with energy distribution smoothing
+- **AdaptiveProjectedGuidance (APG)**: Adaptive guidance that projects predictions for better quality
+
+Experiment with different techniques and parameters to find what works best for your specific use case!
+
+</Tip>
 
 ### Running a `ModularPipeline`
 
