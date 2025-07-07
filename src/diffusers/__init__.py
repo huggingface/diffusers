@@ -38,6 +38,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
+    "quantizers.pipe_quant_config": ["PipelineQuantizationConfig"],
     "quantizers.quantization_config": [],
     "schedulers": [],
     "utils": [
