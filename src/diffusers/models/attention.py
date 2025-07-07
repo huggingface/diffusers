@@ -22,7 +22,6 @@ from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
-from .metadata import TransformerBlockMetadata, register_transformer_block
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX
 
 
@@ -259,12 +258,6 @@ class JointTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-@register_transformer_block(
-    metadata=TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=None,
-    )
-)
 class BasicTransformerBlock(nn.Module):
     r"""
     A basic Transformer block.

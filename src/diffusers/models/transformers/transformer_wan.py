@@ -27,7 +27,6 @@ from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
-from ..metadata import TransformerBlockMetadata, register_transformer_block
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
@@ -252,12 +251,6 @@ class WanRotaryPosEmbed(nn.Module):
 
 
 @maybe_allow_in_graph
-@register_transformer_block(
-    TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=None,
-    )
-)
 class WanTransformerBlock(nn.Module):
     def __init__(
         self,

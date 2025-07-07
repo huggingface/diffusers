@@ -27,7 +27,6 @@ from ..attention import FeedForward
 from ..attention_processor import MochiAttention, MochiAttnProcessor2_0
 from ..cache_utils import CacheMixin
 from ..embeddings import MochiCombinedTimestepCaptionEmbedding, PatchEmbed
-from ..metadata import TransformerBlockMetadata, register_transformer_block
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, RMSNorm
@@ -117,12 +116,6 @@ class MochiRMSNormZero(nn.Module):
 
 
 @maybe_allow_in_graph
-@register_transformer_block(
-    metadata=TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=1,
-    )
-)
 class MochiTransformerBlock(nn.Module):
     r"""
     Transformer block used in [Mochi](https://huggingface.co/genmo/mochi-1-preview).

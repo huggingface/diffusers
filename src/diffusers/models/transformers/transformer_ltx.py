@@ -28,7 +28,6 @@ from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection
-from ..metadata import TransformerBlockMetadata, register_transformer_block
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle, RMSNorm
@@ -197,12 +196,6 @@ class LTXVideoRotaryPosEmbed(nn.Module):
 
 
 @maybe_allow_in_graph
-@register_transformer_block(
-    metadata=TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=None,
-    )
-)
 class LTXVideoTransformerBlock(nn.Module):
     r"""
     Transformer block used in [LTX](https://huggingface.co/Lightricks/LTX-Video).

@@ -26,7 +26,6 @@ from ..attention import Attention, FeedForward
 from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
 from ..cache_utils import CacheMixin
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
-from ..metadata import TransformerBlockMetadata, register_transformer_block
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
@@ -36,12 +35,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @maybe_allow_in_graph
-@register_transformer_block(
-    metadata=TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=1,
-    )
-)
 class CogVideoXBlock(nn.Module):
     r"""
     Transformer block used in [CogVideoX](https://github.com/THUDM/CogVideo) model.
