@@ -312,7 +312,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--cond_image_column",
         type=str,
-        default="image",
+        default=None,
         help="Column in the dataset containing the condition image. Must be specified when performing I2I fine-tuning",
     )
     parser.add_argument(
