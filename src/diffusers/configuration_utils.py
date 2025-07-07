@@ -176,6 +176,7 @@ class ConfigMixin:
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+            subfolder = kwargs.pop("subfolder", None)
 
             self._upload_folder(
                 save_directory,
@@ -183,6 +184,7 @@ class ConfigMixin:
                 token=token,
                 commit_message=commit_message,
                 create_pr=create_pr,
+                subfolder=subfolder,
             )
 
     @classmethod
