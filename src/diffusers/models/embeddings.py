@@ -1163,8 +1163,8 @@ def get_1d_rotary_pos_embed(
     if use_real and repeat_interleave_real:
         # flux, hunyuan-dit, cogvideox
         # Use dim=-1 for robust interleaving on the feature dimension
-        freqs_cos = freqs.cos().repeat_interleave(2, dim=-1)  # Shape: [B, S, D]
-        freqs_sin = freqs.sin().repeat_interleave(2, dim=-1)  # Shape: [B, S, D]
+        freqs_cos = freqs.cos().repeat_interleave(2, dim=-1).float()  # Shape: [B, S, D]
+        freqs_sin = freqs.sin().repeat_interleave(2, dim=-1).float()  # Shape: [B, S, D]
         return freqs_cos, freqs_sin
     elif use_real:
         # stable audio, allegro
