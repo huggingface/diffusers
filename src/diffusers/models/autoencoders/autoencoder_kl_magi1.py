@@ -42,13 +42,28 @@ def resize_pos_embed(posemb, src_shape, target_shape):
     posemb = posemb.reshape(1, target_shape[0] * target_shape[1] * target_shape[2], -1)
     return posemb
 
+class Magi1VAELayerNorm(nn.Module):
+    def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
+        super(Magi1VAELayerNorm, self).__init__()
+        self.normalized_shape = normalized_shape
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+
+    def forward(self, x):
+        mean = x.mean(dim=-1, keepdim=True)
+        std = x.std(dim=-1, keepdim=True, unbiased=False)
+
+        x_normalized = (x - mean) / (std + self.eps)
+
+        return x_normalized
+
 
 class Magi1VAEAttnProcessor2_0:
     def __init__(self, dim, num_heads=8):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
-        self.qkv_norm = FP32LayerNorm(dim // num_heads, elementwise_affine=False)
+        self.qkv_norm = Magi1VAELayerNorm(dim // num_heads, elementwise_affine=False)
 
     def __call__(
         self,
