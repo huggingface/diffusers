@@ -792,7 +792,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
                         trigger_values.update(t for t in block.block_trigger_inputs if t is not None)
 
                     # If block has sub_blocks, recursively check them
-                    if hasattr(block, "sub_blocks"):
+                    if block.sub_blocks:
                         nested_triggers = fn_recursive_get_trigger(block.sub_blocks)
                         trigger_values.update(nested_triggers)
 
@@ -1077,7 +1077,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                         trigger_values.update(t for t in block.block_trigger_inputs if t is not None)
 
                     # If block has sub_blocks, recursively check them
-                    if hasattr(block, "sub_blocks"):
+                    if block.sub_blocks:
                         nested_triggers = fn_recursive_get_trigger(block.sub_blocks)
                         trigger_values.update(nested_triggers)
 
@@ -1098,7 +1098,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
             # sequential(include loopsequential) or PipelineBlock
             if not hasattr(block, "block_trigger_inputs"):
-                if hasattr(block, "sub_blocks"):
+                if block.sub_blocks:
                     # sequential or LoopSequentialPipelineBlocks (keep traversing)
                     for sub_block_name, sub_block in block.sub_blocks.items():
                         blocks_to_update = fn_recursive_traverse(sub_block, sub_block_name, active_triggers)
@@ -1128,7 +1128,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
                 if this_block is not None:
                     # sequential/auto (keep traversing)
-                    if hasattr(this_block, "sub_blocks"):
+                    if this_block.sub_blocks:
                         result_blocks.update(fn_recursive_traverse(this_block, block_name, active_triggers))
                     else:
                         # PipelineBlock
@@ -1642,9 +1642,8 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
 
 # YiYi TODO:
-# 1. move the modular_repo arg and the logic to fetch info from repo out of __init__ so that __init__ alwasy create an default modular_model_index config
-# 2. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
-# 3. do we need ConfigSpec? seems pretty unnecessrary for loader, can just add and kwargs to the loader
+# 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
+# 2. do we need ConfigSpec? the are basically just key/val kwargs
 # 4. add validator for methods where we accpet kwargs to be passed to from_pretrained()
 class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
@@ -1927,8 +1926,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             "revision": revision,
         }
 
-        config_dict = cls.load_config(pretrained_model_name_or_path, **load_config_kwargs)
-        pipeline_class = _get_pipeline_class(cls, config=config_dict)
+        try:
+            config_dict = cls.load_config(pretrained_model_name_or_path, **load_config_kwargs)
+            pipeline_class = _get_pipeline_class(cls, config=config_dict)
+        except EnvironmentError:
+            pipeline_class = cls
+            pretrained_model_name_or_path = None
 
         pipeline = pipeline_class(
             blocks=blocks,
