@@ -116,6 +116,7 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
             Position of the context token in the text encoder.
     """
 
+    _last_supported_version = "0.33.1"
     model_cpu_offload_seq = "qformer->text_encoder->unet->vae"
 
     def __init__(
