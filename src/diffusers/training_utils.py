@@ -3,6 +3,8 @@ import copy
 import gc
 import math
 import random
+import re
+import warnings
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -247,6 +249,14 @@ def _set_state_dict_into_text_encoder(
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
 
 
+def _collate_lora_metadata(modules_to_save: Dict[str, torch.nn.Module]) -> Dict[str, Any]:
+    metadatas = {}
+    for module_name, module in modules_to_save.items():
+        if module is not None:
+            metadatas[f"{module_name}_lora_adapter_metadata"] = module.peft_config["default"].to_dict()
+    return metadatas
+
+
 def compute_density_for_timestep_sampling(
     weighting_scheme: str,
     batch_size: int,
@@ -306,6 +316,46 @@ def free_memory():
         torch_npu.npu.empty_cache()
     elif hasattr(torch, "xpu") and torch.xpu.is_available():
         torch.xpu.empty_cache()
+
+
+def parse_buckets_string(buckets_str):
+    """Parses a string defining buckets into a list of (height, width) tuples."""
+    if not buckets_str:
+        raise ValueError("Bucket string cannot be empty.")
+
+    bucket_pairs = buckets_str.strip().split(";")
+    parsed_buckets = []
+    for pair_str in bucket_pairs:
+        match = re.match(r"^\s*(\d+)\s*,\s*(\d+)\s*$", pair_str)
+        if not match:
+            raise ValueError(f"Invalid bucket format: '{pair_str}'. Expected 'height,width'.")
+        try:
+            height = int(match.group(1))
+            width = int(match.group(2))
+            if height <= 0 or width <= 0:
+                raise ValueError("Bucket dimensions must be positive integers.")
+            if height % 8 != 0 or width % 8 != 0:
+                warnings.warn(f"Bucket dimension ({height},{width}) not divisible by 8. This might cause issues.")
+            parsed_buckets.append((height, width))
+        except ValueError as e:
+            raise ValueError(f"Invalid integer in bucket pair '{pair_str}': {e}") from e
+
+    if not parsed_buckets:
+        raise ValueError("No valid buckets found in the provided string.")
+
+    return parsed_buckets
+
+
+def find_nearest_bucket(h, w, bucket_options):
+    """Finds the closes bucket to the given height and width."""
+    min_metric = float("inf")
+    best_bucket_idx = None
+    for bucket_idx, (bucket_h, bucket_w) in enumerate(bucket_options):
+        metric = abs(h * bucket_w - w * bucket_h)
+        if metric <= min_metric:
+            min_metric = metric
+            best_bucket_idx = bucket_idx
+    return best_bucket_idx
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14

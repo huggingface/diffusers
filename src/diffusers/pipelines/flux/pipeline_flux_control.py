@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Black Forest Labs and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -163,9 +163,9 @@ class FluxControlPipeline(
     TextualInversionLoaderMixin,
 ):
     r"""
-    The Flux pipeline for controllable text-to-image generation.
+    The Flux pipeline for controllable text-to-image generation with image conditions.
 
-    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
+    Reference: https://bfl.ai/flux-1-tools
 
     Args:
         transformer ([`FluxTransformer2DModel`]):

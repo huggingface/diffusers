@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,11 +24,11 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     nightly,
     require_accelerate_version_greater,
-    require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     torch_device,
 )
 
@@ -220,7 +220,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         self.assertLess(max_diff, expected_max_difference)
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
-    @require_accelerator
+    @require_torch_accelerator
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -262,7 +262,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_inference_batch_single_identical(self):
         pass
 
-    @require_accelerator
+    @require_torch_accelerator
     @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         components = self.get_dummy_components()
@@ -285,7 +285,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         pass
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
-    @require_accelerator
+    @require_torch_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -337,7 +337,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
-    @require_accelerator
+    @require_torch_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -365,19 +365,19 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class TextToVideoZeroSDXLPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_full_model(self):
         model_id = "stabilityai/stable-diffusion-xl-base-1.0"

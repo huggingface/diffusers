@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -282,10 +282,7 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
         model_file = _get_model_file(
             pretrained_model_name_or_path_or_dict,
             weights_name=weight_name,

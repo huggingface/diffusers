@@ -50,6 +50,7 @@ from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     backend_empty_cache,
+    numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
     require_accelerator,
     require_hf_hub_version_greater,
@@ -522,7 +523,8 @@ class FluxIPAdapterTesterMixin:
 
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
         inputs["negative_prompt"] = ""
-        inputs["true_cfg_scale"] = 4.0
+        if "true_cfg_scale" in inspect.signature(self.pipeline_class.__call__).parameters:
+            inputs["true_cfg_scale"] = 4.0
         inputs["output_type"] = "np"
         inputs["return_dict"] = False
         return inputs
@@ -543,7 +545,11 @@ class FluxIPAdapterTesterMixin:
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        image_embed_dim = pipe.transformer.config.pooled_projection_dim
+        image_embed_dim = (
+            pipe.transformer.config.pooled_projection_dim
+            if hasattr(pipe.transformer.config, "pooled_projection_dim")
+            else 768
+        )
 
         # forward pass without ip adapter
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
@@ -1112,14 +1118,22 @@ class PipelineTesterMixin:
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
+
+        # Skip tests for pipelines that inherit from DeprecatedPipelineMixin
+        from diffusers.pipelines.pipeline_utils import DeprecatedPipelineMixin
+
+        if hasattr(self, "pipeline_class") and issubclass(self.pipeline_class, DeprecatedPipelineMixin):
+            import pytest
+
+            pytest.skip(reason=f"Deprecated Pipeline: {self.pipeline_class.__name__}")
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1365,7 +1379,6 @@ class PipelineTesterMixin:
         for component in pipe_fp16.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
-
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
@@ -1373,18 +1386,20 @@ class PipelineTesterMixin:
         # Reset generator in case it is used inside dummy inputs
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
-
         output = pipe(**inputs)[0]
 
         fp16_inputs = self.get_dummy_inputs(torch_device)
         # Reset generator in case it is used inside dummy inputs
         if "generator" in fp16_inputs:
             fp16_inputs["generator"] = self.get_generator(0)
-
         output_fp16 = pipe_fp16(**fp16_inputs)[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
-        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
+        if isinstance(output, torch.Tensor):
+            output = output.cpu()
+            output_fp16 = output_fp16.cpu()
+
+        max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
+        assert max_diff < expected_max_diff
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
@@ -2097,11 +2112,11 @@ class PipelineTesterMixin:
         with torch.no_grad():
             encoded_prompt_outputs = pipe_with_just_text_encoder.encode_prompt(**encode_prompt_inputs)
 
-        # Programatically determine the reutrn names of `encode_prompt.`
-        ast_vistor = ReturnNameVisitor()
-        encode_prompt_tree = ast_vistor.get_ast_tree(cls=self.pipeline_class)
-        ast_vistor.visit(encode_prompt_tree)
-        prompt_embed_kwargs = ast_vistor.return_names
+        # Programmatically determine the return names of `encode_prompt.`
+        ast_visitor = ReturnNameVisitor()
+        encode_prompt_tree = ast_visitor.get_ast_tree(cls=self.pipeline_class)
+        ast_visitor.visit(encode_prompt_tree)
+        prompt_embed_kwargs = ast_visitor.return_names
         prompt_embeds_kwargs = dict(zip(prompt_embed_kwargs, encoded_prompt_outputs))
 
         # Pack the outputs of `encode_prompt`.
@@ -2258,9 +2273,10 @@ class PipelineTesterMixin:
                         if hasattr(module, "_diffusers_hook")
                     )
                 )
-            for component_name in ["vae", "vqvae"]:
-                if hasattr(pipe, component_name):
-                    getattr(pipe, component_name).to(torch_device)
+            for component_name in ["vae", "vqvae", "image_encoder"]:
+                component = getattr(pipe, component_name, None)
+                if isinstance(component, torch.nn.Module):
+                    component.to(torch_device)
 
         def run_forward(pipe):
             torch.manual_seed(0)

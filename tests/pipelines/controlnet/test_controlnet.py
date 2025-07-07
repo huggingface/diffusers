@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 
 import gc
 import tempfile
-import traceback
 import unittest
 
 import numpy as np
@@ -39,13 +38,9 @@ from diffusers.utils.testing_utils import (
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     enable_full_determinism,
-    get_python_version,
-    is_torch_compile,
     load_image,
     load_numpy,
-    require_torch_2,
     require_torch_accelerator,
-    run_test_in_subprocess,
     slow,
     torch_device,
 )
@@ -66,52 +61,6 @@ from ..test_pipelines_common import (
 
 
 enable_full_determinism()
-
-
-# Will be run via run_test_in_subprocess
-def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
-    error = None
-    try:
-        _ = in_queue.get(timeout=timeout)
-
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        pipe.unet.to(memory_format=torch.channels_last)
-        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-
-        pipe.controlnet.to(memory_format=torch.channels_last)
-        pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "bird"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-        ).resize((512, 512))
-
-        output = pipe(prompt, image, num_inference_steps=10, generator=generator, output_type="np")
-        image = output.images[0]
-
-        assert image.shape == (512, 512, 3)
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out_full.npy"
-        )
-        expected_image = np.resize(expected_image, (512, 512, 3))
-
-        assert np.abs(expected_image - image).max() < 1.0
-
-    except Exception:
-        error = f"{traceback.format_exc()}"
-
-    results = {"error": error}
-    out_queue.put(results, timeout=timeout)
-    out_queue.join()
 
 
 class ControlNetPipelineFastTests(
@@ -1052,15 +1001,6 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         image_slice = image[-3:, -3:, -1]
         expected_slice = np.array([0.1655, 0.1721, 0.1623, 0.1685, 0.1711, 0.1646, 0.1651, 0.1631, 0.1494])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    @is_torch_compile
-    @require_torch_2
-    @unittest.skipIf(
-        get_python_version == (3, 12),
-        reason="Torch Dynamo isn't yet supported for Python 3.12.",
-    )
-    def test_stable_diffusion_compile(self):
-        run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
 
     def test_v11_shuffle_global_pool_conditions(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11e_sd15_shuffle")

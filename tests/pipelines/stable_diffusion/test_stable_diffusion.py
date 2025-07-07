@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 import gc
 import tempfile
 import time
-import traceback
 import unittest
 
 import numpy as np
@@ -49,16 +48,12 @@ from diffusers.utils.testing_utils import (
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     enable_full_determinism,
-    is_torch_compile,
-    load_image,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
-    require_torch_2,
     require_torch_accelerator,
     require_torch_multi_accelerator,
-    run_test_in_subprocess,
     skip_mps,
     slow,
     torch_device,
@@ -79,39 +74,6 @@ from ..test_pipelines_common import (
 
 
 enable_full_determinism()
-
-
-# Will be run via run_test_in_subprocess
-def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
-    error = None
-    try:
-        inputs = in_queue.get(timeout=timeout)
-        torch_device = inputs.pop("torch_device")
-        seed = inputs.pop("seed")
-        inputs["generator"] = torch.Generator(device=torch_device).manual_seed(seed)
-
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-
-        sd_pipe.unet.to(memory_format=torch.channels_last)
-        sd_pipe.unet = torch.compile(sd_pipe.unet, mode="reduce-overhead", fullgraph=True)
-
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.38019, 0.28647, 0.27321, 0.40377, 0.38290, 0.35446, 0.39218, 0.38165, 0.42239])
-
-        assert np.abs(image_slice - expected_slice).max() < 5e-3
-    except Exception:
-        error = f"{traceback.format_exc()}"
-
-    results = {"error": error}
-    out_queue.put(results, timeout=timeout)
-    out_queue.join()
 
 
 class StableDiffusionPipelineFastTests(
@@ -1223,40 +1185,6 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 8e-1
-
-    @is_torch_compile
-    @require_torch_2
-    def test_stable_diffusion_compile(self):
-        seed = 0
-        inputs = self.get_inputs(torch_device, seed=seed)
-        # Can't pickle a Generator object
-        del inputs["generator"]
-        inputs["torch_device"] = torch_device
-        inputs["seed"] = seed
-        run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=inputs)
-
-    def test_stable_diffusion_lcm(self):
-        unet = UNet2DConditionModel.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", subfolder="unet")
-        sd_pipe = StableDiffusionPipeline.from_pretrained("Lykon/dreamshaper-7", unet=unet).to(torch_device)
-        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 6
-        inputs["output_type"] = "pil"
-
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_full/stable_diffusion_lcm.png"
-        )
-
-        image = sd_pipe.image_processor.pil_to_numpy(image)
-        expected_image = sd_pipe.image_processor.pil_to_numpy(expected_image)
-
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
-
-        assert max_diff < 1e-2
 
 
 @slow

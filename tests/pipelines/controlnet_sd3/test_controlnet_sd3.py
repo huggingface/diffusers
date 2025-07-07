@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc and The InstantX Team.
+# Copyright 2025 HuggingFace Inc and The InstantX Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -221,7 +221,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
+@pytest.mark.big_accelerator
 class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3ControlNetPipeline
 

@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -56,7 +56,7 @@ image = pipe(
 image.save("output.png")
 ```
 
-TorchAO is fully compatible with [torch.compile](./optimization/torch2.0#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
+TorchAO is fully compatible with [torch.compile](../optimization/fp16#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
 
 ```python
 # In the above code, add the following after initializing the transformer
@@ -64,6 +64,9 @@ transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
 ```
 
 For speed and memory benchmarks on Flux and CogVideoX, please refer to the table [here](https://github.com/huggingface/diffusers/pull/10009#issue-2688781450). You can also find some torchao [benchmarks](https://github.com/pytorch/ao/tree/main/torchao/quantization#benchmarks) numbers for various hardware.
+
+> [!TIP]
+> The FP8 post-training quantization schemes in torchao are effective for GPUs with compute capability of at least 8.9 (RTX-4090, Hopper, etc.). FP8 often provides the best speed, memory, and quality trade-off when generating images and videos. We recommend combining FP8 and torch.compile if your GPU is compatible.
 
 torchao also supports an automatic quantization API through [autoquant](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md#autoquantization). Autoquantization determines the best quantization strategy applicable to a model by comparing the performance of each technique on chosen input types and shapes. Currently, this can be used directly on the underlying modeling components. Diffusers will also expose an autoquant configuration option in the future.
 
@@ -91,7 +94,7 @@ The quantization methods supported are as follows:
 
 Some quantization methods are aliases (for example, `int8wo` is the commonly used shorthand for `int8_weight_only`). This allows using the quantization methods described in the torchao docs as-is, while also making it convenient to remember their shorthand notations.
 
-Refer to the official torchao documentation for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
+Refer to the [official torchao documentation](https://docs.pytorch.org/ao/stable/index.html) for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
 
 ## Serializing and Deserializing quantized models
 
@@ -155,5 +158,5 @@ transformer.load_state_dict(state_dict, strict=True, assign=True)
 
 ## Resources
 
-- [TorchAO Quantization API](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md)
+- [TorchAO Quantization API](https://docs.pytorch.org/ao/stable/index.html)
 - [Diffusers-TorchAO examples](https://github.com/sayakpaul/diffusers-torchao)

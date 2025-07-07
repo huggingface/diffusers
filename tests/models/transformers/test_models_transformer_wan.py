@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,14 +19,10 @@ import torch
 from diffusers import WanTransformer3DModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    is_torch_compile,
-    require_torch_2,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
 
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
@@ -87,17 +83,9 @@ class WanTransformer3DTests(ModelTesterMixin, unittest.TestCase):
         expected_set = {"WanTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @require_torch_gpu
-    @require_torch_2
-    @is_torch_compile
-    @slow
-    def test_torch_compile_recompilation_and_graph_break(self):
-        torch._dynamo.reset()
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**init_dict).to(torch_device)
-        model = torch.compile(model, fullgraph=True)
+class WanTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = WanTransformer3DModel
 
-        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
-            _ = model(**inputs_dict)
-            _ = model(**inputs_dict)
+    def prepare_init_args_and_inputs_for_common(self):
+        return WanTransformer3DTests().prepare_init_args_and_inputs_for_common()

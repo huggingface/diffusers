@@ -1,4 +1,4 @@
-# # Copyright 2024 Sana-Sprint Authors and The HuggingFace Team. All rights reserved.
+# # Copyright 2025 Sana-Sprint Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -168,7 +168,6 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         else:
             # max_timesteps=arctan(80/0.5)=1.56454 is the default from sCM paper, we choose a different value here
             self.timesteps = torch.linspace(max_timesteps, 0, num_inference_steps + 1, device=device).float()
-        print(f"Set timesteps: {self.timesteps}")
 
         self._step_index = None
         self._begin_index = None

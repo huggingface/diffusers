@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import torch
 from diffusers import UNet2DModel
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     require_torch_accelerator,
@@ -229,7 +230,7 @@ class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         # two models don't need to stay in the device at the same time
         del model_accelerate
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
         gc.collect()
 
         model_normal_load, _ = UNet2DModel.from_pretrained(

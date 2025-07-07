@@ -52,6 +52,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
+    _collate_lora_metadata,
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
@@ -71,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -323,9 +324,13 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
-
+    parser.add_argument(
+        "--lora_alpha",
+        type=int,
+        default=4,
+        help="LoRA alpha to be used for additional scaling.",
+    )
     parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
-
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
@@ -1023,7 +1028,7 @@ def main(args):
     # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
-        lora_alpha=args.rank,
+        lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
         init_lora_weights="gaussian",
         target_modules=target_modules,
@@ -1039,10 +1044,11 @@ def main(args):
     def save_model_hook(models, weights, output_dir):
         if accelerator.is_main_process:
             transformer_lora_layers_to_save = None
-
+            modules_to_save = {}
             for model in models:
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                    modules_to_save["transformer"] = model
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1052,6 +1058,7 @@ def main(args):
             SanaPipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
+                **_collate_lora_metadata(modules_to_save),
             )
 
     def load_model_hook(models, input_dir):
@@ -1507,15 +1514,18 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
+        modules_to_save = {}
         if args.upcast_before_saving:
             transformer.to(torch.float32)
         else:
             transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
+        modules_to_save["transformer"] = transformer
 
         SanaPipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
+            **_collate_lora_metadata(modules_to_save),
         )
 
         # Final inference

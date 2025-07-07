@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,31 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
+## Loading original format checkpoints
+
+Original format checkpoints that have not been converted to diffusers-expected format can be loaded using the `from_single_file` method.
+
+```python
+import torch
+from diffusers import Cosmos2TextToImagePipeline, CosmosTransformer3DModel
+
+model_id = "nvidia/Cosmos-Predict2-2B-Text2Image"
+transformer = CosmosTransformer3DModel.from_single_file(
+    "https://huggingface.co/nvidia/Cosmos-Predict2-2B-Text2Image/blob/main/model.pt",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+pipe = Cosmos2TextToImagePipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."
+negative_prompt = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
+
+output = pipe(
+    prompt=prompt, negative_prompt=negative_prompt, generator=torch.Generator().manual_seed(1)
+).images[0]
+output.save("output.png")
+```
+
 ## CosmosTextToWorldPipeline
 
 [[autodoc]] CosmosTextToWorldPipeline
@@ -36,6 +61,22 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
   - all
   - __call__
 
+## Cosmos2TextToImagePipeline
+
+[[autodoc]] Cosmos2TextToImagePipeline
+  - all
+  - __call__
+
+## Cosmos2VideoToWorldPipeline
+
+[[autodoc]] Cosmos2VideoToWorldPipeline
+  - all
+  - __call__
+
 ## CosmosPipelineOutput
 
 [[autodoc]] pipelines.cosmos.pipeline_output.CosmosPipelineOutput
+
+## CosmosImagePipelineOutput
+
+[[autodoc]] pipelines.cosmos.pipeline_output.CosmosImagePipelineOutput
