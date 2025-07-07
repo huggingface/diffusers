@@ -482,7 +482,12 @@ class PushToHubMixin:
 
         logger.info(f"Uploading the files of {working_dir} to {repo_id}.")
         return upload_folder(
-            repo_id=repo_id, folder_path=working_dir, token=token, commit_message=commit_message, create_pr=create_pr, path_in_repo=subfolder
+            repo_id=repo_id,
+            folder_path=working_dir,
+            token=token,
+            commit_message=commit_message,
+            create_pr=create_pr,
+            path_in_repo=subfolder,
         )
 
     def push_to_hub(

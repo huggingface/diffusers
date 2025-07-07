@@ -18,14 +18,17 @@ from collections import OrderedDict
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 
+import torch
+
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..utils import is_torch_available, logging
-import torch
+
 
 if is_torch_available():
     pass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 class InsertableDict(OrderedDict):
     def insert(self, key, value, index):
@@ -112,18 +115,18 @@ class ComponentSpec:
     @classmethod
     def from_component(cls, name: str, component: Any) -> Any:
         """Create a ComponentSpec from a Component.
-        
+
         Currently supports:
         - Components created with `ComponentSpec.load()` method
         - Components that are ConfigMixin subclasses but not nn.Modules (e.g. schedulers, guiders)
-        
+
         Args:
             name: Name of the component
             component: Component object to create spec from
-            
+
         Returns:
             ComponentSpec object
-            
+
         Raises:
             ValueError: If component is not supported (e.g. nn.Module without load_id, non-ConfigMixin)
         """
@@ -142,7 +145,9 @@ class ComponentSpec:
             elif isinstance(component, ConfigMixin):
                 # warn if component was not created with `ComponentSpec`
                 if not hasattr(component, "_diffusers_load_id"):
-                    logger.warning("Component was not created using `ComponentSpec`, defaulting to `from_config` creation method")
+                    logger.warning(
+                        "Component was not created using `ComponentSpec`, defaulting to `from_config` creation method"
+                    )
                 default_creation_method = "from_config"
             else:
                 # Not a ConfigMixin and not created with `ComponentSpec.load()` method -> throw error
@@ -151,7 +156,6 @@ class ComponentSpec:
                     f" - components created with `ComponentSpec.load()` method"
                     f" - components that are a subclass of ConfigMixin but not a nn.Module (e.g. guider, scheduler)."
                 )
-
 
         type_hint = component.__class__
 

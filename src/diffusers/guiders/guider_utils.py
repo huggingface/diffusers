@@ -12,17 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union, Optional
+import os
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from typing_extensions import Self
 
-import os
-
 from ..configuration_utils import ConfigMixin
 from ..utils import PushToHubMixin, get_logger
-
 
 
 if TYPE_CHECKING:
@@ -221,8 +219,8 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
 
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
                       the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the guider
-                      configuration saved with [`~BaseGuidance.save_pretrained`].
+                    - A path to a *directory* (for example `./my_model_directory`) containing the guider configuration
+                      saved with [`~BaseGuidance.save_pretrained`].
             subfolder (`str`, *optional*):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
@@ -284,6 +282,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
+
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
