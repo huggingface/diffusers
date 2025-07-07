@@ -29,7 +29,7 @@ from ...utils.torch_utils import randn_tensor
 from ..blip_diffusion.blip_image_processing import BlipImageProcessor
 from ..blip_diffusion.modeling_blip2 import Blip2QFormerModel
 from ..blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 
 
 if is_torch_xla_available():
@@ -88,7 +88,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class BlipDiffusionControlNetPipeline(DiffusionPipeline):
+class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Pipeline for Canny Edge based Controlled subject-driven generation using Blip Diffusion.
 
