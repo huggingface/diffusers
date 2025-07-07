@@ -1508,21 +1508,22 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                         
                         latents = latents_1 + latents_2
                 """
-                init_mask_ref_prod = mask_original
-                if len(mask_image_original) == 1:
-                    if i < ref_prod_injection_steps[0]:
-                        latents = (1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents
+                if mask_image_original is not None:
+                    init_mask_ref_prod = mask_original
+                    if len(mask_image_original) == 1:
+                        if i < ref_prod_injection_steps[0]:
+                            latents = (1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents
+                        else:
+                            latents = (1 - init_mask) * init_latents_proper + init_mask * latents
                     else:
-                        latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                        init_mask_ref_prod_all = torch.zeros_like(init_mask)
+                        for tmp_ref_prod_injection_steps, tmp_init_mask_ref_prod in zip(ref_prod_injection_steps,init_mask_ref_prod):
+                            if i < tmp_ref_prod_injection_steps:
+                                init_mask_ref_prod_all += tmp_init_mask_ref_prod
+                        
+                        latents = (1 - (init_mask - init_mask_ref_prod_all)) * init_latents_proper + (init_mask - init_mask_ref_prod_all) * latents   
                 else:
-                    init_mask_ref_prod_all = torch.zeros_like(init_mask)
-                    for tmp_ref_prod_injection_steps, tmp_init_mask_ref_prod in zip(ref_prod_injection_steps,init_mask_ref_prod):
-                        if i < tmp_ref_prod_injection_steps:
-                             init_mask_ref_prod_all += tmp_init_mask_ref_prod
-                    
-                    latents = (1 - (init_mask - init_mask_ref_prod_all)) * init_latents_proper + (init_mask - init_mask_ref_prod_all) * latents
-                    
-                             
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
 
                 if latents.dtype != latents_dtype:
