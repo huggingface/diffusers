@@ -15,6 +15,8 @@ from diffusers import (
     HiDreamImageTransformer2DModel,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
+    WanTransformer3DModel,
+    WanVACETransformer3DModel,
 )
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
@@ -576,4 +578,72 @@ class HiDreamGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
                 generator=torch.Generator("cpu").manual_seed(0),
             ).to(torch_device, self.torch_dtype),
             "timesteps": torch.tensor([1]).to(torch_device, self.torch_dtype),
+        }
+
+
+class WanGGUFTexttoVideoSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+    ckpt_path = "https://huggingface.co/city96/Wan2.1-T2V-14B-gguf/blob/main/wan2.1-t2v-14b-Q3_K_S.gguf"
+    torch_dtype = torch.bfloat16
+    model_cls = WanTransformer3DModel
+    expected_memory_use_in_gb = 9
+
+    def get_dummy_inputs(self):
+        return {
+            "hidden_states": torch.randn((1, 36, 2, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
+                torch_device, self.torch_dtype
+            ),
+            "encoder_hidden_states": torch.randn(
+                (1, 512, 4096),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+        }
+
+
+class WanGGUFImagetoVideoSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+    ckpt_path = "https://huggingface.co/city96/Wan2.1-I2V-14B-480P-gguf/blob/main/wan2.1-i2v-14b-480p-Q3_K_S.gguf"
+    torch_dtype = torch.bfloat16
+    model_cls = WanTransformer3DModel
+    expected_memory_use_in_gb = 9
+
+    def get_dummy_inputs(self):
+        return {
+            "hidden_states": torch.randn((1, 36, 2, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
+                torch_device, self.torch_dtype
+            ),
+            "encoder_hidden_states": torch.randn(
+                (1, 512, 4096),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "encoder_hidden_states_image": torch.randn(
+                (1, 257, 1280), generator=torch.Generator("cpu").manual_seed(0)
+            ).to(torch_device, self.torch_dtype),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+        }
+
+
+class WanVACEGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+    ckpt_path = "https://huggingface.co/QuantStack/Wan2.1_14B_VACE-GGUF/blob/main/Wan2.1_14B_VACE-Q3_K_S.gguf"
+    torch_dtype = torch.bfloat16
+    model_cls = WanVACETransformer3DModel
+    expected_memory_use_in_gb = 9
+
+    def get_dummy_inputs(self):
+        return {
+            "hidden_states": torch.randn((1, 16, 2, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
+                torch_device, self.torch_dtype
+            ),
+            "encoder_hidden_states": torch.randn(
+                (1, 512, 4096),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "control_hidden_states": torch.randn(
+                (1, 96, 2, 64, 64),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "control_hidden_states_scale": torch.randn(
+                (8,),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
         }
