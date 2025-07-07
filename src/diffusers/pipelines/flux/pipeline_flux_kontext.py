@@ -195,7 +195,7 @@ class FluxKontextPipeline(
     FluxIPAdapterMixin,
 ):
     r"""
-    The Flux Kontext pipeline for image-to-image generation. Supports text-to-image generation, too.
+    The Flux Kontext pipeline for image-to-image and text-to-image generation.
 
     Reference: https://bfl.ai/announcements/flux-1-kontext-dev
 
