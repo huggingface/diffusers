@@ -157,6 +157,7 @@ class PipelineQuantizationConfig:
         if self.is_granular and module_name in quant_mapping:
             logger.debug(f"Initializing quantization config class for {module_name}.")
             config = quant_mapping[module_name]
+            self.config_mapping.update({module_name: config})
             return config
 
         # Global config case
@@ -195,6 +196,7 @@ class PipelineQuantizationConfig:
 
     def __repr__(self):
         out = ""
-        for module_name, config in self.config_mapping.items():
-            out += f"{module_name} {config}\n"
+        config_mapping = dict(sorted(self.config_mapping.copy().items()))
+        for module_name, config in config_mapping.items():
+            out += f"{module_name} {config}"
         return out
