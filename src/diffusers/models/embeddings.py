@@ -1252,6 +1252,10 @@ class FluxPosEmbed(nn.Module):
         self.axes_dim = axes_dim
 
     def forward(self, ids: torch.Tensor) -> torch.Tensor:
+        was_unbatched = ids.ndim == 2
+        if was_unbatched:
+            # Add a batch dimension to standardize processing
+            ids = ids.unsqueeze(0)
         # ids is now expected to be [B, S, n_axes]
         n_axes = ids.shape[-1]
         cos_out = []
@@ -1277,7 +1281,7 @@ class FluxPosEmbed(nn.Module):
         freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
 
         # Squeeze the batch dim if the original input was unbatched
-        if ids.ndim == 2:
+        if was_unbatched:
             freqs_cos = freqs_cos.squeeze(0)
             freqs_sin = freqs_sin.squeeze(0)
 
