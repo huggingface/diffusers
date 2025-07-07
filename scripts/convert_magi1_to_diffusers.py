@@ -381,9 +381,6 @@ def convert_transformer_state_dict(checkpoint):
     converted_state_dict["condition_embedder.time_embedder.linear_2.weight"] = checkpoint["t_embedder.mlp.2.weight"]
     converted_state_dict["condition_embedder.time_embedder.linear_2.bias"] = checkpoint["t_embedder.mlp.2.bias"]
 
-    converted_state_dict["condition_embedder.time_proj.weight"] = checkpoint["t_embedder.mlp.2.weight"]
-    converted_state_dict["condition_embedder.time_proj.bias"] = checkpoint["t_embedder.mlp.2.bias"]
-
     converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint[
         "y_embedder.y_proj_adaln.0.weight"
     ]
@@ -445,10 +442,6 @@ def convert_transformer_state_dict(checkpoint):
             f"{layer_prefix}.self_attention.linear_qkv.v.bias"
         ]
 
-        converted_state_dict[f"{block_prefix}.attn1.to_v.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.v.bias"
-        ]
-
         converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_proj.weight"
         ]
@@ -457,7 +450,7 @@ def convert_transformer_state_dict(checkpoint):
         ]
 
         converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[
-            f"{layer_prefix}.self_attention.q_layernorm.weight{layer_prefix}.self_attention.q_layernorm.weight"
+            f"{layer_prefix}.self_attention.q_layernorm.weight"
         ]
         converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[
             f"{layer_prefix}.self_attention.q_layernorm.bias"
