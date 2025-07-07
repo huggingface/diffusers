@@ -316,7 +316,7 @@ You typically don't need to manually create or manage these state objects. The `
 A `DiffusionPipeline` defines `model_index.json` to configure its components. However, repositories for Modular Diffusers work with `modular_model_index.json`. Let's walk through the differences here.
 
 In standard `model_index.json`, each component entry is a `(library, class)` tuple:
-
+```py
 "text_encoder": [
   "transformers",
   "CLIPTextModel"
