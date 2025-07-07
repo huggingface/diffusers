@@ -319,8 +319,9 @@ accelerate launch train_dreambooth_lora_flux_kontext.py \
   --cache_latents \
   --learning_rate=1e-4 \
   --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --max_train_steps=500 \
+  --lr_warmup_steps=200 \
+  --max_train_steps=1000 \
+  --rank=16\
   --seed="0" 
 ```
 

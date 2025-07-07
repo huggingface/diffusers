@@ -795,7 +795,8 @@ class DreamBoothDataset(Dataset):
             column_names = dataset["train"].column_names
 
             # 6. Get the column names for input/target.
-            # TODO: add validation for `cond_image_column`
+if args.cond_image_column is not None and not args.cond_image_column in column_names:
+      raise ValueError(f"`--cond_image_column` value '{args.cond_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}")
             if args.image_column is None:
                 image_column = column_names[0]
                 logger.info(f"image column defaulting to {image_column}")
