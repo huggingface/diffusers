@@ -26,7 +26,7 @@ from transformers import (
     T5TokenizerFast,
 )
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput, PipelineSeveralImagesInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -641,9 +641,61 @@ class FluxKontextPipeline(
         """
         self.vae.disable_tiling()
 
+    def preprocess_image(self, image: PipelineImageInput, _auto_resize: bool, multiple_of: int) -> torch.Tensor:
+        img = image[0] if isinstance(image, list) else image
+        image_height, image_width = self.image_processor.get_default_height_width(img)
+        aspect_ratio = image_width / image_height
+        if _auto_resize:
+            # Kontext is trained on specific resolutions, using one of them is recommended
+            _, image_width, image_height = min(
+                (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS
+            )
+        image_width = image_width // multiple_of * multiple_of
+        image_height = image_height // multiple_of * multiple_of
+        image = self.image_processor.resize(image, image_height, image_width)
+        image = self.image_processor.preprocess(image, image_height, image_width)
+        return image
+
+    def preprocess_images(
+        self,
+        images: PipelineSeveralImagesInput,
+        _auto_resize: bool,
+        multiple_of: int,
+    ) -> torch.Tensor:
+        # TODO for reviewer: I'm not sure what's the best way to implement this part given the philosophy of the repo.
+        # The solutions I thought about are:
+        # - Make the `resize` and `preprocess` methods of `VaeImageProcessor` more generic (using TypeVar for instance)
+        # - Start by converting the image to a List[Tuple[ {image_format} ]], to unify the processing logic
+        # - Or duplicate the code, as done here.
+        # What do you think ?
+
+        # convert multiple_images to a list of tuple, to simplify following logic
+        if not isinstance(images, list):
+            images = [images]
+        # now multiple_images is a list of tuples.
+
+        img = images[0][0]
+        image_height, image_width = self.image_processor.get_default_height_width(img)
+        aspect_ratio = image_width / image_height
+        if _auto_resize:
+            # Kontext is trained on specific resolutions, using one of them is recommended
+            _, image_width, image_height = min(
+                (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS
+            )
+        image_width = image_width // multiple_of * multiple_of
+        image_height = image_height // multiple_of * multiple_of
+        n_image_per_batch = len(images[0])
+        output_images = []
+        for i in range(n_image_per_batch):
+            image = [batch_images[i] for batch_images in images]
+            image = self.image_processor.resize(image, image_height, image_width)
+            image = self.image_processor.preprocess(image, image_height, image_width)
+            output_images.append(image)
+        return output_images
+
     def prepare_latents(
         self,
-        image: Optional[torch.Tensor],
+        images: Optional[list[torch.Tensor]],
         batch_size: int,
         num_channels_latents: int,
         height: int,
@@ -665,33 +717,45 @@ class FluxKontextPipeline(
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
         shape = (batch_size, num_channels_latents, height, width)
 
-        image_latents = image_ids = None
-        if image is not None:
-            image = image.to(device=device, dtype=dtype)
-            if image.shape[1] != self.latent_channels:
-                image_latents = self._encode_vae_image(image=image, generator=generator)
-            else:
-                image_latents = image
-            if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
-                # expand init_latents for batch_size
-                additional_image_per_prompt = batch_size // image_latents.shape[0]
-                image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
-            elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
-                raise ValueError(
-                    f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
-                )
-            else:
-                image_latents = torch.cat([image_latents], dim=0)
+        all_image_latents = []
+        all_image_ids = []
+        image_latents = images_ids = None
+        if images is not None:
+            for i, image in enumerate(images):
+                image = image.to(device=device, dtype=dtype)
+                if image.shape[1] != self.latent_channels:
+                    image_latents = self._encode_vae_image(image=image, generator=generator)
+                else:
+                    image_latents = image
+                if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
+                    # expand init_latents for batch_size
+                    additional_image_per_prompt = batch_size // image_latents.shape[0]
+                    image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
+                elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
+                    raise ValueError(
+                        f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
+                    )
+                else:
+                    image_latents = torch.cat([image_latents], dim=0)
 
-            image_latent_height, image_latent_width = image_latents.shape[2:]
-            image_latents = self._pack_latents(
-                image_latents, batch_size, num_channels_latents, image_latent_height, image_latent_width
-            )
-            image_ids = self._prepare_latent_image_ids(
-                batch_size, image_latent_height // 2, image_latent_width // 2, device, dtype
-            )
-            # image ids are the same as latent ids with the first dimension set to 1 instead of 0
-            image_ids[..., 0] = 1
+                image_latent_height, image_latent_width = image_latents.shape[2:]
+                image_latents = self._pack_latents(
+                    image_latents, batch_size, num_channels_latents, image_latent_height, image_latent_width
+                )
+                image_ids = self._prepare_latent_image_ids(
+                    batch_size, image_latent_height // 2, image_latent_width // 2, device, dtype
+                )
+                # image ids are the same as latent ids with the first dimension set to 1 instead of 0
+                image_ids[..., 0] = 1
+
+                # set the image ids to the correct position in the latent grid
+                image_ids[..., 2] += i * (image_latent_height // 2)
+
+                all_image_ids.append(image_ids)
+                all_image_latents.append(image_latents)
+
+            image_latents = torch.cat(all_image_latents, dim=1)
+            image_ids = torch.cat(all_image_ids, dim=0)
 
         latent_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
@@ -757,6 +821,7 @@ class FluxKontextPipeline(
         max_sequence_length: int = 512,
         max_area: int = 1024**2,
         _auto_resize: bool = True,
+        multiple_images: Optional[PipelineSeveralImagesInput] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -858,6 +923,9 @@ class FluxKontextPipeline(
             max_area (`int`, defaults to `1024 ** 2`):
                 The maximum area of the generated image in pixels. The height and width will be adjusted to fit this
                 area while maintaining the aspect ratio.
+            multiple_images (`PipelineSeveralImagesInput`, *optional*):
+                A list of images to be used as reference images for the generation. If provided, the pipeline will
+                merge the reference images in the latent space.
 
         Examples:
 
@@ -953,19 +1021,16 @@ class FluxKontextPipeline(
             )
 
         # 3. Preprocess image
+        if image is not None and multiple_images is not None:
+            raise ValueError("Cannot pass both `image` and `multiple_images`. Please use only one of them.")
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
-            img = image[0] if isinstance(image, list) else image
-            image_height, image_width = self.image_processor.get_default_height_width(img)
-            aspect_ratio = image_width / image_height
-            if _auto_resize:
-                # Kontext is trained on specific resolutions, using one of them is recommended
-                _, image_width, image_height = min(
-                    (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS
-                )
-            image_width = image_width // multiple_of * multiple_of
-            image_height = image_height // multiple_of * multiple_of
-            image = self.image_processor.resize(image, image_height, image_width)
-            image = self.image_processor.preprocess(image, image_height, image_width)
+            image = [self.preprocess_image(image, _auto_resize=True, multiple_of=multiple_of)]
+        if multiple_images is not None:
+            image = self.preprocess_images(
+                multiple_images,
+                _auto_resize=_auto_resize,
+                multiple_of=multiple_of,
+            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4

@@ -35,6 +35,17 @@ PipelineImageInput = Union[
     List[torch.Tensor],
 ]
 
+PipelineSeveralImagesInput = Union[
+    Tuple[PIL.Image.Image, ...],
+    Tuple[np.ndarray, ...],
+    Tuple[torch.Tensor, ...],
+    List[Tuple[PIL.Image.Image,  ...]],
+    List[Tuple[np.ndarray,  ...]],
+    List[Tuple[torch.Tensor,  ...]],
+]
+
+
+
 PipelineDepthInput = PipelineImageInput
 
 
@@ -523,6 +534,16 @@ class VaeImageProcessor(ConfigMixin):
                 size=(height, width),
             )
             image = self.pt_to_numpy(image)
+        elif isinstance(image, tuple):
+            image = tuple(
+                self.resize(
+                    img,
+                    height=height,
+                    width=width,
+                    resize_mode=resize_mode,
+                )
+                for img in image
+            )
         return image
 
     def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
