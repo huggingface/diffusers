@@ -161,7 +161,50 @@ class Magi1ImageEmbedding(torch.nn.Module):
         return hidden_states
 
 
-class Magi1TimeTextImageEmbedding(nn.Module):
+class CaptionEmbedder(nn.Module):
+    """
+    Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
+    """
+
+    def __init__(self, caption_channels: int, hidden_size: int, caption_max_length: int):
+        super().__init__()
+
+        self.y_proj_xattn = nn.Sequential(nn.Linear(caption_channels, hidden_size), nn.SiLU())
+        self.y_proj_adaln = nn.Linear(caption_channels, int(hidden_size * 0.25))
+        self.null_caption_embedding = nn.Parameter(torch.empty(caption_max_length, caption_channels))
+
+    def caption_drop(self, caption, caption_dropout_mask):
+        """
+        Drops labels to enable classifier-free guidance.
+        caption.shape = (N, 1, cap_len, C)
+        """
+        dropped_caption = torch.where(
+            caption_dropout_mask[:, None, None, None],  # (N, 1, 1, 1)
+            self.null_caption_embedding[None, None, :],  # (1, 1, cap_len, C)
+            caption,  # (N, 1, cap_len, C)
+        )
+        return dropped_caption
+
+    def caption_drop_single_token(self, caption_dropout_mask):
+        dropped_caption = torch.where(
+            caption_dropout_mask[:, None, None],  # (N, 1, 1)
+            self.null_caption_embedding[None, -1, :],  # (1, 1, C)
+            self.null_caption_embedding[None, -2, :],  # (1, 1, C)
+        )
+        return dropped_caption  # (N, 1, C)
+
+    def forward(self, caption, train, caption_dropout_mask=None):
+        if train and caption_dropout_mask is not None:
+            caption = self.caption_drop(caption, caption_dropout_mask)
+        caption_xattn = self.y_proj_xattn(caption)
+        if caption_dropout_mask is not None:
+            caption = self.caption_drop_single_token(caption_dropout_mask)
+
+        caption_adaln = self.y_proj_adaln(caption)
+        return caption_xattn, caption_adaln
+
+
+class Magi1TimeTextCaptionEmbedding(nn.Module):
     """
     Combined time, text, and image embedding module for the MAGI-1 model.
 
@@ -173,7 +216,6 @@ class Magi1TimeTextImageEmbedding(nn.Module):
     Args:
         dim (`int`): Hidden dimension of the transformer model.
         time_freq_dim (`int`): Dimension for sinusoidal time embeddings.
-        time_proj_dim (`int`): Output dimension for time projection.
         text_embed_dim (`int`): Input dimension of text embeddings.
         image_embed_dim (`int`, optional): Input dimension of image embeddings.
         pos_embed_seq_len (`int`, optional): Sequence length for image positional embeddings.
@@ -183,17 +225,21 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         self,
         dim: int,
         time_freq_dim: int,
-        time_proj_dim: int,
         text_embed_dim: int,
         image_embed_dim: Optional[int] = None,
         pos_embed_seq_len: Optional[int] = None,
+        caption_channels: Optional[int] = None,
+        caption_max_length: Optional[int] = None,
     ):
         super().__init__()
 
         self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
-        self.act_fn = nn.SiLU()
-        self.time_proj = nn.Linear(dim, time_proj_dim)
+        # self.act_fn = nn.SiLU()
+        # self.time_proj = nn.Linear(dim, time_proj_dim)
+        self.caption_embedder = CaptionEmbedder(
+            in_channels=caption_channels, hidden_size=dim, caption_max_length=caption_max_length
+        )
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
 
         self.image_embedder = None
@@ -212,13 +258,14 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
             timestep = timestep.to(time_embedder_dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
-        timestep_proj = self.time_proj(self.act_fn(temb))
+        #timestep_proj = self.time_proj(self.act_fn(temb))
+        y_xattn, y_adaln = self.caption_embedder(encoder_hidden_states, self.training, caption_dropout_mask)
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)
         if encoder_hidden_states_image is not None:
             encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
 
-        return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
+        return temb, None, encoder_hidden_states, encoder_hidden_states_image
 
 
 class Magi1RotaryPosEmbed(nn.Module):
@@ -437,6 +484,8 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         image_embed_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
+        caption_channels: Optional[int] = None,
+        caption_max_length: Optional[int] = None,
     ) -> None:
         super().__init__()
 
@@ -474,13 +523,15 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             )
 
         # 2. Condition embeddings
-        self.condition_embedder = Magi1TimeTextImageEmbedding(
+        self.condition_embedder = Magi1TimeTextCaptionEmbedding(
             dim=inner_dim,
             time_freq_dim=freq_dim,
-            time_proj_dim=inner_dim * 6,
+            #time_proj_dim=inner_dim * 6,
             text_embed_dim=cross_attention_dim,
             image_embed_dim=image_embed_dim,
             pos_embed_seq_len=pos_embed_seq_len,
+            caption_channels=caption_channels,
+            caption_max_length=caption_max_length,
         )
 
         # 3. Transformer blocks
