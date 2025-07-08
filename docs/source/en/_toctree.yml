@@ -96,6 +96,8 @@
 - sections:
   - local: modular_diffusers/getting_started
     title: Getting Started
+  - local: modular_diffusers/components_manager
+    title: Components Manager
   - local: modular_diffusers/write_own_pipeline_block
     title: Write your own pipeline block
   - local: modular_diffusers/end_to_end_guide
