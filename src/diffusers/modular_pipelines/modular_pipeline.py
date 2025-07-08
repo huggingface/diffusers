@@ -83,12 +83,17 @@ class PipelineState:
 
     def set_input(self, key: str, value: Any, kwargs_type: str = None):
         """
-        Add an input to the pipeline state with optional metadata.
+        Add an input to the immutable pipeline state, i.e, pipeline_state.inputs.
+
+        The kwargs_type parameter allows you to associate inputs with specific input types.
+        For example, if you call set_input(prompt_embeds=..., kwargs_type="guider_kwargs"),
+        this input will be automatically fetched when a pipeline block has "guider_kwargs" 
+        in its expected_inputs list.
 
         Args:
             key (str): The key for the input
             value (Any): The input value
-            kwargs_type (str): The kwargs_type to store with the input
+            kwargs_type (str): The kwargs_type with which the input is associated
         """
         self.inputs[key] = value
         if kwargs_type is not None:
@@ -99,12 +104,17 @@ class PipelineState:
 
     def set_intermediate(self, key: str, value: Any, kwargs_type: str = None):
         """
-        Add an intermediate value to the pipeline state with optional metadata.
+        Add an intermediate value to the mutable pipeline state, i.e, pipeline_state.intermediates.
+
+        The kwargs_type parameter allows you to associate intermediate values with specific input types.
+        For example, if you call set_intermediate(latents=..., kwargs_type="latents_kwargs"),
+        this intermediate value will be automatically fetched when a pipeline block has "latents_kwargs" 
+        in its expected_intermediate_inputs list.
 
         Args:
             key (str): The key for the intermediate value
             value (Any): The intermediate value
-            kwargs_type (str): The kwargs_type to store with the intermediate value
+            kwargs_type (str): The kwargs_type with which the intermediate value is associated
         """
         self.intermediates[key] = value
         if kwargs_type is not None:
@@ -114,11 +124,31 @@ class PipelineState:
                 self.intermediate_kwargs[kwargs_type].append(key)
 
     def get_input(self, key: str, default: Any = None) -> Any:
+        """
+        Get an input from the pipeline state.
+
+        Args:
+            key (str): The key for the input
+            default (Any): The default value to return if the input is not found
+
+        Returns:
+            Any: The input value
+        """
         value = self.inputs.get(key, default)
         if value is not None:
             return deepcopy(value)
 
     def get_inputs(self, keys: List[str], default: Any = None) -> Dict[str, Any]:
+        """
+        Get multiple inputs from the pipeline state.
+
+        Args:
+            keys (List[str]): The keys for the inputs
+            default (Any): The default value to return if the input is not found
+
+        Returns:
+            Dict[str, Any]: Dictionary of inputs with matching keys
+        """
         return {key: self.inputs.get(key, default) for key in keys}
 
     def get_inputs_kwargs(self, kwargs_type: str) -> Dict[str, Any]:
@@ -148,12 +178,38 @@ class PipelineState:
         return self.get_intermediates(intermediate_names)
 
     def get_intermediate(self, key: str, default: Any = None) -> Any:
+        """
+        Get an intermediate value from the pipeline state.
+
+        Args:
+            key (str): The key for the intermediate value
+            default (Any): The default value to return if the intermediate value is not found
+
+        Returns:
+            Any: The intermediate value
+        """
         return self.intermediates.get(key, default)
 
     def get_intermediates(self, keys: List[str], default: Any = None) -> Dict[str, Any]:
+        """
+        Get multiple intermediate values from the pipeline state.
+
+        Args:
+            keys (List[str]): The keys for the intermediate values
+            default (Any): The default value to return if the intermediate value is not found
+
+        Returns:
+            Dict[str, Any]: Dictionary of intermediate values with matching keys
+        """
         return {key: self.intermediates.get(key, default) for key in keys}
 
     def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert PipelineState to a dictionary.
+
+        Returns:
+            Dict[str, Any]: Dictionary containing all attributes of the PipelineState
+        """
         return {**self.__dict__, "inputs": self.inputs, "intermediates": self.intermediates}
 
     def __repr__(self):
@@ -258,6 +314,14 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     """
     Base class for all Pipeline Blocks: PipelineBlock, AutoPipelineBlocks, SequentialPipelineBlocks,
     LoopSequentialPipelineBlocks
+
+    [`ModularPipelineBlocks`] provides method to load and save the defination of pipeline blocks.
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
     """
 
     config_name = "config.json"
@@ -350,9 +414,102 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             collection=collection,
         )
         return modular_pipeline
+    
+    @staticmethod
+    def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
+        """
+        Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if current
+        default value is None and new default value is not None. Warns if multiple non-None default values exist for the
+        same input.
+
+        Args:
+            named_input_lists: List of tuples containing (block_name, input_param_list) pairs
+
+        Returns:
+            List[InputParam]: Combined list of unique InputParam objects
+        """
+        combined_dict = {}  # name -> InputParam
+        value_sources = {}  # name -> block_name
+
+        for block_name, inputs in named_input_lists:
+            for input_param in inputs:
+                if input_param.name is None and input_param.kwargs_type is not None:
+                    input_name = "*_" + input_param.kwargs_type
+                else:
+                    input_name = input_param.name
+                if input_name in combined_dict:
+                    current_param = combined_dict[input_name]
+                    if (
+                        current_param.default is not None
+                        and input_param.default is not None
+                        and current_param.default != input_param.default
+                    ):
+                        warnings.warn(
+                            f"Multiple different default values found for input '{input_name}': "
+                            f"{current_param.default} (from block '{value_sources[input_name]}') and "
+                            f"{input_param.default} (from block '{block_name}'). Using {current_param.default}."
+                        )
+                    if current_param.default is None and input_param.default is not None:
+                        combined_dict[input_name] = input_param
+                        value_sources[input_name] = block_name
+                else:
+                    combined_dict[input_name] = input_param
+                    value_sources[input_name] = block_name
+
+        return list(combined_dict.values())
+
+    @staticmethod
+    def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) -> List[OutputParam]:
+        """
+        Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs, keeps the first
+        occurrence of each output name.
+
+        Args:
+            named_output_lists: List of tuples containing (block_name, output_param_list) pairs
+
+        Returns:
+            List[OutputParam]: Combined list of unique OutputParam objects
+        """
+        combined_dict = {}  # name -> OutputParam
+
+        for block_name, outputs in named_output_lists:
+            for output_param in outputs:
+                if (output_param.name not in combined_dict) or (
+                    combined_dict[output_param.name].kwargs_type is None and output_param.kwargs_type is not None
+                ):
+                    combined_dict[output_param.name] = output_param
+
+        return list(combined_dict.values())
+
+
 
 
 class PipelineBlock(ModularPipelineBlocks):
+    """
+    A Pipeline Block is the basic building block of a Modular Pipeline.
+
+    This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipeline blocks (such as loading or saving etc.)
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
+
+    Args:
+        description (str, optional): A description of the block, defaults to None. Define as a property in subclasses.
+        expected_components (List[ComponentSpec], optional): A list of components that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        expected_configs (List[ConfigSpec], optional): A list of configs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        inputs (List[InputParam], optional): A list of inputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        intermediate_inputs (List[InputParam], optional): A list of intermediate inputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        intermediate_outputs (List[OutputParam], optional): A list of intermediate outputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        outputs (List[OutputParam], optional): A list of outputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        required_inputs (List[str], optional): A list of required inputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        required_intermediate_inputs (List[str], optional): A list of required intermediate inputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        required_intermediate_outputs (List[str], optional): A list of required intermediate outputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+    """
+
     model_name = None
 
     def __init__(self):
@@ -548,75 +705,18 @@ class PipelineBlock(ModularPipelineBlocks):
                         state.set_intermediate(param_name, param, input_param.kwargs_type)
 
 
-def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
-    """
-    Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if current
-    default value is None and new default value is not None. Warns if multiple non-None default values exist for the
-    same input.
-
-    Args:
-        named_input_lists: List of tuples containing (block_name, input_param_list) pairs
-
-    Returns:
-        List[InputParam]: Combined list of unique InputParam objects
-    """
-    combined_dict = {}  # name -> InputParam
-    value_sources = {}  # name -> block_name
-
-    for block_name, inputs in named_input_lists:
-        for input_param in inputs:
-            if input_param.name is None and input_param.kwargs_type is not None:
-                input_name = "*_" + input_param.kwargs_type
-            else:
-                input_name = input_param.name
-            if input_name in combined_dict:
-                current_param = combined_dict[input_name]
-                if (
-                    current_param.default is not None
-                    and input_param.default is not None
-                    and current_param.default != input_param.default
-                ):
-                    warnings.warn(
-                        f"Multiple different default values found for input '{input_name}': "
-                        f"{current_param.default} (from block '{value_sources[input_name]}') and "
-                        f"{input_param.default} (from block '{block_name}'). Using {current_param.default}."
-                    )
-                if current_param.default is None and input_param.default is not None:
-                    combined_dict[input_name] = input_param
-                    value_sources[input_name] = block_name
-            else:
-                combined_dict[input_name] = input_param
-                value_sources[input_name] = block_name
-
-    return list(combined_dict.values())
-
-
-def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) -> List[OutputParam]:
-    """
-    Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs, keeps the first
-    occurrence of each output name.
-
-    Args:
-        named_output_lists: List of tuples containing (block_name, output_param_list) pairs
-
-    Returns:
-        List[OutputParam]: Combined list of unique OutputParam objects
-    """
-    combined_dict = {}  # name -> OutputParam
-
-    for block_name, outputs in named_output_lists:
-        for output_param in outputs:
-            if (output_param.name not in combined_dict) or (
-                combined_dict[output_param.name].kwargs_type is None and output_param.kwargs_type is not None
-            ):
-                combined_dict[output_param.name] = output_param
-
-    return list(combined_dict.values())
-
-
 class AutoPipelineBlocks(ModularPipelineBlocks):
     """
-    A class that automatically selects a block to run based on the inputs.
+    A Pipeline Blocks that automatically selects a block to run based on the inputs.
+
+    This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipeline blocks (such as loading or saving etc.)
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
 
     Attributes:
         block_classes: List of block classes to be used
@@ -713,7 +813,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
-        combined_inputs = combine_inputs(*named_inputs)
+        combined_inputs = self.combine_inputs(*named_inputs)
         # mark Required inputs only if that input is required by all the blocks
         for input_param in combined_inputs:
             if input_param.name in self.required_inputs:
@@ -725,7 +825,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     @property
     def intermediate_inputs(self) -> List[str]:
         named_inputs = [(name, block.intermediate_inputs) for name, block in self.sub_blocks.items()]
-        combined_inputs = combine_inputs(*named_inputs)
+        combined_inputs = self.combine_inputs(*named_inputs)
         # mark Required inputs only if that input is required by all the blocks
         for input_param in combined_inputs:
             if input_param.name in self.required_intermediate_inputs:
@@ -737,13 +837,13 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
-        combined_outputs = combine_outputs(*named_outputs)
+        combined_outputs = self.combine_outputs(*named_outputs)
         return combined_outputs
 
     @property
     def outputs(self) -> List[str]:
         named_outputs = [(name, block.outputs) for name, block in self.sub_blocks.items()]
-        combined_outputs = combine_outputs(*named_outputs)
+        combined_outputs = self.combine_outputs(*named_outputs)
         return combined_outputs
 
     @torch.no_grad()
@@ -897,7 +997,20 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
 
 class SequentialPipelineBlocks(ModularPipelineBlocks):
     """
-    A class that combines multiple pipeline block classes into one. When called, it will call each block in sequence.
+    A Pipeline Blocks that combines multiple pipeline block classes into one. When called, it will call each block in sequence.
+
+    This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipeline blocks (such as loading or saving etc.)
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
+
+    Attributes:
+        block_classes: List of block classes to be used
+        block_names: List of prefixes for each block
     """
 
     block_classes = []
@@ -990,7 +1103,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     def get_inputs(self):
         named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
-        combined_inputs = combine_inputs(*named_inputs)
+        combined_inputs = self.combine_inputs(*named_inputs)
         # mark Required inputs only if that input is required any of the blocks
         for input_param in combined_inputs:
             if input_param.name in self.required_inputs:
@@ -1036,7 +1149,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             # filter out them here so they do not end up as intermediate_outputs
             if name not in inp_names:
                 named_outputs.append((name, block.intermediate_outputs))
-        combined_outputs = combine_outputs(*named_outputs)
+        combined_outputs = self.combine_outputs(*named_outputs)
         return combined_outputs
 
     # YiYi TODO: I think we can remove the outputs property
@@ -1258,11 +1371,23 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         )
 
 
-# YiYi TODO: __repr__
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     """
-    A class that combines multiple pipeline block classes into a For Loop. When called, it will call each block in
+    A Pipeline blocks that combines multiple pipeline block classes into a For Loop. When called, it will call each block in
     sequence.
+
+    This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipeline blocks (such as loading or saving etc.)
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
+
+    Attributes:
+        block_classes: List of block classes to be used
+        block_names: List of prefixes for each block
     """
 
     model_name = None
@@ -1343,7 +1468,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     def get_inputs(self):
         named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
         named_inputs.append(("loop", self.loop_inputs))
-        combined_inputs = combine_inputs(*named_inputs)
+        combined_inputs = self.combine_inputs(*named_inputs)
         # mark Required inputs only if that input is required any of the blocks
         for input_param in combined_inputs:
             if input_param.name in self.required_inputs:
@@ -1423,7 +1548,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
-        combined_outputs = combine_outputs(*named_outputs)
+        combined_outputs = self.combine_outputs(*named_outputs)
         for output in self.loop_intermediate_outputs:
             if output.name not in {output.name for output in combined_outputs}:
                 combined_outputs.append(output)
@@ -1644,10 +1769,16 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 # YiYi TODO:
 # 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
 # 2. do we need ConfigSpec? the are basically just key/val kwargs
-# 4. add validator for methods where we accpet kwargs to be passed to from_pretrained()
+# 3. imnprove docstring and potentially add validator for methods where we accpet kwargs to be passed to from_pretrained/save_pretrained/load_default_components(), load_components()
 class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines.
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
 
     Args:
         blocks: ModularPipelineBlocks, the blocks to be used in the pipeline
@@ -1669,12 +1800,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Initialize a ModularPipeline instance.
 
         This method sets up the pipeline by:
-        1. creating default pipeline blocks if not provided
-        2. gather component and config specifications based on the pipeline blocks's requirement (e.g.
+        - creating default pipeline blocks if not provided
+        - gather component and config specifications based on the pipeline blocks's requirement (e.g.
            expected_components, expected_configs)
-        3. update the loading specs of from_pretrained components based on the modular_model_index.json file from
+        - update the loading specs of from_pretrained components based on the modular_model_index.json file from
            huggingface hub if `pretrained_model_name_or_path` is provided
-        4. create defaultfrom_config components and register everything
+        - create defaultfrom_config components and register everything
 
         Args:
             blocks: `ModularPipelineBlocks` instance. If None, will attempt to load
@@ -1866,7 +1997,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Load from_pretrained components using the loading specs in the config dict.
 
         Args:
-            **kwargs: Additional arguments passed to `load_components()` method
+            **kwargs: Additional arguments passed to `from_pretrained` method, e.g. torch_dtype, cache_dir, etc.
         """
         names = [
             name

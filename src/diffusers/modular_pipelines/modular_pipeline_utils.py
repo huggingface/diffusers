@@ -66,7 +66,7 @@ class InsertableDict(OrderedDict):
 
 # YiYi TODO:
 # 1. validate the dataclass fields
-# 2. add a validator for create_* methods, make sure they are valid inputs to pass to from_pretrained()
+# 2. improve the docstring and potentially add a validator for load methods, make sure they are valid inputs to pass to from_pretrained()
 @dataclass
 class ComponentSpec:
     """Specification for a pipeline component.

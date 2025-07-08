@@ -347,6 +347,17 @@ def get_group_name(name, group_params_keys=DEFAULT_PARAMS_GROUPS_KEYS):
 
 
 class ModularNode(ConfigMixin):
+    """
+    A ModularNode is a base class to build UI nodes using diffusers. Currently only supports Mellon.
+    It is a wrapper around a ModularPipelineBlocks object.
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
+    """
+
     config_name = "node_config.json"
 
     @classmethod
@@ -496,7 +507,7 @@ class ModularNode(ConfigMixin):
         self.register_to_config(**register_dict)
 
     def setup(self, components_manager, collection=None):
-        self.blocks.setup_loader(components_manager=components_manager, collection=collection)
+        self.pipeline = self.blocks.init_pipeline(components_manager=components_manager, collection=collection)
         self._components_manager = components_manager
 
     @property
@@ -649,6 +660,6 @@ class ModularNode(ConfigMixin):
     def execute(self, **kwargs):
         params_components, params_run, return_output_names = self.process_inputs(**kwargs)
 
-        self.blocks.loader.update(**params_components)
-        output = self.blocks.run(**params_run, output=return_output_names)
+        self.pipeline.update_components(**params_components)
+        output = self.pipeline(**params_run, output=return_output_names)
         return output

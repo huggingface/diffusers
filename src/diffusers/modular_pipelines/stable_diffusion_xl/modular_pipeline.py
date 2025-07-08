@@ -44,6 +44,16 @@ class StableDiffusionXLModularPipeline(
     StableDiffusionXLLoraLoaderMixin,
     ModularIPAdapterMixin,
 ):
+    """
+    A ModularPipeline for Stable Diffusion XL.
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
+    """
+
     @property
     def default_height(self):
         return self.default_sample_size * self.vae_scale_factor

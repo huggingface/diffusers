@@ -142,7 +142,7 @@ def custom_offload_with_hook(
     user_hook.attach()
     return user_hook
 
-
+# this is the class that user can customize to implement their own offload strategy
 class AutoOffloadStrategy:
     """
     Offload strategy that should be used with `CustomOffloadHook` to automatically offload models to the CPU based on
@@ -213,7 +213,101 @@ class AutoOffloadStrategy:
         return hooks_to_offload
 
 
+# utils for display component info in a readable format
+# TODO: move to a different file
+def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Summarizes a dictionary by finding common prefixes that share the same value.
+
+    For a dictionary with dot-separated keys like: {
+        'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor': [0.6],
+        'down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor': [0.6],
+        'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor': [0.3],
+    }
+
+    Returns a dictionary where keys are the shortest common prefixes and values are their shared values: {
+        'down_blocks': [0.6], 'up_blocks': [0.3]
+    }
+    """
+    # First group by values - convert lists to tuples to make them hashable
+    value_to_keys = {}
+    for key, value in d.items():
+        value_tuple = tuple(value) if isinstance(value, list) else value
+        if value_tuple not in value_to_keys:
+            value_to_keys[value_tuple] = []
+        value_to_keys[value_tuple].append(key)
+
+    def find_common_prefix(keys: List[str]) -> str:
+        """Find the shortest common prefix among a list of dot-separated keys."""
+        if not keys:
+            return ""
+        if len(keys) == 1:
+            return keys[0]
+
+        # Split all keys into parts
+        key_parts = [k.split(".") for k in keys]
+
+        # Find how many initial parts are common
+        common_length = 0
+        for parts in zip(*key_parts):
+            if len(set(parts)) == 1:  # All parts at this position are the same
+                common_length += 1
+            else:
+                break
+
+        if common_length == 0:
+            return ""
+
+        # Return the common prefix
+        return ".".join(key_parts[0][:common_length])
+
+    # Create summary by finding common prefixes for each value group
+    summary = {}
+    for value_tuple, keys in value_to_keys.items():
+        prefix = find_common_prefix(keys)
+        if prefix:  # Only add if we found a common prefix
+            # Convert tuple back to list if it was originally a list
+            value = list(value_tuple) if isinstance(d[keys[0]], list) else value_tuple
+            summary[prefix] = value
+        else:
+            summary[""] = value  # Use empty string if no common prefix
+
+    return summary
+
+
 class ComponentsManager:
+    """
+    A central registry and management system for model components across multiple pipelines.
+    
+    [`ComponentsManager`] provides a unified way to register, track, and reuse model components
+    (like UNet, VAE, text encoders, etc.) across different modular pipelines. It includes
+    features for duplicate detection, memory management, and component organization.
+    
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
+        
+    Example:
+        ```python
+        from diffusers import ComponentsManager
+        
+        # Create a components manager
+        cm = ComponentsManager()
+        
+        # Add components
+        cm.add("unet", unet_model, collection="sdxl")
+        cm.add("vae", vae_model, collection="sdxl")
+        
+        # Enable auto offloading
+        cm.enable_auto_cpu_offload(device="cuda")
+        
+        # Retrieve components
+        unet = cm.get_one(name="unet", collection="sdxl")
+        ```
+    """
+
+
     _available_info_fields = [
         "model_id",
         "added_time",
@@ -278,7 +372,19 @@ class ComponentsManager:
     def _id_to_name(component_id: str):
         return "_".join(component_id.split("_")[:-1])
 
-    def add(self, name, component, collection: Optional[str] = None):
+    def add(self, name: str, component: Any, collection: Optional[str] = None):
+        """
+        Add a component to the ComponentsManager.
+
+        Args:
+            name (str): The name of the component
+            component (Any): The component to add
+            collection (Optional[str]): The collection to add the component to
+
+        Returns:
+            str: The unique component ID, which is generated as "{name}_{id(component)}" where 
+                 id(component) is Python's built-in unique identifier for the object
+        """
         component_id = f"{name}_{id(component)}"
 
         # check for duplicated components
@@ -334,6 +440,12 @@ class ComponentsManager:
         return component_id
 
     def remove(self, component_id: str = None):
+        """
+        Remove a component from the ComponentsManager.
+
+        Args:
+            component_id (str): The ID of the component to remove
+        """
         if component_id not in self.components:
             logger.warning(f"Component '{component_id}' not found in ComponentsManager")
             return
@@ -545,6 +657,22 @@ class ComponentsManager:
         return get_return_dict(matches, return_dict_with_names)
 
     def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = "cuda", memory_reserve_margin="3GB"):
+        """
+        Enable automatic CPU offloading for all components.
+
+        The algorithm works as follows:
+        1. All models start on CPU by default
+        2. When a model's forward pass is called, it's moved to the execution device
+        3. If there's insufficient memory, other models on the device are moved back to CPU
+        4. The system tries to offload the smallest combination of models that frees enough memory
+        5. Models stay on the execution device until another model needs memory and forces them off
+
+        Args:
+            device (Union[str, int, torch.device]): The execution device where models are moved for forward passes
+            memory_reserve_margin (str): The memory reserve margin to use, default is 3GB. This is the amount of 
+                                        memory to keep free on the device to avoid running out of memory during 
+                                        model execution (e.g., for intermediate activations, gradients, etc.)
+        """
         if not is_accelerate_available():
             raise ImportError("Make sure to install accelerate to use auto_cpu_offload")
 
@@ -574,6 +702,9 @@ class ComponentsManager:
         self._auto_offload_device = device
 
     def disable_auto_cpu_offload(self):
+        """
+        Disable automatic CPU offloading for all components.
+        """
         if self.model_hooks is None:
             self._auto_offload_enabled = False
             return
@@ -595,13 +726,12 @@ class ComponentsManager:
         """Get comprehensive information about a component.
 
         Args:
-            component_id: Name of the component to get info for
-            fields: Optional field(s) to return. Can be a string for single field or list of fields.
+            component_id (str): Name of the component to get info for
+            fields (Optional[Union[str, List[str]]]): Field(s) to return. Can be a string for single field or list of fields.
                    If None, uses the available_info_fields setting.
 
         Returns:
-            Dictionary containing requested component metadata. If fields is specified, returns only those fields. If a
-            single field is requested as string, returns just that field's value.
+            Dictionary containing requested component metadata. If fields is specified, returns only those fields. Otherwise, returns all fields.
         """
         if component_id not in self.components:
             raise ValueError(f"Component '{component_id}' not found in ComponentsManager")
@@ -808,15 +938,16 @@ class ComponentsManager:
         load_id: Optional[str] = None,
     ) -> Any:
         """
-        Get a single component by either: (1) searching name (pattern matching), collection, or load_id. (2) passing in
-        a component_id Raises an error if multiple components match or none are found. support pattern matching for
-        name
+        Get a single component by either: 
+        - searching name (pattern matching), collection, or load_id. 
+        - passing in a component_id
+        Raises an error if multiple components match or none are found. 
 
         Args:
-            component_id: Optional component ID to get
-            name: Component name or pattern
-            collection: Optional collection to filter by
-            load_id: Optional load_id to filter by
+            component_id (Optional[str]): Optional component ID to get
+            name (Optional[str]): Component name or pattern
+            collection (Optional[str]): Optional collection to filter by
+            load_id (Optional[str]): Optional load_id to filter by
 
         Returns:
             A single component
@@ -847,6 +978,13 @@ class ComponentsManager:
     def get_ids(self, names: Union[str, List[str]] = None, collection: Optional[str] = None):
         """
         Get component IDs by a list of names, optionally filtered by collection.
+
+        Args:
+            names (Union[str, List[str]]): List of component names
+            collection (Optional[str]): Optional collection to filter by
+
+        Returns:
+            List[str]: List of component IDs
         """
         ids = set()
         if not isinstance(names, list):
@@ -858,6 +996,20 @@ class ComponentsManager:
     def get_components_by_ids(self, ids: List[str], return_dict_with_names: Optional[bool] = True):
         """
         Get components by a list of IDs.
+
+        Args:
+            ids (List[str]): 
+                List of component IDs
+            return_dict_with_names (Optional[bool]):
+                Whether to return a dictionary with component names as keys:
+
+        Returns:
+            Dict[str, Any]: Dictionary of components. 
+                - If return_dict_with_names=True, keys are component names.
+                - If return_dict_with_names=False, keys are component IDs.
+
+        Raises:
+            ValueError: If duplicate component names are found in the search results when return_dict_with_names=True
         """
         components = {id: self.components[id] for id in ids}
 
@@ -877,65 +1029,17 @@ class ComponentsManager:
     def get_components_by_names(self, names: List[str], collection: Optional[str] = None):
         """
         Get components by a list of names, optionally filtered by collection.
+
+        Args:
+            names (List[str]): List of component names
+            collection (Optional[str]): Optional collection to filter by
+
+        Returns:
+            Dict[str, Any]: Dictionary of components with component names as keys
+
+        Raises:
+            ValueError: If duplicate component names are found in the search results
         """
         ids = self.get_ids(names, collection)
         return self.get_components_by_ids(ids)
 
-
-def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Summarizes a dictionary by finding common prefixes that share the same value.
-
-    For a dictionary with dot-separated keys like: {
-        'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor': [0.6],
-        'down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor': [0.6],
-        'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor': [0.3],
-    }
-
-    Returns a dictionary where keys are the shortest common prefixes and values are their shared values: {
-        'down_blocks': [0.6], 'up_blocks': [0.3]
-    }
-    """
-    # First group by values - convert lists to tuples to make them hashable
-    value_to_keys = {}
-    for key, value in d.items():
-        value_tuple = tuple(value) if isinstance(value, list) else value
-        if value_tuple not in value_to_keys:
-            value_to_keys[value_tuple] = []
-        value_to_keys[value_tuple].append(key)
-
-    def find_common_prefix(keys: List[str]) -> str:
-        """Find the shortest common prefix among a list of dot-separated keys."""
-        if not keys:
-            return ""
-        if len(keys) == 1:
-            return keys[0]
-
-        # Split all keys into parts
-        key_parts = [k.split(".") for k in keys]
-
-        # Find how many initial parts are common
-        common_length = 0
-        for parts in zip(*key_parts):
-            if len(set(parts)) == 1:  # All parts at this position are the same
-                common_length += 1
-            else:
-                break
-
-        if common_length == 0:
-            return ""
-
-        # Return the common prefix
-        return ".".join(key_parts[0][:common_length])
-
-    # Create summary by finding common prefixes for each value group
-    summary = {}
-    for value_tuple, keys in value_to_keys.items():
-        prefix = find_common_prefix(keys)
-        if prefix:  # Only add if we found a common prefix
-            # Convert tuple back to list if it was originally a list
-            value = list(value_tuple) if isinstance(d[keys[0]], list) else value_tuple
-            summary[prefix] = value
-        else:
-            summary[""] = value  # Use empty string if no common prefix
-
-    return summary
