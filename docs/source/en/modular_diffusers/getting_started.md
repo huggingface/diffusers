@@ -805,23 +805,6 @@ PerturbedAttentionGuidance {
   "perturbed_guidance_scale": 2.5,
   "perturbed_guidance_start": 0.01,
   "perturbed_guidance_stop": 0.2,
-  "skip_layer_config": [
-    {
-      "dropout": 1.0,
-      "fqn": "mid_block.attentions.0.transformer_blocks",
-      "indices": [
-        2,
-        9
-      ],
-      "skip_attention": false,
-      "skip_attention_scores": true,
-      "skip_ff": false
-    }
-  ],
-  "skip_layer_guidance_layers": null,
-  "skip_layer_guidance_scale": 2.5,
-  "skip_layer_guidance_start": 0.01,
-  "skip_layer_guidance_stop": 0.2,
   "start": 0.0,
   "stop": 1.0,
   "use_original_formulation": false
@@ -833,7 +816,7 @@ The component spec has also been updated to reflect the new guider type:
 
 ```py
 >>> t2i_pipeline.get_component_spec("guider")
-ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.perturbed_attention_guidance.PerturbedAttentionGuidance'>, description=None, config=FrozenDict([('guidance_scale', 5.0), ('perturbed_guidance_scale', 2.5), ('perturbed_guidance_start', 0.01), ('perturbed_guidance_stop', 0.2), ('perturbed_guidance_layers', None), ('perturbed_guidance_config', LayerSkipConfig(indices=[2, 9], fqn='mid_block.attentions.0.transformer_blocks', skip_attention=False, skip_attention_scores=True, skip_ff=False, dropout=1.0)), ('guidance_rescale', 0.0), ('use_original_formulation', False), ('start', 0.0), ('stop', 1.0), ('_use_default_values', ['use_original_formulation', 'perturbed_guidance_stop', 'stop', 'guidance_rescale', 'start', 'perturbed_guidance_layers', 'perturbed_guidance_start']), ('skip_layer_guidance_scale', 2.5), ('skip_layer_guidance_start', 0.01), ('skip_layer_guidance_stop', 0.2), ('skip_layer_guidance_layers', None), ('skip_layer_config', [LayerSkipConfig(indices=[2, 9], fqn='mid_block.attentions.0.transformer_blocks', skip_attention=False, skip_attention_scores=True, skip_ff=False, dropout=1.0)]), ('_class_name', 'PerturbedAttentionGuidance'), ('_diffusers_version', '0.35.0.dev0')]), repo=None, subfolder=None, variant=None, revision=None, default_creation_method='from_config')
+ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.perturbed_attention_guidance.PerturbedAttentionGuidance'>, description=None, config=FrozenDict([('guidance_scale', 5.0), ('perturbed_guidance_scale', 2.5), ('perturbed_guidance_start', 0.01), ('perturbed_guidance_stop', 0.2), ('perturbed_guidance_layers', None), ('perturbed_guidance_config', LayerSkipConfig(indices=[2, 9], fqn='mid_block.attentions.0.transformer_blocks', skip_attention=False, skip_attention_scores=True, skip_ff=False, dropout=1.0)), ('guidance_rescale', 0.0), ('use_original_formulation', False), ('start', 0.0), ('stop', 1.0), ('_use_default_values', ['use_original_formulation', 'perturbed_guidance_stop', 'stop', 'guidance_rescale', 'start', 'perturbed_guidance_layers', 'perturbed_guidance_start']), ('_class_name', 'PerturbedAttentionGuidance'), ('_diffusers_version', '0.35.0.dev0')]), repo=None, subfolder=None, variant=None, revision=None, default_creation_method='from_config')
 ```
 
 However, the "guider" is still not included in the pipeline config and will not be saved into the `modular_model_index.json` since it remains a `from_config` component: 
@@ -908,14 +891,9 @@ Of course, you can also directly modify the `modular_model_index.json` to add a 
 
 <Tip>
 
-💡 **Guidance Techniques Summary**: 
-- **ClassifierFreeGuidance (CFG)**: The standard choice, best for general use and prompt adherence
-- **PerturbedAttentionGuidance (PAG)**: Enhances attention-based features by perturbing attention mechanisms
-- **SkipLayerGuidance (SLG)**: Improves structure and anatomy coherence by skipping specific layers
-- **SmoothedEnergyGuidance (SEG)**: Helps with energy distribution smoothing
-- **AdaptiveProjectedGuidance (APG)**: Adaptive guidance that projects predictions for better quality
+Experiment with different techniques and parameters to find what works best for your specific use case! You can find all the guider class we support [here](TODO: API doc)
 
-Experiment with different techniques and parameters to find what works best for your specific use case! Additionally, you can write your own guider implementations, for example, CFG Zero* combined with Skip Layer Guidance, and they should be compatible out-of-the-box with modular diffusers!
+Additionally, you can write your own guider implementations, for example, CFG Zero* combined with Skip Layer Guidance, and they should be compatible out-of-the-box with modular diffusers!
 
 </Tip>
 
