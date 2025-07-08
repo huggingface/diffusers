@@ -692,9 +692,9 @@ ComponentSpec(
 
 ### Customizing Guidance Techniques
 
-Guiders are guidance techniques that can be applied during the denoising process to improve generation quality, control, and adherence to prompts. They work by modifying the noise predictions or model behavior to steer the generation process in desired directions. In diffusers, guiders are implemented as subclasses of `BaseGuidance` and can be easily integrated into modular pipelines, providing a flexible way to enhance generation quality without modifying the underlying diffusion models.
+Guiders are implementations of different [classifier-free guidance](https://huggingface.co/papers/2207.12598) techniques that can be applied during the denoising process to improve generation quality, control, and adherence to prompts. They work by steering the model predictions towards desired directions and away from undesired directions. In diffusers, guiders are implemented as subclasses of `BaseGuidance`. They can easily be integrated into modular pipelines and provide a flexible way to enhance generation quality without modifying the underlying diffusion models.
 
-**ClassifierFreeGuidance (CFG)** is the first and most common guidance technique, used in all our standard pipelines. But we offer many more guidance techniques beyond CFG, including **PerturbedAttentionGuidance (PAG)**, **SkipLayerGuidance (SLG)**, **SmoothedEnergyGuidance (SEG)**, and others that can provide even better results for specific use cases.
+**ClassifierFreeGuidance (CFG)** is the first and most common guidance technique, used in all our standard pipelines. We also offer many other guidance techniques from the latest research in this area - **PerturbedAttentionGuidance (PAG)**, **SkipLayerGuidance (SLG)**, **SmoothedEnergyGuidance (SEG)**, and others that can provide better results for specific use cases.
 
 This section demonstrates how to use guiders using the component updating methods we just learned. Since `BaseGuidance` components are stateless (similar to schedulers), they are typically created with default configurations during pipeline initialization using `default_creation_method='from_config'`. This means they don't require loading specs from the repository - you won't see guider listed in `modular_model_index.json` files.
 
@@ -756,7 +756,7 @@ ClassifierFreeGuidance {
 
 #### Switch to a Different Guider Type
 
-Since guiders are `from_config` components (ConfigMixin objects), you can pass guider objects directly to switch between different guidance techniques:
+Switching between guidance techniques is as simple as passing a guider object of that technique:
 
 ```py
 from diffusers import LayerSkipConfig, PerturbedAttentionGuidance
@@ -776,7 +776,7 @@ ModularPipeline.update_components: adding guider with new type: PerturbedAttenti
 <Tip>
 
 💡 **Component Loading Methods**: 
-- For `from_config` components (like guiders, schedulers): You can pass the object directly OR pass a ComponentSpec directly (which calls `create()` under the hood)
+- For `from_config` components (like guiders, schedulers): You can pass an object of required type OR pass a ComponentSpec directly (which calls `create()` under the hood)
 - For `from_pretrained` components (like models): You must use ComponentSpec to ensure proper tagging and loading
 
 </Tip>
@@ -915,7 +915,7 @@ Of course, you can also directly modify the `modular_model_index.json` to add a 
 - **SmoothedEnergyGuidance (SEG)**: Helps with energy distribution smoothing
 - **AdaptiveProjectedGuidance (APG)**: Adaptive guidance that projects predictions for better quality
 
-Experiment with different techniques and parameters to find what works best for your specific use case!
+Experiment with different techniques and parameters to find what works best for your specific use case! Additionally, you can write your own guider implementations, for example, CFG Zero* combined with Skip Layer Guidance, and they should be compatible out-of-the-box with modular diffusers!
 
 </Tip>
 
