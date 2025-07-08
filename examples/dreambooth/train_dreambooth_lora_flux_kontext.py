@@ -1844,6 +1844,7 @@ def main(args):
             sigma = sigma.unsqueeze(-1)
         return sigma
 
+    has_guidance = unwrap_model(transformer).config.guidance_embeds
     for epoch in range(first_epoch, args.num_train_epochs):
         transformer.train()
         if args.train_text_encoder:
@@ -1906,10 +1907,12 @@ def main(args):
                         cond_pixel_values = batch["cond_pixel_values"].to(dtype=vae.dtype)
                     if args.vae_encode_mode == "sample":
                         model_input = vae.encode(pixel_values).latent_dist.sample()
-                        cond_model_input = vae.encode(cond_pixel_values).latent_dist.sample()
+                        if has_image_input:
+                            cond_model_input = vae.encode(cond_pixel_values).latent_dist.sample()
                     else:
                         model_input = vae.encode(pixel_values).latent_dist.mode()
-                        cond_model_input = vae.encode(cond_pixel_values).latent_dist.mode()
+                        if has_image_input:
+                            cond_model_input = vae.encode(cond_pixel_values).latent_dist.mode()
                 model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
                 if has_image_input:
@@ -1975,8 +1978,10 @@ def main(args):
                     packed_noisy_model_input = torch.cat([packed_noisy_model_input, packed_cond_input], dim=1)
 
                 # Kontext always has guidance
-                guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
-                guidance = guidance.expand(model_input.shape[0])
+                guidance = None
+                if has_guidance:
+                    guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
+                    guidance = guidance.expand(model_input.shape[0])
 
                 # Predict the noise residual
                 model_pred = transformer(
