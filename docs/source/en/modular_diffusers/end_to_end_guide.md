@@ -12,6 +12,12 @@ specific language governing permissions and limitations under the License.
 
 # End-to-End Developer Guide: Building with Modular Diffusers
 
+<Tip warning={true}>
+
+🧪 **Experimental Feature**: Modular Diffusers is an experimental feature we are actively developing. The API may be subject to breaking changes.
+
+</Tip>
+
 
 In this tutorial we will walk through the process of adding a new pipeline to the modular framework using differential diffusion as our example. We'll cover the complete workflow from implementation to deployment: implementing the new pipeline, ensuring compatibility with existing tools, sharing the code on Hugging Face Hub, and deploying it as a UI node. 
 
@@ -164,7 +170,7 @@ We will use this example script:
 >>> prompt = "a green pear"
 >>> negative_prompt = "blurry"
 >>> 
->>> image = dd_pipeline.run(
+>>> image = dd_pipeline(
 ...     prompt=prompt,
 ...     negative_prompt=negative_prompt,
 ...     num_inference_steps=25,

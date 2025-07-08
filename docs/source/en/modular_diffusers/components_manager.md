@@ -12,6 +12,12 @@ specific language governing permissions and limitations under the License.
 
 # Components Manager
 
+<Tip warning={true}>
+
+🧪 **Experimental Feature**: This is an experimental feature we are actively developing. The API may be subject to breaking changes.
+
+</Tip>
+
 The Components Manager is a central model registry and management system in diffusers. It lets you add models then reuse them across multiple pipelines and workflows. It tracks all models in one place with useful metadata such as model size, device placement and loaded adapters (LoRA, IP-Adapter). It has mechanisms in place to prevent duplicate model instances, enables memory-efficient sharing. Most significantly, it offers offloading that works across pipelines — unlike regular DiffusionPipeline offloading which is limited to one pipeline with predefined sequences, the Components Manager automatically manages your device memory across all your models and workflows. 
 
 

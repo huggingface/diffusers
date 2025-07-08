@@ -12,6 +12,12 @@ specific language governing permissions and limitations under the License.
 
 # Getting Started with Modular Diffusers: A Comprehensive Overview
 
+<Tip warning={true}>
+
+🧪 **Experimental Feature**: Modular Diffusers is an experimental feature we are actively developing. The API may be subject to breaking changes.
+
+</Tip>
+
 With Modular Diffusers, we introduce a unified pipeline system that simplifies how you work with diffusion models. Instead of creating separate pipelines for each task, Modular Diffusers lets you:
 
 **Write Only What's New**: You won't need to write an entire pipeline from scratch every time you have a new use case. You can create pipeline blocks just for your new workflow's unique aspects and reuse existing blocks for existing functionalities. 
