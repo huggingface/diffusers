@@ -784,6 +784,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         ref_prod_injection_steps: Optional[Union[int, List[int]]] = 22, # modified for injecting ref product images
         inpainting_starting_step: Optional[int] = 0, # modified for starting inpainting
         inpainting_ending_step: Optional[int] = 0, # modified for starting inpainting
+        shadow_step: Optional[int] = 0, # modified for shadow
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -1511,6 +1512,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 if mask_image_original is not None:
                     init_mask_ref_prod = mask_original
                     if len(mask_image_original) == 1:
+                        if i < shadow_step:
+                            init_mask_ref_prod = init_mask
                         if i < ref_prod_injection_steps[0]:
                             latents = (1 - (init_mask -init_mask_ref_prod)) * init_latents_proper + (init_mask -init_mask_ref_prod) * latents
                         else:
@@ -1521,6 +1524,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                             if i < tmp_ref_prod_injection_steps:
                                 init_mask_ref_prod_all += tmp_init_mask_ref_prod
                         
+                        if i < shadow_step:
+                            init_mask_ref_prod_all = init_mask
                         latents = (1 - (init_mask - init_mask_ref_prod_all)) * init_latents_proper + (init_mask - init_mask_ref_prod_all) * latents   
                 else:
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
