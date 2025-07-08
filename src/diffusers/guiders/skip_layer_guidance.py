@@ -20,15 +20,11 @@ import torch
 from ..configuration_utils import register_to_config
 from ..hooks import HookRegistry, LayerSkipConfig
 from ..hooks.layer_skip import _apply_layer_skip_hook
-from ..utils import get_logger
 from .guider_utils import BaseGuidance, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
-
-
-logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class SkipLayerGuidance(BaseGuidance):
