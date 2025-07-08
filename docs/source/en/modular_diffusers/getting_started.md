@@ -377,7 +377,7 @@ This helps you to:
 2. Easily reuse components across different pipelines
 3. Apply offloading strategies across multiple pipelines
 
-You can read more about Components Manager [here](TODO)
+You can read more about [Components Manager](./components_manager.md)
 
 </Tip>
 
