@@ -17,7 +17,6 @@ import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
@@ -211,7 +210,6 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
 
 @nightly
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxControlNetPipeline
 
