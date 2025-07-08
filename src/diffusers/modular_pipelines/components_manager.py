@@ -14,7 +14,6 @@
 
 import copy
 import time
-import uuid
 from collections import OrderedDict
 from itertools import combinations
 from typing import Any, Dict, List, Optional, Union
@@ -280,7 +279,7 @@ class ComponentsManager:
         return "_".join(component_id.split("_")[:-1])
 
     def add(self, name, component, collection: Optional[str] = None):
-        component_id = f"{name}_{uuid.uuid4()}"
+        component_id = f"{name}_{id(component)}"
 
         # check for duplicated components
         for comp_id, comp in self.components.items():
@@ -674,16 +673,6 @@ class ComponentsManager:
         if not self.components:
             return "Components:\n" + "=" * 50 + "\nNo components registered.\n" + "=" * 50
 
-        # Helper to get simple name without UUID
-        def get_simple_name(name):
-            # Extract the base name by splitting on underscore and taking first part
-            # This assumes names are in format "name_uuid"
-            parts = name.split("_")
-            # If we have at least 2 parts and the last part looks like a UUID, remove it
-            if len(parts) > 1 and len(parts[-1]) >= 8 and "-" in parts[-1]:
-                return "_".join(parts[:-1])
-            return name
-
         # Extract load_id if available
         def get_load_id(component):
             if hasattr(component, "_diffusers_load_id"):
@@ -698,9 +687,6 @@ class ComponentsManager:
                 device = str(getattr(component, "device", "N/A"))
                 exec_device = str(info["execution_device"] or "N/A")
                 return f"{device}({exec_device})"
-
-        # Get all simple names to calculate width
-        simple_names = [get_simple_name(id) for id in self.components.keys()]
 
         # Get max length of load_ids for models
         load_ids = [
@@ -725,7 +711,7 @@ class ComponentsManager:
         max_collection_len = max(10, max(len(str(c)) for c in all_collections)) if all_collections else 10
 
         col_widths = {
-            "name": max(15, max(len(name) for name in simple_names)),
+            "id": max(15, max(len(name) for name in self.components.keys())),
             "class": max(25, max(len(component.__class__.__name__) for component in self.components.values())),
             "device": 20,
             "dtype": 15,
@@ -748,7 +734,7 @@ class ComponentsManager:
         if models:
             output += "Models:\n" + dash_line
             # Column headers
-            output += f"{'Name':<{col_widths['name']}} | {'Class':<{col_widths['class']}} | "
+            output += f"{'Name_ID':<{col_widths['id']}} | {'Class':<{col_widths['class']}} | "
             output += f"{'Device: act(exec)':<{col_widths['device']}} | {'Dtype':<{col_widths['dtype']}} | "
             output += f"{'Size (GB)':<{col_widths['size']}} | {'Load ID':<{col_widths['load_id']}} | Collection\n"
             output += dash_line
@@ -756,7 +742,6 @@ class ComponentsManager:
             # Model entries
             for name, component in models.items():
                 info = self.get_model_info(name)
-                simple_name = get_simple_name(name)
                 device_str = format_device(component, info)
                 dtype = str(component.dtype) if hasattr(component, "dtype") else "N/A"
                 load_id = get_load_id(component)
@@ -764,14 +749,14 @@ class ComponentsManager:
                 # Print first collection on the main line
                 first_collection = component_collections[name][0] if component_collections[name] else "N/A"
 
-                output += f"{simple_name:<{col_widths['name']}} | {info['class_name']:<{col_widths['class']}} | "
+                output += f"{name:<{col_widths['id']}} | {info['class_name']:<{col_widths['class']}} | "
                 output += f"{device_str:<{col_widths['device']}} | {dtype:<{col_widths['dtype']}} | "
                 output += f"{info['size_gb']:<{col_widths['size']}.2f} | {load_id:<{col_widths['load_id']}} | {first_collection}\n"
 
                 # Print additional collections on separate lines if they exist
                 for i in range(1, len(component_collections[name])):
                     collection = component_collections[name][i]
-                    output += f"{'':<{col_widths['name']}} | {'':<{col_widths['class']}} | "
+                    output += f"{'':<{col_widths['id']}} | {'':<{col_widths['class']}} | "
                     output += f"{'':<{col_widths['device']}} | {'':<{col_widths['dtype']}} | "
                     output += f"{'':<{col_widths['size']}} | {'':<{col_widths['load_id']}} | {collection}\n"
 
@@ -783,23 +768,22 @@ class ComponentsManager:
                 output += "\n"
             output += "Other Components:\n" + dash_line
             # Column headers for other components
-            output += f"{'Name':<{col_widths['name']}} | {'Class':<{col_widths['class']}} | Collection\n"
+            output += f"{'ID':<{col_widths['id']}} | {'Class':<{col_widths['class']}} | Collection\n"
             output += dash_line
 
             # Other component entries
             for name, component in others.items():
                 info = self.get_model_info(name)
-                simple_name = get_simple_name(name)
 
                 # Print first collection on the main line
                 first_collection = component_collections[name][0] if component_collections[name] else "N/A"
 
-                output += f"{simple_name:<{col_widths['name']}} | {component.__class__.__name__:<{col_widths['class']}} | {first_collection}\n"
+                output += f"{name:<{col_widths['id']}} | {component.__class__.__name__:<{col_widths['class']}} | {first_collection}\n"
 
                 # Print additional collections on separate lines if they exist
                 for i in range(1, len(component_collections[name])):
                     collection = component_collections[name][i]
-                    output += f"{'':<{col_widths['name']}} | {'':<{col_widths['class']}} | {collection}\n"
+                    output += f"{'':<{col_widths['id']}} | {'':<{col_widths['class']}} | {collection}\n"
 
             output += dash_line
 
@@ -808,8 +792,7 @@ class ComponentsManager:
         for name in self.components:
             info = self.get_model_info(name)
             if info is not None and (info.get("adapters") is not None or info.get("ip_adapter")):
-                simple_name = get_simple_name(name)
-                output += f"\n{simple_name}:\n"
+                output += f"\n{name}:\n"
                 if info.get("adapters") is not None:
                     output += f"  Adapters: {info['adapters']}\n"
                 if info.get("ip_adapter"):
