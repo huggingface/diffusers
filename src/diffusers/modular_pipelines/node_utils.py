@@ -348,8 +348,8 @@ def get_group_name(name, group_params_keys=DEFAULT_PARAMS_GROUPS_KEYS):
 
 class ModularNode(ConfigMixin):
     """
-    A ModularNode is a base class to build UI nodes using diffusers. Currently only supports Mellon.
-    It is a wrapper around a ModularPipelineBlocks object.
+    A ModularNode is a base class to build UI nodes using diffusers. Currently only supports Mellon. It is a wrapper
+    around a ModularPipelineBlocks object.
 
     <Tip warning={true}>
 

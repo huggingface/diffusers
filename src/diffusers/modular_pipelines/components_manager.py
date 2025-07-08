@@ -142,6 +142,7 @@ def custom_offload_with_hook(
     user_hook.attach()
     return user_hook
 
+
 # this is the class that user can customize to implement their own offload strategy
 class AutoOffloadStrategy:
     """
@@ -277,36 +278,35 @@ def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
 class ComponentsManager:
     """
     A central registry and management system for model components across multiple pipelines.
-    
-    [`ComponentsManager`] provides a unified way to register, track, and reuse model components
-    (like UNet, VAE, text encoders, etc.) across different modular pipelines. It includes
-    features for duplicate detection, memory management, and component organization.
-    
+
+    [`ComponentsManager`] provides a unified way to register, track, and reuse model components (like UNet, VAE, text
+    encoders, etc.) across different modular pipelines. It includes features for duplicate detection, memory
+    management, and component organization.
+
     <Tip warning={true}>
 
         This is an experimental feature and is likely to change in the future.
 
     </Tip>
-        
+
     Example:
         ```python
         from diffusers import ComponentsManager
-        
+
         # Create a components manager
         cm = ComponentsManager()
-        
+
         # Add components
         cm.add("unet", unet_model, collection="sdxl")
         cm.add("vae", vae_model, collection="sdxl")
-        
+
         # Enable auto offloading
         cm.enable_auto_cpu_offload(device="cuda")
-        
+
         # Retrieve components
         unet = cm.get_one(name="unet", collection="sdxl")
         ```
     """
-
 
     _available_info_fields = [
         "model_id",
@@ -382,7 +382,7 @@ class ComponentsManager:
             collection (Optional[str]): The collection to add the component to
 
         Returns:
-            str: The unique component ID, which is generated as "{name}_{id(component)}" where 
+            str: The unique component ID, which is generated as "{name}_{id(component)}" where
                  id(component) is Python's built-in unique identifier for the object
         """
         component_id = f"{name}_{id(component)}"
@@ -669,9 +669,9 @@ class ComponentsManager:
 
         Args:
             device (Union[str, int, torch.device]): The execution device where models are moved for forward passes
-            memory_reserve_margin (str): The memory reserve margin to use, default is 3GB. This is the amount of 
-                                        memory to keep free on the device to avoid running out of memory during 
-                                        model execution (e.g., for intermediate activations, gradients, etc.)
+            memory_reserve_margin (str): The memory reserve margin to use, default is 3GB. This is the amount of
+                                        memory to keep free on the device to avoid running out of memory during model
+                                        execution (e.g., for intermediate activations, gradients, etc.)
         """
         if not is_accelerate_available():
             raise ImportError("Make sure to install accelerate to use auto_cpu_offload")
@@ -727,11 +727,13 @@ class ComponentsManager:
 
         Args:
             component_id (str): Name of the component to get info for
-            fields (Optional[Union[str, List[str]]]): Field(s) to return. Can be a string for single field or list of fields.
-                   If None, uses the available_info_fields setting.
+            fields (Optional[Union[str, List[str]]]):
+                   Field(s) to return. Can be a string for single field or list of fields. If None, uses the
+                   available_info_fields setting.
 
         Returns:
-            Dictionary containing requested component metadata. If fields is specified, returns only those fields. Otherwise, returns all fields.
+            Dictionary containing requested component metadata. If fields is specified, returns only those fields.
+            Otherwise, returns all fields.
         """
         if component_id not in self.components:
             raise ValueError(f"Component '{component_id}' not found in ComponentsManager")
@@ -938,10 +940,10 @@ class ComponentsManager:
         load_id: Optional[str] = None,
     ) -> Any:
         """
-        Get a single component by either: 
-        - searching name (pattern matching), collection, or load_id. 
+        Get a single component by either:
+        - searching name (pattern matching), collection, or load_id.
         - passing in a component_id
-        Raises an error if multiple components match or none are found. 
+        Raises an error if multiple components match or none are found.
 
         Args:
             component_id (Optional[str]): Optional component ID to get
@@ -998,13 +1000,13 @@ class ComponentsManager:
         Get components by a list of IDs.
 
         Args:
-            ids (List[str]): 
+            ids (List[str]):
                 List of component IDs
             return_dict_with_names (Optional[bool]):
                 Whether to return a dictionary with component names as keys:
 
         Returns:
-            Dict[str, Any]: Dictionary of components. 
+            Dict[str, Any]: Dictionary of components.
                 - If return_dict_with_names=True, keys are component names.
                 - If return_dict_with_names=False, keys are component IDs.
 
@@ -1042,4 +1044,3 @@ class ComponentsManager:
         """
         ids = self.get_ids(names, collection)
         return self.get_components_by_ids(ids)
-

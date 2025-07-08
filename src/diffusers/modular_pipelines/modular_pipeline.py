@@ -85,10 +85,9 @@ class PipelineState:
         """
         Add an input to the immutable pipeline state, i.e, pipeline_state.inputs.
 
-        The kwargs_type parameter allows you to associate inputs with specific input types.
-        For example, if you call set_input(prompt_embeds=..., kwargs_type="guider_kwargs"),
-        this input will be automatically fetched when a pipeline block has "guider_kwargs" 
-        in its expected_inputs list.
+        The kwargs_type parameter allows you to associate inputs with specific input types. For example, if you call
+        set_input(prompt_embeds=..., kwargs_type="guider_kwargs"), this input will be automatically fetched when a
+        pipeline block has "guider_kwargs" in its expected_inputs list.
 
         Args:
             key (str): The key for the input
@@ -106,10 +105,9 @@ class PipelineState:
         """
         Add an intermediate value to the mutable pipeline state, i.e, pipeline_state.intermediates.
 
-        The kwargs_type parameter allows you to associate intermediate values with specific input types.
-        For example, if you call set_intermediate(latents=..., kwargs_type="latents_kwargs"),
-        this intermediate value will be automatically fetched when a pipeline block has "latents_kwargs" 
-        in its expected_intermediate_inputs list.
+        The kwargs_type parameter allows you to associate intermediate values with specific input types. For example,
+        if you call set_intermediate(latents=..., kwargs_type="latents_kwargs"), this intermediate value will be
+        automatically fetched when a pipeline block has "latents_kwargs" in its expected_intermediate_inputs list.
 
         Args:
             key (str): The key for the intermediate value
@@ -414,13 +412,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             collection=collection,
         )
         return modular_pipeline
-    
+
     @staticmethod
     def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
         """
-        Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if current
-        default value is None and new default value is not None. Warns if multiple non-None default values exist for the
-        same input.
+        Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if
+        current default value is None and new default value is not None. Warns if multiple non-None default values
+        exist for the same input.
 
         Args:
             named_input_lists: List of tuples containing (block_name, input_param_list) pairs
@@ -482,8 +480,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         return list(combined_dict.values())
 
 
-
-
 class PipelineBlock(ModularPipelineBlocks):
     """
     A Pipeline Block is the basic building block of a Modular Pipeline.
@@ -499,15 +495,33 @@ class PipelineBlock(ModularPipelineBlocks):
 
     Args:
         description (str, optional): A description of the block, defaults to None. Define as a property in subclasses.
-        expected_components (List[ComponentSpec], optional): A list of components that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
-        expected_configs (List[ConfigSpec], optional): A list of configs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
-        inputs (List[InputParam], optional): A list of inputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
-        intermediate_inputs (List[InputParam], optional): A list of intermediate inputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
-        intermediate_outputs (List[OutputParam], optional): A list of intermediate outputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
-        outputs (List[OutputParam], optional): A list of outputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
-        required_inputs (List[str], optional): A list of required inputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
-        required_intermediate_inputs (List[str], optional): A list of required intermediate inputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
-        required_intermediate_outputs (List[str], optional): A list of required intermediate outputs that are expected to be used in the block, defaults to []. To override, define as a property in subclasses.
+        expected_components (List[ComponentSpec], optional):
+            A list of components that are expected to be used in the block, defaults to []. To override, define as a
+            property in subclasses.
+        expected_configs (List[ConfigSpec], optional):
+            A list of configs that are expected to be used in the block, defaults to []. To override, define as a
+            property in subclasses.
+        inputs (List[InputParam], optional):
+            A list of inputs that are expected to be used in the block, defaults to []. To override, define as a
+            property in subclasses.
+        intermediate_inputs (List[InputParam], optional):
+            A list of intermediate inputs that are expected to be used in the block, defaults to []. To override,
+            define as a property in subclasses.
+        intermediate_outputs (List[OutputParam], optional):
+            A list of intermediate outputs that are expected to be used in the block, defaults to []. To override,
+            define as a property in subclasses.
+        outputs (List[OutputParam], optional):
+            A list of outputs that are expected to be used in the block, defaults to []. To override, define as a
+            property in subclasses.
+        required_inputs (List[str], optional):
+            A list of required inputs that are expected to be used in the block, defaults to []. To override, define as
+            a property in subclasses.
+        required_intermediate_inputs (List[str], optional):
+            A list of required intermediate inputs that are expected to be used in the block, defaults to []. To
+            override, define as a property in subclasses.
+        required_intermediate_outputs (List[str], optional):
+            A list of required intermediate outputs that are expected to be used in the block, defaults to []. To
+            override, define as a property in subclasses.
     """
 
     model_name = None
@@ -997,7 +1011,8 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
 
 class SequentialPipelineBlocks(ModularPipelineBlocks):
     """
-    A Pipeline Blocks that combines multiple pipeline block classes into one. When called, it will call each block in sequence.
+    A Pipeline Blocks that combines multiple pipeline block classes into one. When called, it will call each block in
+    sequence.
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
@@ -1373,8 +1388,8 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     """
-    A Pipeline blocks that combines multiple pipeline block classes into a For Loop. When called, it will call each block in
-    sequence.
+    A Pipeline blocks that combines multiple pipeline block classes into a For Loop. When called, it will call each
+    block in sequence.
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
