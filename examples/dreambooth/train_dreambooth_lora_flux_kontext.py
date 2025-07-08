@@ -1393,6 +1393,7 @@ def main(args):
             "ff.net.2",
             "ff_context.net.0.proj",
             "ff_context.net.2",
+            "proj_mlp",
         ]
 
     # now we will add new LoRA weights the transformer layers
