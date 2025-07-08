@@ -21,9 +21,9 @@ With Modular Diffusers, we introduce a unified pipeline system that simplifies h
 In this guide, we will focus on how to build end-to-end pipelines using blocks we officially support at diffusers 🧨! We will show you how to write your own pipeline blocks and go into more details on how they work under the hood in this [guide](./write_own_pipeline_block.md). For advanced users who want to build complete workflows from scratch, we provide an end-to-end example in the [Developer Guide](./end_to_end.md) that covers everything from writing custom pipeline blocks to deploying your workflow as a UI node.
 
 Let's get started! The Modular Diffusers Framework consists of three main components:
-- ModularPipelineBlocks
-- PipelineState & BlockState
-- ModularPipeline
+- ModularPipelineBlocks: Building blocks for your workflow, each block defines inputs/outputs and computation steps. These are just definitions and not runnable.
+- PipelineState & BlockState: Store and manage data as it flows through the pipeline.
+- ModularPipeline: Loads models and runs the computation steps. You convert blocks to pipelines to make them executable.
 
 ## ModularPipelineBlocks
 
@@ -68,7 +68,9 @@ StableDiffusionXLTextEncoderStep(
 )
 ```
 
-More commonly, you can create a `SequentialPipelineBlocks` using a block classes preset from 🧨 Diffusers.
+More commonly, you need multiple blocks to build your workflow. You can create a `SequentialPipelineBlocks` using block class presets from 🧨 Diffusers.
+
+`TEXT2IMAGE_BLOCKS` is a predefined dictionary containing all the blocks needed for a complete text-to-image pipeline (text encoding, denoising, decoding, etc.). We will see more details soon.
 
 ```py
 from diffusers.modular_pipelines import SequentialPipelineBlocks
@@ -171,7 +173,7 @@ Note that both the block classes preset and the `sub_blocks` attribute are `Inse
 
 **Add a block:**
 ```py
-# Add a block class to the preset
+# BLOCKS is a block class preset, you need to add class to it
 BLOCKS.insert("block_name", BlockClass, index)
 # Add a block instance to the `sub_blocks` attribute
 t2i_blocks.sub_blocks.insert("block_name", block_instance, index)
@@ -362,6 +364,8 @@ t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id)
 ```
+
+The `init_pipeline()` method creates a ModularPipeline and loads component specifications from the repository's `modular_model_index.json` file, but doesn't load the actual models yet.
 
 <Tip>
 
