@@ -599,6 +599,50 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
+    def set_attention_backend(self, backend: str) -> None:
+        """
+        Set the attention backend for the model.
+
+        Args:
+            backend (`str`):
+                The name of the backend to set. Must be one of the available backends defined in
+                `AttentionBackendName`. Available backends can be found in
+                `diffusers.attention_dispatch.AttentionBackendName`. Defaults to torch native scaled dot product
+                attention as backend.
+        """
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName
+
+        backend = backend.lower()
+        available_backends = {x.value for x in AttentionBackendName.__members__.values()}
+        if backend not in available_backends:
+            raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
+        backend = AttentionBackendName(backend)
+
+        for module in self.modules():
+            if not isinstance(module, AttentionModuleMixin):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+            processor._attention_backend = backend
+
+    def reset_attention_backend(self) -> None:
+        """
+        Resets the attention backend for the model. Following calls to `forward` will use the environment default or
+        the torch native scaled dot product attention.
+        """
+        from .attention_processor import Attention, MochiAttention
+
+        attention_classes = (Attention, MochiAttention)
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+            processor._attention_backend = None
+
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
