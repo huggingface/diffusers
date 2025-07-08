@@ -844,7 +844,7 @@ class DreamBoothDataset(Dataset):
         self.cond_images = []
         for i, img in enumerate(instance_images):
             self.instance_images.extend(itertools.repeat(img, repeats))
-            if cond_images is not None:
+            if args.dataset_name is not None and cond_images is not None:
                 self.cond_images.extend(itertools.repeat(cond_images[i], repeats))
 
         self.pixel_values = []
