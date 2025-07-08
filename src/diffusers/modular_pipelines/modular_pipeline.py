@@ -335,7 +335,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
         components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
-    ):
+    ) -> "ModularPipeline":
         """
         create a ModularPipeline, optionally accept modular_repo to load from hub.
         """
