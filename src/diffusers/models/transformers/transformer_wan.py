@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
@@ -249,6 +250,7 @@ class WanRotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
+@maybe_allow_in_graph
 class WanTransformerBlock(nn.Module):
     def __init__(
         self,
