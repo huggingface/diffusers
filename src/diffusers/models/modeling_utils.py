@@ -1557,6 +1557,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
                 error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
 
+        torch.cuda.synchronize()
+        
         if offload_index is not None and len(offload_index) > 0:
             save_offload_index(offload_index, offload_folder)
             offload_index = None

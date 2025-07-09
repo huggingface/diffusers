@@ -233,14 +233,14 @@ def load_model_dict_into_meta(
     empty_state_dict = model.state_dict()
     expanded_device_map = {}
 
-    if device_map is not None:
-        for param_name, param in state_dict.items():
-            if param_name not in empty_state_dict:
-                continue
-            param_device = _determine_param_device(param_name, device_map)
-            expanded_device_map[param_name] = param_device
-        print(expanded_device_map)
-        _caching_allocator_warmup(model, expanded_device_map, dtype)
+    # if device_map is not None:
+    #     for param_name, param in state_dict.items():
+    #         if param_name not in empty_state_dict:
+    #             continue
+    #         param_device = _determine_param_device(param_name, device_map)
+    #         expanded_device_map[param_name] = param_device
+    #     print(expanded_device_map)
+    #     _caching_allocator_warmup(model, expanded_device_map, dtype)
 
     for param_name, param in state_dict.items():
         if param_name not in empty_state_dict:
