@@ -28,15 +28,15 @@ With Modular Diffusers, we introduce a unified pipeline system that simplifies h
 Here's how our guides are organized to help you navigate the Modular Diffusers documentation:
 
 ### 🚀 Running Pipelines
-- **[modular_pipeline.md](./modular_pipeline.md)** - How to use predefined blocks to build a pipeline and run it
-- **[components_manager.md](./components_manager.md)** - How to manage and reuse components across multiple pipelines
+- **[Modular Pipeline Guide](./modular_pipeline.md)** - How to use predefined blocks to build a pipeline and run it
+- **[Components Manager Guide](./components_manager.md)** - How to manage and reuse components across multiple pipelines
 
 ### 📚 Creating PipelineBlocks
-- **[modular_diffusers_states.md](./modular_diffusers_states.md)** - Understanding PipelineState and BlockState
-- **[pipeline_block.md](./pipeline_block.md)** - How to write custom PipelineBlocks
-- **[sequential_pipeline_blocks.md](sequential_pipeline_blocks.md)** - Connecting blocks in sequence
-- **[loop_sequential_pipeline_blocks.md](./loop_sequential_pipeline_blocks.md)** - Creating iterative workflows
-- **[auto_pipeline_blocks.md](./auto_pipeline_blocks.md)** - Conditional block selection
+- **[Pipeline and Block States](./modular_diffusers_states.md)** - Understanding PipelineState and BlockState
+- **[Pipeline Block](./pipeline_block.md)** - How to write custom PipelineBlocks
+- **[SequentialPipelineBlocks](sequential_pipeline_blocks.md)** - Connecting blocks in sequence
+- **[LoopSequentialPipelineBlocks](./loop_sequential_pipeline_blocks.md)** - Creating iterative workflows
+- **[AutoPipelineBlocks](./auto_pipeline_blocks.md)** - Conditional block selection
 
 ### 🎯 Practical Examples
-- **[end_to_end_guide.md](./end_to_end_guide.md)** - Complete end-to-end examples and practical workflows
+- **[end_to_end_guide.md](./end_to_end_guide.md)** - Complete end-to-end examples including sharing your workflow in huggingface hub and deplying UI nodes

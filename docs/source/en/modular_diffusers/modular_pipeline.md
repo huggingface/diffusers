@@ -36,16 +36,14 @@ For information on how data flows through pipelines, see the [PipelineState and 
 
 ## Create ModularPipelineBlocks
 
-Pipeline blocks are the fundamental building blocks of the Modular Diffusers system. All pipeline blocks inherit from the base class `ModularPipelineBlocks`, including:
+In Modular Diffusers system, you build pipelines using Pipeline blocks. Pipeline Blocks are fundamental building blocks - they define what components, inputs/outputs, and computation logics are needed. They are designed to be assembled into workflows for tasks such as image generation, video creation, and inpainting. But they are just definitions and don't actually run anything. To execute blocks, you need to put them into a `ModularPipeline`. We'll first learn how to create predefined blocks here before talking about how to run them using `ModularPipeline`. 
+
+All pipeline blocks inherit from the base class `ModularPipelineBlocks`, including:
 
 - [`PipelineBlock`]: The most granular block - you define the input/output/components requirements and computation logic.
 - [`SequentialPipelineBlocks`]: A multi-block composed of multiple blocks that run sequentially, passing outputs as inputs to the next block.
 - [`LoopSequentialPipelineBlocks`]: A special type of `SequentialPipelineBlocks` that runs the same sequence of blocks multiple times (loops), typically used for iterative processes like denoising steps in diffusion models.
 - [`AutoPipelineBlocks`]: A multi-block composed of multiple blocks that are selected at runtime based on the inputs.
-
-All blocks have a consistent interface defining their requirements (components, configs, inputs, outputs) and computation logic. They are designed to be assembled into workflows for tasks such as image generation, video creation, and inpainting. However, blocks aren't runnable on thier own and they need to be converted into a a ModularPipeline to actually run. 
-
-**Blocks vs Pipelines**: Blocks are just definitions - they define what components, inputs/outputs, and computation logics are needed, but they don't actually run anything. To execute blocks, you need to put them into a `ModularPipeline`. We will first learn how to create predefined blocks here before talking about how to run them using `ModularPipeline`.
 
 It is very easy to use a `ModularPipelineBlocks` officially supported in 🧨 Diffusers
 
@@ -77,7 +75,7 @@ StableDiffusionXLTextEncoderStep(
 )
 ```
 
-More commonly, you need multiple blocks to build your workflow. You can create a `SequentialPipelineBlocks` using block class presets from 🧨 Diffusers. `TEXT2IMAGE_BLOCKS` is a preset containing all the blocks needed for text-to-image generation.
+More commonly, you need multiple blocks to build your workflow. You can create a `SequentialPipelineBlocks` using block class presets from 🧨 Diffusers. `TEXT2IMAGE_BLOCKS` is a dict containing all the blocks needed for text-to-image generation.
 
 ```py
 from diffusers.modular_pipelines import SequentialPipelineBlocks
@@ -85,7 +83,7 @@ from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS
 t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 ```
 
-This creates a `SequentialPipelineBlocks`, which is a multi-block composed of other blocks. Unlike single blocks (like the `text_encoder_block` we saw earlier), this multi-block has a `sub_blocks` attribute that contains the sub-blocks (text_encoder, input, set_timesteps, prepare_latents, prepare_added_con, denoise, decode). Its requirements for components, inputs, and intermediate inputs are combined from these blocks that compose it. At runtime, it executes its sub-blocks sequentially and passes the pipeline state from one block to another. 
+This creates a `SequentialPipelineBlocks`. Unlike the `text_encoder_block` we saw earlier, this is a multi-block and its `sub_blocks` attribute contains a list of other blocks (text_encoder, input, set_timesteps, prepare_latents, prepare_added_con, denoise, decode). Its requirements for components, inputs, and intermediate inputs are combined from these blocks that compose it. At runtime, it executes its sub-blocks sequentially and passes the pipeline state from one block to another. 
 
 ```py
 >>> t2i_blocks
@@ -146,7 +144,7 @@ SequentialPipelineBlocks(
 )
 ```
 
-The block classes preset (`TEXT2IMAGE_BLOCKS`) we used is just a dictionary that maps names to ModularPipelineBlocks classes
+This is the block classes preset (`TEXT2IMAGE_BLOCKS`) we used: It is just a dictionary that maps names to ModularPipelineBlocks classes
 
 ```py
 >>> TEXT2IMAGE_BLOCKS
@@ -210,7 +208,9 @@ Let's make a new block classes preset by insert IP-Adapter at index 0 (before th
 ```py
 from diffusers.modular_pipelines.stable_diffusion_xl import StableDiffusionXLAutoIPAdapterStep
 CUSTOM_BLOCKS = TEXT2IMAGE_BLOCKS.copy()
+# CUSTOM_BLOCKS is now a preset including ip_adapter
 CUSTOM_BLOCKS.insert("ip_adapter", StableDiffusionXLAutoIPAdapterStep, 0)
+# create a blocks isntance from the preset
 custom_blocks = SequentialPipelineBlocks.from_blocks_dict(CUSTOM_BLOCKS)
 ```
 
@@ -300,12 +300,16 @@ ALL_BLOCKS = {
 
 </Tip>
 
-This covers the essentials of pipeline blocks! You may have noticed that we haven't discussed how to load or run pipeline blocks - that's because **pipeline blocks are not runnable by themselves**. They are essentially **"definitions"** - they define the specifications and computational steps for a pipeline, but they do not contain any model states. To actually run them, you need to convert them into a `ModularPipeline` object.
+This covers the essentials of pipeline blocks! Like we have already mentioned, **pipeline blocks are not runnable by themselves**. They are essentially **"definitions"** - they define the specifications and computational steps for a pipeline, but they do not contain any model states. To actually run them, you need to convert them into a `ModularPipeline` object.
 
 
 ## Modular Repo
 
-`ModularPipeline` only works with modular repositories. You can find an example modular repo [here](https://huggingface.co/YiYiXu/modular-diffdiff).
+To convert blocks into a runnable pipeline, you may need a repository if your blocks contain **pretrained components** (models with checkpoints that need to be loaded from the Hub). Pipeline blocks define what components they need (like a UNet, text encoder, etc.), as well as how to create them: components can be either created using **from_pretrained** method (with checkpoints) or **from_config** (initialized from scratch with default configuration, usually stateless like a guider or scheduler). 
+
+If your pipeline contains **pretrained components**, you typically need to use a repository to provide the loading specifications and metadata.
+
+`ModularPipeline` works specifically with modular repositories, which offer more flexibility in component loading compared to traditional repositories. You can find an example modular repo [here](https://huggingface.co/YiYiXu/modular-diffdiff).
 
 A `DiffusionPipeline` defines `model_index.json` to configure its components. However, repositories for Modular Diffusers work with `modular_model_index.json`. Let's walk through the differences here.
 
@@ -346,36 +350,26 @@ Unlike standard repositories where components must be in subfolders within the s
 
 Each `ModularPipelineBlocks` has an `init_pipeline` method that can initialize a `ModularPipeline` object based on its component and configuration specifications.
 
-Let's convert our `t2i_blocks` (which we created earlier) into a runnable `ModularPipeline`:
+Let's convert our `t2i_blocks` (which we created earlier) into a runnable `ModularPipeline`. We'll use a `ComponentsManager` to handle device placement, memory management, and component reuse automatically:
 
 ```py
 # We already have this from earlier
 t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 
 # Now convert it to a ModularPipeline
+from diffusers import ComponentsManager
 modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
-t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id)
+components = ComponentsManager()
+t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id, components_manager=components)
 ```
-
-The `init_pipeline()` method creates a ModularPipeline and loads component specifications from the repository's `modular_model_index.json` file, but doesn't load the actual models yet.
 
 <Tip>
 
-💡 We recommend using `ModularPipeline` with Component Manager by passing a `components_manager`:
-
-```py
->>> components = ComponentsManager()
->>> pipeline = blocks.init_pipeline(modular_repo_id, components_manager=components)
-```
-
-This helps you to:
-1. Detect and manage duplicated models (warns when trying to register an existing model)
-2. Easily reuse components across different pipelines
-3. Apply offloading strategies across multiple pipelines
-
-You can read more about [Components Manager](./components_manager.md)
+💡 **ComponentsManager** is the model registry and management system in diffusers, it track all the models in one place and let you add, remove and reuse them across different workflows in most efficient way. Without it, you'd need to manually manage GPU memory, device placement, and component sharing between workflows. See the [Components Manager guide](components_manager.md) for detailed information.
 
 </Tip>
+
+The `init_pipeline()` method creates a ModularPipeline and loads component specifications from the repository's `modular_model_index.json` file, but doesn't load the actual models yet.
 
 
 ## Creating a `ModularPipeline` with `from_pretrained`
@@ -383,19 +377,30 @@ You can read more about [Components Manager](./components_manager.md)
 You can create a `ModularPipeline` from a HuggingFace Hub repository with `from_pretrained` method, as long as it's a modular repo:
 
 ```py
-from diffusers import ModularPipeline
-pipeline = ModularPipeline.from_pretrained( "YiYiXu/modular-loader-t2i-0704")
+from diffusers import ModularPipeline, ComponentsManager
+components = ComponentsManager()
+pipeline = ModularPipeline.from_pretrained("YiYiXu/modular-loader-t2i-0704", components_manager=components)
 ```
 
 Loading custom code is also supported:
 
 ```py
-from diffusers import ModularPipeline
+from diffusers import ModularPipeline, ComponentsManager
+components = ComponentsManager()
 modular_repo_id = "YiYiXu/modular-diffdiff-0704"
-diffdiff_pipeline = ModularPipeline.from_pretrained(modular_repo_id, trust_remote_code=True)
+diffdiff_pipeline = ModularPipeline.from_pretrained(modular_repo_id, trust_remote_code=True, components_manager=components)
 ```
 
-This modular repository contains custom code. The [`config.json`](https://huggingface.co/YiYiXu/modular-diffdiff-0704/blob/main/config.json) file defines a custom `DiffDiffBlocks` class and points to its implementation:
+This modular repository contains custom code. The folder contains these files:
+
+```
+modular-diffdiff-0704/
+├── block.py                    # Custom pipeline blocks implementation
+├── config.json                 # Pipeline configuration and auto_map
+└── modular_model_index.json    # Component loading specifications
+```
+
+The [`config.json`](https://huggingface.co/YiYiXu/modular-diffdiff-0704/blob/main/config.json) file defines a custom `DiffDiffBlocks` class and points to its implementation:
 
 ```json
 {
@@ -539,14 +544,6 @@ StableDiffusionXLModularPipeline {
 
 You can see all the **pretrained components** that will be loaded using `from_pretrained` method are listed as entries. Each entry contains 3 elements: `(library, class, loading_specs_dict)`:
 
-<Tip>
-
-**Pretrained vs Config-based Components**: Only pretrained components (like models loaded from Hugging Face Hub) appear in the `modular_model_index.json` file at all. Components created with default configurations at initialization (like schedulers, guiders) are not included in the index since they don't need to be loaded from external sources.
-
-Whether a component is pretrained or config-based is defined in each pipeline block's `expected_components` field using `ComponentSpec` with the `default_creation_method` parameter. See the [PipelineBlock](./pipeline_block.md) guide for more details on how to define component specifications.
-
-</Tip>
-
 - **`library` and `class`**: Show the actual loaded component info. If `null`, the component is not loaded yet.
 - **`loading_specs_dict`**: Contains all the information needed to load the component (repo, subfolder, variant, etc.)
 
@@ -578,9 +575,11 @@ There are also a few properties that can provide a quick summary of component lo
 ['guider', 'image_processor']
 ```
 
+From config components (like `guider` and `image_processor`) are not included in the pipeline output above because they don't need loading specs - they're already initialized during pipeline creation. You can see this because they're not listed in `null_component_names`.
+
 ## Modifying Loading Specs
 
-When you call `pipeline.load_components(names=)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. You can change where components are loaded from by default by modifying the `modular_model_index.json` in the repository. Just find the file on the Hub and click edit - you can change any field in the loading specs: `repo`, `subfolder`, `variant`, `revision`, etc.
+When you call `pipeline.load_components(names=)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. You can change where components are loaded from by modifying the `modular_model_index.json` in the repository. Just find the file on the Hub and click edit - you can change any field in the loading specs: `repo`, `subfolder`, `variant`, `revision`, etc.
 
 ```py
 # Original spec in modular_model_index.json
@@ -604,7 +603,12 @@ When you call `pipeline.load_components(names=)` or `pipeline.load_default_compo
 ]
 ```
 
-When you call `pipeline.load_components(...)`/`pipeline.load_default_components()`, it will now load from the new repository by default.
+Now if you create a pipeline using the same blocks and updated repository, it will by default load from the new repository.
+
+```py
+pipeline = ModularPipeline.from_pretrained("YiYiXu/modular-loader-t2i-0704", components_manager=components)
+pipeline.load_components(names="unet")
+```
 
 
 ## Updating components in a `ModularPipeline`
@@ -631,7 +635,7 @@ from diffusers import UNet2DConditionModel
 import torch
 unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", variant="fp16", torch_dtype=torch.float16)
 ```
-You should do
+You should load your model like this
 
 ```py
 from diffusers import ComponentSpec, UNet2DConditionModel
@@ -639,13 +643,15 @@ unet_spec = ComponentSpec(name="unet",type_hint=UNet2DConditionModel, repo="stab
 unet2 = unet_spec.load(torch_dtype=torch.float16)
 ```
 
-The key difference is that the second unet (the one we load with `ComponentSpec`) retains its loading specs, so you can extract and recreate it:
+The key difference is that the second unet retains its loading specs, so you can extract the spec and recreate the unet:
 
 ```py
-# to extract spec, you can do spec.load() to recreate it
+# component -> spec
 >>> spec = ComponentSpec.from_component("unet", unet2)
 >>> spec
 ComponentSpec(name='unet', type_hint=<class 'diffusers.models.unets.unet_2d_condition.UNet2DConditionModel'>, description=None, config=None, repo='stabilityai/stable-diffusion-xl-base-1.0', subfolder='unet', variant='fp16', revision=None, default_creation_method='from_pretrained')
+# spec -> component
+>>> unet2_recreatd = spec.load(torch_dtype=torch.float16)
 ```
 
 To replace the unet in the pipeline
@@ -654,7 +660,7 @@ To replace the unet in the pipeline
 t2i_pipeline.update_components(unet=unet2)
 ```
 
-Not only is the `unet` component swapped, but its loading specs are also updated from "RunDiffusion/Juggernaut-XL-v9" to "stabilityai/stable-diffusion-xl-base-1.0". This means that if you save the pipeline now and load it back with `from_pretrained`, the new pipeline will by default load the SDXL original unet.
+Not only is the `unet` component swapped, but its loading specs are also updated from "RunDiffusion/Juggernaut-XL-v9" to "stabilityai/stable-diffusion-xl-base-1.0" in pipeline config. This means that if you save the pipeline now and load it back with `from_pretrained`, the new pipeline will by default load the SDXL original unet.
 
 ```
 >>> t2i_pipeline
@@ -739,6 +745,9 @@ ClassifierFreeGuidance {
 To change parameters of the same guider type (e.g., adjusting the `guidance_scale` for CFG), you have two options:
 
 **Option 1: Use ComponentSpec.create() method**
+
+You just need to pass the parameter with the new value to override the default one.
+
 ```python
 >>> guider_spec = t2i_pipeline.get_component_spec("guider")
 >>> guider = guider_spec.create(guidance_scale=10)
@@ -746,6 +755,9 @@ To change parameters of the same guider type (e.g., adjusting the `guidance_scal
 ```
 
 **Option 2: Pass ComponentSpec directly**
+
+Update the spec directly and pass it to `update_components()`.
+
 ```python
 >>> guider_spec = t2i_pipeline.get_component_spec("guider")
 >>> guider_spec.config["guidance_scale"] = 10
@@ -787,7 +799,6 @@ ModularPipeline.update_components: adding guider with new type: PerturbedAttenti
 
 <Tip>
 
-💡 **Component Loading Methods**: 
 - For `from_config` components (like guiders, schedulers): You can pass an object of required type OR pass a ComponentSpec directly (which calls `create()` under the hood)
 - For `from_pretrained` components (like models): You must use ComponentSpec to ensure proper tagging and loading
 
@@ -831,21 +842,65 @@ The component spec has also been updated to reflect the new guider type:
 ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.perturbed_attention_guidance.PerturbedAttentionGuidance'>, description=None, config=FrozenDict([('guidance_scale', 5.0), ('perturbed_guidance_scale', 2.5), ('perturbed_guidance_start', 0.01), ('perturbed_guidance_stop', 0.2), ('perturbed_guidance_layers', None), ('perturbed_guidance_config', LayerSkipConfig(indices=[2, 9], fqn='mid_block.attentions.0.transformer_blocks', skip_attention=False, skip_attention_scores=True, skip_ff=False, dropout=1.0)), ('guidance_rescale', 0.0), ('use_original_formulation', False), ('start', 0.0), ('stop', 1.0), ('_use_default_values', ['perturbed_guidance_start', 'use_original_formulation', 'perturbed_guidance_layers', 'stop', 'start', 'guidance_rescale', 'perturbed_guidance_stop']), ('_class_name', 'PerturbedAttentionGuidance'), ('_diffusers_version', '0.35.0.dev0')]), repo=None, subfolder=None, variant=None, revision=None, default_creation_method='from_config')
 ```
 
-However, the "guider" is still not included in the pipeline config and will not be saved into the `modular_model_index.json` since it remains a `from_config` component: 
+The "guider" is still a `from_config` component: is still not included in the pipeline config and will not be saved into the `modular_model_index.json`.
 
 ```py
 >>> assert "guider" not in  t2i_pipeline.config
 ```
 
+However, you can change it to a `from_pretrained` component, which allows you to upload your customized guider to the Hub and load it into your pipeline.
+
+#### Loading Custom Guiders from Hub
+
+If you already have a guider saved on the Hub and a `modular_model_index.json` with the loading spec for that guider, it will automatically be changed to a `from_pretrained` component during pipeline initialization.
+
+For example, this `modular_model_index.json` includes loading specs for the guider:
+
+```json
+{
+  "guider": [
+    null,
+    null,
+    {
+      "repo": "YiYiXu/modular-loader-t2i-guider",
+      "revision": null,
+      "subfolder": "pag_guider",
+      "type_hint": [
+        "diffusers",
+        "PerturbedAttentionGuidance"
+      ],
+      "variant": null
+    }
+  ]
+}
+```
+
+When you use this repository to create a pipeline with the same blocks (that originally configured guider as a `from_config` component), the guider becomes a `from_pretrained` component. This means it doesn't get created during initialization, and after you call `load_default_components()`, it loads based on the spec - resulting in the PAG guider instead of the default CFG.
+
+```py
+t2i_pipeline = t2i_blocks.init_pipeline("YiYiXu/modular-doc-guider")
+assert t2i_pipeline.guider is None  # Not created during init
+t2i_pipeline.load_default_components()
+t2i_pipeline.guider  # Now loaded as PAG guider
+```
+
 #### Upload Custom Guider to Hub for Easy Loading & Sharing
 
-You can upload your customized guider to the Hub so that it can be loaded more easily:
+Now let's see how we can share the guider on the Hub and change it to a `from_pretrained` component.
 
 ```py
 guider.push_to_hub("YiYiXu/modular-loader-t2i-guider", subfolder="pag_guider")
 ```
 
-Voilà! Now you have a subfolder called `pag_guider` on that repository. Let's change our guider_spec to use `from_pretrained` as the default creation method and update the loading spec to use this subfolder we just created:
+Voilà! Now you have a subfolder called `pag_guider` on that repository. 
+
+You have a few options to make this guider available in your pipeline:
+
+1. **Directly modify the `modular_model_index.json`** to add a loading spec for the guider by pointing to a folder containing the desired guider config.
+
+2. **Use the `update_components` method** to change it to a `from_pretrained` component for your pipeline. This is easier if you just want to try it out with different repositories.
+
+Let's use the second approach and change our guider_spec to use `from_pretrained` as the default creation method and update the loading spec to use this subfolder we just created:
 
 ```python
 guider_spec = t2i_pipeline.get_component_spec("guider")
@@ -862,43 +917,13 @@ You will get a warning about changing the creation method:
 ModularPipeline.update_components: changing the default_creation_method of guider from from_config to from_pretrained.
 ```
 
-Now not only the `guider` component and its component_spec are updated, but so is the pipeline config. Let's push it to a new repository:
+Now not only the `guider` component and its component_spec are updated, but so is the pipeline config.
+
+If you want to change the default behavior for future pipelines, you can push the updated pipeline to the Hub. This way, when others use your repository, they'll get the PAG guider by default. However, this is optional - you don't have to do this if you just want to experiment locally.
 
 ```py
 t2i_pipeline.push_to_hub("YiYiXu/modular-doc-guider")
 ```
-
-If you check the `modular_model_index.json`, you'll see the guider is now included:
-
-```json
-{
-  "guider": [
-    "diffusers",
-    "PerturbedAttentionGuidance",
-    {
-      "repo": "YiYiXu/modular-loader-t2i-guider",
-      "revision": null,
-      "subfolder": "pag_guider",
-      "type_hint": [
-        "diffusers",
-        "PerturbedAttentionGuidance"
-      ],
-      "variant": null
-    }
-  ]
-}
-```
-
-Now when you create the pipeline from that repo directly, the `guider` is not automatically loaded anymore (since it's now a `from_pretrained` component), but when you run `load_default_components()`, the PAG guider will be loaded by default:
-
-```py
-t2i_pipeline = t2i_blocks.init_pipeline("YiYiXu/modular-doc-guider")
-assert t2i_pipeline.guider is None
-t2i_pipeline.load_default_components()
-t2i_pipeline.guider
-```
-
-Of course, you can also directly modify the `modular_model_index.json` to add a loading spec for the guider by pointing to a folder containing the desired guider config.
 
 
 <Tip>
