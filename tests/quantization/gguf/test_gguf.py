@@ -656,7 +656,7 @@ class WanVACEGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
 @require_torch_version_greater("2.7.1")
 class GGUFCompileTests(QuantCompileTests):
     torch_dtype = torch.bfloat16
-    gguf_ckpt = "https://huggingface.co/city96/stable-diffusion-3.5-medium-gguf/blob/main/sd3.5_medium-Q3_K_M.gguf"
+    gguf_ckpt = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
 
     @property
     def quantization_config(self):
@@ -668,14 +668,14 @@ class GGUFCompileTests(QuantCompileTests):
     def test_torch_compile_with_cpu_offload(self):
         super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
 
-    def test_torch_compile_with_group_offload(self):
-        super()._test_torch_compile_with_group_offload(quantization_config=self.quantization_config)
+    def test_torch_compile_with_group_offload_leaf(self):
+        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
 
     def _init_pipeline(self, *args, **kwargs):
-        transformer = SD3Transformer2DModel.from_single_file(
+        transformer = FluxTransformer2DModel.from_single_file(
             self.gguf_ckpt, quantization_config=self.quantization_config, torch_dtype=self.torch_dtype
         )
         pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-3.5-medium", transformer=transformer, torch_dtype=self.torch_dtype
+            "black-forest-labs/FLUX.1-dev", transformer=transformer, torch_dtype=self.torch_dtype
         )
         return pipe
