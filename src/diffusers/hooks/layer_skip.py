@@ -150,7 +150,14 @@ class TransformerBlockSkipHook(ModelHook):
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         if math.isclose(self.dropout, 1.0):
-            output = self._metadata.skip_block_output_fn(module, *args, **kwargs)
+            original_hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
+            if self._metadata.return_encoder_hidden_states_index is None:
+                output = original_hidden_states
+            else:
+                original_encoder_hidden_states = self._metadata._get_parameter_from_args_kwargs(
+                    "encoder_hidden_states", args, kwargs
+                )
+                output = (original_hidden_states, original_encoder_hidden_states)
         else:
             output = self.fn_ref.original_forward(*args, **kwargs)
             output = torch.nn.functional.dropout(output, p=self.dropout)
