@@ -195,9 +195,9 @@ class FluxKontextPipeline(
     FluxIPAdapterMixin,
 ):
     r"""
-    The Flux Kontext pipeline for text-to-image generation.
+    The Flux Kontext pipeline for image-to-image and text-to-image generation.
 
-    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
+    Reference: https://bfl.ai/announcements/flux-1-kontext-dev
 
     Args:
         transformer ([`FluxTransformer2DModel`]):

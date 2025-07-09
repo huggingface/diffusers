@@ -17,7 +17,7 @@ deps = {
     "jax": "jax>=0.4.1",
     "jaxlib": "jaxlib>=0.4.1",
     "Jinja2": "Jinja2",
-    "k-diffusion": "k-diffusion>=0.0.12",
+    "k-diffusion": "k-diffusion==0.0.12",
     "torchsde": "torchsde",
     "note_seq": "note_seq",
     "librosa": "librosa",

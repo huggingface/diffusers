@@ -110,7 +110,7 @@ _deps = [
     "jax>=0.4.1",
     "jaxlib>=0.4.1",
     "Jinja2",
-    "k-diffusion>=0.0.12",
+    "k-diffusion==0.0.12",
     "torchsde",
     "note_seq",
     "librosa",

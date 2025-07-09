@@ -98,7 +98,14 @@ class Base4bitTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        torch.use_deterministic_algorithms(True)
+        cls.is_deterministic_enabled = torch.are_deterministic_algorithms_enabled()
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(False)
 
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
@@ -865,6 +872,7 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
 
 
 @require_torch_version_greater("2.7.1")
+@require_bitsandbytes_version_greater("0.45.5")
 class Bnb4BitCompileTests(QuantCompileTests):
     @property
     def quantization_config(self):
