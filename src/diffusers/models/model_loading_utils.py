@@ -16,9 +16,10 @@
 
 import importlib
 import inspect
+import math
 import os
 from array import array
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from zipfile import is_zipfile
@@ -230,6 +231,16 @@ def load_model_dict_into_meta(
 
     is_quantized = hf_quantizer is not None
     empty_state_dict = model.state_dict()
+    expanded_device_map = {}
+
+    if device_map is not None:
+        for param_name, param in state_dict.items():
+            if param_name not in empty_state_dict:
+                continue
+            param_device = _determine_param_device(param_name, device_map)
+            expanded_device_map[param_name] = param_device
+        print(expanded_device_map)
+        _caching_allocator_warmup(model, expanded_device_map, dtype)
 
     for param_name, param in state_dict.items():
         if param_name not in empty_state_dict:
@@ -243,13 +254,13 @@ def load_model_dict_into_meta(
             if keep_in_fp32_modules is not None and any(
                 module_to_keep_in_fp32 in param_name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules
             ):
-                param = param.to(torch.float32)
+                param = param.to(torch.float32, non_blocking=True)
                 set_module_kwargs["dtype"] = torch.float32
             # For quantizers have save weights using torch.float8_e4m3fn
             elif hf_quantizer is not None and param.dtype == getattr(torch, "float8_e4m3fn", None):
                 pass
             else:
-                param = param.to(dtype)
+                param = param.to(dtype, non_blocking=True)
                 set_module_kwargs["dtype"] = dtype
 
         # For compatibility with PyTorch load_state_dict which converts state dict dtype to existing dtype in model, and which
@@ -265,7 +276,7 @@ def load_model_dict_into_meta(
 
         if old_param is not None:
             if dtype is None:
-                param = param.to(old_param.dtype)
+                param = param.to(old_param.dtype, non_blocking=True)
 
             if old_param.is_contiguous():
                 param = param.contiguous()
@@ -520,3 +531,29 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
 
     return parsed_parameters
+
+
+# Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
+def _caching_allocator_warmup(model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype) -> None:
+    """This function warm-ups the caching allocator based on the size of the model tensors that will reside on each
+    device. It allows to have one large call to Malloc, instead of recursively calling it later when loading the model,
+    which is actually the loading speed botteneck. Calling this function allows to cut the model loading time by a very
+    large margin.
+    """
+    # Remove disk and cpu devices, and cast to proper torch.device
+    accelerator_device_map = {
+        param: torch.device(device)
+        for param, device in expanded_device_map.items()
+        if str(device) not in ["cpu", "disk"]
+    }
+    parameter_count = defaultdict(lambda: 0)
+    for param_name, device in accelerator_device_map.items():
+        try:
+            param = model.get_parameter(param_name)
+        except AttributeError:
+            param = model.get_buffer(param_name)
+        parameter_count[device] += math.prod(param.shape)
+
+    # This will kick off the caching allocator to avoid having to Malloc afterwards
+    for device, param_count in parameter_count.items():
+        _ = torch.empty(param_count, dtype=dtype, device=device, requires_grad=False)
