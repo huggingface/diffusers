@@ -134,9 +134,11 @@ else:
     _import_structure["hooks"].extend(
         [
             "FasterCacheConfig",
+            "FirstBlockCacheConfig",
             "HookRegistry",
             "PyramidAttentionBroadcastConfig",
             "apply_faster_cache",
+            "apply_first_block_cache",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -752,9 +754,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .hooks import (
             FasterCacheConfig,
+            FirstBlockCacheConfig,
             HookRegistry,
             PyramidAttentionBroadcastConfig,
             apply_faster_cache,
+            apply_first_block_cache,
             apply_pyramid_attention_broadcast,
         )
         from .models import (
