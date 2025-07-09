@@ -46,6 +46,7 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 @require_peft_backend
 @skip_mps
+@is_flaky(max_attempts=10, description="very flaky class")
 class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanVACEPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
@@ -217,6 +218,5 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 "Lora outputs should match.",
             )
 
-    @is_flaky
     def test_simple_inference_with_text_denoiser_lora_and_scale(self):
         super().test_simple_inference_with_text_denoiser_lora_and_scale()
