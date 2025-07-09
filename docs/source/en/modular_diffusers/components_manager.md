@@ -18,12 +18,12 @@ specific language governing permissions and limitations under the License.
 
 </Tip>
 
-The Components Manager is a central model registry and management system in diffusers. It lets you add models then reuse them across multiple pipelines and workflows. It tracks all models in one place with useful metadata such as model size, device placement and loaded adapters (LoRA, IP-Adapter). It has mechanisms in place to prevent duplicate model instances, enables memory-efficient sharing. Most significantly, it offers offloading that works across pipelines — unlike regular DiffusionPipeline offloading which is limited to one pipeline with predefined sequences, the Components Manager automatically manages your device memory across all your models and workflows. 
+The Components Manager is a central model registry and management system in diffusers. It lets you add models then reuse them across multiple pipelines and workflows. It tracks all models in one place with useful metadata such as model size, device placement and loaded adapters (LoRA, IP-Adapter). It has mechanisms in place to prevent duplicate model instances, enables memory-efficient sharing. Most significantly, it offers offloading that works across pipelines — unlike regular DiffusionPipeline offloading (i.e. `enable_model_cpu_offload` and `enable_sequential_cpu_offload`) which is limited to one pipeline with predefined sequences, the Components Manager automatically manages your device memory across all your models and workflows. 
 
 
 ## Basic Operations
 
-Let's start with the fundamental operations. First, create a Components Manager:
+Let's start with the most basic operations. First, create a Components Manager:
 
 ```py
 from diffusers import ComponentsManager
@@ -208,7 +208,7 @@ The `get_one()` method returns a single component and supports pattern matching 
 - exclusion patterns like `comp.get_one(name="!unet")` to exclude components named "unet"
 - OR patterns like `comp.get_one(name="unet|vae")` to match either "unet" OR "vae". 
 
-You can also filter by collection with `comp.get_one(name="unet", collection="sdxl")` or by load_id. If multiple components match, `get_one()` throws an error.
+Optionally, You can add collection and load_id as filters e.g. `comp.get_one(name="unet", collection="sdxl")`. If multiple components match, `get_one()` throws an error.
 
 Another useful method is `get_components_by_names()`, which takes a list of names and returns a dictionary mapping names to components. This is particularly helpful with modular pipelines since they provide lists of required component names, and the returned dictionary can be directly passed to `pipeline.update_components()`.
 
@@ -260,7 +260,7 @@ Now let's load all default components and then create a second pipeline that reu
 
 ```py
 # Load all default components 
->>> pipe.load_default_components()`
+>>> pipe.load_default_components()
 
 # Create a second pipeline using the same Components Manager but with a different collection
 >>> pipe2 = ModularPipeline.from_pretrained("YiYiXu/modular-demo-auto", components_manager=comp, collection="test2")
@@ -359,9 +359,9 @@ When enabled, all models start on CPU. The manager moves models to the device ri
 
 Now that we've covered the basics of the Components Manager, let's walk through a practical example that shows how to build workflows in a modular setting and use the Components Manager to reuse components across multiple pipelines. This example demonstrates the true power of Modular Diffusers by working with multiple pipelines that can share components. 
 
-In this example, we'll generate latents from a text-to-image pipeline, then refine them with an image-to-image pipeline. We will also use Lora and IP-Adapter.
+In this example, we'll generate latents from a text-to-image pipeline, then refine them with an image-to-image pipeline.
 
-Let's create a modular text-to-image workflow by separating it into three components: `text_blocks` for encoding prompts, `t2i_blocks` for generating latents, and `decoder_blocks` for creating final images.
+Let's create a modular text-to-image workflow by separating it into three workflows: `text_blocks` for encoding prompts, `t2i_blocks` for generating latents, and `decoder_blocks` for creating final images.
 
 ```py
 import torch
@@ -374,7 +374,9 @@ text_blocks = t2i_blocks.sub_blocks.pop("text_encoder")
 decoder_blocks = t2i_blocks.sub_blocks.pop("decode")
 ```
 
-Now we will convert them into runnalbe pipelines and set up the Components Manager with auto offloading and organize components under a "t2i" collection:
+Now we will convert them into runnalbe pipelines and set up the Components Manager with auto offloading and organize components under a "t2i" collection
+
+Since we now have 3 different workflows that share components, we create a separate pipeline that serves as a dedicated loader to load all the components, register them to the component manager, and then reuse them across different workflows.
 
 ```py
 from diffusers import ComponentsManager, ModularPipeline
@@ -383,20 +385,21 @@ from diffusers import ComponentsManager, ModularPipeline
 components = ComponentsManager()
 components.enable_auto_cpu_offload(device="cuda")
 
-# Create pipelines and load components
+# Create a new pipeline to load the components
 t2i_repo = "YiYiXu/modular-demo-auto"
 t2i_loader_pipe = ModularPipeline.from_pretrained(t2i_repo, components_manager=components, collection="t2i")
 
+# convert the 3 blocks into pipelines and attach the same components manager to all 3
 text_node = text_blocks.init_pipeline(t2i_repo, components_manager=components)
 decoder_node = decoder_blocks.init_pipeline(t2i_repo, components_manager=components)
 t2i_pipe = t2i_blocks.init_pipeline(t2i_repo, components_manager=components)
 ```
 
-Load all components into the Components Manager under the "t2i" collection:
+Load all components into the loader pipeline, they should all be automatically registered to Components Manager under the "t2i" collection:
 
 ```py
 # Load all components (including IP-Adapter and ControlNet for later use)
-t2i_loader_pipe.load_components(names=t2i_loader_pipe.pretrained_component_names, torch_dtype=torch.float16)
+t2i_loader_pipe.load_default_components(torch_dtype=torch.float16)
 ```
 
 Now distribute the loaded components to each pipeline:
@@ -432,7 +435,7 @@ image.save("modular_part2_t2i.png")
 Let's add a LoRA:
 
 ```py
-# Load LoRA weights - only the UNet gets the adapter
+# Load LoRA weights 
 >>> t2i_loader_pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy_face")
 >>> components
 Components:
@@ -464,7 +467,8 @@ refiner_blocks = SequentialPipelineBlocks.from_blocks_dict(ALL_BLOCKS["img2img"]
 refiner_blocks.sub_blocks.pop("image_encoder")
 refiner_blocks.sub_blocks.pop("decode")
 
-# Create refiner pipeline with different repo and collection
+# Create refiner pipeline with different repo and collection,
+# Attach the same component manager to it
 refiner_repo = "YiYiXu/modular_refiner"
 refiner_pipe = refiner_blocks.init_pipeline(refiner_repo, components_manager=components, collection="refiner")
 ```

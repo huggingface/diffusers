@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Getting Started with Modular Diffusers: A Comprehensive Overview
+# ModularPipeline
 
 <Tip warning={true}>
 
@@ -18,31 +18,34 @@ specific language governing permissions and limitations under the License.
 
 </Tip>
 
-With Modular Diffusers, we introduce a unified pipeline system that simplifies how you work with diffusion models. Instead of creating separate pipelines for each task, Modular Diffusers lets you:
+`ModularPipeline` is the main interface for end users to run pipelines in Modular Diffusers. It takes pipeline blocks and converts them into a runnable pipeline that can load models and execute the computation steps.
 
-**Write Only What's New**: You won't need to write an entire pipeline from scratch every time you have a new use case. You can create pipeline blocks just for your new workflow's unique aspects and reuse existing blocks for existing functionalities. 
+In this guide, we will focus on how to build pipelines using the blocks we officially support at diffusers 🧨. We'll cover how to use predefined blocks and convert them into a `ModularPipeline` for execution.
 
-**Assemble Like LEGO®**: You can mix and match between blocks in flexible ways. This allows you to write dedicated blocks unique to specific workflows, and then assemble different blocks into a pipeline that can be used more conveniently for multiple workflows. 
+<Tip>
 
-In this guide, we will focus on how to build end-to-end pipelines using blocks we officially support at diffusers 🧨! We will show you how to write your own pipeline blocks and go into more details on how they work under the hood in this [guide](./write_own_pipeline_block.md). For advanced users who want to build complete workflows from scratch, we provide an end-to-end example in the [Developer Guide](./end_to_end.md) that covers everything from writing custom pipeline blocks to deploying your workflow as a UI node.
+This guide shows you how to use predefined blocks. If you want to learn how to create your own pipeline blocks, see the [PipelineBlock guide](pipeline_block.md) for creating individual blocks, and the multi-block guides for connecting them together:
+- [SequentialPipelineBlocks](sequential_pipeline_blocks.md) (for linear workflows)
+- [LoopSequentialPipelineBlocks](loop_sequential_pipeline_blocks.md) (for iterative workflows)  
+- [AutoPipelineBlocks](auto_pipeline_blocks.md) (for conditional workflows)
 
-Let's get started! The Modular Diffusers Framework consists of three main components:
-- ModularPipelineBlocks: Building blocks for your workflow, each block defines inputs/outputs and computation steps. These are just definitions and not runnable.
-- PipelineState & BlockState: Store and manage data as it flows through the pipeline.
-- ModularPipeline: Loads models and runs the computation steps. You convert blocks to pipelines to make them executable.
+For information on how data flows through pipelines, see the [PipelineState and BlockState guide](modular_diffusers_states.md).
 
-## ModularPipelineBlocks
+</Tip>
+
+
+## Create ModularPipelineBlocks
 
 Pipeline blocks are the fundamental building blocks of the Modular Diffusers system. All pipeline blocks inherit from the base class `ModularPipelineBlocks`, including:
 
-- [`PipelineBlock`]: The most granular block - you define the computation logic.
+- [`PipelineBlock`]: The most granular block - you define the input/output/components requirements and computation logic.
 - [`SequentialPipelineBlocks`]: A multi-block composed of multiple blocks that run sequentially, passing outputs as inputs to the next block.
 - [`LoopSequentialPipelineBlocks`]: A special type of `SequentialPipelineBlocks` that runs the same sequence of blocks multiple times (loops), typically used for iterative processes like denoising steps in diffusion models.
 - [`AutoPipelineBlocks`]: A multi-block composed of multiple blocks that are selected at runtime based on the inputs.
 
-All blocks have a consistent interface defining their requirements (components, configs, inputs, outputs) and computation logic. They can be defined standalone or combined into larger blocks - They are designed to be assembled into workflows for tasks such as image generation, video creation, and inpainting. However, blocks aren't runnable on thier own and they need to be converted into a a ModularPipeline to actually run. 
+All blocks have a consistent interface defining their requirements (components, configs, inputs, outputs) and computation logic. They are designed to be assembled into workflows for tasks such as image generation, video creation, and inpainting. However, blocks aren't runnable on thier own and they need to be converted into a a ModularPipeline to actually run. 
 
-**Blocks vs Pipelines**: Blocks are just definitions - they define what components, inputs/outputs, and computation logics are needed, but they don't actually run anything. To execute blocks, you need to put them into a `ModularPipeline`. See the [ModularPipeline from ModularPipelineBlocks](#modularpipeline-from-modularpipelineblocks) section for how to create and run pipelines.
+**Blocks vs Pipelines**: Blocks are just definitions - they define what components, inputs/outputs, and computation logics are needed, but they don't actually run anything. To execute blocks, you need to put them into a `ModularPipeline`. We will first learn how to create predefined blocks here before talking about how to run them using `ModularPipeline`.
 
 It is very easy to use a `ModularPipelineBlocks` officially supported in 🧨 Diffusers
 
@@ -74,9 +77,7 @@ StableDiffusionXLTextEncoderStep(
 )
 ```
 
-More commonly, you need multiple blocks to build your workflow. You can create a `SequentialPipelineBlocks` using block class presets from 🧨 Diffusers.
-
-`TEXT2IMAGE_BLOCKS` is a predefined dictionary containing all the blocks needed for a complete text-to-image pipeline (text encoding, denoising, decoding, etc.). We will see more details soon.
+More commonly, you need multiple blocks to build your workflow. You can create a `SequentialPipelineBlocks` using block class presets from 🧨 Diffusers. `TEXT2IMAGE_BLOCKS` is a preset containing all the blocks needed for text-to-image generation.
 
 ```py
 from diffusers.modular_pipelines import SequentialPipelineBlocks
@@ -179,9 +180,9 @@ Note that both the block classes preset and the `sub_blocks` attribute are `Inse
 
 **Add a block:**
 ```py
-# BLOCKS is a block class preset, you need to add class to it
+# BLOCKS is dict of block classes, you need to add class to it
 BLOCKS.insert("block_name", BlockClass, index)
-# Add a block instance to the `sub_blocks` attribute
+# sub_blocks attribute contains instance, add a block instance to the  attribute
 t2i_blocks.sub_blocks.insert("block_name", block_instance, index)
 ```
 
@@ -197,7 +198,7 @@ text_encoder_block = t2i_blocks.sub_blocks.pop("text_encoder")
 ```py
 # Replace block class in preset
 BLOCKS["prepare_latents"] = CustomPrepareLatents
-# Replace in sub_blocks attribute
+# Replace in sub_blocks attribute using an block instance
 t2i_blocks.sub_blocks["prepare_latents"] = CustomPrepareLatents()
 ```
 
@@ -299,25 +300,10 @@ ALL_BLOCKS = {
 
 </Tip>
 
-We will not go over how to write your own ModularPipelineBlocks but you can learn more about it [here](./write_own_pipeline_block.md).
-
 This covers the essentials of pipeline blocks! You may have noticed that we haven't discussed how to load or run pipeline blocks - that's because **pipeline blocks are not runnable by themselves**. They are essentially **"definitions"** - they define the specifications and computational steps for a pipeline, but they do not contain any model states. To actually run them, you need to convert them into a `ModularPipeline` object.
 
-## PipelineState & BlockState
 
-`PipelineState` and `BlockState` manage dataflow between pipeline blocks. `PipelineState` acts as the global state container that `ModularPipelineBlocks` operate on - each block gets a local view (`BlockState`) of the relevant variables it needs from `PipelineState`, performs its operations, and then updates `PipelineState` as needed.
-
-<Tip>
-
-You typically don't need to manually create or manage these state objects. The `ModularPipeline` automatically creates and manages them for you. However, understanding their roles is important for developing custom pipeline blocks.
-
-</Tip>
-
-## ModularPipeline
-
-`ModularPipeline` is the main interface to create and execute pipelines in the Modular Diffusers system.
-
-### Modular Repo
+## Modular Repo
 
 `ModularPipeline` only works with modular repositories. You can find an example modular repo [here](https://huggingface.co/YiYiXu/modular-diffdiff).
 
@@ -338,13 +324,13 @@ In `modular_model_index.json`, each component entry contains 3 elements: `(libra
 
 ```py
 "text_encoder": [
-  null,  # library (same as model_index.json)
-  null,  # class (same as model_index.json)
+  null,  # library of actual loaded component (same as in model_index.json)
+  null,  # class of actual loaded componenet (same as in model_index.json)
   {      # loading specs map (unique to modular_model_index.json)
     "repo": "stabilityai/stable-diffusion-xl-base-1.0",  # can be a different repo
     "revision": null,
     "subfolder": "text_encoder",
-    "type_hint": [  # (library, class) for the expected component class
+    "type_hint": [  # (library, class) for the expected component
       "transformers",  
       "CLIPTextModel"
     ],
@@ -356,7 +342,7 @@ In `modular_model_index.json`, each component entry contains 3 elements: `(libra
 Unlike standard repositories where components must be in subfolders within the same repo, modular repositories can fetch components from different repositories based on the `loading_specs_dict`. e.g. the `text_encoder` component will be fetched from the "text_encoder" folder in `stabilityai/stable-diffusion-xl-base-1.0` while other components come from different repositories.
 
 
-### Creating a `ModularPipeline` from `ModularPipelineBlocks`
+## Creating a `ModularPipeline` from `ModularPipelineBlocks`
 
 Each `ModularPipelineBlocks` has an `init_pipeline` method that can initialize a `ModularPipeline` object based on its component and configuration specifications.
 
@@ -392,7 +378,7 @@ You can read more about [Components Manager](./components_manager.md)
 </Tip>
 
 
-### Creating a `ModularPipeline` with `from_pretrained`
+## Creating a `ModularPipeline` with `from_pretrained`
 
 You can create a `ModularPipeline` from a HuggingFace Hub repository with `from_pretrained` method, as long as it's a modular repo:
 
@@ -424,7 +410,7 @@ The `auto_map` tells the pipeline where to find the custom blocks definition - i
 
 When `diffdiff_pipeline.blocks` is created, it's based on the `DiffDiffBlocks` definition from the custom code in the repository, allowing you to use specialized blocks that aren't part of the standard diffusers library.
 
-### Loading components into a `ModularPipeline`
+## Loading components into a `ModularPipeline`
 
 Unlike `DiffusionPipeline`, when you create a `ModularPipeline` instance (whether using `from_pretrained` or converting from pipeline blocks), its components aren't loaded automatically. You need to explicitly load model components using `load_default_components` or `load_components(names=..,)`:
 
@@ -551,7 +537,15 @@ StableDiffusionXLModularPipeline {
 }
 ```
 
-You can see all the components that will be loaded using `from_pretrained` method are listed as entries. Each entry contains 3 elements: `(library, class, loading_specs_dict)`:
+You can see all the **pretrained components** that will be loaded using `from_pretrained` method are listed as entries. Each entry contains 3 elements: `(library, class, loading_specs_dict)`:
+
+<Tip>
+
+**Pretrained vs Config-based Components**: Only pretrained components (like models loaded from Hugging Face Hub) appear in the `modular_model_index.json` file at all. Components created with default configurations at initialization (like schedulers, guiders) are not included in the index since they don't need to be loaded from external sources.
+
+Whether a component is pretrained or config-based is defined in each pipeline block's `expected_components` field using `ComponentSpec` with the `default_creation_method` parameter. See the [PipelineBlock](./pipeline_block.md) guide for more details on how to define component specifications.
+
+</Tip>
 
 - **`library` and `class`**: Show the actual loaded component info. If `null`, the component is not loaded yet.
 - **`loading_specs_dict`**: Contains all the information needed to load the component (repo, subfolder, variant, etc.)
@@ -584,9 +578,9 @@ There are also a few properties that can provide a quick summary of component lo
 ['guider', 'image_processor']
 ```
 
-### Modifying Loading Specs
+## Modifying Loading Specs
 
-When you call `pipeline.load_components(names=)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. You can change where components are loaded from by default by modifying the `modular_model_index.json` in the repository. You can change any field in the loading specs: `repo`, `subfolder`, `variant`, `revision`, etc.
+When you call `pipeline.load_components(names=)` or `pipeline.load_default_components()`, it uses the loading specs from the modular repository's `modular_model_index.json`. You can change where components are loaded from by default by modifying the `modular_model_index.json` in the repository. Just find the file on the Hub and click edit - you can change any field in the loading specs: `repo`, `subfolder`, `variant`, `revision`, etc.
 
 ```py
 # Original spec in modular_model_index.json
@@ -613,14 +607,22 @@ When you call `pipeline.load_components(names=)` or `pipeline.load_default_compo
 When you call `pipeline.load_components(...)`/`pipeline.load_default_components()`, it will now load from the new repository by default.
 
 
-### Updating components in a `ModularPipeline`
+## Updating components in a `ModularPipeline`
 
 Similar to `DiffusionPipeline`, you can load components separately to replace the default ones in the pipeline. In Modular Diffusers, the approach depends on the component type:
 
-- **Pretrained components** (`default_creation_method='from_pretrained'`): Must use `ComponentSpec` to load them, as they get tagged with a unique ID that encodes their loading parameters
-- **Config components** (`default_creation_method='from_config'`): These are components that don't need loading specs - they're created during pipeline initialization with default config. To update them, you can either pass the object directly or pass a ComponentSpec directly (which will call `create()` under the hood).
+- **Pretrained components** (`default_creation_method='from_pretrained'`): Must use `ComponentSpec` to load them to update the existing one.
+- **Config components** (`default_creation_method='from_config'`): These are components that don't need loading specs - they're created during pipeline initialization with default config. To update them, you can either pass the object directly or pass a ComponentSpec directly.
+
+<Tip>
+
+💡 **Component Type Changes**: The component type (pretrained vs config-based) can change when you update components. These types are initially defined in pipeline blocks' `expected_components` field using `ComponentSpec` with `default_creation_method`. See the [Customizing Guidance Techniques](#customizing-guidance-techniques) section for examples of how this works in practice.
+
+</Tip>
 
 `ComponentSpec` defines how to create or load components and can actually create them using its `create()` method (for ConfigMixin objects) or `load()` method (wrapper around `from_pretrained()`). When a component is loaded with a ComponentSpec, it gets tagged with a unique ID that encodes its creation parameters, allowing you to always extract the original specification using `ComponentSpec.from_component()`.
+
+Now let's look at how to update pretrained components in practice:
 
 So instead of 
 
@@ -700,7 +702,7 @@ ComponentSpec(
 
 </Tip>
 
-### Customizing Guidance Techniques
+## Customizing Guidance Techniques
 
 Guiders are implementations of different [classifier-free guidance](https://huggingface.co/papers/2207.12598) techniques that can be applied during the denoising process to improve generation quality, control, and adherence to prompts. They work by steering the model predictions towards desired directions and away from undesired directions. In diffusers, guiders are implemented as subclasses of `BaseGuidance`. They can easily be integrated into modular pipelines and provide a flexible way to enhance generation quality without modifying the underlying diffusion models.
 
@@ -826,7 +828,7 @@ The component spec has also been updated to reflect the new guider type:
 
 ```py
 >>> t2i_pipeline.get_component_spec("guider")
-ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.perturbed_attention_guidance.PerturbedAttentionGuidance'>, description=None, config=FrozenDict([('guidance_scale', 5.0), ('perturbed_guidance_scale', 2.5), ('perturbed_guidance_start', 0.01), ('perturbed_guidance_stop', 0.2), ('perturbed_guidance_layers', None), ('perturbed_guidance_config', LayerSkipConfig(indices=[2, 9], fqn='mid_block.attentions.0.transformer_blocks', skip_attention=False, skip_attention_scores=True, skip_ff=False, dropout=1.0)), ('guidance_rescale', 0.0), ('use_original_formulation', False), ('start', 0.0), ('stop', 1.0), ('_use_default_values', ['use_original_formulation', 'perturbed_guidance_stop', 'stop', 'guidance_rescale', 'start', 'perturbed_guidance_layers', 'perturbed_guidance_start']), ('_class_name', 'PerturbedAttentionGuidance'), ('_diffusers_version', '0.35.0.dev0')]), repo=None, subfolder=None, variant=None, revision=None, default_creation_method='from_config')
+ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.perturbed_attention_guidance.PerturbedAttentionGuidance'>, description=None, config=FrozenDict([('guidance_scale', 5.0), ('perturbed_guidance_scale', 2.5), ('perturbed_guidance_start', 0.01), ('perturbed_guidance_stop', 0.2), ('perturbed_guidance_layers', None), ('perturbed_guidance_config', LayerSkipConfig(indices=[2, 9], fqn='mid_block.attentions.0.transformer_blocks', skip_attention=False, skip_attention_scores=True, skip_ff=False, dropout=1.0)), ('guidance_rescale', 0.0), ('use_original_formulation', False), ('start', 0.0), ('stop', 1.0), ('_use_default_values', ['perturbed_guidance_start', 'use_original_formulation', 'perturbed_guidance_layers', 'stop', 'start', 'guidance_rescale', 'perturbed_guidance_stop']), ('_class_name', 'PerturbedAttentionGuidance'), ('_diffusers_version', '0.35.0.dev0')]), repo=None, subfolder=None, variant=None, revision=None, default_creation_method='from_config')
 ```
 
 However, the "guider" is still not included in the pipeline config and will not be saved into the `modular_model_index.json` since it remains a `from_config` component: 
@@ -907,7 +909,7 @@ Additionally, you can write your own guider implementations, for example, CFG Ze
 
 </Tip>
 
-### Running a `ModularPipeline`
+## Running a `ModularPipeline`
 
 The API to run the `ModularPipeline` is very similar to how you would run a regular `DiffusionPipeline`:
 
@@ -926,13 +928,13 @@ Under the hood, `ModularPipeline`'s `__call__` method is a wrapper around the pi
 
 You can inspect the docstring of a `ModularPipeline` to check what arguments the pipeline accepts and how to specify the `output` you want. It will list all available outputs (basically everything in the intermediate pipeline state) so you can choose from the list.
 
-**Important**: It is important to always check the docstring because arguments can be different from standard pipelines that you're familar with. For example, in Modular Diffusers we standardized controlnet image input as `control_image`, but regular pipelines have inconsistencies over the names, e.g. controlnet text-to-image uses `image` while SDXL controlnet img2img uses `control_image`.
-
-**Note**: The `output` list might be longer than you expected - it includes everything in the intermediate state that you can choose to return. Most of the time, you'll just want `output="images"` or `output="latents"`.
-
 ```py
 t2i_pipeline.doc
 ```
+
+**Important**: It is important to always check the docstring because arguments can be different from standard pipelines that you're familar with. For example, in Modular Diffusers we standardized controlnet image input as `control_image`, but regular pipelines have inconsistencies over the names, e.g. controlnet text-to-image uses `image` while SDXL controlnet img2img uses `control_image`.
+
+**Note**: The `output` list might be longer than you expected - it includes everything in the intermediate state that you can choose to return. Most of the time, you'll just want `output="images"` or `output="latents"`.
 
 </Tip>
 
@@ -1072,7 +1074,7 @@ StableDiffusionXLAutoControlnetStep(
 
 <Tip>
 
-💡 **Auto Blocks**: This is first time we meet a Auto Blocks! `AutoPipelineBlocks` automatically adapt to your inputs by combining multiple workflows with conditional logic. This is why one convenient block can work for all tasks and controlnet types. See the [Auto Blocks Guide](https://huggingface.co/docs/diffusers/modular_diffusers/write_own_pipeline_block#autopipelineblocks) for more details.
+💡 **Auto Blocks**: This is first time we meet a Auto Blocks! `AutoPipelineBlocks` automatically adapt to your inputs by combining multiple workflows with conditional logic. This is why one convenient block can work for all tasks and controlnet types. See the [Auto Blocks Guide](./auto_pipeline_blocks.md) for more details.
 
 </Tip>
 

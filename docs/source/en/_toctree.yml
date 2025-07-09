@@ -94,14 +94,24 @@
     title: API Reference
   title: Hybrid Inference
 - sections:
-  - local: modular_diffusers/getting_started
-    title: Getting Started
+  - local: modular_diffusers/overview
+    title: Overview
+  - local: modular_diffusers/modular_pipeline
+    title: Modular Pipeline
   - local: modular_diffusers/components_manager
     title: Components Manager
-  - local: modular_diffusers/write_own_pipeline_block
-    title: Write your own pipeline block
+  - local: modular_diffusers/modular_diffusers_states
+    title: Modular Diffusers States
+  - local: modular_diffusers/pipeline_block
+    title: Pipeline Block
+  - local: modular_diffusers/sequential_pipeline_blocks
+    title: Sequential Pipeline Blocks
+  - local: modular_diffusers/loop_sequential_pipeline_blocks
+    title: Loop Sequential Pipeline Blocks
+  - local: modular_diffusers/auto_pipeline_blocks
+    title: Auto Pipeline Blocks
   - local: modular_diffusers/end_to_end_guide
-    title: End-to-End Developer Guide
+    title: End-to-End Example
   title: Modular Diffusers
 - sections:
   - local: using-diffusers/consisid

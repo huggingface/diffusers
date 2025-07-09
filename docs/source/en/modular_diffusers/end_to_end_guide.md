@@ -266,27 +266,27 @@ class SDXLDiffDiffLoopBeforeDenoiser(PipelineBlock):
             "Step within the denoising loop for differential diffusion that prepare the latent input for the denoiser"
         )
 
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            InputParam("denoising_start"),
-        ]
++   @property
++   def inputs(self) -> List[Tuple[str, Any]]:
++       return [
++           InputParam("denoising_start"),
++       ]
 
     @property
     def intermediate_inputs(self) -> List[str]:
         return [
             InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("original_latents", type_hint=torch.Tensor),
-            InputParam("diffdiff_masks", type_hint=torch.Tensor),
++           InputParam("original_latents", type_hint=torch.Tensor),
++           InputParam("diffdiff_masks", type_hint=torch.Tensor),
         ]
 
     def __call__(self, components, block_state, i, t):
-        # Apply differential diffusion logic
-        if i == 0 and block_state.denoising_start is None:
-            block_state.latents = block_state.original_latents[:1]
-        else:
-            block_state.mask = block_state.diffdiff_masks[i].unsqueeze(0).unsqueeze(1)
-            block_state.latents = block_state.original_latents[i] * block_state.mask + block_state.latents * (1 - block_state.mask)
++       # Apply differential diffusion logic
++       if i == 0 and block_state.denoising_start is None:
++           block_state.latents = block_state.original_latents[:1]
++       else:
++           block_state.mask = block_state.diffdiff_masks[i].unsqueeze(0).unsqueeze(1)
++           block_state.latents = block_state.original_latents[i] * block_state.mask + block_state.latents * (1 - block_state.mask)
         
         # ... rest of existing logic ...
 ```
