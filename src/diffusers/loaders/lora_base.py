@@ -467,7 +467,7 @@ def _func_optionally_disable_offloading(_pipeline):
             for _, component in _pipeline.components.items():
                 if not isinstance(component, nn.Module) or not hasattr(component, "_hf_hook"):
                     continue
-            remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
     return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
 
