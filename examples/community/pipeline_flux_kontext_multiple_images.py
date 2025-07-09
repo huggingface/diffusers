@@ -767,7 +767,7 @@ class FluxKontextPipeline(
                 all_image_latents.append(image_latents)
 
             image_latents = torch.cat(all_image_latents, dim=1)
-            image_ids = torch.cat(all_image_ids, dim=0)
+            images_ids = torch.cat(all_image_ids, dim=0)
 
         latent_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
@@ -777,7 +777,7 @@ class FluxKontextPipeline(
         else:
             latents = latents.to(device=device, dtype=dtype)
 
-        return latents, image_latents, latent_ids, image_ids
+        return latents, image_latents, latent_ids, images_ids
 
     @property
     def guidance_scale(self):
