@@ -137,6 +137,21 @@ class FasterCacheConfig(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class FirstBlockCacheConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class HookRegistry(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -199,6 +214,10 @@ class SmoothedEnergyGuidanceConfig(metaclass=DummyObject):
 
 def apply_faster_cache(*args, **kwargs):
     requires_backends(apply_faster_cache, ["torch"])
+
+
+def apply_first_block_cache(*args, **kwargs):
+    requires_backends(apply_first_block_cache, ["torch"])
 
 
 def apply_layer_skip(*args, **kwargs):
