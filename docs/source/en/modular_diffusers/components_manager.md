@@ -144,9 +144,9 @@ Components:
 ======================================================================================================================================================================================================
 Models:
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Name_ID                             | Class                     | Device: act(exec)    | Dtype           | Size (GB)  | Load ID                                                         | Collection
+Name_ID                                 | Class                     | Device: act(exec)    | Dtype           | Size (GB)  | Load ID                                                         | Collection
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-text_encoder_139918506246832        | CLIPTextModel             | cpu                  | torch.float32   | 0.46       | stabilityai/stable-diffusion-xl-base-1.0|text_encoder|null|null | N/A
+text_encoder_139918506246832            | CLIPTextModel             | cpu                  | torch.float32   | 0.46       | stabilityai/stable-diffusion-xl-base-1.0|text_encoder|null|null | N/A
 text_encoder_duplicated_139917580682672 | CLIPTextModel             | cpu                  | torch.float32   | 0.46       | stabilityai/stable-diffusion-xl-base-1.0|text_encoder|null|null | N/A
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -282,7 +282,7 @@ As mentioned earlier, `ModularPipeline` has a property `null_component_names` th
 
 The warnings that follow are expected and indicate that the Components Manager is correctly identifying that these components already exist and will be reused rather than creating duplicates:
 
-```
+```out
 ComponentsManager: component 'text_encoder' already exists as 'text_encoder_139917586016400'
 ComponentsManager: component 'text_encoder_2' already exists as 'text_encoder_2_139917699973424'
 ComponentsManager: component 'tokenizer' already exists as 'tokenizer_139917580599504'
@@ -293,7 +293,7 @@ ComponentsManager: component 'vae' already exists as 'vae_139917722459040'
 ComponentsManager: component 'scheduler' already exists as 'scheduler_139916266559408'
 ComponentsManager: component 'controlnet' already exists as 'controlnet_139917722454432'
 ```
-```
+
 
 The pipeline is now fully loaded:
 

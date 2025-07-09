@@ -21,7 +21,9 @@ specific language governing permissions and limitations under the License.
 In Modular Diffusers, you build your workflow using `ModularPipelineBlocks`. We support 4 different types of blocks: `PipelineBlock`, `SequentialPipelineBlocks`, `LoopSequentialPipelineBlocks`, and `AutoPipelineBlocks`. Among them, `PipelineBlock` is the most fundamental building block of the whole system - it's like a brick in a Lego system. These blocks are designed to easily connect with each other, allowing for modular construction of creative and potentially very complex workflows.
 
 <Tip>
+
 **Important**: `PipelineBlock`s are definitions/specifications, not runnable pipelines. They define what a block should do and what data it needs, but you need to convert them into a `ModularPipeline` to actually execute them. For information on creating and running pipelines, see the [Modular Pipeline guide](./modular_pipeline.md).
+
 </Tip>
 
 In this tutorial, we will focus on how to write a basic `PipelineBlock` and how it interacts with the pipeline state.
@@ -30,14 +32,14 @@ In this tutorial, we will focus on how to write a basic `PipelineBlock` and how 
 
 Before we dive into creating `PipelineBlock`s, make sure you have a basic understanding of `PipelineState`. It acts as the global state container that all blocks operate on - each block gets a local view (`BlockState`) of the relevant variables it needs from `PipelineState`, performs its operations, and then updates `PipelineState` with any changes. See the [PipelineState and BlockState guide](./modular_diffusers_states.md) for more details.
 
-## Creating a `PipelineBlock`
+## Define a `PipelineBlock`
 
 To write a `PipelineBlock` class, you need to define a few properties that determine how your block interacts with the pipeline state. Understanding these properties is crucial - they define what data your block can access and what it can produce.
 
 The three main properties you need to define are:
 - `inputs`: Immutable values from the user that cannot be modified
 - `intermediate_inputs`: Mutable values from previous blocks that can be read and modified  
-- `intermediate_outputs`: New values your block creates for subsequent blocks
+- `intermediate_outputs`: New values your block creates for subsequent blocks and user access
 
 Let's explore each one and understand how they work with the pipeline state.
 
@@ -55,7 +57,7 @@ When you list something as an input, you're saying "I need this value directly f
 
 This is especially useful for raw values that serve as the "source of truth" in your workflow. For example, with a raw image, many workflows require preprocessing steps like resizing that a previous block might have performed. But in many cases, you also want the raw PIL image. In some inpainting workflows, you need the original image to overlay with the generated result for better control and consistency.
 
-**Intermediate Inputs: Mutable Values from Previous Blocks**
+**Intermediate Inputs: Mutable Values from Previous Blocks, or Users**
 
 Intermediate inputs are variables your block needs from the mutable pipeline state - these are values that can be read and modified. They're typically created by previous blocks, but could also be directly provided by the user if not the case:
 
@@ -67,9 +69,12 @@ user_intermediate_inputs = [
 
 When you list something as an intermediate input, you're saying "I need this value, but I want to work with a different block that has already created it. I already know for sure that I can get it from this other block, but it's okay if other developers want use something different."
 
-**Intermediate Outputs: New Values for Subsequent Blocks**
+**Intermediate Outputs: New Values for Subsequent Blocks and User Access**
 
-Intermediate outputs are new variables your block creates and adds to the mutable pipeline state so they can be used by subsequent blocks:
+Intermediate outputs are new variables your block creates and adds to the mutable pipeline state. They serve two purposes:
+
+1. **For subsequent blocks**: They can be used as intermediate inputs by other blocks in the pipeline
+2. **For users**: They become available as final outputs that users can access when running the pipeline
 
 ```py
 user_intermediate_outputs = [
@@ -78,6 +83,8 @@ user_intermediate_outputs = [
 ```
 
 Intermediate inputs and intermediate outputs work together like Lego studs and anti-studs - they're the connection points that make blocks modular. When one block produces an intermediate output, it becomes available as an intermediate input for subsequent blocks. This is where the "modular" nature of the system really shines - blocks can be connected and reconnected in different ways as long as their inputs and outputs match.
+
+Additionally, all intermediate outputs are accessible to users when they run the pipeline, typically you would only need the final images, but they are also able to access intermediate results like latents, embeddings, or other processing steps.
 
 **The `__call__` Method Structure**
 
@@ -122,7 +129,15 @@ expected_config = [
 
 **Configs**: Pipeline-level settings that control behavior across all blocks.
 
-When you convert your blocks into a pipeline using `blocks.init_pipeline()`, the pipeline collects all component requirements from the blocks and fetches the loading specs from the modular repository. The components are then made available to your block in the `components` argument of the `__call__` method.
+When you convert your blocks into a pipeline using `blocks.init_pipeline()`, the pipeline collects all component requirements from the blocks and fetches the loading specs from the modular repository. The components are then made available to your block as the first argument of the `__call__` method. You can access any component you need using dot notation:
+
+```py
+def __call__(self, components, state):
+    # Access components using dot notation
+    unet = components.unet
+    vae = components.vae
+    scheduler = components.scheduler
+```
 
 That's all you need to define in order to create a `PipelineBlock`. There is no hidden complexity. In fact we are going to create a helper function that take exactly these variables as input and return a pipeline block. We will use this helper function through out the tutorial to create test blocks
 
@@ -275,5 +290,3 @@ pipeline_state (after update): PipelineState(
    - **`batch_size (intermediate_inputs)`** was updated in both `block_state` and `pipeline_state` - this change affects subsequent blocks (we didn't need to declare it as an intermediate output since it was already in the intermediates dict)
    - **`image_latents (intermediate_outputs)`** was added to `pipeline_state` because it was declared as an intermediate output
    - **`processed_image`** was not added to `pipeline_state` because it wasn't declared as an intermediate output
-
-Understanding how to create `PipelineBlock`s is fundamental to building modular workflows in Modular Diffusers. Remember that `PipelineBlock`s are definitions/specifications - they define what a block should do and what data it needs, but you need to convert them into a `ModularPipeline` to actually execute them. For information on creating and running pipelines, see the [Modular Pipeline guide](modular_pipeline.md).

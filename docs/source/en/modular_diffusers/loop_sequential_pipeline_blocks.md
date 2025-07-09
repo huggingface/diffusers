@@ -39,6 +39,7 @@ class DenoiseLoop(PipelineBlock):
             pass
         self.set_block_state(state, block_state)
         return components, state
+```
 
 But in this tutorial, we will focus on how to use `LoopSequentialPipelineBlocks` to create a "composable" denoising loop where you can add or remove blocks within the loop or reuse the same loop structure with different block combinations.
 

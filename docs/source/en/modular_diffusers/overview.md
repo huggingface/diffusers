@@ -39,4 +39,4 @@ Here's how our guides are organized to help you navigate the Modular Diffusers d
 - **[AutoPipelineBlocks](./auto_pipeline_blocks.md)** - Conditional block selection
 
 ### 🎯 Practical Examples
-- **[end_to_end_guide.md](./end_to_end_guide.md)** - Complete end-to-end examples including sharing your workflow in huggingface hub and deplying UI nodes
+- **[End-to-End Example](./end_to_end_guide.md)** - Complete end-to-end examples including sharing your workflow in huggingface hub and deplying UI nodes
