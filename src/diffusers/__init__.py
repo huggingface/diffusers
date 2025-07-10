@@ -40,6 +40,7 @@ _import_structure = {
     "models": [],
     "modular_pipelines": [],
     "pipelines": [],
+    "quantizers.pipe_quant_config": ["PipelineQuantizationConfig"],
     "quantizers.quantization_config": [],
     "schedulers": [],
     "utils": [
