@@ -654,7 +654,7 @@ class WanVACEGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
 
 
 @require_torch_version_greater("2.7.1")
-class GGUFCompileTests(QuantCompileTests):
+class GGUFCompileTests(QuantCompileTests, unittest.TestCase):
     torch_dtype = torch.bfloat16
     gguf_ckpt = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
 

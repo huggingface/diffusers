@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gc
-import unittest
 
 import torch
 
@@ -23,7 +22,7 @@ from diffusers.utils.testing_utils import backend_empty_cache, require_torch_gpu
 
 @require_torch_gpu
 @slow
-class QuantCompileTests(unittest.TestCase):
+class QuantCompileTests:
     @property
     def quantization_config(self):
         raise NotImplementedError(

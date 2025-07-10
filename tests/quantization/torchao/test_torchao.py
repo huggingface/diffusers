@@ -630,7 +630,7 @@ class TorchAoSerializationTest(unittest.TestCase):
 
 
 @require_torchao_version_greater_or_equal("0.7.0")
-class TorchAoCompileTest(QuantCompileTests):
+class TorchAoCompileTest(QuantCompileTests, unittest.TestCase):
     @property
     def quantization_config(self):
         return PipelineQuantizationConfig(
