@@ -409,6 +409,10 @@ def _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name=None
             all_modules.add(module_name)
 
     target_modules_set = {name.split(".lora")[0] for name in peft_state_dict.keys()}
-    exclude_modules = list(all_modules - target_modules_set)
+    exclude_modules_set = set(all_modules - target_modules_set)
+    exclude_modules = []
+    for module_name in exclude_modules_set:
+        if all(module_name not in target_module_name for target_module_name in target_modules_set):
+            exclude_modules.append(module_name)
 
     return exclude_modules
