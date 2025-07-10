@@ -245,13 +245,13 @@ def load_model_dict_into_meta(
             if keep_in_fp32_modules is not None and any(
                 module_to_keep_in_fp32 in param_name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules
             ):
-                param = param.to(torch.float32, non_blocking=True)
+                param = param.to(torch.float32)
                 set_module_kwargs["dtype"] = torch.float32
             # For quantizers have save weights using torch.float8_e4m3fn
             elif hf_quantizer is not None and param.dtype == getattr(torch, "float8_e4m3fn", None):
                 pass
             else:
-                param = param.to(dtype, non_blocking=True)
+                param = param.to(dtype)
                 set_module_kwargs["dtype"] = dtype
 
         if is_accelerate_version(">=", "1.9.0.dev0"):
@@ -271,7 +271,7 @@ def load_model_dict_into_meta(
 
         if old_param is not None:
             if dtype is None:
-                param = param.to(old_param.dtype, non_blocking=True)
+                param = param.to(old_param.dtype)
 
             if old_param.is_contiguous():
                 param = param.contiguous()
