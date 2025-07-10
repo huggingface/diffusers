@@ -645,8 +645,9 @@ class TorchAoCompileTest(QuantCompileTests, unittest.TestCase):
     )
     def test_torch_compile_with_cpu_offload(self):
         # RuntimeError: _apply(): Couldn't swap Linear.weight
-        super()._test_torch_compile_with_cpu_offload()
+        super().test_torch_compile_with_cpu_offload()
 
+    @parameterized.expand([False, True])
     @unittest.skip(
         """
         For `use_stream=False`:
@@ -656,8 +657,7 @@ class TorchAoCompileTest(QuantCompileTests, unittest.TestCase):
             Using non-default stream requires ability to pin tensors. AQT does not seem to support this yet in TorchAO.
         """
     )
-    @parameterized.expand([False, True])
-    def test_torch_compile_with_group_offload_leaf(self):
+    def test_torch_compile_with_group_offload_leaf(self, use_stream):
         # For use_stream=False:
         # If we run group offloading without compilation, we will see:
         #   RuntimeError: Attempted to set the storage of a tensor on device "cpu" to a storage on different device "cuda:0".  This is no longer allowed; the devices must match.
@@ -670,7 +670,7 @@ class TorchAoCompileTest(QuantCompileTests, unittest.TestCase):
 
         # For use_stream=True:
         # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
-        super()._test_torch_compile_with_group_offload_leaf()
+        super()._test_torch_compile_with_group_offload_leaf(use_stream=use_stream)
 
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners

@@ -877,7 +877,7 @@ class Bnb4BitCompileTests(QuantCompileTests, unittest.TestCase):
     @property
     def quantization_config(self):
         return PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_8bit",
+            quant_backend="bitsandbytes_4bit",
             quant_kwargs={
                 "load_in_4bit": True,
                 "bnb_4bit_quant_type": "nf4",
