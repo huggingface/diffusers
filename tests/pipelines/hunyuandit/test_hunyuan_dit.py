@@ -124,14 +124,22 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
-    @unittest.skip("Not supported.")
+    @unittest.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
     def test_sequential_cpu_offload_forward_pass(self):
         # TODO(YiYi) need to fix later
+        # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
+        # `torch.nn.functional.multi_head_attention_forward` with the weights and bias. Since the hook is never
+        # triggered with a forward pass call, the weights stay on the CPU. There are more examples where we skip
+        # this test because of MHA (example: HunyuanVideo Framepack)
         pass
 
-    @unittest.skip("Not supported.")
+    @unittest.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
     def test_sequential_offload_forward_pass_twice(self):
         # TODO(YiYi) need to fix later
+        # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
+        # `torch.nn.functional.multi_head_attention_forward` with the weights and bias. Since the hook is never
+        # triggered with a forward pass call, the weights stay on the CPU. There are more examples where we skip
+        # this test because of MHA (example: HunyuanVideo Framepack)
         pass
 
     def test_inference_batch_single_identical(self):

@@ -97,6 +97,17 @@ class Base8bitTests(unittest.TestCase):
     num_inference_steps = 10
     seed = 0
 
+    @classmethod
+    def setUpClass(cls):
+        cls.is_deterministic_enabled = torch.are_deterministic_algorithms_enabled()
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(False)
+
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
             "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/prompt_embeds.pt",
@@ -485,7 +496,6 @@ class SlowBnb8bitTests(Base8bitTests):
         r"""
         Test that loading the model and unquantize it produce correct results.
         """
-        torch.use_deterministic_algorithms(True)
         self.pipeline_8bit.transformer.dequantize()
         output = self.pipeline_8bit(
             prompt=self.prompt,
@@ -827,12 +837,15 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
 
 
 @require_torch_version_greater_equal("2.6.0")
+@require_bitsandbytes_version_greater("0.45.5")
 class Bnb8BitCompileTests(QuantCompileTests):
-    quantization_config = PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_8bit",
-        quant_kwargs={"load_in_8bit": True},
-        components_to_quantize=["transformer", "text_encoder_2"],
-    )
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_8bit",
+            quant_kwargs={"load_in_8bit": True},
+            components_to_quantize=["transformer", "text_encoder_2"],
+        )
 
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -844,7 +857,7 @@ class Bnb8BitCompileTests(QuantCompileTests):
         )
 
     @pytest.mark.xfail(reason="Test fails because of an offloading problem from Accelerate with confusion in hooks.")
-    def test_torch_compile_with_group_offload(self):
-        super()._test_torch_compile_with_group_offload(
-            quantization_config=self.quantization_config, torch_dtype=torch.float16
+    def test_torch_compile_with_group_offload_leaf(self):
+        super()._test_torch_compile_with_group_offload_leaf(
+            quantization_config=self.quantization_config, torch_dtype=torch.float16, use_stream=True
         )

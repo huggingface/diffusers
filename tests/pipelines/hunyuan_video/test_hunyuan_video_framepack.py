@@ -71,7 +71,6 @@ class HunyuanVideoFramepackPipelineFastTests(
     )
 
     supports_dduf = False
-    # there is no xformers processor for Flux
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
@@ -359,6 +358,30 @@ class HunyuanVideoFramepackPipelineFastTests(
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
+
+    def test_float16_inference(self, expected_max_diff=0.2):
+        # NOTE: this test needs a higher tolerance because of multiple forwards through
+        # the model, which compounds the overall fp32 vs fp16 numerical differences. It
+        # shouldn't be expected that the results are the same, so we bump the tolerance.
+        return super().test_float16_inference(expected_max_diff)
+
+    @unittest.skip("The image_encoder uses SiglipVisionModel, which does not support sequential CPU offloading.")
+    def test_sequential_cpu_offload_forward_pass(self):
+        # https://github.com/huggingface/transformers/blob/21cb353b7b4f77c6f5f5c3341d660f86ff416d04/src/transformers/models/siglip/modeling_siglip.py#L803
+        # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
+        # `torch.nn.functional.multi_head_attention_forward` with the weights and bias. Since the hook is never
+        # triggered with a forward pass call, the weights stay on the CPU. There are more examples where we skip
+        # this test because of MHA (example: HunyuanDiT because of AttentionPooling layer).
+        pass
+
+    @unittest.skip("The image_encoder uses SiglipVisionModel, which does not support sequential CPU offloading.")
+    def test_sequential_offload_forward_pass_twice(self):
+        # https://github.com/huggingface/transformers/blob/21cb353b7b4f77c6f5f5c3341d660f86ff416d04/src/transformers/models/siglip/modeling_siglip.py#L803
+        # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
+        # `torch.nn.functional.multi_head_attention_forward` with the weights and bias. Since the hook is never
+        # triggered with a forward pass call, the weights stay on the CPU. There are more examples where we skip
+        # this test because of MHA (example: HunyuanDiT because of AttentionPooling layer).
+        pass
 
     # TODO(aryan): Create a dummy gemma model with smol vocab size
     @unittest.skip(
