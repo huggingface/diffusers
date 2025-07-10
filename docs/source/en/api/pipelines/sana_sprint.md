@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,9 +88,43 @@ image.save("sana.png")
 
 Users can tweak the `max_timesteps` value for experimenting with the visual quality of the generated outputs. The default `max_timesteps` value was obtained with an inference-time search process. For more details about it, check out the paper.
 
+## Image to Image 
+
+The [`SanaSprintImg2ImgPipeline`] is a pipeline for image-to-image generation. It takes an input image and a prompt, and generates a new image based on the input image and the prompt.
+
+```py
+import torch
+from diffusers import SanaSprintImg2ImgPipeline
+from diffusers.utils.loading_utils import load_image
+
+image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/penguin.png"
+)
+
+pipe = SanaSprintImg2ImgPipeline.from_pretrained(
+    "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers", 
+    torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(
+    prompt="a cute pink bear", 
+    image=image, 
+    strength=0.5, 
+    height=832, 
+    width=480
+).images[0]
+image.save("output.png")
+```
+
 ## SanaSprintPipeline
 
 [[autodoc]] SanaSprintPipeline
+  - all
+  - __call__
+
+## SanaSprintImg2ImgPipeline
+
+[[autodoc]] SanaSprintImg2ImgPipeline
   - all
   - __call__
 

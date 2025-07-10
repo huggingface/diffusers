@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Black Forest Labs and The HuggingFace Team. All rights reserved.
 # modeled after RF Inversion: https://rf-inversion.github.io/, authored by Litu Rout, Yujia Chen, Nataniel Ruiz,
 # Constantine Caramanis, Sanjay Shakkottai and Wen-Sheng Chu.
 #
@@ -698,9 +698,9 @@ class RFInversionFluxPipeline(
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 7.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://huggingface.co/papers/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -849,7 +849,7 @@ class RFInversionFluxPipeline(
 
         if do_rf_inversion:
             y_0 = image_latents.clone()
-        # 6. Denoising loop / Controlled Reverse ODE, Algorithm 2 from: https://arxiv.org/pdf/2410.10792
+        # 6. Denoising loop / Controlled Reverse ODE, Algorithm 2 from: https://huggingface.co/papers/2410.10792
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if do_rf_inversion:
@@ -884,7 +884,7 @@ class RFInversionFluxPipeline(
                         eta_t = eta_t * (1 - i / num_inference_steps) ** eta_decay_power  # Decay eta over the loop
                     v_hat_t = v_t + eta_t * (v_t_cond - v_t)
 
-                    # SDE Eq: 17 from https://arxiv.org/pdf/2410.10792
+                    # SDE Eq: 17 from https://huggingface.co/papers/2410.10792
                     latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
                 else:
                     # compute the previous noisy sample x_t -> x_t-1
@@ -944,7 +944,7 @@ class RFInversionFluxPipeline(
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
-        Performs Algorithm 1: Controlled Forward ODE from https://arxiv.org/pdf/2410.10792
+        Performs Algorithm 1: Controlled Forward ODE from https://huggingface.co/papers/2410.10792
         Args:
             image (`PipelineImageInput`):
                 Input for the image(s) that are to be edited. Multiple input images have to default to the same aspect
@@ -953,9 +953,9 @@ class RFInversionFluxPipeline(
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             source_guidance_scale (`float`, *optional*, defaults to 0.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://huggingface.co/papers/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). For this algorithm, it's better to keep it 0.
+                Paper](https://huggingface.co/papers/2205.11487). For this algorithm, it's better to keep it 0.
             num_inversion_steps (`int`, *optional*, defaults to 28):
                 The number of discretization steps.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -9,6 +9,9 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 -->
+
+> [!WARNING]
+> This pipeline is deprecated but it can still be used. However, we won't test the pipeline anymore and won't accept any changes to it. If you run into any issues, reinstall the last Diffusers version that supported this model.
 
 # I2VGen-XL
 
@@ -47,7 +50,7 @@ Sample output with I2VGenXL:
 * Unlike SVD, it additionally accepts text prompts as inputs.
 * It can generate higher resolution videos.
 * When using the [`DDIMScheduler`] (which is default for this pipeline), less than 50 steps for inference leads to bad results.
-* This implementation is 1-stage variant of I2VGenXL. The main figure in the [I2VGen-XL](https://arxiv.org/abs/2311.04145) paper shows a 2-stage variant, however, 1-stage variant works well. See [this discussion](https://github.com/huggingface/diffusers/discussions/7952) for more details.
+* This implementation is 1-stage variant of I2VGenXL. The main figure in the [I2VGen-XL](https://huggingface.co/papers/2311.04145) paper shows a 2-stage variant, however, 1-stage variant works well. See [this discussion](https://github.com/huggingface/diffusers/discussions/7952) for more details.
 
 ## I2VGenXLPipeline
 [[autodoc]] I2VGenXLPipeline

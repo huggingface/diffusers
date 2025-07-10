@@ -1,6 +1,6 @@
 # Scheduled Pseudo-Huber Loss for Diffusers
 
-These are the modifications of to include the possibility of training text2image models with Scheduled Pseudo Huber loss, introduced in https://arxiv.org/abs/2403.16728. (https://github.com/kabachuha/SPHL-for-stable-diffusion)
+These are the modifications of to include the possibility of training text2image models with Scheduled Pseudo Huber loss, introduced in https://huggingface.co/papers/2403.16728. (https://github.com/kabachuha/SPHL-for-stable-diffusion)
 
 ## Why this might be useful?
 

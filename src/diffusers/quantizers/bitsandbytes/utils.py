@@ -49,7 +49,7 @@ def _replace_with_bnb_linear(
     """
     Private method that wraps the recursion for module replacement.
 
-    Returns the converted model and a boolean that indicates if the conversion has been successfull or not.
+    Returns the converted model and a boolean that indicates if the conversion has been successful or not.
     """
     for name, module in model.named_children():
         if current_key_name is None:
@@ -121,8 +121,9 @@ def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name
 
     References:
         * `bnb.nn.Linear8bit`: [LLM.int8(): 8-bit Matrix Multiplication for Transformers at
-          Scale](https://arxiv.org/abs/2208.07339)
-        * `bnb.nn.Linear4bit`: [QLoRA: Efficient Finetuning of Quantized LLMs](https://arxiv.org/abs/2305.14314)
+          Scale](https://huggingface.co/papers/2208.07339)
+        * `bnb.nn.Linear4bit`: [QLoRA: Efficient Finetuning of Quantized
+          LLMs](https://huggingface.co/papers/2305.14314)
 
     Parameters:
         model (`torch.nn.Module`):
@@ -223,7 +224,7 @@ def _dequantize_and_replace(
     performance drop compared to the original model before quantization - use it only for specific usecases such as
     QLoRA adapters merging.
 
-    Returns the converted model and a boolean that indicates if the conversion has been successfull or not.
+    Returns the converted model and a boolean that indicates if the conversion has been successful or not.
     """
     quant_method = quantization_config.quantization_method()
 

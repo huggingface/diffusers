@@ -2,7 +2,6 @@ import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 
 from diffusers import FluxPipeline, FluxPriorReduxPipeline
@@ -19,7 +18,6 @@ from diffusers.utils.testing_utils import (
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
 class FluxReduxSlowTests(unittest.TestCase):
     pipeline_class = FluxPriorReduxPipeline
     repo_id = "black-forest-labs/FLUX.1-Redux-dev"

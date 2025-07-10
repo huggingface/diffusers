@@ -2,7 +2,6 @@ import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
@@ -25,6 +24,7 @@ from diffusers.utils.testing_utils import (
 
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
@@ -34,11 +34,12 @@ from ..test_pipelines_common import (
 
 
 class FluxPipelineFastTests(
-    unittest.TestCase,
     PipelineTesterMixin,
     FluxIPAdapterTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
     FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
@@ -224,7 +225,6 @@ class FluxPipelineFastTests(
 
 @nightly
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
 class FluxPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
@@ -312,7 +312,6 @@ class FluxPipelineSlowTests(unittest.TestCase):
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
 class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-dev"

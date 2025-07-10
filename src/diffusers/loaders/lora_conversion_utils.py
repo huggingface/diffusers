@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -727,8 +727,25 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             elif k.startswith("lora_te1_"):
                 has_te_keys = True
                 continue
+            elif k.startswith("lora_transformer_context_embedder"):
+                diffusers_key = "context_embedder"
+            elif k.startswith("lora_transformer_norm_out_linear"):
+                diffusers_key = "norm_out.linear"
+            elif k.startswith("lora_transformer_proj_out"):
+                diffusers_key = "proj_out"
+            elif k.startswith("lora_transformer_x_embedder"):
+                diffusers_key = "x_embedder"
+            elif k.startswith("lora_transformer_time_text_embed_guidance_embedder_linear_"):
+                i = int(k.split("lora_transformer_time_text_embed_guidance_embedder_linear_")[-1])
+                diffusers_key = f"time_text_embed.guidance_embedder.linear_{i}"
+            elif k.startswith("lora_transformer_time_text_embed_text_embedder_linear_"):
+                i = int(k.split("lora_transformer_time_text_embed_text_embedder_linear_")[-1])
+                diffusers_key = f"time_text_embed.text_embedder.linear_{i}"
+            elif k.startswith("lora_transformer_time_text_embed_timestep_embedder_linear_"):
+                i = int(k.split("lora_transformer_time_text_embed_timestep_embedder_linear_")[-1])
+                diffusers_key = f"time_text_embed.timestep_embedder.linear_{i}"
             else:
-                raise NotImplementedError
+                raise NotImplementedError(f"Handling for key ({k}) is not implemented.")
 
             if "attn_" in k:
                 if "_to_out_0" in k:
@@ -819,7 +836,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_pe:
                 logger.info(
                     "The `position_embedding` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
 
             else:
@@ -835,7 +852,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_t5:
                 logger.info(
                     "The `t5xxl` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -850,7 +867,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_diff_b:
                 logger.info(
                     "The `diff_b` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -866,7 +883,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             if zero_status_diff:
                 logger.info(
                     "The `diff` LoRA params are all zeros which make them ineffective. "
-                    "So, we will purge them out of the curret state dict to make loading possible."
+                    "So, we will purge them out of the current state dict to make loading possible."
                 )
             else:
                 logger.info(
@@ -1237,7 +1254,7 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
             f"double_blocks.{i}.txt_attn.norm.key_norm.scale"
         )
 
-    # single transfomer blocks
+    # single transformer blocks
     for i in range(num_single_layers):
         block_prefix = f"single_transformer_blocks.{i}."
 
@@ -1318,6 +1335,228 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
         if f"final_layer.adaLN_modulation.1.{lora_key}.bias" in original_state_dict_keys:
             converted_state_dict[f"norm_out.linear.{lora_key}.bias"] = swap_scale_shift(
                 original_state_dict.pop(f"final_layer.adaLN_modulation.1.{lora_key}.bias")
+            )
+
+    if len(original_state_dict) > 0:
+        raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
+
+    for key in list(converted_state_dict.keys()):
+        converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
+
+    return converted_state_dict
+
+
+def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
+    converted_state_dict = {}
+    original_state_dict_keys = list(original_state_dict.keys())
+    num_layers = 19
+    num_single_layers = 38
+    inner_dim = 3072
+    mlp_ratio = 4.0
+
+    # double transformer blocks
+    for i in range(num_layers):
+        block_prefix = f"transformer_blocks.{i}."
+        original_block_prefix = "base_model.model."
+
+        for lora_key in ["lora_A", "lora_B"]:
+            # norms
+            converted_state_dict[f"{block_prefix}norm1.linear.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}double_blocks.{i}.img_mod.lin.{lora_key}.weight"
+            )
+            if f"double_blocks.{i}.img_mod.lin.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}norm1.linear.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.img_mod.lin.{lora_key}.bias"
+                )
+
+            converted_state_dict[f"{block_prefix}norm1_context.linear.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}double_blocks.{i}.txt_mod.lin.{lora_key}.weight"
+            )
+
+            # Q, K, V
+            if lora_key == "lora_A":
+                sample_lora_weight = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.weight"
+                )
+                converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.weight"] = torch.cat([sample_lora_weight])
+                converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.weight"] = torch.cat([sample_lora_weight])
+                converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.weight"] = torch.cat([sample_lora_weight])
+
+                context_lora_weight = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.weight"
+                )
+                converted_state_dict[f"{block_prefix}attn.add_q_proj.{lora_key}.weight"] = torch.cat(
+                    [context_lora_weight]
+                )
+                converted_state_dict[f"{block_prefix}attn.add_k_proj.{lora_key}.weight"] = torch.cat(
+                    [context_lora_weight]
+                )
+                converted_state_dict[f"{block_prefix}attn.add_v_proj.{lora_key}.weight"] = torch.cat(
+                    [context_lora_weight]
+                )
+            else:
+                sample_q, sample_k, sample_v = torch.chunk(
+                    original_state_dict.pop(
+                        f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.weight"
+                    ),
+                    3,
+                    dim=0,
+                )
+                converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.weight"] = torch.cat([sample_q])
+                converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.weight"] = torch.cat([sample_k])
+                converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.weight"] = torch.cat([sample_v])
+
+                context_q, context_k, context_v = torch.chunk(
+                    original_state_dict.pop(
+                        f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.weight"
+                    ),
+                    3,
+                    dim=0,
+                )
+                converted_state_dict[f"{block_prefix}attn.add_q_proj.{lora_key}.weight"] = torch.cat([context_q])
+                converted_state_dict[f"{block_prefix}attn.add_k_proj.{lora_key}.weight"] = torch.cat([context_k])
+                converted_state_dict[f"{block_prefix}attn.add_v_proj.{lora_key}.weight"] = torch.cat([context_v])
+
+            if f"double_blocks.{i}.img_attn.qkv.{lora_key}.bias" in original_state_dict_keys:
+                sample_q_bias, sample_k_bias, sample_v_bias = torch.chunk(
+                    original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.img_attn.qkv.{lora_key}.bias"),
+                    3,
+                    dim=0,
+                )
+                converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.bias"] = torch.cat([sample_q_bias])
+                converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.bias"] = torch.cat([sample_k_bias])
+                converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.bias"] = torch.cat([sample_v_bias])
+
+            if f"double_blocks.{i}.txt_attn.qkv.{lora_key}.bias" in original_state_dict_keys:
+                context_q_bias, context_k_bias, context_v_bias = torch.chunk(
+                    original_state_dict.pop(f"{original_block_prefix}double_blocks.{i}.txt_attn.qkv.{lora_key}.bias"),
+                    3,
+                    dim=0,
+                )
+                converted_state_dict[f"{block_prefix}attn.add_q_proj.{lora_key}.bias"] = torch.cat([context_q_bias])
+                converted_state_dict[f"{block_prefix}attn.add_k_proj.{lora_key}.bias"] = torch.cat([context_k_bias])
+                converted_state_dict[f"{block_prefix}attn.add_v_proj.{lora_key}.bias"] = torch.cat([context_v_bias])
+
+            # ff img_mlp
+            converted_state_dict[f"{block_prefix}ff.net.0.proj.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}double_blocks.{i}.img_mlp.0.{lora_key}.weight"
+            )
+            if f"{original_block_prefix}double_blocks.{i}.img_mlp.0.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}ff.net.0.proj.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.img_mlp.0.{lora_key}.bias"
+                )
+
+            converted_state_dict[f"{block_prefix}ff.net.2.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}double_blocks.{i}.img_mlp.2.{lora_key}.weight"
+            )
+            if f"{original_block_prefix}double_blocks.{i}.img_mlp.2.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}ff.net.2.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.img_mlp.2.{lora_key}.bias"
+                )
+
+            converted_state_dict[f"{block_prefix}ff_context.net.0.proj.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}double_blocks.{i}.txt_mlp.0.{lora_key}.weight"
+            )
+            if f"{original_block_prefix}double_blocks.{i}.txt_mlp.0.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}ff_context.net.0.proj.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.txt_mlp.0.{lora_key}.bias"
+                )
+
+            converted_state_dict[f"{block_prefix}ff_context.net.2.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}double_blocks.{i}.txt_mlp.2.{lora_key}.weight"
+            )
+            if f"{original_block_prefix}double_blocks.{i}.txt_mlp.2.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}ff_context.net.2.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.txt_mlp.2.{lora_key}.bias"
+                )
+
+            # output projections.
+            converted_state_dict[f"{block_prefix}attn.to_out.0.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}double_blocks.{i}.img_attn.proj.{lora_key}.weight"
+            )
+            if f"{original_block_prefix}double_blocks.{i}.img_attn.proj.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}attn.to_out.0.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.img_attn.proj.{lora_key}.bias"
+                )
+            converted_state_dict[f"{block_prefix}attn.to_add_out.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}double_blocks.{i}.txt_attn.proj.{lora_key}.weight"
+            )
+            if f"{original_block_prefix}double_blocks.{i}.txt_attn.proj.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}attn.to_add_out.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}double_blocks.{i}.txt_attn.proj.{lora_key}.bias"
+                )
+
+    # single transformer blocks
+    for i in range(num_single_layers):
+        block_prefix = f"single_transformer_blocks.{i}."
+
+        for lora_key in ["lora_A", "lora_B"]:
+            # norm.linear  <- single_blocks.0.modulation.lin
+            converted_state_dict[f"{block_prefix}norm.linear.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}single_blocks.{i}.modulation.lin.{lora_key}.weight"
+            )
+            if f"{original_block_prefix}single_blocks.{i}.modulation.lin.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}norm.linear.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}single_blocks.{i}.modulation.lin.{lora_key}.bias"
+                )
+
+            # Q, K, V, mlp
+            mlp_hidden_dim = int(inner_dim * mlp_ratio)
+            split_size = (inner_dim, inner_dim, inner_dim, mlp_hidden_dim)
+
+            if lora_key == "lora_A":
+                lora_weight = original_state_dict.pop(
+                    f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.weight"
+                )
+                converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.weight"] = torch.cat([lora_weight])
+                converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.weight"] = torch.cat([lora_weight])
+                converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.weight"] = torch.cat([lora_weight])
+                converted_state_dict[f"{block_prefix}proj_mlp.{lora_key}.weight"] = torch.cat([lora_weight])
+
+                if f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.bias" in original_state_dict_keys:
+                    lora_bias = original_state_dict.pop(f"single_blocks.{i}.linear1.{lora_key}.bias")
+                    converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.bias"] = torch.cat([lora_bias])
+                    converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.bias"] = torch.cat([lora_bias])
+                    converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.bias"] = torch.cat([lora_bias])
+                    converted_state_dict[f"{block_prefix}proj_mlp.{lora_key}.bias"] = torch.cat([lora_bias])
+            else:
+                q, k, v, mlp = torch.split(
+                    original_state_dict.pop(f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.weight"),
+                    split_size,
+                    dim=0,
+                )
+                converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.weight"] = torch.cat([q])
+                converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.weight"] = torch.cat([k])
+                converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.weight"] = torch.cat([v])
+                converted_state_dict[f"{block_prefix}proj_mlp.{lora_key}.weight"] = torch.cat([mlp])
+
+                if f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.bias" in original_state_dict_keys:
+                    q_bias, k_bias, v_bias, mlp_bias = torch.split(
+                        original_state_dict.pop(f"{original_block_prefix}single_blocks.{i}.linear1.{lora_key}.bias"),
+                        split_size,
+                        dim=0,
+                    )
+                    converted_state_dict[f"{block_prefix}attn.to_q.{lora_key}.bias"] = torch.cat([q_bias])
+                    converted_state_dict[f"{block_prefix}attn.to_k.{lora_key}.bias"] = torch.cat([k_bias])
+                    converted_state_dict[f"{block_prefix}attn.to_v.{lora_key}.bias"] = torch.cat([v_bias])
+                    converted_state_dict[f"{block_prefix}proj_mlp.{lora_key}.bias"] = torch.cat([mlp_bias])
+
+            # output projections.
+            converted_state_dict[f"{block_prefix}proj_out.{lora_key}.weight"] = original_state_dict.pop(
+                f"{original_block_prefix}single_blocks.{i}.linear2.{lora_key}.weight"
+            )
+            if f"{original_block_prefix}single_blocks.{i}.linear2.{lora_key}.bias" in original_state_dict_keys:
+                converted_state_dict[f"{block_prefix}proj_out.{lora_key}.bias"] = original_state_dict.pop(
+                    f"{original_block_prefix}single_blocks.{i}.linear2.{lora_key}.bias"
+                )
+
+    for lora_key in ["lora_A", "lora_B"]:
+        converted_state_dict[f"proj_out.{lora_key}.weight"] = original_state_dict.pop(
+            f"{original_block_prefix}final_layer.linear.{lora_key}.weight"
+        )
+        if f"{original_block_prefix}final_layer.linear.{lora_key}.bias" in original_state_dict_keys:
+            converted_state_dict[f"proj_out.{lora_key}.bias"] = original_state_dict.pop(
+                f"{original_block_prefix}final_layer.linear.{lora_key}.bias"
             )
 
     if len(original_state_dict) > 0:
@@ -1579,48 +1818,175 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     converted_state_dict = {}
     original_state_dict = {k[len("diffusion_model.") :]: v for k, v in state_dict.items()}
 
-    num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in original_state_dict})
-    is_i2v_lora = any("k_img" in k for k in original_state_dict) and any("v_img" in k for k in original_state_dict)
+    block_numbers = {int(k.split(".")[1]) for k in original_state_dict if k.startswith("blocks.")}
+    min_block = min(block_numbers)
+    max_block = max(block_numbers)
 
-    for i in range(num_blocks):
+    is_i2v_lora = any("k_img" in k for k in original_state_dict) and any("v_img" in k for k in original_state_dict)
+    lora_down_key = "lora_A" if any("lora_A" in k for k in original_state_dict) else "lora_down"
+    lora_up_key = "lora_B" if any("lora_B" in k for k in original_state_dict) else "lora_up"
+    has_time_projection_weight = any(
+        k.startswith("time_projection") and k.endswith(".weight") for k in original_state_dict
+    )
+
+    for key in list(original_state_dict.keys()):
+        if key.endswith((".diff", ".diff_b")) and "norm" in key:
+            # NOTE: we don't support this because norm layer diff keys are just zeroed values. We can support it
+            # in future if needed and they are not zeroed.
+            original_state_dict.pop(key)
+            logger.debug(f"Removing {key} key from the state dict as it is a norm diff key. This is unsupported.")
+
+        if "time_projection" in key and not has_time_projection_weight:
+            # AccVideo lora has diff bias keys but not the weight keys. This causes a weird problem where
+            # our lora config adds the time proj lora layers, but we don't have the weights for them.
+            # CausVid lora has the weight keys and the bias keys.
+            original_state_dict.pop(key)
+
+    # For the `diff_b` keys, we treat them as lora_bias.
+    # https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraConfig.lora_bias
+
+    for i in range(min_block, max_block + 1):
         # Self-attention
         for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
-            converted_state_dict[f"blocks.{i}.attn1.{c}.lora_A.weight"] = original_state_dict.pop(
-                f"blocks.{i}.self_attn.{o}.lora_A.weight"
-            )
-            converted_state_dict[f"blocks.{i}.attn1.{c}.lora_B.weight"] = original_state_dict.pop(
-                f"blocks.{i}.self_attn.{o}.lora_B.weight"
-            )
+            original_key = f"blocks.{i}.self_attn.{o}.{lora_down_key}.weight"
+            converted_key = f"blocks.{i}.attn1.{c}.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"blocks.{i}.self_attn.{o}.{lora_up_key}.weight"
+            converted_key = f"blocks.{i}.attn1.{c}.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"blocks.{i}.self_attn.{o}.diff_b"
+            converted_key = f"blocks.{i}.attn1.{c}.lora_B.bias"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
 
         # Cross-attention
         for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
-            converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = original_state_dict.pop(
-                f"blocks.{i}.cross_attn.{o}.lora_A.weight"
-            )
-            converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
-                f"blocks.{i}.cross_attn.{o}.lora_B.weight"
-            )
+            original_key = f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
+            converted_key = f"blocks.{i}.attn2.{c}.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
+            converted_key = f"blocks.{i}.attn2.{c}.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"blocks.{i}.cross_attn.{o}.diff_b"
+            converted_key = f"blocks.{i}.attn2.{c}.lora_B.bias"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
 
         if is_i2v_lora:
             for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
-                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = original_state_dict.pop(
-                    f"blocks.{i}.cross_attn.{o}.lora_A.weight"
-                )
-                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
-                    f"blocks.{i}.cross_attn.{o}.lora_B.weight"
-                )
+                original_key = f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
+                converted_key = f"blocks.{i}.attn2.{c}.lora_A.weight"
+                if original_key in original_state_dict:
+                    converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+                original_key = f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
+                converted_key = f"blocks.{i}.attn2.{c}.lora_B.weight"
+                if original_key in original_state_dict:
+                    converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+                original_key = f"blocks.{i}.cross_attn.{o}.diff_b"
+                converted_key = f"blocks.{i}.attn2.{c}.lora_B.bias"
+                if original_key in original_state_dict:
+                    converted_state_dict[converted_key] = original_state_dict.pop(original_key)
 
         # FFN
         for o, c in zip(["ffn.0", "ffn.2"], ["net.0.proj", "net.2"]):
-            converted_state_dict[f"blocks.{i}.ffn.{c}.lora_A.weight"] = original_state_dict.pop(
-                f"blocks.{i}.{o}.lora_A.weight"
+            original_key = f"blocks.{i}.{o}.{lora_down_key}.weight"
+            converted_key = f"blocks.{i}.ffn.{c}.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"blocks.{i}.{o}.{lora_up_key}.weight"
+            converted_key = f"blocks.{i}.ffn.{c}.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"blocks.{i}.{o}.diff_b"
+            converted_key = f"blocks.{i}.ffn.{c}.lora_B.bias"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+    # Remaining.
+    if original_state_dict:
+        if any("time_projection" in k for k in original_state_dict):
+            original_key = f"time_projection.1.{lora_down_key}.weight"
+            converted_key = "condition_embedder.time_proj.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"time_projection.1.{lora_up_key}.weight"
+            converted_key = "condition_embedder.time_proj.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            if "time_projection.1.diff_b" in original_state_dict:
+                converted_state_dict["condition_embedder.time_proj.lora_B.bias"] = original_state_dict.pop(
+                    "time_projection.1.diff_b"
+                )
+
+        if any("head.head" in k for k in state_dict):
+            converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(
+                f"head.head.{lora_down_key}.weight"
             )
-            converted_state_dict[f"blocks.{i}.ffn.{c}.lora_B.weight"] = original_state_dict.pop(
-                f"blocks.{i}.{o}.lora_B.weight"
-            )
+            converted_state_dict["proj_out.lora_B.weight"] = original_state_dict.pop(f"head.head.{lora_up_key}.weight")
+            if "head.head.diff_b" in original_state_dict:
+                converted_state_dict["proj_out.lora_B.bias"] = original_state_dict.pop("head.head.diff_b")
+
+        for text_time in ["text_embedding", "time_embedding"]:
+            if any(text_time in k for k in original_state_dict):
+                for b_n in [0, 2]:
+                    diffusers_b_n = 1 if b_n == 0 else 2
+                    diffusers_name = (
+                        "condition_embedder.text_embedder"
+                        if text_time == "text_embedding"
+                        else "condition_embedder.time_embedder"
+                    )
+                    if any(f"{text_time}.{b_n}" in k for k in original_state_dict):
+                        converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_A.weight"] = (
+                            original_state_dict.pop(f"{text_time}.{b_n}.{lora_down_key}.weight")
+                        )
+                        converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_B.weight"] = (
+                            original_state_dict.pop(f"{text_time}.{b_n}.{lora_up_key}.weight")
+                        )
+                    if f"{text_time}.{b_n}.diff_b" in original_state_dict:
+                        converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_B.bias"] = (
+                            original_state_dict.pop(f"{text_time}.{b_n}.diff_b")
+                        )
+
+        for img_ours, img_theirs in [
+            ("ff.net.0.proj", "img_emb.proj.1"),
+            ("ff.net.2", "img_emb.proj.3"),
+        ]:
+            original_key = f"{img_theirs}.{lora_down_key}.weight"
+            converted_key = f"condition_embedder.image_embedder.{img_ours}.lora_A.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+
+            original_key = f"{img_theirs}.{lora_up_key}.weight"
+            converted_key = f"condition_embedder.image_embedder.{img_ours}.lora_B.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
 
     if len(original_state_dict) > 0:
-        raise ValueError(f"`state_dict` should be empty at this point but has {original_state_dict.keys()=}")
+        diff = all(".diff" in k for k in original_state_dict)
+        if diff:
+            diff_keys = {k for k in original_state_dict if k.endswith(".diff")}
+            if not all("lora" not in k for k in diff_keys):
+                raise ValueError
+            logger.info(
+                "The remaining `state_dict` contains `diff` keys which we do not handle yet. If you see performance issues, please file an issue: "
+                "https://github.com/huggingface/diffusers//issues/new"
+            )
+        else:
+            raise ValueError(f"`state_dict` should be empty at this point but has {original_state_dict.keys()=}")
 
     for key in list(converted_state_dict.keys()):
         converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
@@ -1686,4 +2052,20 @@ def _convert_musubi_wan_lora_to_diffusers(state_dict):
     for key in list(converted_state_dict.keys()):
         converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
 
+    return converted_state_dict
+
+
+def _convert_non_diffusers_hidream_lora_to_diffusers(state_dict, non_diffusers_prefix="diffusion_model"):
+    if not all(k.startswith(non_diffusers_prefix) for k in state_dict):
+        raise ValueError("Invalid LoRA state dict for HiDream.")
+    converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
+    converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+    return converted_state_dict
+
+
+def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_prefix="diffusion_model"):
+    if not all(k.startswith(f"{non_diffusers_prefix}.") for k in state_dict):
+        raise ValueError("Invalid LoRA state dict for LTX-Video.")
+    converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
+    converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
     return converted_state_dict

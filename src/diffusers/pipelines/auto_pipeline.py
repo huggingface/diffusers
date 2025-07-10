@@ -21,6 +21,7 @@ from ..configuration_utils import ConfigMixin
 from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
+from .chroma import ChromaPipeline
 from .cogview3 import CogView3PlusPipeline
 from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
 from .controlnet import (
@@ -143,6 +144,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-controlnet", FluxControlNetPipeline),
         ("lumina", LuminaPipeline),
         ("lumina2", Lumina2Pipeline),
+        ("chroma", ChromaPipeline),
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
         ("cogview4-control", CogView4ControlPipeline),
@@ -246,14 +248,15 @@ def _get_connected_pipeline(pipeline_cls):
         return _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False)
 
 
-def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
-    def get_model(pipeline_class_name):
-        for task_mapping in SUPPORTED_TASKS_MAPPINGS:
-            for model_name, pipeline in task_mapping.items():
-                if pipeline.__name__ == pipeline_class_name:
-                    return model_name
+def _get_model(pipeline_class_name):
+    for task_mapping in SUPPORTED_TASKS_MAPPINGS:
+        for model_name, pipeline in task_mapping.items():
+            if pipeline.__name__ == pipeline_class_name:
+                return model_name
 
-    model_name = get_model(pipeline_class_name)
+
+def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
+    model_name = _get_model(pipeline_class_name)
 
     if model_name is not None:
         task_class = mapping.get(model_name, None)
@@ -322,9 +325,8 @@ class AutoPipelineForText2Image(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
-            torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
-                dtype is automatically derived from the model's weights.
+            torch_dtype (`torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -619,8 +621,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
             torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
-                dtype is automatically derived from the model's weights.
+                Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -930,8 +931,7 @@ class AutoPipelineForInpainting(ConfigMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
             torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
-                dtype is automatically derived from the model's weights.
+                Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.

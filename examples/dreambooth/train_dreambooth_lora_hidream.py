@@ -16,6 +16,7 @@
 import argparse
 import copy
 import itertools
+import json
 import logging
 import math
 import os
@@ -27,14 +28,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.utils.checkpoint
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from huggingface_hub.utils import insecure_hashlib
-from peft import LoraConfig, set_peft_model_state_dict
+from peft import LoraConfig, prepare_model_for_kbit_training, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
@@ -47,6 +47,7 @@ from transformers import AutoTokenizer, CLIPTokenizer, LlamaForCausalLM, Pretrai
 import diffusers
 from diffusers import (
     AutoencoderKL,
+    BitsAndBytesConfig,
     FlowMatchEulerDiscreteScheduler,
     HiDreamImagePipeline,
     HiDreamImageTransformer2DModel,
@@ -72,7 +73,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -236,7 +237,6 @@ def log_validation(
                 }
             )
 
-    pipeline.to("cpu")
     del pipeline
     free_memory()
 
@@ -282,6 +282,12 @@ def parse_args(input_args=None):
         type=str,
         default="meta-llama/Meta-Llama-3.1-8B-Instruct",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--bnb_quantization_config_path",
+        type=str,
+        default=None,
+        help="Quantization config in a JSON file that will be used to define the bitsandbytes quant config of the DiT.",
     )
     parser.add_argument(
         "--revision",
@@ -411,6 +417,9 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
@@ -597,7 +606,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            'The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only'
+            'The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only'
         ),
     )
 
@@ -1057,6 +1066,14 @@ def main(args):
         args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_3"
     )
 
+    # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
     # Load scheduler and models
     noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision, shift=3.0
@@ -1065,20 +1082,31 @@ def main(args):
     text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(
         text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three
     )
-
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
         revision=args.revision,
         variant=args.variant,
     )
+    quantization_config = None
+    if args.bnb_quantization_config_path is not None:
+        with open(args.bnb_quantization_config_path, "r") as f:
+            config_kwargs = json.load(f)
+            if "load_in_4bit" in config_kwargs and config_kwargs["load_in_4bit"]:
+                config_kwargs["bnb_4bit_compute_dtype"] = weight_dtype
+        quantization_config = BitsAndBytesConfig(**config_kwargs)
+
     transformer = HiDreamImageTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="transformer",
         revision=args.revision,
         variant=args.variant,
+        quantization_config=quantization_config,
+        torch_dtype=weight_dtype,
         force_inference_output=True,
     )
+    if args.bnb_quantization_config_path is not None:
+        transformer = prepare_model_for_kbit_training(transformer, use_gradient_checkpointing=False)
 
     # We only train the additional adapter LoRA layers
     transformer.requires_grad_(False)
@@ -1087,14 +1115,6 @@ def main(args):
     text_encoder_two.requires_grad_(False)
     text_encoder_three.requires_grad_(False)
     text_encoder_four.requires_grad_(False)
-
-    # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
-    # as these weights are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
 
     if torch.backends.mps.is_available() and weight_dtype == torch.bfloat16:
         # due to pytorch#99272, MPS does not yet support bfloat16.
@@ -1110,7 +1130,12 @@ def main(args):
     text_encoder_three.to(**to_kwargs)
     text_encoder_four.to(**to_kwargs)
     # we never offload the transformer to CPU, so we can just use the accelerator device
-    transformer.to(accelerator.device, dtype=weight_dtype)
+    transformer_to_kwargs = (
+        {"device": accelerator.device}
+        if args.bnb_quantization_config_path is not None
+        else {"device": accelerator.device, "dtype": weight_dtype}
+    )
+    transformer.to(**transformer_to_kwargs)
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
     text_encoding_pipeline = HiDreamImagePipeline.from_pretrained(
@@ -1139,6 +1164,7 @@ def main(args):
     transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
+        lora_dropout=args.lora_dropout,
         init_lora_weights="gaussian",
         target_modules=target_modules,
     )
@@ -1155,13 +1181,15 @@ def main(args):
             transformer_lora_layers_to_save = None
 
             for model in models:
-                if isinstance(model, type(unwrap_model(transformer))):
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    model = unwrap_model(model)
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                if weights:
+                    weights.pop()
 
             HiDreamImagePipeline.save_lora_weights(
                 output_dir,
@@ -1171,13 +1199,20 @@ def main(args):
     def load_model_hook(models, input_dir):
         transformer_ = None
 
-        while len(models) > 0:
-            model = models.pop()
+        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
+            while len(models) > 0:
+                model = models.pop()
 
-            if isinstance(model, type(unwrap_model(transformer))):
-                transformer_ = model
-            else:
-                raise ValueError(f"unexpected save model: {model.__class__}")
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    model = unwrap_model(model)
+                    transformer_ = model
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
+        else:
+            transformer_ = HiDreamImageTransformer2DModel.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="transformer"
+            )
+            transformer_.add_adapter(transformer_lora_config)
 
         lora_state_dict = HiDreamImagePipeline.lora_state_dict(input_dir)
 
@@ -1629,7 +1664,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1696,10 +1731,11 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        if args.upcast_before_saving:
-            transformer.to(torch.float32)
-        else:
-            transformer = transformer.to(weight_dtype)
+        if args.bnb_quantization_config_path is None:
+            if args.upcast_before_saving:
+                transformer.to(torch.float32)
+            else:
+                transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         HiDreamImagePipeline.save_lora_weights(

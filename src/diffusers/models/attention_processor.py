@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -203,8 +203,8 @@ class Attention(nn.Module):
             self.norm_q = nn.LayerNorm(dim_head * heads, eps=eps)
             self.norm_k = nn.LayerNorm(dim_head * kv_heads, eps=eps)
         elif qk_norm == "rms_norm":
-            self.norm_q = RMSNorm(dim_head, eps=eps)
-            self.norm_k = RMSNorm(dim_head, eps=eps)
+            self.norm_q = RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_k = RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
         elif qk_norm == "rms_norm_across_heads":
             # LTX applies qk norm across all heads
             self.norm_q = RMSNorm(dim_head * heads, eps=eps)
@@ -2543,7 +2543,9 @@ class FusedFluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -2776,7 +2778,9 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -3972,7 +3976,7 @@ class PAGHunyuanAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the HunyuanDiT model. It applies a normalization layer and rotary embedding on query and key vector. This
-    variant of the processor employs [Pertubed Attention Guidance](https://arxiv.org/abs/2403.17377).
+    variant of the processor employs [Pertubed Attention Guidance](https://huggingface.co/papers/2403.17377).
     """
 
     def __init__(self):
@@ -4095,7 +4099,7 @@ class PAGCFGHunyuanAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the HunyuanDiT model. It applies a normalization layer and rotary embedding on query and key vector. This
-    variant of the processor employs [Pertubed Attention Guidance](https://arxiv.org/abs/2403.17377).
+    variant of the processor employs [Pertubed Attention Guidance](https://huggingface.co/papers/2403.17377).
     """
 
     def __init__(self):
@@ -4828,7 +4832,7 @@ class SlicedAttnAddedKVProcessor:
 
 class SpatialNorm(nn.Module):
     """
-    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002.
+    Spatially conditioned normalization as defined in https://huggingface.co/papers/2209.09002.
 
     Args:
         f_channels (`int`):
@@ -5693,7 +5697,7 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
 class PAGIdentitySelfAttnProcessor2_0:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    PAG reference: https://arxiv.org/abs/2403.17377
+    PAG reference: https://huggingface.co/papers/2403.17377
     """
 
     def __init__(self):
@@ -5792,7 +5796,7 @@ class PAGIdentitySelfAttnProcessor2_0:
 class PAGCFGIdentitySelfAttnProcessor2_0:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    PAG reference: https://arxiv.org/abs/2403.17377
+    PAG reference: https://huggingface.co/papers/2403.17377
     """
 
     def __init__(self):
