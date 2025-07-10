@@ -1690,6 +1690,8 @@ def create_diffusers_clip_model_from_ldm(
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        # Ensure tensors are correctly placed on device by synchronizing before returning control to user. This is
+        # required because we move tensors with non_blocking=True, which is slightly faster for model loading.
         empty_device_cache()
         device_synchronize()
     else:
@@ -2151,6 +2153,8 @@ def create_diffusers_t5_model_from_checkpoint(
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        # Ensure tensors are correctly placed on device by synchronizing before returning control to user. This is
+        # required because we move tensors with non_blocking=True, which is slightly faster for model loading.
         empty_device_cache()
         device_synchronize()
     else:

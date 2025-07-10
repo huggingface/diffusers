@@ -1486,8 +1486,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if offload_state_dict is None:
                 offload_state_dict = True
 
-        # Caching allocator warmup
-        if device_map is not None:
+        # If a device map has been used, we can speedup the load time by warming up the device caching allocator.
+        # If we don't warmup, each tensor allocation on device calls to the allocator for memory (effectively, a
+        # lot of individual calls to device malloc). We can, however, preallocate the memory required by the
+        # tensors using their expected shape and not performing any initialization of the memory (empty data).
+        # When the actual device allocations happen, the allocator already has a pool of unused device memory
+        # that it can re-use for faster loading of the model.
+        # TODO: add support for warmup with hf_quantizer
+        if device_map is not None and hf_quantizer is None:
             expanded_device_map = _expand_device_map(device_map, expected_keys)
             _caching_allocator_warmup(model, expanded_device_map, dtype)
 
@@ -1534,6 +1540,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
                 error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
 
+        # Ensure tensors are correctly placed on device by synchronizing before returning control to user. This is
+        # required because we move tensors with non_blocking=True, which is slightly faster for model loading.
         empty_device_cache()
         device_synchronize()
 

@@ -431,6 +431,8 @@ class FromOriginalModelMixin:
                 keep_in_fp32_modules=keep_in_fp32_modules,
                 unexpected_keys=unexpected_keys,
             )
+            # Ensure tensors are correctly placed on device by synchronizing before returning control to user. This is
+            # required because we move tensors with non_blocking=True, which is slightly faster for model loading.
             empty_device_cache()
             device_synchronize()
         else:
