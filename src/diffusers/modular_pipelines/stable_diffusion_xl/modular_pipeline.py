@@ -91,7 +91,8 @@ class StableDiffusionXLModularPipeline(
         return num_channels_latents
 
 
-# YiYi Notes: not used yet, maintain a list of schema that can be used across all pipeline blocks
+# YiYi/Sayak TODO: not used yet, maintain a list of schema that can be used across all pipeline blocks
+# auto_docstring
 SDXL_INPUTS_SCHEMA = {
     "prompt": InputParam(
         "prompt", type_hint=Union[str, List[str]], description="The prompt or prompts to guide the image generation"

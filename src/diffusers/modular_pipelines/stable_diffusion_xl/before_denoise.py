@@ -19,8 +19,9 @@ import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, ControlNetModel, ControlNetUnionModel
+from ...models import AutoencoderKL, ControlNetModel, ControlNetUnionModel, UNet2DConditionModel
 from ...pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging
@@ -266,37 +267,37 @@ class StableDiffusionXLInputStep(PipelineBlock):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
                 description="negative text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "pooled_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
                 description="pooled text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_pooled_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
                 description="negative pooled text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "ip_adapter_embeds",
                 type_hint=List[torch.Tensor],
-                kwargs_type="guider_input_fields",
+                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
                 description="image embeddings for IP-Adapter",
             ),
             OutputParam(
                 "negative_ip_adapter_embeds",
                 type_hint=List[torch.Tensor],
-                kwargs_type="guider_input_fields",
+                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
                 description="negative image embeddings for IP-Adapter",
             ),
         ]
@@ -683,12 +684,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
             ),
-            OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for inpainting generation"),
-            OutputParam(
-                "masked_image_latents",
-                type_hint=torch.Tensor,
-                description="The masked image latents to use for the inpainting generation (only for inpainting-specific unet)",
-            ),
             OutputParam(
                 "noise",
                 type_hint=torch.Tensor,
@@ -993,6 +988,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("scheduler", EulerDiscreteScheduler),
+            ComponentSpec("vae", AutoencoderKL),
         ]
 
     @property
@@ -1103,6 +1099,18 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     def expected_configs(self) -> List[ConfigSpec]:
         return [
             ConfigSpec("requires_aesthetics_score", False),
+        ]
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("unet", UNet2DConditionModel),
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 7.5}),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -1314,6 +1322,18 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
     @property
     def description(self) -> str:
         return "Step that prepares the additional conditioning for the text-to-image generation process"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("unet", UNet2DConditionModel),
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 7.5}),
+                default_creation_method="from_config",
+            ),
+        ]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:

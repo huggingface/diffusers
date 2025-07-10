@@ -168,6 +168,17 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
         )
 
     @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("image"),
@@ -188,16 +199,6 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
                 type_hint=Tuple[int, int],
                 description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.",
             ),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> List[str]:
-        return [
-            OutputParam(
-                "images",
-                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
-                description="The generated images with the mask overlayed",
-            )
         ]
 
     @torch.no_grad()
