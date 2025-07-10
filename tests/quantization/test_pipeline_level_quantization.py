@@ -12,13 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import tempfile
 import unittest
 
 import torch
 from parameterized import parameterized
 
-from diffusers import DiffusionPipeline, QuantoConfig
+from diffusers import BitsAndBytesConfig, DiffusionPipeline, QuantoConfig
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
@@ -243,3 +244,57 @@ class PipelineQuantizationTests(unittest.TestCase):
         for name, component in pipe.components.items():
             if isinstance(component, torch.nn.Module):
                 self.assertTrue(not hasattr(component.config, "quantization_config"))
+
+    @parameterized.expand(["quant_kwargs", "quant_mapping"])
+    def test_quant_config_repr(self, method):
+        component_name = "transformer"
+        if method == "quant_kwargs":
+            components_to_quantize = [component_name]
+            quant_config = PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_8bit",
+                quant_kwargs={"load_in_8bit": True},
+                components_to_quantize=components_to_quantize,
+            )
+        else:
+            quant_config = PipelineQuantizationConfig(
+                quant_mapping={component_name: BitsAndBytesConfig(load_in_8bit=True)}
+            )
+
+        pipe = DiffusionPipeline.from_pretrained(
+            self.model_name,
+            quantization_config=quant_config,
+            torch_dtype=torch.bfloat16,
+        )
+        self.assertTrue(getattr(pipe, "quantization_config", None) is not None)
+        retrieved_config = pipe.quantization_config
+        expected_config = """
+transformer BitsAndBytesConfig {
+  "_load_in_4bit": false,
+  "_load_in_8bit": true,
+  "bnb_4bit_compute_dtype": "float32",
+  "bnb_4bit_quant_storage": "uint8",
+  "bnb_4bit_quant_type": "fp4",
+  "bnb_4bit_use_double_quant": false,
+  "llm_int8_enable_fp32_cpu_offload": false,
+  "llm_int8_has_fp16_weight": false,
+  "llm_int8_skip_modules": null,
+  "llm_int8_threshold": 6.0,
+  "load_in_4bit": false,
+  "load_in_8bit": true,
+  "quant_method": "bitsandbytes"
+}
+
+"""
+        expected_data = self._parse_config_string(expected_config)
+        actual_data = self._parse_config_string(str(retrieved_config))
+        self.assertTrue(actual_data == expected_data)
+
+    def _parse_config_string(self, config_string: str) -> tuple[str, dict]:
+        first_brace = config_string.find("{")
+        if first_brace == -1:
+            raise ValueError("Could not find opening brace '{' in the string.")
+
+        json_part = config_string[first_brace:]
+        data = json.loads(json_part)
+
+        return data

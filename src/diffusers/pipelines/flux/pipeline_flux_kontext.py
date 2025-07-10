@@ -65,8 +65,10 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> pipe.to("cuda")
 
-        >>> image = load_image("inputs/yarn-art-pikachu.png").convert("RGB")
-        >>> prompt = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
+        ... ).convert("RGB")
+        >>> prompt = "Make Pikachu hold a sign that says 'Black Forest Labs is awesome', yarn art style, detailed, vibrant colors"
         >>> image = pipe(
         ...     image=image,
         ...     prompt=prompt,
@@ -193,9 +195,9 @@ class FluxKontextPipeline(
     FluxIPAdapterMixin,
 ):
     r"""
-    The Flux Kontext pipeline for text-to-image generation.
+    The Flux Kontext pipeline for image-to-image and text-to-image generation.
 
-    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
+    Reference: https://bfl.ai/announcements/flux-1-kontext-dev
 
     Args:
         transformer ([`FluxTransformer2DModel`]):
@@ -1041,6 +1043,9 @@ class FluxKontextPipeline(
             )
 
         # 6. Denoising loop
+        # We set the index here to remove DtoH sync, helpful especially during compilation.
+        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
