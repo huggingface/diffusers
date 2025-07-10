@@ -34,9 +34,11 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "guiders": [],
     "hooks": [],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
+    "modular_pipelines": [],
     "pipelines": [],
     "quantizers.quantization_config": [],
     "schedulers": [],
@@ -130,14 +132,29 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
+    _import_structure["guiders"].extend(
+        [
+            "AdaptiveProjectedGuidance",
+            "AutoGuidance",
+            "ClassifierFreeGuidance",
+            "ClassifierFreeZeroStarGuidance",
+            "PerturbedAttentionGuidance",
+            "SkipLayerGuidance",
+            "SmoothedEnergyGuidance",
+            "TangentialClassifierFreeGuidance",
+        ]
+    )
     _import_structure["hooks"].extend(
         [
             "FasterCacheConfig",
             "FirstBlockCacheConfig",
             "HookRegistry",
+            "LayerSkipConfig",
             "PyramidAttentionBroadcastConfig",
+            "SmoothedEnergyGuidanceConfig",
             "apply_faster_cache",
             "apply_first_block_cache",
+            "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -219,6 +236,14 @@ else:
             "VQModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
+        ]
+    )
+    _import_structure["modular_pipelines"].extend(
+        [
+            "ComponentsManager",
+            "ComponentSpec",
+            "ModularPipeline",
+            "ModularPipelineBlocks",
         ]
     )
     _import_structure["optimization"] = [
@@ -333,6 +358,12 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
+    _import_structure["modular_pipelines"].extend(
+        [
+            "StableDiffusionXLAutoBlocks",
+            "StableDiffusionXLModularPipeline",
+        ]
+    )
     _import_structure["pipelines"].extend(
         [
             "AllegroPipeline",
@@ -545,6 +576,7 @@ else:
         ]
     )
 
+
 try:
     if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
         raise OptionalDependencyNotAvailable()
@@ -751,13 +783,26 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .guiders import (
+            AdaptiveProjectedGuidance,
+            AutoGuidance,
+            ClassifierFreeGuidance,
+            ClassifierFreeZeroStarGuidance,
+            PerturbedAttentionGuidance,
+            SkipLayerGuidance,
+            SmoothedEnergyGuidance,
+            TangentialClassifierFreeGuidance,
+        )
         from .hooks import (
             FasterCacheConfig,
             FirstBlockCacheConfig,
             HookRegistry,
+            LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
+            SmoothedEnergyGuidanceConfig,
             apply_faster_cache,
             apply_first_block_cache,
+            apply_layer_skip,
             apply_pyramid_attention_broadcast,
         )
         from .models import (
@@ -836,6 +881,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+        )
+        from .modular_pipelines import (
+            ComponentsManager,
+            ComponentSpec,
+            ModularPipeline,
+            ModularPipelineBlocks,
         )
         from .optimization import (
             get_constant_schedule,
@@ -933,6 +984,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
+        from .modular_pipelines import (
+            StableDiffusionXLAutoBlocks,
+            StableDiffusionXLModularPipeline,
+        )
         from .pipelines import (
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
