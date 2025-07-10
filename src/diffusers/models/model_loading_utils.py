@@ -231,16 +231,6 @@ def load_model_dict_into_meta(
 
     is_quantized = hf_quantizer is not None
     empty_state_dict = model.state_dict()
-    expanded_device_map = {}
-
-    # if device_map is not None:
-    #     for param_name, param in state_dict.items():
-    #         if param_name not in empty_state_dict:
-    #             continue
-    #         param_device = _determine_param_device(param_name, device_map)
-    #         expanded_device_map[param_name] = param_device
-    #     print(expanded_device_map)
-    #     _caching_allocator_warmup(model, expanded_device_map, dtype)
 
     for param_name, param in state_dict.items():
         if param_name not in empty_state_dict:
@@ -310,7 +300,15 @@ def load_model_dict_into_meta(
                 model, param, param_name, param_device, state_dict, unexpected_keys, dtype=dtype
             )
         else:
-            set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
+            set_module_tensor_to_device(
+                model,
+                param_name,
+                param_device,
+                value=param,
+                non_blocking=True,
+                _empty_cache=False,
+                **set_module_kwargs,
+            )
 
     return offload_index, state_dict_index
 
@@ -531,6 +529,41 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
 
     return parsed_parameters
+
+
+def _find_mismatched_keys(
+    state_dict,
+    model_state_dict,
+    loaded_keys,
+    ignore_mismatched_sizes,
+):
+    mismatched_keys = []
+    if not ignore_mismatched_sizes:
+        return mismatched_keys
+    for checkpoint_key in loaded_keys:
+        model_key = checkpoint_key
+        # If the checkpoint is sharded, we may not have the key here.
+        if checkpoint_key not in state_dict:
+            continue
+
+        if model_key in model_state_dict and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape:
+            mismatched_keys.append(
+                (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
+            )
+            del state_dict[checkpoint_key]
+    return mismatched_keys
+
+
+def _expand_device_map(device_map, param_names):
+    """
+    Expand a device map to return the correspondence parameter name to device.
+    """
+    new_device_map = {}
+    for module, device in device_map.items():
+        new_device_map.update(
+            {p: device for p in param_names if p == module or p.startswith(f"{module}.") or module == ""}
+        )
+    return new_device_map
 
 
 # Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
