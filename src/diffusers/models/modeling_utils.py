@@ -899,7 +899,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         disable_mmap = kwargs.pop("disable_mmap", False)
 
         # TODO: enable TRUE ENV VARs
-        is_parallel_loading_enabled = bool(os.environ.get("HF_ENABLE_PARALLEL_LOADING", 1))
+        is_parallel_loading_enabled = bool(os.environ.get("HF_ENABLE_PARALLEL_LOADING", 0))
 
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
             raise NotImplementedError("Parallel loading is not supported when not using `low_cpu_mem_usage`.")
@@ -1477,7 +1477,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             # load_state_dict will manage the case where we pass a dict instead of a file
             # if state dict is not None, it means that we don't need to read the files from resolved_model_file also
             resolved_model_file = [state_dict]
-            is_file = not isinstance(state_dict, dict)
+        is_file = resolved_model_file and state_dict is None
 
         # prepare the arguments.
         args_list = [
@@ -1502,6 +1502,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             for shard_file in resolved_model_file
         ]
 
+        print(f"{is_parallel_loading_enabled=}, {is_file=}")
         if is_parallel_loading_enabled and is_file:
             offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_shard_files_with_threadpool(
                 args_list
@@ -1513,7 +1514,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 args_list = logging.tqdm(args_list, desc="Loading checkpoint shards")
 
             for args in args_list:
-                offload_index, state_dict_index, _error_msgs = load_shard_file(args)
+                offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_shard_file(args)
                 error_msgs += _error_msgs
                 mismatched_keys += _mismatched_keys
 

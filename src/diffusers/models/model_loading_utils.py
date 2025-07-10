@@ -388,6 +388,7 @@ def load_shard_files_with_threadpool(args_list):
 
     # Do not spawn anymore workers than you need
     num_workers = min(len(args_list), num_workers)
+    print(f"{num_workers=}")
 
     logger.info(f"Loading model weights in parallel with {num_workers} workers...")
 

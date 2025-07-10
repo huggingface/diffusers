@@ -61,7 +61,7 @@ logger = logging.get_logger(__name__)
 if is_accelerate_available():
     from accelerate import dispatch_model, init_empty_weights
 
-    from ..models.modeling_utils import load_model_dict_into_meta
+    from ..models.model_loading_utils import load_model_dict_into_meta
 
 
 SINGLE_FILE_LOADABLE_CLASSES = {
