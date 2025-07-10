@@ -19,6 +19,7 @@ import inspect
 import os
 from array import array
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from zipfile import is_zipfile
@@ -302,6 +303,130 @@ def load_model_dict_into_meta(
             set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
 
     return offload_index, state_dict_index
+
+
+def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefix=""):
+    """
+    Checks if `model_to_load` supports param buffer assignment (such as when loading in empty weights) by first
+    checking if the model explicitly disables it, then by ensuring that the state dict keys are a subset of the model's
+    parameters.
+
+    """
+    if model_to_load.device.type == "meta":
+        return False
+
+    if len([key for key in state_dict if key.startswith(start_prefix)]) == 0:
+        return False
+
+    # Some models explicitly do not support param buffer assignment
+    if not getattr(model_to_load, "_supports_param_buffer_assignment", True):
+        logger.debug(
+            f"{model_to_load.__class__.__name__} does not support param buffer assignment, loading will be slower"
+        )
+        return False
+
+    # If the model does, the incoming `state_dict` and the `model_to_load` must be the same dtype
+    first_key = next(iter(model_to_load.state_dict().keys()))
+    if start_prefix + first_key in state_dict:
+        return state_dict[start_prefix + first_key].dtype == model_to_load.state_dict()[first_key].dtype
+
+    return False
+
+
+def load_shard_file(args):
+    (
+        model,
+        model_state_dict,
+        shard_file,
+        device_map,
+        dtype,
+        hf_quantizer,
+        keep_in_fp32_modules,
+        dduf_entries,
+        loaded_keys,
+        unexpected_keys,
+        offload_index,
+        offload_folder,
+        state_dict_index,
+        state_dict_folder,
+        ignore_mismatched_sizes,
+        low_cpu_mem_usage,
+    ) = args
+    assign_to_params_buffers = None
+    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
+    mismatched_keys = _find_mismatched_keys(
+        state_dict,
+        model_state_dict,
+        loaded_keys,
+        ignore_mismatched_sizes,
+    )
+    error_msgs = []
+    if low_cpu_mem_usage:
+        offload_index, state_dict_index = load_model_dict_into_meta(
+            model,
+            state_dict,
+            device_map=device_map,
+            dtype=dtype,
+            hf_quantizer=hf_quantizer,
+            keep_in_fp32_modules=keep_in_fp32_modules,
+            unexpected_keys=unexpected_keys,
+            offload_folder=offload_folder,
+            offload_index=offload_index,
+            state_dict_index=state_dict_index,
+            state_dict_folder=state_dict_folder,
+        )
+    else:
+        if assign_to_params_buffers is None:
+            assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
+
+        error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
+    return offload_index, state_dict_index, mismatched_keys, error_msgs
+
+
+def load_shard_files_with_threadpool(args_list):
+    num_workers = int(os.environ.get("HF_PARALLEL_LOADING_WORKERS", "8"))
+
+    # Do not spawn anymore workers than you need
+    num_workers = min(len(args_list), num_workers)
+
+    logger.info(f"Loading model weights in parallel with {num_workers} workers...")
+
+    error_msgs = []
+    mismatched_keys = []
+
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        with logging.tqdm(total=len(args_list), desc="Loading checkpoint shards") as pbar:
+            futures = [executor.submit(load_shard_file, arg) for arg in args_list]
+            for future in as_completed(futures):
+                result = future.result()
+                offload_index, state_dict_index, _mismatched_keys, _error_msgs = result
+                error_msgs += _error_msgs
+                mismatched_keys += _mismatched_keys
+                pbar.update(1)
+
+    return offload_index, state_dict_index, mismatched_keys, error_msgs
+
+
+def _find_mismatched_keys(
+    state_dict,
+    model_state_dict,
+    loaded_keys,
+    ignore_mismatched_sizes,
+):
+    mismatched_keys = []
+    if ignore_mismatched_sizes:
+        for checkpoint_key in loaded_keys:
+            model_key = checkpoint_key
+            # If the checkpoint is sharded, we may not have the key here.
+            if checkpoint_key not in state_dict:
+                continue
+
+            if model_key in model_state_dict and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape:
+                mismatched_keys.append(
+                    (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
+                )
+                del state_dict[checkpoint_key]
+    return mismatched_keys
 
 
 def _load_state_dict_into_model(
