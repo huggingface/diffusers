@@ -11,17 +11,18 @@ env:
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
+  BASE_PATH: benchmark_outputs
 
 jobs:
-  torch_pipelines_cuda_benchmark_tests:
+  torch_models_cuda_benchmark_tests:
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_BENCHMARK }}
-    name: Torch Core Pipelines CUDA Benchmarking Tests
+    name: Torch Core Models CUDA Benchmarking Tests
     strategy:
       fail-fast: false
       max-parallel: 1
     runs-on:
-      group: aws-g6-4xlarge-plus
+      group: aws-g6e-4xlarge
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --shm-size "16gb" --ipc host --gpus 0
@@ -35,27 +36,47 @@ jobs:
           nvidia-smi
       - name: Install dependencies
         run: |
+          apt update
+          apt install -y libpq-dev postgresql-client
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
-          python -m uv pip install pandas peft
-          python -m uv pip uninstall transformers && python -m uv pip install transformers==4.48.0
+          python -m uv pip install -r benchmarks/requirements.txt
       - name: Environment
         run: |
           python utils/print_env.py
       - name: Diffusers Benchmarking
         env:
-            HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
-            BASE_PATH: benchmark_outputs
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         run: |
-          export TOTAL_GPU_MEMORY=$(python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory / (1024**3))")
-          cd benchmarks && mkdir ${BASE_PATH} && python run_all.py && python push_results.py
+          cd benchmarks && python run_all.py
+
+      - name: Push results to the Hub
+        env: 
+          HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
+        run: |
+          cd benchmarks && python push_results.py
+          mkdir $BASE_PATH && cp *.csv $BASE_PATH
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: benchmark_test_reports
-          path: benchmarks/benchmark_outputs
+          path: benchmarks/${{ env.BASE_PATH }}
+      
+      # TODO: enable this once the connection problem has been resolved.
+      - name: Update benchmarking results to DB
+        env:
+          PGDATABASE: metrics
+          PGHOST: ${{ secrets.DIFFUSERS_BENCHMARKS_PGHOST }}
+          PGUSER: transformers_benchmarks
+          PGPASSWORD: ${{ secrets.DIFFUSERS_BENCHMARKS_PGPASSWORD }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          git config --global --add safe.directory /__w/diffusers/diffusers
+          commit_id=$GITHUB_SHA
+          commit_msg=$(git show -s --format=%s "$commit_id" | cut -c1-70)
+          cd benchmarks && python populate_into_db.py "$BRANCH_NAME" "$commit_id" "$commit_msg"
 
       - name: Report success status
         if: ${{ success() }}

@@ -41,6 +41,7 @@ from .lora_base import (  # noqa
 )
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
+    _convert_fal_kontext_lora_to_diffusers,
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
@@ -2054,6 +2055,17 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         is_bfl_control = any("query_norm.scale" in k for k in state_dict)
         if is_bfl_control:
             state_dict = _convert_bfl_flux_control_lora_to_diffusers(state_dict)
+            return cls._prepare_outputs(
+                state_dict,
+                metadata=metadata,
+                alphas=None,
+                return_alphas=return_alphas,
+                return_metadata=return_lora_metadata,
+            )
+
+        is_fal_kontext = any("base_model" in k for k in state_dict)
+        if is_fal_kontext:
+            state_dict = _convert_fal_kontext_lora_to_diffusers(state_dict)
             return cls._prepare_outputs(
                 state_dict,
                 metadata=metadata,
