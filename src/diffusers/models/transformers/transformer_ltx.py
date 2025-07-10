@@ -400,7 +400,9 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
 
         self.gradient_checkpointing = False
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
         key = "scale_shift_table"
         if prefix + key in state_dict:
             scale_shift_table = state_dict.pop(prefix + key)

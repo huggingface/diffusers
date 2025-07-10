@@ -171,7 +171,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
 
         self.gradient_checkpointing = False
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
         if "scale_shift_table" in state_dict:
             scale_shift_table = state_dict.pop("scale_shift_table")
             state_dict[prefix + "norm_out.linear.weight"] = scale_shift_table[1]

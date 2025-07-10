@@ -185,11 +185,13 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         )
         self.caption_projection = None
         if self.config.caption_channels is not None:
-                self.caption_projection = PixArtAlphaTextProjection(
-                    in_features=self.config.caption_channels, hidden_size=self.inner_dim
-                )
+            self.caption_projection = PixArtAlphaTextProjection(
+                in_features=self.config.caption_channels, hidden_size=self.inner_dim
+            )
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
         if "scale_shift_table" in state_dict:
             scale_shift_table = state_dict.pop("scale_shift_table")
             state_dict[prefix + "norm_out.linear.weight"] = scale_shift_table[1]
