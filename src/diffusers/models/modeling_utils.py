@@ -1502,7 +1502,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             for shard_file in resolved_model_file
         ]
 
-        print(f"{is_parallel_loading_enabled=}, {is_file=}")
         if is_parallel_loading_enabled and is_file:
             offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_shard_files_with_threadpool(
                 args_list
