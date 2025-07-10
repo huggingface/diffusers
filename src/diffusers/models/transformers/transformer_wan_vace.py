@@ -270,6 +270,27 @@ class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
 
         self.gradient_checkpointing = False
 
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+        key = "scale_shift_table"
+        if prefix + key in state_dict:
+            scale_shift_table = state_dict.pop(prefix + key)
+            inner_dim = scale_shift_table.shape[-1]
+
+            weight = torch.eye(inner_dim).repeat(2, 1)
+            bias = scale_shift_table.reshape(2, inner_dim).flatten()
+
+            state_dict[prefix + "norm_out.linear.weight"] = weight
+            state_dict[prefix + "norm_out.linear.bias"] = bias
+
+        if prefix + "norm_out.weight" in state_dict:
+            state_dict.pop(prefix + "norm_out.weight")
+        if prefix + "norm_out.bias" in state_dict:
+            state_dict.pop(prefix + "norm_out.bias")
+
+        return super(WanVACETransformer3DModel, self)._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
+
     def forward(
         self,
         hidden_states: torch.Tensor,
