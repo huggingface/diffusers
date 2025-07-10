@@ -39,6 +39,7 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_accelerate_version,
     is_gguf_available,
     is_torch_available,
     is_torch_version,
@@ -253,6 +254,10 @@ def load_model_dict_into_meta(
                 param = param.to(dtype, non_blocking=True)
                 set_module_kwargs["dtype"] = dtype
 
+        if is_accelerate_version(">=", "1.9.0.dev0"):
+            set_module_kwargs["non_blocking"] = True
+            set_module_kwargs["_empty_cache"] = False
+
         # For compatibility with PyTorch load_state_dict which converts state dict dtype to existing dtype in model, and which
         # uses `param.copy_(input_param)` that preserves the contiguity of the parameter in the model.
         # Reference: https://github.com/pytorch/pytorch/blob/db79ceb110f6646523019a59bbd7b838f43d4a86/torch/nn/modules/module.py#L2040C29-L2040C29
@@ -300,15 +305,7 @@ def load_model_dict_into_meta(
                 model, param, param_name, param_device, state_dict, unexpected_keys, dtype=dtype
             )
         else:
-            set_module_tensor_to_device(
-                model,
-                param_name,
-                param_device,
-                value=param,
-                non_blocking=True,
-                _empty_cache=False,
-                **set_module_kwargs,
-            )
+            set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
 
     return offload_index, state_dict_index
 
