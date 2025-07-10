@@ -50,30 +50,29 @@ class QuantCompileTests(unittest.TestCase):
         )
         return pipe
 
-    def _test_torch_compile(self, quantization_config, torch_dtype=torch.bfloat16):
-        pipe = self._init_pipeline(quantization_config, torch_dtype).to("cuda")
-        # import to ensure fullgraph True
+    def _test_torch_compile(self, torch_dtype=torch.bfloat16):
+        pipe = self._init_pipeline(self.quantization_config, torch_dtype).to("cuda")
+        # `fullgraph=True` ensures no graph breaks
         pipe.transformer.compile(fullgraph=True)
 
-        for _ in range(2):
-            # small resolutions to ensure speedy execution.
-            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            for _ in range(2):
+                # small resolutions to ensure speedy execution.
+                pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
 
-    def _test_torch_compile_with_cpu_offload(self, quantization_config, torch_dtype=torch.bfloat16):
-        pipe = self._init_pipeline(quantization_config, torch_dtype)
+    def _test_torch_compile_with_cpu_offload(self, torch_dtype=torch.bfloat16):
+        pipe = self._init_pipeline(self.quantization_config, torch_dtype)
         pipe.enable_model_cpu_offload()
         pipe.transformer.compile()
 
         for _ in range(2):
             # small resolutions to ensure speedy execution.
-            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
+            pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
 
-    def _test_torch_compile_with_group_offload_leaf(
-        self, quantization_config, torch_dtype=torch.bfloat16, *, use_stream: bool = False
-    ):
-        torch._dynamo.config.cache_size_limit = 10000
+    def _test_torch_compile_with_group_offload_leaf(self, torch_dtype=torch.bfloat16, *, use_stream: bool = False):
+        torch._dynamo.config.cache_size_limit = 1000
 
-        pipe = self._init_pipeline(quantization_config, torch_dtype)
+        pipe = self._init_pipeline(self.quantization_config, torch_dtype)
         group_offload_kwargs = {
             "onload_device": torch.device("cuda"),
             "offload_device": torch.device("cpu"),
@@ -89,4 +88,13 @@ class QuantCompileTests(unittest.TestCase):
 
         for _ in range(2):
             # small resolutions to ensure speedy execution.
-            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
+            pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
+
+    def test_torch_compile(self):
+        self._test_torch_compile()
+
+    def test_torch_compile_with_cpu_offload(self):
+        self._test_torch_compile_with_cpu_offload()
+
+    def test_torch_compile_with_group_offload_leaf(self):
+        self._test_torch_compile_with_group_offload_leaf()

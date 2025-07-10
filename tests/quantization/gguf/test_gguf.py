@@ -662,15 +662,6 @@ class GGUFCompileTests(QuantCompileTests):
     def quantization_config(self):
         return GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
 
-    def test_torch_compile(self):
-        super()._test_torch_compile(quantization_config=self.quantization_config)
-
-    def test_torch_compile_with_cpu_offload(self):
-        super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
-
-    def test_torch_compile_with_group_offload_leaf(self):
-        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
-
     def _init_pipeline(self, *args, **kwargs):
         transformer = FluxTransformer2DModel.from_single_file(
             self.gguf_ckpt, quantization_config=self.quantization_config, torch_dtype=self.torch_dtype

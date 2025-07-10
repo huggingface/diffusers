@@ -639,16 +639,13 @@ class TorchAoCompileTest(QuantCompileTests):
             },
         )
 
-    def test_torch_compile(self):
-        super()._test_torch_compile(quantization_config=self.quantization_config)
-
     @unittest.skip(
         "Changing the device of AQT tensor with module._apply (called from doing module.to() in accelerate) does not work "
         "when compiling."
     )
     def test_torch_compile_with_cpu_offload(self):
         # RuntimeError: _apply(): Couldn't swap Linear.weight
-        super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
+        super()._test_torch_compile_with_cpu_offload()
 
     @unittest.skip(
         """
@@ -673,7 +670,7 @@ class TorchAoCompileTest(QuantCompileTests):
 
         # For use_stream=True:
         # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
-        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
+        super()._test_torch_compile_with_group_offload_leaf()
 
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
