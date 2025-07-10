@@ -565,10 +565,11 @@ def _expand_device_map(device_map, param_names):
 
 # Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
 def _caching_allocator_warmup(model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype) -> None:
-    """This function warm-ups the caching allocator based on the size of the model tensors that will reside on each
-    device. It allows to have one large call to Malloc, instead of recursively calling it later when loading the model,
-    which is actually the loading speed botteneck. Calling this function allows to cut the model loading time by a very
-    large margin.
+    """
+    This function warm-ups the caching allocator based on the size of the model tensors that will reside on each
+    device. It allows to have one large call to Malloc, instead of recursively calling it later when loading
+    the model, which is actually the loading speed bottleneck.
+    Calling this function allows to cut the model loading time by a very large margin.
     """
     # Remove disk and cpu devices, and cast to proper torch.device
     accelerator_device_map = {
