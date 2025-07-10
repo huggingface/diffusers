@@ -1,4 +1,5 @@
 import functools
+import glob
 import importlib
 import importlib.metadata
 import inspect
@@ -18,7 +19,7 @@ from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -1391,6 +1392,103 @@ if TYPE_CHECKING:
     DevicePropertiesUserDict = UserDict[DeviceProperties, Any]
 else:
     DevicePropertiesUserDict = UserDict
+
+if is_torch_available():
+    from diffusers.hooks.group_offloading import (
+        _GROUP_ID_LAZY_LEAF,
+        _SUPPORTED_PYTORCH_LAYERS,
+        _compute_group_hash,
+        _find_parent_module_in_module_dict,
+        _gather_buffers_with_no_group_offloading_parent,
+        _gather_parameters_with_no_group_offloading_parent,
+    )
+
+    def _get_expected_safetensors_files(
+        module: torch.nn.Module,
+        offload_to_disk_path: str,
+        offload_type: str,
+        num_blocks_per_group: Optional[int] = None,
+    ) -> Set[str]:
+        expected_files = set()
+
+        def get_hashed_filename(group_id: str) -> str:
+            short_hash = _compute_group_hash(group_id)
+            return os.path.join(offload_to_disk_path, f"group_{short_hash}.safetensors")
+
+        if offload_type == "block_level":
+            if num_blocks_per_group is None:
+                raise ValueError("num_blocks_per_group must be provided for 'block_level' offloading.")
+
+            # Handle groups of ModuleList and Sequential blocks
+            unmatched_modules = []
+            for name, submodule in module.named_children():
+                if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
+                    unmatched_modules.append(module)
+                    continue
+
+                for i in range(0, len(submodule), num_blocks_per_group):
+                    current_modules = submodule[i : i + num_blocks_per_group]
+                    if not current_modules:
+                        continue
+                    group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
+                    expected_files.add(get_hashed_filename(group_id))
+
+            # Handle the group for unmatched top-level modules and parameters
+            for module in unmatched_modules:
+                expected_files.add(get_hashed_filename(f"{module.__class__.__name__}_unmatched_group"))
+
+        elif offload_type == "leaf_level":
+            # Handle leaf-level module groups
+            for name, submodule in module.named_modules():
+                if isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
+                    # These groups will always have parameters, so a file is expected
+                    expected_files.add(get_hashed_filename(name))
+
+            # Handle groups for non-leaf parameters/buffers
+            modules_with_group_offloading = {
+                name for name, sm in module.named_modules() if isinstance(sm, _SUPPORTED_PYTORCH_LAYERS)
+            }
+            parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
+            buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
+
+            all_orphans = parameters + buffers
+            if all_orphans:
+                parent_to_tensors = {}
+                module_dict = dict(module.named_modules())
+                for tensor_name, _ in all_orphans:
+                    parent_name = _find_parent_module_in_module_dict(tensor_name, module_dict)
+                    if parent_name not in parent_to_tensors:
+                        parent_to_tensors[parent_name] = []
+                    parent_to_tensors[parent_name].append(tensor_name)
+
+                for parent_name in parent_to_tensors:
+                    # A file is expected for each parent that gathers orphaned tensors
+                    expected_files.add(get_hashed_filename(parent_name))
+            expected_files.add(get_hashed_filename(_GROUP_ID_LAZY_LEAF))
+
+        else:
+            raise ValueError(f"Unsupported offload_type: {offload_type}")
+
+        return expected_files
+
+    def _check_safetensors_serialization(
+        module: torch.nn.Module,
+        offload_to_disk_path: str,
+        offload_type: str,
+        num_blocks_per_group: Optional[int] = None,
+    ) -> bool:
+        if not os.path.isdir(offload_to_disk_path):
+            return False, None, None
+
+        expected_files = _get_expected_safetensors_files(
+            module, offload_to_disk_path, offload_type, num_blocks_per_group
+        )
+        actual_files = set(glob.glob(os.path.join(offload_to_disk_path, "*.safetensors")))
+        missing_files = expected_files - actual_files
+        extra_files = actual_files - expected_files
+
+        is_correct = not missing_files and not extra_files
+        return is_correct, extra_files, missing_files
 
 
 class Expectations(DevicePropertiesUserDict):

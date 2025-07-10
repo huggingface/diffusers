@@ -1986,11 +1986,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             f"{'' if k.startswith('_') else '_'}{k}": v for k, v in original_config.items() if k not in pipeline_kwargs
         }
 
+        optional_components = (
+            pipeline._optional_components
+            if hasattr(pipeline, "_optional_components") and pipeline._optional_components
+            else []
+        )
         missing_modules = (
-            set(expected_modules)
-            - set(pipeline._optional_components)
-            - set(pipeline_kwargs.keys())
-            - set(true_optional_modules)
+            set(expected_modules) - set(optional_components) - set(pipeline_kwargs.keys()) - set(true_optional_modules)
         )
 
         if len(missing_modules) > 0:
