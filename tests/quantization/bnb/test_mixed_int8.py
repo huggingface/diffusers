@@ -837,6 +837,7 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
 
 
 @require_torch_version_greater_equal("2.6.0")
+@require_bitsandbytes_version_greater("0.45.5")
 class Bnb8BitCompileTests(QuantCompileTests):
     @property
     def quantization_config(self):
