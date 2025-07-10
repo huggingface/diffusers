@@ -467,6 +467,7 @@ class PushToHubMixin:
         token: Optional[str] = None,
         commit_message: Optional[str] = None,
         create_pr: bool = False,
+        subfolder: Optional[str] = None,
     ):
         """
         Uploads all files in `working_dir` to `repo_id`.
@@ -481,7 +482,12 @@ class PushToHubMixin:
 
         logger.info(f"Uploading the files of {working_dir} to {repo_id}.")
         return upload_folder(
-            repo_id=repo_id, folder_path=working_dir, token=token, commit_message=commit_message, create_pr=create_pr
+            repo_id=repo_id,
+            folder_path=working_dir,
+            token=token,
+            commit_message=commit_message,
+            create_pr=create_pr,
+            path_in_repo=subfolder,
         )
 
     def push_to_hub(
@@ -493,6 +499,7 @@ class PushToHubMixin:
         create_pr: bool = False,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
+        subfolder: Optional[str] = None,
     ) -> str:
         """
         Upload model, scheduler, or pipeline files to the 🤗 Hugging Face Hub.
@@ -534,8 +541,9 @@ class PushToHubMixin:
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
         # Create a new empty model card and eventually tag it
-        model_card = load_or_create_model_card(repo_id, token=token)
-        model_card = populate_model_card(model_card)
+        if not subfolder:
+            model_card = load_or_create_model_card(repo_id, token=token)
+            model_card = populate_model_card(model_card)
 
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
@@ -546,7 +554,8 @@ class PushToHubMixin:
             self.save_pretrained(tmpdir, **save_kwargs)
 
             # Update model card if needed:
-            model_card.save(os.path.join(tmpdir, "README.md"))
+            if not subfolder:
+                model_card.save(os.path.join(tmpdir, "README.md"))
 
             return self._upload_folder(
                 tmpdir,
@@ -554,4 +563,5 @@ class PushToHubMixin:
                 token=token,
                 commit_message=commit_message,
                 create_pr=create_pr,
+                subfolder=subfolder,
             )
