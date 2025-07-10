@@ -359,8 +359,10 @@ class Magi1TransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
+        # Apply softcap to temb
+        temb = (1.0 * torch.tanh(temb.float() / 1.0)).to(temb.dtype)
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb.float()
+            self.scale_shift_table + temb
         ).chunk(6, dim=1)
 
         # 1. Self-attention
