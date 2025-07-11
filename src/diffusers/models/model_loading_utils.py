@@ -254,7 +254,7 @@ def load_model_dict_into_meta(
                 param = param.to(dtype)
                 set_module_kwargs["dtype"] = dtype
 
-        if is_accelerate_version(">", "1.8.0"):
+        if is_accelerate_version(">", "1.8.1"):
             set_module_kwargs["non_blocking"] = True
             set_module_kwargs["clear_cache"] = False
 
