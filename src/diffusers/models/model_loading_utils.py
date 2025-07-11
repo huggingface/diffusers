@@ -256,7 +256,7 @@ def load_model_dict_into_meta(
 
         if is_accelerate_version(">=", "1.9.0.dev0"):
             set_module_kwargs["non_blocking"] = True
-            set_module_kwargs["_empty_cache"] = False
+            set_module_kwargs["clear_cache"] = False
 
         # For compatibility with PyTorch load_state_dict which converts state dict dtype to existing dtype in model, and which
         # uses `param.copy_(input_param)` that preserves the contiguity of the parameter in the model.
