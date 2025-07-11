@@ -187,9 +187,15 @@ class CosmosAttnProcessor2_0:
             key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
 
         # 4. Prepare for GQA
-        query_idx = torch.tensor(query.size(3), device=query.device)
-        key_idx = torch.tensor(key.size(3), device=key.device)
-        value_idx = torch.tensor(value.size(3), device=value.device)
+        if torch.onnx.is_in_onnx_export():
+            query_idx = torch.tensor(query.size(3), device=query.device)
+            key_idx = torch.tensor(key.size(3), device=key.device)
+            value_idx = torch.tensor(value.size(3), device=value.device)
+
+        else:
+            query_idx = query.size(3)
+            key_idx = key.size(3)
+            value_idx = value.size(3)
         key = key.repeat_interleave(query_idx // key_idx, dim=3)
         value = value.repeat_interleave(query_idx // value_idx, dim=3)
 
