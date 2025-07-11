@@ -528,12 +528,7 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     return parsed_parameters
 
 
-def _find_mismatched_keys(
-    state_dict,
-    model_state_dict,
-    loaded_keys,
-    ignore_mismatched_sizes,
-):
+def _find_mismatched_keys(state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes):
     mismatched_keys = []
     if not ignore_mismatched_sizes:
         return mismatched_keys
