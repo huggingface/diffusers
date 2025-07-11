@@ -840,6 +840,8 @@ class FluxPipeline(
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        if isinstance(self.scheduler, (UniPCMultistepScheduler, DPMSolverMultistepScheduler)):
+            sigmas = None
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
@@ -848,20 +850,13 @@ class FluxPipeline(
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
-        if isinstance(self.scheduler, (UniPCMultistepScheduler, DPMSolverMultistepScheduler)):
-            self.scheduler.config.use_flow_sigmas = True
-            self.scheduler.config.prediction_type = "flow_prediction"
-            self.scheduler.config.flow_shift = np.exp(mu)
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-            timesteps = self.scheduler.timesteps
-        else:
-            timesteps, num_inference_steps = retrieve_timesteps(
-                self.scheduler,
-                num_inference_steps,
-                device,
-                sigmas=sigmas,
-                mu=mu,
-            )
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler,
+            num_inference_steps,
+            device,
+            sigmas=sigmas,
+            mu=mu,
+        )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
