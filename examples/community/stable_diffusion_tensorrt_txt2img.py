@@ -48,8 +48,8 @@ from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict, deprecate
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.stable_diffusion import (
-    StableDiffusionPipelineOutput,
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import (
     StableDiffusionSafetyChecker,
 )
 from diffusers.schedulers import DDIMScheduler
