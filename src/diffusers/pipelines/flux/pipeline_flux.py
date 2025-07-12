@@ -29,7 +29,7 @@ from transformers import (
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, FluxTransformer2DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler, DPMSolverMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
     is_torch_xla_available,
@@ -840,7 +840,7 @@ class FluxPipeline(
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        if isinstance(self.scheduler, (UniPCMultistepScheduler, DPMSolverMultistepScheduler)):
+        if hasattr(self.scheduler.config, "use_flow_sigmas") and self.scheduler.config.use_flow_sigmas:
             sigmas = None
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
