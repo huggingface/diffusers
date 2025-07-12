@@ -75,7 +75,6 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_accelerator,
     require_torch_accelerator_with_training,
-    require_torch_gpu,
     require_torch_multi_accelerator,
     require_torch_version_greater,
     run_test_in_subprocess,
@@ -1945,7 +1944,7 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
 
-@require_torch_gpu
+@require_torch_accelerator
 @require_torch_2
 @is_torch_compile
 @slow
@@ -2013,7 +2012,7 @@ class TorchCompileTesterMixin:
         model.eval()
         # TODO: Can test for other group offloading kwargs later if needed.
         group_offload_kwargs = {
-            "onload_device": "cuda",
+            "onload_device": torch_device,
             "offload_device": "cpu",
             "offload_type": "block_level",
             "num_blocks_per_group": 1,
