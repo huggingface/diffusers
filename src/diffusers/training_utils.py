@@ -5,12 +5,14 @@ import math
 import random
 import re
 import warnings
+from contextlib import contextmanager
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from .models import UNet2DConditionModel
+from .pipelines import DiffusionPipeline
 from .schedulers import SchedulerMixin
 from .utils import (
     convert_state_dict_to_diffusers,
@@ -316,6 +318,39 @@ def free_memory():
         torch_npu.npu.empty_cache()
     elif hasattr(torch, "xpu") and torch.xpu.is_available():
         torch.xpu.empty_cache()
+
+
+@contextmanager
+def offload_models(
+    *modules: Union[torch.nn.Module, DiffusionPipeline], device: Union[str, torch.device], offload: bool = True
+):
+    """
+    Context manager that, if offload=True, moves each module to `device` on enter, then moves it back to its original
+    device on exit.
+
+    Args:
+        device (`str` or `torch.Device`): Device to move the `modules` to.
+        offload (`bool`): Flag to enable offloading.
+    """
+    if offload:
+        is_model = not any(isinstance(m, DiffusionPipeline) for m in modules)
+        # record where each module was
+        if is_model:
+            original_devices = [next(m.parameters()).device for m in modules]
+        else:
+            assert len(modules) == 1
+            original_devices = modules[0].device
+        # move to target device
+        for m in modules:
+            m.to(device)
+
+    try:
+        yield
+    finally:
+        if offload:
+            # move back to original devices
+            for m, orig_dev in zip(modules, original_devices):
+                m.to(orig_dev)
 
 
 def parse_buckets_string(buckets_str):
