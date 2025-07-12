@@ -28,7 +28,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
-from ..normalization import FP32LayerNorm
+from ..normalization import AdaLayerNorm, FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -161,23 +161,7 @@ class Magi1ImageEmbedding(torch.nn.Module):
         return hidden_states
 
 
-class CaptionEmbedder(nn.Module):
-    """
-    Embeds caption text into vector representations for cross-attention and AdaLN.
-    """
-
-    def __init__(self, caption_channels: int, hidden_size: int):
-        super().__init__()
-        self.y_proj_xattn = nn.Sequential(nn.Linear(caption_channels, hidden_size), nn.SiLU())
-        self.y_proj_adaln = nn.Linear(caption_channels, int(hidden_size * 0.25))
-
-    def forward(self, caption):
-        caption_xattn = self.y_proj_xattn(caption)
-        caption_adaln = self.y_proj_adaln(caption)
-        return caption_xattn, caption_adaln
-
-
-class Magi1TimeTextCaptionEmbedding(nn.Module):
+class Magi1TimeTextEmbedding(nn.Module):
     """
     Combined time, text, and image embedding module for the MAGI-1 model.
 
@@ -201,13 +185,11 @@ class Magi1TimeTextCaptionEmbedding(nn.Module):
         text_embed_dim: int,
         image_embed_dim: Optional[int] = None,
         pos_embed_seq_len: Optional[int] = None,
-        caption_channels: Optional[int] = None,
     ):
         super().__init__()
 
         self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
-        self.caption_embedder = CaptionEmbedder(caption_channels=caption_channels, hidden_size=dim)
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
 
         self.image_embedder = None
@@ -227,12 +209,10 @@ class Magi1TimeTextCaptionEmbedding(nn.Module):
             timestep = timestep.to(time_embedder_dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
 
-        y_xattn, y_adaln = self.caption_embedder(encoder_hidden_states)
+        encoder_hidden_states = self.text_embedder(encoder_hidden_states)
 
-        # Combine time and text embeddings for AdaLN
-        timestep_proj = y_adaln + temb
-
-        encoder_hidden_states = self.text_embedder(y_xattn)
+        # Combine time embeddings for AdaLN
+        timestep_proj = temb
         if encoder_hidden_states_image is not None:
             encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
 
@@ -432,7 +412,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "rope"]
-    _no_split_modules = ["Magi1TransformerBlock"]
+    _no_split_modules = ["Magi1TransformerBlock", "norm_out"]
     _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["Magi1TransformerBlock"]
@@ -457,8 +437,6 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         image_embed_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
-        caption_channels: Optional[int] = None,
-        caption_max_length: Optional[int] = None,
     ) -> None:
         super().__init__()
 
@@ -499,12 +477,9 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         self.condition_embedder = Magi1TimeTextCaptionEmbedding(
             dim=inner_dim,
             time_freq_dim=freq_dim,
-            #time_proj_dim=inner_dim * 6,
             text_embed_dim=cross_attention_dim,
             image_embed_dim=image_embed_dim,
             pos_embed_seq_len=pos_embed_seq_len,
-            caption_channels=caption_channels,
-            caption_max_length=caption_max_length,
         )
 
         # 3. Transformer blocks
@@ -521,9 +496,14 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         )
 
         # 4. Output norm & projection
-        self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
+        self.norm_out = AdaLayerNorm(
+            embedding_dim=inner_dim,
+            output_dim=2 * inner_dim,
+            norm_elementwise_affine=False,
+            norm_eps=eps,
+            chunk_dim=1,
+        )
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size), bias=False)
-        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         self.gradient_checkpointing = False
 

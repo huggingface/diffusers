@@ -16,9 +16,7 @@ from diffusers.models.autoencoders import AutoencoderKLMagi1
 TRANSFORMER_KEYS_RENAME_DICT = {
     "t_embedder.mlp.0": "condition_embedder.time_embedder.linear_1",
     "t_embedder.mlp.2": "condition_embedder.time_embedder.linear_2",
-    "y_embedder.y_proj_adaln.0": "condition_embedder.text_embedder.linear_1",
-    "y_embedder.y_proj_adaln.2": "condition_embedder.text_embedder.linear_2",
-    "y_embedder.y_proj_xattn.0": "condition_embedder.text_proj",
+    "y_embedder.y_proj_xattn.0": "condition_embedder.text_embedder.linear_1",
     "videodit_blocks.final_layernorm": "norm_out",
     "final_linear.linear": "proj_out",
     "x_embedder": "patch_embedding",
@@ -325,6 +323,7 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
             "qk_norm": "rms_norm_across_heads",
             "eps": 1e-6,
             "rope_max_seq_len": 1024,
+            "caption_channels": 4096,
         }
 
     transformer = Magi1Transformer3DModel(
@@ -343,6 +342,7 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
         qk_norm=config["qk_norm"],
         eps=config["eps"],
         rope_max_seq_len=config["rope_max_seq_len"],
+        caption_channels=config["caption_channels"],
     )
 
     checkpoint = load_magi_transformer_checkpoint(checkpoint_path)
@@ -381,27 +381,22 @@ def convert_transformer_state_dict(checkpoint):
     converted_state_dict["condition_embedder.time_embedder.linear_2.weight"] = checkpoint["t_embedder.mlp.2.weight"]
     converted_state_dict["condition_embedder.time_embedder.linear_2.bias"] = checkpoint["t_embedder.mlp.2.bias"]
 
-    converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint[
-        "y_embedder.y_proj_adaln.0.weight"
-    ]
-    converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint[
-        "y_embedder.y_proj_adaln.0.bias"
-    ]
+    # Text embedder components (PixArtAlphaTextProjection)
+    # Map from y_embedder.y_proj_xattn which contains the cross-attention projection
+    converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint["y_embedder.y_proj_xattn.0.weight"]
+    converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint["y_embedder.y_proj_xattn.0.bias"]
 
-    converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint[
-        "y_embedder.y_proj_adaln.2.weight"
-    ]
-    converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint[
-        "y_embedder.y_proj_adaln.2.bias"
-    ]
+    # Check if y_proj_adaln.2 exists for the second linear layer, otherwise use identity mapping
+    if "y_embedder.y_proj_adaln.2.weight" in checkpoint:
+        converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint["y_embedder.y_proj_adaln.2.weight"]
+        converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint["y_embedder.y_proj_adaln.2.bias"]
+    else:
+        # Create identity mapping if the second layer doesn't exist
+        hidden_size = checkpoint["y_embedder.y_proj_xattn.0.weight"].shape[0]
+        converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = torch.eye(hidden_size)
+        converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = torch.zeros(hidden_size)
 
-    converted_state_dict["condition_embedder.text_proj.weight"] = checkpoint["y_embedder.y_proj_xattn.0.weight"]
-    converted_state_dict["condition_embedder.text_proj.bias"] = checkpoint["y_embedder.y_proj_xattn.0.bias"]
-
-    converted_state_dict["condition_embedder.text_embedder.null_caption_embedding"] = checkpoint[
-        "y_embedder.null_caption_embedding"
-    ]
-
+    # Simple mapping for final layer norm (keeping it as FusedLayerNorm, not AdaLayerNorm)
     converted_state_dict["norm_out.weight"] = checkpoint["videodit_blocks.final_layernorm.weight"]
     converted_state_dict["norm_out.bias"] = checkpoint["videodit_blocks.final_layernorm.bias"]
 
