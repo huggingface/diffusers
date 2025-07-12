@@ -39,11 +39,11 @@ class WanModularPipeline(
 
     @property
     def default_height(self):
-        return self.default_sample_height * self.vae_scale_factor
+        return self.default_sample_height * self.vae_scale_factor_spatial
 
     @property
     def default_width(self):
-        return self.default_sample_width * self.vae_scale_factor
+        return self.default_sample_width * self.vae_scale_factor_spatial
 
     @property
     def default_num_frames(self):

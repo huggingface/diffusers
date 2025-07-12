@@ -92,6 +92,7 @@ def retrieve_timesteps(
     else:
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 class WanInputStep(PipelineBlock):
@@ -304,7 +305,7 @@ class WanPrepareLatentsStep(PipelineBlock):
                 f"`num_frames` has to be greater than 0, and (num_frames - 1) must be divisible by {components.vae_scale_factor_temporal}, but got {block_state.num_frames}."
             )
 
-    @classmethod
+    @staticmethod
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.prepare_latents with self->comp
     def prepare_latents(
         comp,
@@ -349,8 +350,9 @@ class WanPrepareLatentsStep(PipelineBlock):
 
         self.check_inputs(components, block_state)
 
-        block_state.height = block_state.height or components.default_sample_size * components.vae_scale_factor
-        block_state.width = block_state.width or components.default_sample_size * components.vae_scale_factor
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
+        block_state.num_frames = block_state.num_frames or components.default_num_frames
         block_state.num_channels_latents = components.num_channels_latents
         block_state.latents = self.prepare_latents(
             components,
