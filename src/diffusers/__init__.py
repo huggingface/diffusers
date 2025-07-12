@@ -314,6 +314,7 @@ else:
             "SchedulerMixin",
             "SCMScheduler",
             "ScoreSdeVeScheduler",
+            "STORKScheduler",
             "TCDScheduler",
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
