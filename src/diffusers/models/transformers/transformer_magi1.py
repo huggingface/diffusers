@@ -27,7 +27,7 @@ from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
 
 
@@ -222,7 +222,7 @@ class Magi1TimeTextCaptionEmbedding(nn.Module):
     ):
         timestep = self.timesteps_proj(timestep)
 
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
+        time_embedder_dtype = get_parameter_dtype(self.time_embedder)
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
             timestep = timestep.to(time_embedder_dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
