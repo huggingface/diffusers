@@ -441,27 +441,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
-        self.inner_dim = inner_dim
         out_channels = out_channels or in_channels
-
-        # Validate configuration
-        if inner_dim != num_attention_heads * attention_head_dim:
-            raise ValueError(
-                f"inner_dim ({inner_dim}) should be equal to num_attention_heads ({num_attention_heads}) * "
-                f"attention_head_dim ({attention_head_dim})"
-            )
-
-        if any(p <= 0 for p in patch_size):
-            raise ValueError(f"All patch_size values must be positive, got {patch_size}")
-
-        if num_layers <= 0:
-            raise ValueError(f"num_layers must be positive, got {num_layers}")
-
-        if freq_dim <= 0:
-            raise ValueError(f"freq_dim must be positive, got {freq_dim}")
-
-        if image_embed_dim is not None and image_embed_dim <= 0:
-            raise ValueError(f"image_embed_dim must be positive when provided, got {image_embed_dim}")
 
         # 1. Patch & position embedding
         self.rope = Magi1RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
@@ -577,16 +557,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             for block in self.blocks:
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
 
-        # 5. Output norm, projection & unpatchify
-        shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
-
-        # Move the shift and scale tensors to the same device as hidden_states.
-        # When using multi-GPU inference via accelerate these will be on the
-        # first device rather than the last device, which hidden_states ends up on.
-        shift = shift.to(hidden_states.device)
-        scale = scale.to(hidden_states.device)
-
-        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        hidden_states = self.norm_out(hidden_states, temb=temb)
         hidden_states = self.proj_out(hidden_states)
 
         # Unpatchify: convert from sequence back to video format

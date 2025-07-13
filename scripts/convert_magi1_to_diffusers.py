@@ -323,7 +323,6 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
             "qk_norm": "rms_norm_across_heads",
             "eps": 1e-6,
             "rope_max_seq_len": 1024,
-            "caption_channels": 4096,
         }
 
     transformer = Magi1Transformer3DModel(
@@ -342,7 +341,6 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
         qk_norm=config["qk_norm"],
         eps=config["eps"],
         rope_max_seq_len=config["rope_max_seq_len"],
-        caption_channels=config["caption_channels"],
     )
 
     checkpoint = load_magi_transformer_checkpoint(checkpoint_path)
