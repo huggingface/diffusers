@@ -24,6 +24,7 @@ from diffusers.utils.testing_utils import (
 
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
@@ -33,11 +34,12 @@ from ..test_pipelines_common import (
 
 
 class FluxPipelineFastTests(
-    unittest.TestCase,
     PipelineTesterMixin,
     FluxIPAdapterTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
     FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
