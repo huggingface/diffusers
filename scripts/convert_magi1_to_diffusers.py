@@ -381,22 +381,23 @@ def convert_transformer_state_dict(checkpoint):
     converted_state_dict["condition_embedder.time_embedder.linear_2.weight"] = checkpoint["t_embedder.mlp.2.weight"]
     converted_state_dict["condition_embedder.time_embedder.linear_2.bias"] = checkpoint["t_embedder.mlp.2.bias"]
 
-    # Text embedder components (PixArtAlphaTextProjection)
-    # Map from y_embedder.y_proj_xattn which contains the cross-attention projection
-    converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint["y_embedder.y_proj_xattn.0.weight"]
-    converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint["y_embedder.y_proj_xattn.0.bias"]
+    converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint[
+        "y_embedder.y_proj_xattn.0.weight"
+    ]
+    converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint[
+        "y_embedder.y_proj_xattn.0.bias"
+    ]
 
-    # Check if y_proj_adaln.2 exists for the second linear layer, otherwise use identity mapping
-    if "y_embedder.y_proj_adaln.2.weight" in checkpoint:
-        converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint["y_embedder.y_proj_adaln.2.weight"]
-        converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint["y_embedder.y_proj_adaln.2.bias"]
-    else:
-        # Create identity mapping if the second layer doesn't exist
-        hidden_size = checkpoint["y_embedder.y_proj_xattn.0.weight"].shape[0]
-        converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = torch.eye(hidden_size)
-        converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = torch.zeros(hidden_size)
+    converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint[
+        "y_embedder.y_proj_adaln.2.weight"
+    ]
+    converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint[
+        "y_embedder.y_proj_adaln.2.bias"
+    ]
+    hidden_size = checkpoint["y_embedder.y_proj_xattn.0.weight"].shape[0]
+    converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = torch.eye(hidden_size)
+    converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = torch.zeros(hidden_size)
 
-    # Simple mapping for final layer norm (keeping it as FusedLayerNorm, not AdaLayerNorm)
     converted_state_dict["norm_out.weight"] = checkpoint["videodit_blocks.final_layernorm.weight"]
     converted_state_dict["norm_out.bias"] = checkpoint["videodit_blocks.final_layernorm.bias"]
 

@@ -161,7 +161,7 @@ class Magi1ImageEmbedding(torch.nn.Module):
         return hidden_states
 
 
-class Magi1TimeTextEmbedding(nn.Module):
+class Magi1TimeTextImageEmbedding(nn.Module):
     """
     Combined time, text, and image embedding module for the MAGI-1 model.
 
@@ -341,9 +341,9 @@ class Magi1TransformerBlock(nn.Module):
     ) -> torch.Tensor:
         # Apply softcap to temb
         temb = (1.0 * torch.tanh(temb.float() / 1.0)).to(temb.dtype)
-        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb
-        ).chunk(6, dim=1)
+        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (self.scale_shift_table + temb).chunk(
+            6, dim=1
+        )
 
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
@@ -474,7 +474,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             )
 
         # 2. Condition embeddings
-        self.condition_embedder = Magi1TimeTextCaptionEmbedding(
+        self.condition_embedder = Magi1TimeTextImageEmbedding(
             dim=inner_dim,
             time_freq_dim=freq_dim,
             text_embed_dim=cross_attention_dim,
