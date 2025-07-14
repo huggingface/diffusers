@@ -210,9 +210,6 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)
-
-        # Combine time embeddings for AdaLN
-        timestep_proj = temb
         if encoder_hidden_states_image is not None:
             encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
 
