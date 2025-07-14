@@ -40,8 +40,6 @@ if is_transformers_available():
 from ..models.attention_processor import (
     AttnProcessor,
     AttnProcessor2_0,
-    FluxAttnProcessor2_0,
-    FluxIPAdapterJointAttnProcessor2_0,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
     IPAdapterXFormersAttnProcessor,
@@ -867,6 +865,9 @@ class FluxIPAdapterMixin:
         >>> ...
         ```
         """
+        # TODO: once the 1.0.0 deprecations are in, we can move the imports to top-level
+        from ..models.transformers.transformer_flux import FluxAttnProcessor, FluxIPAdapterAttnProcessor
+
         # remove CLIP image encoder
         if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is not None:
             self.image_encoder = None
@@ -886,9 +887,9 @@ class FluxIPAdapterMixin:
         # restore original Transformer attention processors layers
         attn_procs = {}
         for name, value in self.transformer.attn_processors.items():
-            attn_processor_class = FluxAttnProcessor2_0()
+            attn_processor_class = FluxAttnProcessor()
             attn_procs[name] = (
-                attn_processor_class if isinstance(value, (FluxIPAdapterJointAttnProcessor2_0)) else value.__class__()
+                attn_processor_class if isinstance(value, FluxIPAdapterAttnProcessor) else value.__class__()
             )
         self.transformer.set_attn_processor(attn_procs)
 
