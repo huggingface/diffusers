@@ -112,6 +112,8 @@
   sections:
   - local: modular_diffusers/overview
     title: Overview
+  - local: modular_diffusers/end_to_end_guide
+    title: Quickstart
   - local: modular_diffusers/modular_pipeline
     title: Modular Pipeline
   - local: modular_diffusers/components_manager
@@ -126,12 +128,34 @@
     title: Loop Sequential Pipeline Blocks
   - local: modular_diffusers/auto_pipeline_blocks
     title: Auto Pipeline Blocks
-  - local: modular_diffusers/end_to_end_guide
-    title: End-to-End Example
-
-- title: Training
-  isExpanded: false
-  sections:
+  title: Modular Diffusers
+- sections:
+  - local: using-diffusers/consisid
+    title: ConsisID
+  - local: using-diffusers/sdxl
+    title: Stable Diffusion XL
+  - local: using-diffusers/sdxl_turbo
+    title: SDXL Turbo
+  - local: using-diffusers/kandinsky
+    title: Kandinsky
+  - local: using-diffusers/omnigen
+    title: OmniGen
+  - local: using-diffusers/pag
+    title: PAG
+  - local: using-diffusers/inference_with_lcm
+    title: Latent Consistency Model
+  - local: using-diffusers/shap-e
+    title: Shap-E
+  - local: using-diffusers/diffedit
+    title: DiffEdit
+  - local: using-diffusers/inference_with_tcd_lora
+    title: Trajectory Consistency Distillation-LoRA
+  - local: using-diffusers/svd
+    title: Stable Video Diffusion
+  - local: using-diffusers/marigold_usage
+    title: Marigold Computer Vision
+  title: Specific pipeline examples
+- sections:
   - local: training/overview
     title: Overview
   - local: training/create_dataset
