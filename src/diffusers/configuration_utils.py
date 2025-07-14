@@ -764,6 +764,6 @@ class LegacyConfigMixin(ConfigMixin):
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
         if remapped_class is cls:
-            return super(LegacyConfigMixin,remapped_class).from_config(config, return_unused_kwargs, **kwargs)
+            return super(LegacyConfigMixin, remapped_class).from_config(config, return_unused_kwargs, **kwargs)
         else:
             return remapped_class.from_config(config, return_unused_kwargs, **kwargs)

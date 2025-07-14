@@ -1881,6 +1881,8 @@ class LegacyModelMixin(ModelMixin):
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
         if remapped_class is cls:
-            return super(LegacyModelMixin,remapped_class).from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
+            return super(LegacyModelMixin, remapped_class).from_pretrained(
+                pretrained_model_name_or_path, **kwargs_copy
+            )
         else:
             return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
