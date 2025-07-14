@@ -37,6 +37,7 @@ logger.addHandler(stream_handler)
 
 class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
     instance_data_dir = "docs/source/en/imgs"
+    instance_prompt = "photo"
     pretrained_model_name_or_path = "hf-internal-testing/tiny-hidream-i1-pipe"
     text_encoder_4_path = "hf-internal-testing/tiny-random-LlamaForCausalLM"
     tokenizer_4_path = "hf-internal-testing/tiny-random-LlamaForCausalLM"
@@ -187,6 +188,7 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
                 --instance_data_dir {self.instance_data_dir}
+                --instance_prompt {self.instance_prompt}
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
@@ -227,6 +229,7 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             --pretrained_text_encoder_4_name_or_path {self.text_encoder_4_path}
             --pretrained_tokenizer_4_name_or_path {self.tokenizer_4_path}
             --instance_data_dir={self.instance_data_dir}
+            --instance_prompt {self.instance_prompt}
             --output_dir={tmpdir}
             --resolution=32
             --train_batch_size=1
@@ -247,6 +250,7 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             --pretrained_text_encoder_4_name_or_path {self.text_encoder_4_path}
             --pretrained_tokenizer_4_name_or_path {self.tokenizer_4_path}
             --instance_data_dir={self.instance_data_dir}
+            --instance_prompt {self.instance_prompt}
             --output_dir={tmpdir}
             --resolution=32
             --train_batch_size=1
