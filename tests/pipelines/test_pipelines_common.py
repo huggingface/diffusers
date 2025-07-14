@@ -37,6 +37,7 @@ from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
+from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
@@ -96,6 +97,20 @@ def check_qkv_fusion_processors_exist(model):
     current_attn_processors = model.attn_processors
     proc_names = [v.__class__.__name__ for _, v in current_attn_processors.items()]
     return all(p.startswith("Fused") for p in proc_names)
+
+
+def check_qkv_fused_layers_exist(model, layer_names):
+    is_fused_submodules = []
+    for submodule in model.modules():
+        if not isinstance(submodule, AttentionModuleMixin):
+            continue
+        is_fused_attribute_set = submodule.fused_projections
+        is_fused_layer = True
+        for layer in layer_names:
+            is_fused_layer = is_fused_layer and getattr(submodule, layer, None) is not None
+        is_fused = is_fused_attribute_set and is_fused_layer
+        is_fused_submodules.append(is_fused)
+    return all(is_fused_submodules)
 
 
 class SDFunctionTesterMixin:
