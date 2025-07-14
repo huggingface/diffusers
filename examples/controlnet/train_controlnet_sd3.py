@@ -1330,7 +1330,7 @@ def main(args):
                 # controlnet(s) inference
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
                 controlnet_image = vae.encode(controlnet_image).latent_dist.sample()
-                controlnet_image = controlnet_image * vae.config.scaling_factor
+                controlnet_image = (controlnet_image - vae.config.shift_factor) * vae.config.scaling_factor
 
                 control_block_res_samples = controlnet(
                     hidden_states=noisy_model_input,
