@@ -300,7 +300,9 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None, mu: Optional[float] = None):
+    def set_timesteps(
+        self, num_inference_steps: int, device: Union[str, torch.device] = None, mu: Optional[float] = None
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -312,7 +314,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
         if mu is not None:
-            assert self.config.use_dynamic_shifting and self.config.time_shift_type == 'exponential'
+            assert self.config.use_dynamic_shifting and self.config.time_shift_type == "exponential"
             self.config.flow_shift = np.exp(mu)
         if self.config.timestep_spacing == "linspace":
             timesteps = (

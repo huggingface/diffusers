@@ -320,7 +320,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 passed, `num_inference_steps` must be `None`.
         """
         if mu is not None:
-            assert self.config.use_dynamic_shifting and self.config.time_shift_type == 'exponential'
+            assert self.config.use_dynamic_shifting and self.config.time_shift_type == "exponential"
             self.config.flow_shift = np.exp(mu)
         if num_inference_steps is None and timesteps is None:
             raise ValueError("Must pass exactly one of  `num_inference_steps` or `timesteps`.")
