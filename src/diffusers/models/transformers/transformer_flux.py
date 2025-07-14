@@ -13,33 +13,348 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.import_utils import is_torch_npu_available
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import FeedForward
-from ..attention_processor import (
-    Attention,
-    AttentionProcessor,
-    FluxAttnProcessor2_0,
-    FluxAttnProcessor2_0_NPU,
-    FusedFluxAttnProcessor2_0,
-)
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..cache_utils import CacheMixin
-from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
+from ..embeddings import (
+    CombinedTimestepGuidanceTextProjEmbeddings,
+    CombinedTimestepTextProjEmbeddings,
+    FluxPosEmbed,
+    apply_rotary_emb,
+)
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class FluxAttnProcessor:
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0. Please upgrade your pytorch version.")
+
+    def _get_projections(self, attn, hidden_states, encoder_hidden_states=None):
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        encoder_projections = None
+        if encoder_hidden_states is not None and hasattr(attn, "add_q_proj"):
+            encoder_query = attn.add_q_proj(encoder_hidden_states)
+            encoder_key = attn.add_k_proj(encoder_hidden_states)
+            encoder_value = attn.add_v_proj(encoder_hidden_states)
+            encoder_projections = (encoder_query, encoder_key, encoder_value)
+
+        return query, key, value, encoder_projections
+
+    def _get_fused_projections(self, attn, hidden_states, encoder_hidden_states=None):
+        qkv = attn.to_qkv(hidden_states)
+        split_size = qkv.shape[-1] // 3
+        query, key, value = torch.split(qkv, split_size, dim=-1)
+
+        encoder_projections = None
+        if encoder_hidden_states is not None and hasattr(attn, "to_added_qkv"):
+            encoder_qkv = attn.to_added_qkv(encoder_hidden_states)
+            split_size = encoder_qkv.shape[-1] // 3
+            encoder_query, encoder_key, encoder_value = torch.split(encoder_qkv, split_size, dim=-1)
+            encoder_projections = (encoder_query, encoder_key, encoder_value)
+
+        return query, key, value, encoder_projections
+
+    def get_qkv_projections(self, attn: AttentionModuleMixin, hidden_states, encoder_hidden_states=None):
+        if hasattr(attn, "to_qkv") and attn.fused_projections:
+            return self._get_fused_projections(attn, hidden_states, encoder_hidden_states)
+        return self._get_projections(attn, hidden_states, encoder_hidden_states)
+
+    def __call__(
+        self,
+        attn: "FluxAttention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+
+        query, key, value, encoder_projections = self.get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        if encoder_projections is not None:
+            encoder_query, encoder_key, encoder_value = encoder_projections
+            encoder_query = encoder_query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            encoder_key = encoder_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            encoder_value = encoder_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+            if attn.norm_added_q is not None:
+                encoder_query = attn.norm_added_q(encoder_query)
+            if attn.norm_added_k is not None:
+                encoder_key = attn.norm_added_k(encoder_key)
+
+            # Concatenate for joint attention
+            query = torch.cat([encoder_query, query], dim=2)
+            key = torch.cat([encoder_key, key], dim=2)
+            value = torch.cat([encoder_value, value], dim=2)
+
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        hidden_states = torch.nn.functional.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if encoder_hidden_states is not None:
+            encoder_hidden_states, hidden_states = (
+                hidden_states[:, : encoder_hidden_states.shape[1]],
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+            )
+
+            hidden_states = attn.to_out[0](hidden_states)
+            hidden_states = attn.to_out[1](hidden_states)
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+            return hidden_states, encoder_hidden_states
+        else:
+            return hidden_states
+
+
+class FluxIPAdapterAttnProcessor(torch.nn.Module):
+    """Flux Attention processor for IP-Adapter."""
+
+    def __init__(
+        self, hidden_size: int, cross_attention_dim: int, num_tokens=(4,), scale=1.0, device=None, dtype=None
+    ):
+        super().__init__()
+
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+
+        if not isinstance(num_tokens, (tuple, list)):
+            num_tokens = [num_tokens]
+
+        if not isinstance(scale, list):
+            scale = [scale] * len(num_tokens)
+        if len(scale) != len(num_tokens):
+            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
+        self.scale = scale
+
+        self.to_k_ip = nn.ModuleList(
+            [
+                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
+                for _ in range(len(num_tokens))
+            ]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [
+                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
+                for _ in range(len(num_tokens))
+            ]
+        )
+
+    def __call__(
+        self,
+        attn: "FluxAttention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        ip_hidden_states: Optional[List[torch.Tensor]] = None,
+        ip_adapter_masks: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+
+        # `sample` projections.
+        hidden_states_query_proj = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        hidden_states_query_proj = hidden_states_query_proj.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            hidden_states_query_proj = attn.norm_q(hidden_states_query_proj)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
+        if encoder_hidden_states is not None:
+            # `context` projections.
+            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+            # attention
+            query = torch.cat([encoder_hidden_states_query_proj, hidden_states_query_proj], dim=2)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        hidden_states = torch.nn.functional(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if encoder_hidden_states is not None:
+            encoder_hidden_states, hidden_states = (
+                hidden_states[:, : encoder_hidden_states.shape[1]],
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+            )
+
+            # linear proj
+            hidden_states = attn.to_out[0](hidden_states)
+            # dropout
+            hidden_states = attn.to_out[1](hidden_states)
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+            # IP-adapter
+            ip_query = hidden_states_query_proj
+            ip_attn_output = torch.zeros_like(hidden_states)
+
+            for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+            ):
+                ip_key = to_k_ip(current_ip_hidden_states)
+                ip_value = to_v_ip(current_ip_hidden_states)
+
+                ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                # the output of sdp = (batch, num_heads, seq_len, head_dim)
+                # TODO: add support for attn.scale when we move to Torch 2.1
+                current_ip_hidden_states = torch.nn.functional.scaled_dot_product_attention(
+                    ip_query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+                )
+                current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
+                    batch_size, -1, attn.heads * head_dim
+                )
+                current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
+                ip_attn_output += scale * current_ip_hidden_states
+
+            return hidden_states, encoder_hidden_states, ip_attn_output
+        else:
+            return hidden_states
+
+
+class FluxAttention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = FluxAttnProcessor
+    _available_processors = [
+        FluxAttnProcessor,
+        FluxIPAdapterAttnProcessor,
+    ]
+
+    def __init__(
+        self,
+        query_dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias: bool = False,
+        qk_norm: Optional[str] = None,
+        added_kv_proj_dim: Optional[int] = None,
+        added_proj_bias: Optional[bool] = True,
+        out_bias: bool = True,
+        eps: float = 1e-5,
+        out_dim: int = None,
+        context_pre_only: Optional[bool] = None,
+        pre_only: bool = False,
+        elementwise_affine: bool = True,
+        processor=None,
+    ):
+        super().__init__()
+        assert qk_norm == "rms_norm", "Flux uses RMSNorm"
+
+        self.inner_dim = out_dim if out_dim is not None else dim_head * heads
+        self.query_dim = query_dim
+        self.use_bias = bias
+        self.dropout = dropout
+        self.out_dim = out_dim if out_dim is not None else query_dim
+        self.context_pre_only = context_pre_only
+        self.pre_only = pre_only
+        self.heads = out_dim // dim_head if out_dim is not None else heads
+        self.added_proj_bias = added_proj_bias
+
+        self.norm_q = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        self.norm_k = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_k = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_v = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+
+        if not self.pre_only:
+            self.to_out = torch.nn.ModuleList([])
+            self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
+            self.to_out.append(torch.nn.Dropout(dropout))
+
+        if added_kv_proj_dim is not None:
+            self.norm_added_q = torch.nn.RMSNorm(dim_head, eps=eps)
+            self.norm_added_k = torch.nn.RMSNorm(dim_head, eps=eps)
+            self.add_q_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.to_add_out = torch.nn.Linear(self.inner_dim, query_dim, bias=out_bias)
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb, **kwargs)
 
 
 @maybe_allow_in_graph
@@ -54,6 +369,8 @@ class FluxSingleTransformerBlock(nn.Module):
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
         if is_torch_npu_available():
+            from ..attention_processor import FluxAttnProcessor2_0_NPU
+
             deprecation_message = (
                 "Defaulting to FluxAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
                 "should be set explicitly using the `set_attn_processor` method."
@@ -61,11 +378,10 @@ class FluxSingleTransformerBlock(nn.Module):
             deprecate("npu_processor", "0.34.0", deprecation_message)
             processor = FluxAttnProcessor2_0_NPU()
         else:
-            processor = FluxAttnProcessor2_0()
+            processor = FluxAttnProcessor()
 
-        self.attn = Attention(
+        self.attn = FluxAttention(
             query_dim=dim,
-            cross_attention_dim=None,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             out_dim=dim,
@@ -118,16 +434,15 @@ class FluxTransformerBlock(nn.Module):
         self.norm1 = AdaLayerNormZero(dim)
         self.norm1_context = AdaLayerNormZero(dim)
 
-        self.attn = Attention(
+        self.attn = FluxAttention(
             query_dim=dim,
-            cross_attention_dim=None,
             added_kv_proj_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             out_dim=dim,
             context_pre_only=False,
             bias=True,
-            processor=FluxAttnProcessor2_0(),
+            processor=FluxAttnProcessor(),
             qk_norm=qk_norm,
             eps=eps,
         )
@@ -152,6 +467,7 @@ class FluxTransformerBlock(nn.Module):
             encoder_hidden_states, emb=temb
         )
         joint_attention_kwargs = joint_attention_kwargs or {}
+
         # Attention.
         attention_outputs = self.attn(
             hidden_states=norm_hidden_states,
@@ -180,7 +496,6 @@ class FluxTransformerBlock(nn.Module):
             hidden_states = hidden_states + ip_attn_output
 
         # Process attention outputs for the `encoder_hidden_states`.
-
         context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
         encoder_hidden_states = encoder_hidden_states + context_attn_output
 
@@ -196,7 +511,13 @@ class FluxTransformerBlock(nn.Module):
 
 
 class FluxTransformer2DModel(
-    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, FluxTransformer2DLoadersMixin, CacheMixin
+    ModelMixin,
+    ConfigMixin,
+    PeftAdapterMixin,
+    FromOriginalModelMixin,
+    FluxTransformer2DLoadersMixin,
+    CacheMixin,
+    AttentionMixin,
 ):
     """
     The Transformer model introduced in Flux.
@@ -291,106 +612,6 @@ class FluxTransformer2DModel(
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
-
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections with FusedAttnProcessor2_0->FusedFluxAttnProcessor2_0
-    def fuse_qkv_projections(self):
-        """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
-        are fused. For cross-attention modules, key and value projection matrices are fused.
-
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
-        """
-        self.original_attn_processors = None
-
-        for _, attn_processor in self.attn_processors.items():
-            if "Added" in str(attn_processor.__class__.__name__):
-                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
-
-        self.original_attn_processors = self.attn_processors
-
-        for module in self.modules():
-            if isinstance(module, Attention):
-                module.fuse_projections(fuse=True)
-
-        self.set_attn_processor(FusedFluxAttnProcessor2_0())
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
-    def unfuse_qkv_projections(self):
-        """Disables the fused QKV projection if enabled.
-
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
-
-        """
-        if self.original_attn_processors is not None:
-            self.set_attn_processor(self.original_attn_processors)
 
     def forward(
         self,
