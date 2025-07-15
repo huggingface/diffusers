@@ -93,9 +93,9 @@ class WanAttnProcessor:
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        query = query.unflatten(2, (attn.heads, -1))
+        key = key.unflatten(2, (attn.heads, -1))
+        value = value.unflatten(2, (attn.heads, -1))
 
         if rotary_emb is not None:
 
@@ -104,8 +104,7 @@ class WanAttnProcessor:
                 freqs_cos: torch.Tensor,
                 freqs_sin: torch.Tensor,
             ):
-                x = hidden_states.view(*hidden_states.shape[:-1], -1, 2)
-                x1, x2 = x[..., 0], x[..., 1]
+                x1, x2 = hidden_states.unflatten(-1, (-1, 2)).unbind(-1)
                 cos = freqs_cos[..., 0::2]
                 sin = freqs_sin[..., 1::2]
                 out = torch.empty_like(hidden_states)
@@ -122,8 +121,8 @@ class WanAttnProcessor:
             key_img, value_img = _get_added_kv_projections(attn, encoder_hidden_states_img)
             key_img = attn.norm_added_k(key_img)
 
-            key_img = key_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-            value_img = value_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+            key_img = key_img.unflatten(2, (attn.heads, -1))
+            value_img = value_img.unflatten(2, (attn.heads, -1))
 
             hidden_states_img = dispatch_attention_fn(
                 query,
@@ -134,7 +133,7 @@ class WanAttnProcessor:
                 is_causal=False,
                 backend=self._attention_backend,
             )
-            hidden_states_img = hidden_states_img.transpose(1, 2).flatten(2, 3)
+            hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
 
         hidden_states = dispatch_attention_fn(
@@ -146,7 +145,7 @@ class WanAttnProcessor:
             is_causal=False,
             backend=self._attention_backend,
         )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
 
         if hidden_states_img is not None:
@@ -395,8 +394,8 @@ class WanRotaryPosEmbed(nn.Module):
         freqs_sin_h = freqs_sin[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_sin_w = freqs_sin[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
 
-        freqs_cos = torch.cat([freqs_cos_f, freqs_cos_h, freqs_cos_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
-        freqs_sin = torch.cat([freqs_sin_f, freqs_sin_h, freqs_sin_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
+        freqs_cos = torch.cat([freqs_cos_f, freqs_cos_h, freqs_cos_w], dim=-1).reshape(1, ppf * pph * ppw, 1, -1)
+        freqs_sin = torch.cat([freqs_sin_f, freqs_sin_h, freqs_sin_w], dim=-1).reshape(1, ppf * pph * ppw, 1, -1)
 
         return freqs_cos, freqs_sin
 
