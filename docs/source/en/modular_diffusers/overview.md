@@ -24,7 +24,7 @@ The Modular Diffusers docs are organized as shown below.
 
 ## Quickstart
 
-- A [quickstart](./end_to_end_guide) start for implementing an example workflow with Modular Diffusers.
+- A [quickstart](./quickstart) start for implementing an example workflow with Modular Diffusers.
 
 ## ModularPipeline
 

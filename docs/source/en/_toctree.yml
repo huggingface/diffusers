@@ -112,8 +112,10 @@
   sections:
   - local: modular_diffusers/overview
     title: Overview
-  - local: modular_diffusers/end_to_end_guide
+  - local: modular_diffusers/quickstart
     title: Quickstart
+  - local: modular_diffusers/end_to_end_guide
+    title: End-to-end example
   - local: modular_diffusers/modular_pipeline
     title: Modular Pipeline
   - local: modular_diffusers/components_manager
