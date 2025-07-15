@@ -42,39 +42,42 @@ from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNo
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def _get_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
+    query = attn.to_q(hidden_states)
+    key = attn.to_k(hidden_states)
+    value = attn.to_v(hidden_states)
+
+    encoder_query = encoder_key = encoder_value = None
+    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
+        encoder_query = attn.add_q_proj(encoder_hidden_states)
+        encoder_key = attn.add_k_proj(encoder_hidden_states)
+        encoder_value = attn.add_v_proj(encoder_hidden_states)
+
+    return query, key, value, encoder_query, encoder_key, encoder_value
+
+
+def _get_fused_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
+    query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+
+    encoder_query = encoder_key = encoder_value = (None,)
+    if encoder_hidden_states is not None and hasattr(attn, "to_added_qkv"):
+        encoder_query, encoder_key, encoder_value = attn.to_added_qkv(encoder_hidden_states).chunk(3, dim=-1)
+
+    return query, key, value, encoder_query, encoder_key, encoder_value
+
+
+def _get_qkv_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
+    if attn.fused_projections:
+        return _get_fused_projections(attn, hidden_states, encoder_hidden_states)
+    return _get_projections(attn, hidden_states, encoder_hidden_states)
+
+
 class FluxAttnProcessor:
     _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0. Please upgrade your pytorch version.")
-
-    def _get_projections(self, attn, hidden_states, encoder_hidden_states=None):
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        encoder_query = encoder_key = encoder_value = None
-        if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-            encoder_query = attn.add_q_proj(encoder_hidden_states)
-            encoder_key = attn.add_k_proj(encoder_hidden_states)
-            encoder_value = attn.add_v_proj(encoder_hidden_states)
-
-        return query, key, value, encoder_query, encoder_key, encoder_value
-
-    def _get_fused_projections(self, attn, hidden_states, encoder_hidden_states=None):
-        query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
-
-        encoder_query = encoder_key = encoder_value = (None,)
-        if encoder_hidden_states is not None and hasattr(attn, "to_added_qkv"):
-            encoder_query, encoder_key, encoder_value = attn.to_added_qkv(encoder_hidden_states).chunk(3, dim=-1)
-
-        return query, key, value, encoder_query, encoder_key, encoder_value
-
-    def get_qkv_projections(self, attn: AttentionModuleMixin, hidden_states, encoder_hidden_states=None):
-        if attn.fused_projections:
-            return self._get_fused_projections(attn, hidden_states, encoder_hidden_states)
-        return self._get_projections(attn, hidden_states, encoder_hidden_states)
 
     def __call__(
         self,
@@ -84,7 +87,7 @@ class FluxAttnProcessor:
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        query, key, value, encoder_query, encoder_key, encoder_value = self.get_qkv_projections(
+        query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
             attn, hidden_states, encoder_hidden_states
         )
 
@@ -180,55 +183,35 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
         ip_hidden_states: Optional[List[torch.Tensor]] = None,
         ip_adapter_masks: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        batch_size = hidden_states.shape[0]
 
-        # `sample` projections.
-        hidden_states_query_proj = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
+        query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
+            attn, hidden_states, encoder_hidden_states
+        )
 
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
+        query = query.unflatten(-1, (attn.heads, -1))
+        key = key.unflatten(-1, (attn.heads, -1))
+        value = value.unflatten(-1, (attn.heads, -1))
 
-        hidden_states_query_proj = hidden_states_query_proj.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+        ip_query = query
 
-        if attn.norm_q is not None:
-            hidden_states_query_proj = attn.norm_q(hidden_states_query_proj)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
         if encoder_hidden_states is not None:
-            # `context` projections.
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+            encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))
+            encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))
+            encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
 
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
+            encoder_query = attn.norm_added_q(encoder_query)
+            encoder_key = attn.norm_added_k(encoder_key)
 
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            # attention
-            query = torch.cat([encoder_hidden_states_query_proj, hidden_states_query_proj], dim=2)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+            query = torch.cat([encoder_query, query], dim=1)
+            key = torch.cat([encoder_key, key], dim=1)
+            value = torch.cat([encoder_value, value], dim=1)
 
         if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
+            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
         hidden_states = dispatch_attention_fn(
             query,
@@ -239,23 +222,18 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
             is_causal=False,
             backend=self._attention_backend,
         )
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
 
         if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = (
-                hidden_states[:, : encoder_hidden_states.shape[1]],
-                hidden_states[:, encoder_hidden_states.shape[1] :],
+            encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
+                [encoder_hidden_states.shape[1], hidden_states.shape[1] - encoder_hidden_states.shape[1]], dim=1
             )
-
-            # linear proj
             hidden_states = attn.to_out[0](hidden_states)
-            # dropout
             hidden_states = attn.to_out[1](hidden_states)
             encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
             # IP-adapter
-            ip_query = hidden_states_query_proj
             ip_attn_output = torch.zeros_like(hidden_states)
 
             for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
@@ -264,10 +242,9 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
                 ip_key = to_k_ip(current_ip_hidden_states)
                 ip_value = to_v_ip(current_ip_hidden_states)
 
-                ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                # the output of sdp = (batch, num_heads, seq_len, head_dim)
-                # TODO: add support for attn.scale when we move to Torch 2.1
+                ip_key = ip_key.view(batch_size, -1, attn.heads, attn.head_dim)
+                ip_value = ip_value.view(batch_size, -1, attn.heads, attn.head_dim)
+
                 current_ip_hidden_states = dispatch_attention_fn(
                     ip_query,
                     ip_key,
@@ -277,9 +254,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
                     is_causal=False,
                     backend=self._attention_backend,
                 )
-                current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
-                    batch_size, -1, attn.heads * head_dim
-                )
+                current_ip_hidden_states = current_ip_hidden_states.reshape(batch_size, -1, attn.heads * attn.head_dim)
                 current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
                 ip_attn_output += scale * current_ip_hidden_states
 
@@ -316,6 +291,7 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
         super().__init__()
         assert qk_norm == "rms_norm", "Flux uses RMSNorm"
 
+        self.head_dim = dim_head
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.query_dim = query_dim
         self.use_bias = bias
