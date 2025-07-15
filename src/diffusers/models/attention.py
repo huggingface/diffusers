@@ -160,7 +160,7 @@ class AttentionModuleMixin:
         """
         if not return_deprecated_lora:
             return self.processor
-    
+
     def set_attention_backend(self, backend: str):
         from .attention_dispatch import AttentionBackendName
 
