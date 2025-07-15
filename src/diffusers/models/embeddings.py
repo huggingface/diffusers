@@ -1176,6 +1176,7 @@ def apply_rotary_emb(
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
     use_real: bool = True,
     use_real_unbind_dim: int = -1,
+    sequence_dim: int = 2,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
@@ -1193,8 +1194,15 @@ def apply_rotary_emb(
     """
     if use_real:
         cos, sin = freqs_cis  # [S, D]
-        cos = cos[None, None]
-        sin = sin[None, None]
+        if sequence_dim == 2:
+            cos = cos[None, None, :, :]
+            sin = sin[None, None, :, :]
+        elif sequence_dim == 1:
+            cos = cos[None, :, None, :]
+            sin = sin[None, :, None, :]
+        else:
+            raise ValueError(f"`sequence_dim={sequence_dim}` but should be 1 or 2.")
+
         cos, sin = cos.to(x.device), sin.to(x.device)
 
         if use_real_unbind_dim == -1:

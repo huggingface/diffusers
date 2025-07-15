@@ -108,8 +108,8 @@ class FluxAttnProcessor:
             value = torch.cat([encoder_value, value], dim=1)
 
         if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
+            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
         hidden_states = dispatch_attention_fn(
             query, key, value, attn_mask=attention_mask, backend=self._attention_backend
