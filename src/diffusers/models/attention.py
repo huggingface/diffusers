@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ..utils import deprecate, logging
-from ..utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_xformers_available
+from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
 from .attention_processor import Attention, AttentionProcessor, JointAttnProcessor2_0
@@ -160,82 +160,6 @@ class AttentionModuleMixin:
         """
         if not return_deprecated_lora:
             return self.processor
-
-    def set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
-        """
-        Set whether to use NPU flash attention from `torch_npu` or not.
-
-        Args:
-            use_npu_flash_attention (`bool`): Whether to use NPU flash attention or not.
-        """
-
-        if use_npu_flash_attention:
-            if not is_torch_npu_available():
-                raise ImportError("torch_npu is not available")
-
-        self.set_attention_backend("_native_npu")
-
-    def set_use_xla_flash_attention(
-        self,
-        use_xla_flash_attention: bool,
-        partition_spec: Optional[Tuple[Optional[str], ...]] = None,
-        is_flux=False,
-    ) -> None:
-        """
-        Set whether to use XLA flash attention from `torch_xla` or not.
-
-        Args:
-            use_xla_flash_attention (`bool`):
-                Whether to use pallas flash attention kernel from `torch_xla` or not.
-            partition_spec (`Tuple[]`, *optional*):
-                Specify the partition specification if using SPMD. Otherwise None.
-            is_flux (`bool`, *optional*, defaults to `False`):
-                Whether the model is a Flux model.
-        """
-        if use_xla_flash_attention:
-            if not is_torch_xla_available():
-                raise ImportError("torch_xla is not available")
-
-        self.set_attention_backend("_native_xla")
-
-    def set_use_memory_efficient_attention_xformers(
-        self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
-    ) -> None:
-        """
-        Set whether to use memory efficient attention from `xformers` or not.
-
-        Args:
-            use_memory_efficient_attention_xformers (`bool`):
-                Whether to use memory efficient attention from `xformers` or not.
-            attention_op (`Callable`, *optional*):
-                The attention operation to use. Defaults to `None` which uses the default attention operation from
-                `xformers`.
-        """
-        if use_memory_efficient_attention_xformers:
-            if not is_xformers_available():
-                raise ModuleNotFoundError(
-                    "Refer to https://github.com/facebookresearch/xformers for more information on how to install xformers",
-                    name="xformers",
-                )
-            elif not torch.cuda.is_available():
-                raise ValueError(
-                    "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is"
-                    " only available for GPU "
-                )
-            else:
-                try:
-                    # Make sure we can run the memory efficient attention
-                    if is_xformers_available():
-                        dtype = None
-                        if attention_op is not None:
-                            op_fw, op_bw = attention_op
-                            dtype, *_ = op_fw.SUPPORTED_DTYPES
-                        q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
-                        _ = xops.memory_efficient_attention(q, q, q)
-                except Exception as e:
-                    raise e
-
-                self.set_attention_backend("xformers")
 
     @torch.no_grad()
     def fuse_projections(self):
