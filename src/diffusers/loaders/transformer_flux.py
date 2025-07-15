@@ -82,7 +82,6 @@ class FluxTransformer2DLoadersMixin:
             device_map = {"": self.device}
             load_model_dict_into_meta(image_projection, updated_state_dict, device_map=device_map, dtype=self.dtype)
             empty_device_cache()
-            device_synchronize()
 
         return image_projection
 
@@ -158,7 +157,6 @@ class FluxTransformer2DLoadersMixin:
                 key_id += 1
 
         empty_device_cache()
-        device_synchronize()
 
         return attn_procs
 

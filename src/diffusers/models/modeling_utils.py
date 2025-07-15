@@ -1540,10 +1540,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
                 error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
 
-        # Ensure tensors are correctly placed on device by synchronizing before returning control to user. This is
-        # required because we move tensors with non_blocking=True, which is slightly faster for model loading.
         empty_device_cache()
-        device_synchronize()
 
         if offload_index is not None and len(offload_index) > 0:
             save_offload_index(offload_index, offload_folder)

@@ -82,7 +82,6 @@ class SD3Transformer2DLoadersMixin:
                 )
 
         empty_device_cache()
-        device_synchronize()
 
         return attn_procs
 
@@ -152,7 +151,6 @@ class SD3Transformer2DLoadersMixin:
             device_map = {"": self.device}
             load_model_dict_into_meta(image_proj, updated_state_dict, device_map=device_map, dtype=self.dtype)
             empty_device_cache()
-            device_synchronize()
 
         return image_proj
 
