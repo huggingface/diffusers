@@ -62,7 +62,7 @@ from ..utils.hub_utils import (
     load_or_create_model_card,
     populate_model_card,
 )
-from ..utils.torch_utils import device_synchronize, empty_device_cache
+from ..utils.torch_utils import empty_device_cache
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,

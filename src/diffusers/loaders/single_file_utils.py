@@ -46,7 +46,7 @@ from ..utils import (
 )
 from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..utils.hub_utils import _get_model_file
-from ..utils.torch_utils import device_synchronize, empty_device_cache
+from ..utils.torch_utils import empty_device_cache
 
 
 if is_transformers_available():

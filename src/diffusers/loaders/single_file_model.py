@@ -24,7 +24,7 @@ from typing_extensions import Self
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
-from ..utils.torch_utils import device_synchronize, empty_device_cache
+from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,

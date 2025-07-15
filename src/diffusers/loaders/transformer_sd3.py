@@ -18,7 +18,7 @@ from ..models.attention_processor import SD3IPAdapterJointAttnProcessor2_0
 from ..models.embeddings import IPAdapterTimeImageProjection
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import is_accelerate_available, is_torch_version, logging
-from ..utils.torch_utils import device_synchronize, empty_device_cache
+from ..utils.torch_utils import empty_device_cache
 
 
 logger = logging.get_logger(__name__)
