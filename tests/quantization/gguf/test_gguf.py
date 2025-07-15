@@ -654,22 +654,13 @@ class WanVACEGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
 
 
 @require_torch_version_greater("2.7.1")
-class GGUFCompileTests(QuantCompileTests):
+class GGUFCompileTests(QuantCompileTests, unittest.TestCase):
     torch_dtype = torch.bfloat16
     gguf_ckpt = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
 
     @property
     def quantization_config(self):
         return GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
-
-    def test_torch_compile(self):
-        super()._test_torch_compile(quantization_config=self.quantization_config)
-
-    def test_torch_compile_with_cpu_offload(self):
-        super()._test_torch_compile_with_cpu_offload(quantization_config=self.quantization_config)
-
-    def test_torch_compile_with_group_offload_leaf(self):
-        super()._test_torch_compile_with_group_offload_leaf(quantization_config=self.quantization_config)
 
     def _init_pipeline(self, *args, **kwargs):
         transformer = FluxTransformer2DModel.from_single_file(
