@@ -13,43 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
-import gc
 import tempfile
 import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
-    ModularPipeline,
-    ComponentSpec,
     ComponentsManager,
-    AutoencoderKL,
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerDiscreteScheduler,
-    HeunDiscreteScheduler,
     LCMScheduler,
-    StableDiffusionXLImg2ImgPipeline,
+    ModularPipeline,
     StableDiffusionXLPipeline,
-    UNet2DConditionModel,
-    UniPCMultistepScheduler,
 )
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
-    load_image,
-    numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 
 from ..pipeline_params import (
+    IMAGE_INPAINTING_BATCH_PARAMS,
+    IMAGE_INPAINTING_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
-    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
@@ -143,12 +128,16 @@ class StableDiffusionXLModularPipelineFastTests(
     @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe",).to(torch_device)
+        sd_pipe = ModularPipeline.from_pretrained(
+            "hf-internal-testing/tiny-sd-pipe",
+        ).to(torch_device)
         pipes.append(sd_pipe)
 
         cm = ComponentsManager()
         cm.enable_auto_cpu_offload(device=torch_device)
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe", components_manager=cm).to(torch_device)
+        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe", components_manager=cm).to(
+            torch_device
+        )
         pipes.append(sd_pipe)
 
         image_slices = []
