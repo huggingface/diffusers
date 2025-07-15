@@ -370,34 +370,34 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_npu_flash_attention(False)
 
-    def set_use_xla_flash_attention(
+    def set_use_xla_attention(
         self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None, **kwargs
     ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
         # gets the message
-        def fn_recursive_set_flash_attention(module: torch.nn.Module):
-            if hasattr(module, "set_use_xla_flash_attention"):
-                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, **kwargs)
+        def fn_recursive_set_xla_attention(module: torch.nn.Module):
+            if hasattr(module, "set_use_xla_attention"):
+                module.set_use_xla_attention(use_xla_flash_attention, partition_spec, **kwargs)
 
             for child in module.children():
-                fn_recursive_set_flash_attention(child)
+                fn_recursive_set_xla_attention(child)
 
         for module in self.children():
             if isinstance(module, torch.nn.Module):
-                fn_recursive_set_flash_attention(module)
+                fn_recursive_set_xla_attention(module)
 
-    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None, **kwargs):
+    def enable_xla_attention(self, use_flash=False, partition_spec: Optional[Callable] = None, **kwargs):
         r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
-        self.set_use_xla_flash_attention(True, partition_spec, **kwargs)
+        self.set_use_xla_attention(use_flash, partition_spec, **kwargs)
 
     def disable_xla_flash_attention(self):
         r"""
         Disable the flash attention pallals kernel for torch_xla.
         """
-        self.set_use_xla_flash_attention(False)
+        self.set_use_xla_attention(False)
 
     def set_use_memory_efficient_attention_xformers(
         self, valid: bool, attention_op: Optional[Callable] = None
