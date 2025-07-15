@@ -258,6 +258,21 @@ class AsymmetricAutoencoderKL(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AttentionBackendName(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AuraFlowTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1351,6 +1366,10 @@ class WanVACETransformer3DModel(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
+
+
+def attention_backend(*args, **kwargs):
+    requires_backends(attention_backend, ["torch"])
 
 
 class ComponentsManager(metaclass=DummyObject):
