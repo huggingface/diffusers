@@ -1535,6 +1535,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             device=device,
             cp_mesh=cp_mesh,
         )
+        if cp_plan is None and self._cp_plan is None:
+            raise ValueError(
+                "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
+            )
         cp_plan = cp_plan if cp_plan is not None else self._cp_plan
 
         apply_context_parallel(self, parallel_config, cp_plan)

@@ -34,8 +34,8 @@ from .hooks import HookRegistry, ModelHook
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 _CONTEXT_PARALLEL_MODEL_HOOK = "context_parallel_model_hook"
-_CONTEXT_PARALLEL_SUBMODULE_INPUT_HOOK_TEMPLATE = "cp_input---{}"
-_CONTEXT_PARALLEL_SUBMODULE_OUTPUT_HOOK_TEMPLATE = "cp_output---{}"
+_CONTEXT_PARALLEL_INPUT_HOOK_TEMPLATE = "cp_input---{}"
+_CONTEXT_PARALLEL_OUTPUT_HOOK_TEMPLATE = "cp_output---{}"
 
 
 # TODO(aryan): consolidate with ._helpers.TransformerBlockMetadata
@@ -92,14 +92,14 @@ def apply_context_parallel(
         for m in submodule:
             if isinstance(cp_model_plan, dict):
                 hook = ContextParallelSplitHook(cp_model_plan, parallel_config)
-                hook_name = _CONTEXT_PARALLEL_SUBMODULE_INPUT_HOOK_TEMPLATE.format(module_id)
+                hook_name = _CONTEXT_PARALLEL_INPUT_HOOK_TEMPLATE.format(module_id)
             elif isinstance(cp_model_plan, (ContextParallelOutput, list, tuple)):
                 if isinstance(cp_model_plan, ContextParallelOutput):
                     cp_model_plan = [cp_model_plan]
                 if not all(isinstance(x, ContextParallelOutput) for x in cp_model_plan):
                     raise ValueError(f"Expected all elements of cp_model_plan to be CPOutput, but got {cp_model_plan}")
                 hook = ContextParallelGatherHook(cp_model_plan, parallel_config)
-                hook_name = _CONTEXT_PARALLEL_SUBMODULE_OUTPUT_HOOK_TEMPLATE.format(module_id)
+                hook_name = _CONTEXT_PARALLEL_OUTPUT_HOOK_TEMPLATE.format(module_id)
             else:
                 raise ValueError(f"Unsupported context parallel model plan type: {type(cp_model_plan)}")
             registry = HookRegistry.check_if_exists_or_initialize(m)

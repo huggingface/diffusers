@@ -751,6 +751,11 @@ class TemplatedRingAttention(torch.autograd.Function):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        scale: Optional[float],
+        is_causal: bool,
+        enable_gqa: bool,
         return_lse: bool,
         op: torch.autograd.Function,
     ):
@@ -773,7 +778,7 @@ class TemplatedRingAttention(torch.autograd.Function):
                 value = kv[key.numel() :].reshape_as(value)
                 next_rank = (next_rank + 1) % world_size
 
-            out, lse = op.apply(query, key, value, None, 0.0, None, False, False, True)
+            out, lse = op.apply(query, key, value, attn_mask, dropout_p, scale, is_causal, enable_gqa, True)
 
             if parallel_config.convert_to_fp32:
                 out = out.to(torch.float32)
@@ -806,6 +811,11 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        scale: Optional[float],
+        is_causal: bool,
+        enable_gqa: bool,
         return_lse: bool,
         op: torch.autograd.Function,
     ):
@@ -823,7 +833,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         query, key, value = (funcol.all_to_all_single(x, None, None, group=group).wait() for x in (query, key, value))
         query, key, value = (x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
-        out = op.apply(query, key, value, None, 0.0, None, False, False, return_lse)
+        out = op.apply(query, key, value, attn_mask, dropout_p, scale, is_causal, enable_gqa, return_lse)
         if return_lse:
             out, lse, *_ = out
 
@@ -872,9 +882,13 @@ def _templated_context_parallel_attention(
     parallel_config = _AttentionBackendRegistry._parallel_config
     # TODO: add support for unified attention with ring/ulysses degree both being > 1
     if parallel_config.ring_degree > 1:
-        return TemplatedRingAttention.apply(query, key, value, return_lse, op)
+        return TemplatedRingAttention.apply(
+            query, key, value, attn_mask, dropout_p, scale, is_causal, enable_gqa, return_lse, op
+        )
     elif parallel_config.ulysses_degree > 1:
-        return TemplatedUlyssesAttention.apply(query, key, value, return_lse, op)
+        return TemplatedUlyssesAttention.apply(
+            query, key, value, attn_mask, dropout_p, scale, is_causal, enable_gqa, return_lse, op
+        )
     else:
         return op.apply(query, key, value, attn_mask, dropout_p, scale, is_causal, enable_gqa, return_lse)
 
