@@ -1707,6 +1707,36 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return signature_types
 
     @property
+    def parameters(self) -> Dict[str, Any]:
+        r"""
+        The `self.parameters` property can be useful to run different pipelines with the same weights and
+        configurations without reallocating additional memory.
+
+        Returns (`dict`):
+            A dictionary containing all the optional parameters needed to initialize the pipeline.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import (
+        ...     StableDiffusionPipeline,
+        ...     StableDiffusionImg2ImgPipeline,
+        ...     StableDiffusionInpaintPipeline,
+        ... )
+
+        >>> text2img = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
+        >>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components, **text2img.parameters)
+        >>> inpaint = StableDiffusionInpaintPipeline(**text2img.components, **text2img.parameters)
+        ```
+        """
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        pipeline_parameters = {
+            k: self.config[k] for k in self.config.keys() if not k.startswith("_") and k in optional_parameters
+        }
+
+        return pipeline_parameters
+
+    @property
     def components(self) -> Dict[str, Any]:
         r"""
         The `self.components` property can be useful to run different pipelines with the same weights and

@@ -1876,7 +1876,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # update component_specs and config_specs from modular_repo
         if pretrained_model_name_or_path is not None:
-
             try:
                 config_dict = self.load_config(pretrained_model_name_or_path, **kwargs)
                 for name, value in config_dict.items():
@@ -1892,8 +1891,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
             except EnvironmentError as e:
                 logger.debug(e)
-                logger.debug(f" modular_model_index.json not found in the repo, trying to load from model_index.json")
+                logger.debug(" modular_model_index.json not found in the repo, trying to load from model_index.json")
                 from diffusers import DiffusionPipeline
+
                 config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path)
                 for name, value in config_dict.items():
                     if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 2:
@@ -2435,17 +2435,31 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         for name, component in passed_components.items():
             current_component_spec = self._component_specs[name]
 
-            # warn if type changed
+            # log if type changed
             if current_component_spec.type_hint is not None and not isinstance(
                 component, current_component_spec.type_hint
             ):
-                logger.warning(
+                logger.info(
                     f"ModularPipeline.update_components: adding {name} with new type: {component.__class__.__name__}, previous type: {current_component_spec.type_hint.__name__}"
                 )
             # update _component_specs based on the new component
-            new_component_spec = ComponentSpec.from_component(name, component)
-            if new_component_spec.default_creation_method != current_component_spec.default_creation_method:
+            if component is None:
+                new_component_spec = current_component_spec
+                if hasattr(self, name) and getattr(self, name) is not None:
+                    logger.warning(f"ModularPipeline.update_components: setting {name} to None (spec unchanged)")
+            elif current_component_spec.default_creation_method == "from_pretrained" and not (
+                hasattr(component, "_diffusers_load_id") and component._diffusers_load_id is not None
+            ):
                 logger.warning(
+                    f"ModularPipeline.update_components: {name} has no valid _diffusers_load_id. "
+                    f"Updating the component but skipping spec update, use ComponentSpec.load() for proper specs"
+                )
+                new_component_spec = current_component_spec
+            else:
+                new_component_spec = ComponentSpec.from_component(name, component)
+
+            if new_component_spec.default_creation_method != current_component_spec.default_creation_method:
+                logger.info(
                     f"ModularPipeline.update_components: changing the default_creation_method of {name} from {current_component_spec.default_creation_method} to {new_component_spec.default_creation_method}."
                 )
 
@@ -2466,7 +2480,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             if current_component_spec.type_hint is not None and not isinstance(
                 created_components[name], current_component_spec.type_hint
             ):
-                logger.warning(
+                logger.info(
                     f"ModularPipeline.update_components: adding {name} with new type: {created_components[name].__class__.__name__}, previous type: {current_component_spec.type_hint.__name__}"
                 )
             # update _component_specs based on the user passed component_spec
