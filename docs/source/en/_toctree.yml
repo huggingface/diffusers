@@ -116,20 +116,20 @@
     title: Quickstart
   - local: modular_diffusers/end_to_end_guide
     title: End-to-end example
+  - local: modular_diffusers/modular_diffusers_states
+    title: Block states
+  - local: modular_diffusers/pipeline_block
+    title: PipelineBlock
+  - local: modular_diffusers/sequential_pipeline_blocks
+    title: SequentialPipelineBlocks
+  - local: modular_diffusers/loop_sequential_pipeline_blocks
+    title: LoopSequentialPipelineBlocks
+  - local: modular_diffusers/auto_pipeline_blocks
+    title: AutoPipelineBlocks
   - local: modular_diffusers/modular_pipeline
-    title: Modular Pipeline
+    title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: Components Manager
-  - local: modular_diffusers/modular_diffusers_states
-    title: Modular Diffusers States
-  - local: modular_diffusers/pipeline_block
-    title: Pipeline Block
-  - local: modular_diffusers/sequential_pipeline_blocks
-    title: Sequential Pipeline Blocks
-  - local: modular_diffusers/loop_sequential_pipeline_blocks
-    title: Loop Sequential Pipeline Blocks
-  - local: modular_diffusers/auto_pipeline_blocks
-    title: Auto Pipeline Blocks
   title: Modular Diffusers
 - sections:
   - local: using-diffusers/consisid
@@ -299,6 +299,13 @@
   isExpanded: false
   sections:
   - title: Main Classes
+    sections:
+    - local: api/modular_diffusers/pipeline_blocks
+      title: Pipeline blocks
+    - local: api/modular_diffusers/pipeline_states
+      title: Pipeline states
+    title: Modular Diffusers
+  - isExpanded: false
     sections:
     - local: api/configuration
       title: Configuration
