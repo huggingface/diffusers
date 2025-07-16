@@ -899,6 +899,7 @@ def _templated_context_parallel_attention(
 @_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=True,
 )
 def _flash_attention(
     query: torch.Tensor,
