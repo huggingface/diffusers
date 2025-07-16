@@ -105,19 +105,41 @@ def apply_context_parallel(
             registry = HookRegistry.check_if_exists_or_initialize(m)
             registry.register_hook(hook, hook_name)
 
-    registry = HookRegistry.check_if_exists_or_initialize(module)
-    hook = ContextParallelModelHook(parallel_config)
-    registry.register_hook(hook, _CONTEXT_PARALLEL_MODEL_HOOK)
+    # HACK: we cannot use context managers or setattr or similar solutions in an overwritten forward
+    # diffusers hook method because Dynamo fails to trace it. Instead, we make use of module hooks
+    # available in pytorch to set the parallel context before/after the forward/backward pass.
+    # It is dirty, but fullgraph=True tracing works because of this and I haven't found a better solution yet.
+    # The previous/older implementation simply did this:
+    #     def new_forward(self, ...):
+    #         with _parallel_context(parallel_config):
+    #             return self.fn_ref.original_forward(*args, **kwargs)
+    # TODO: ask help from Pytorch team on how to improve this
+    @torch.compiler.disable
+    def forward_pre_hook(module, args):
+        module._diffusers_parallel_config_setter_context = _parallel_context(parallel_config)
+        module._diffusers_parallel_config_setter_context.__enter__()
 
+    @torch.compiler.disable
+    def forward_hook(module, args, output):
+        if module._diffusers_parallel_config_setter_context is not None:
+            module._diffusers_parallel_config_setter_context.__exit__(None, None, None)
+        module._diffusers_parallel_config_setter_context = None
 
-class ContextParallelModelHook(ModelHook):
-    def __init__(self, parallel_config: ParallelConfig) -> None:
-        super().__init__()
-        self.parallel_config = parallel_config
+    @torch.compiler.disable
+    def backward_pre_hook(module, grad_output):
+        module._diffusers_parallel_config_setter_context = _parallel_context(parallel_config)
+        module._diffusers_parallel_config_setter_context.__enter__()
 
-    def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        with _parallel_context(self.parallel_config):
-            return self.fn_ref.original_forward(*args, **kwargs)
+    @torch.compiler.disable
+    def backward_hook(module, grad_output, grad_input):
+        if module._diffusers_parallel_config_setter_context is not None:
+            module._diffusers_parallel_config_setter_context.__exit__(None, None, None)
+        module._diffusers_parallel_config_setter_context = None
+
+    module.register_forward_pre_hook(forward_pre_hook)
+    module.register_forward_hook(forward_hook)
+    module.register_full_backward_pre_hook(backward_pre_hook)
+    module.register_full_backward_hook(backward_hook)
 
 
 class ContextParallelSplitHook(ModelHook):
@@ -234,13 +256,15 @@ class ContextParallelGatherHook(ModelHook):
 
 class EquipartitionSharder:
     @classmethod
-    @torch.compiler.disable
     def shard(cls, tensor: torch.Tensor, dim: int, mesh: torch.distributed.device_mesh.DeviceMesh) -> torch.Tensor:
         assert tensor.size()[dim] % mesh.size() == 0
-        return tensor.chunk(mesh.size(), dim=dim)[mesh.get_rank()]
+
+        # The following is not fullgraph compatible with Dynamo (fails in DeviceMesh.get_rank)
+        # return tensor.chunk(mesh.size(), dim=dim)[mesh.get_rank()]
+
+        return tensor.chunk(mesh.size(), dim=dim)[torch.distributed.get_rank(mesh.get_group())]
 
     @classmethod
-    @torch.compiler.disable
     def unshard(cls, tensor: torch.Tensor, dim: int, mesh: torch.distributed.device_mesh.DeviceMesh) -> torch.Tensor:
         tensor = tensor.contiguous()
         tensor = funcol.all_gather_tensor(tensor, dim, group=mesh.get_group())

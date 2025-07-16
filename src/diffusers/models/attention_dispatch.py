@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, 
 
 import torch
 import torch.distributed._functional_collectives as funcol
+import torch.distributed.tensor
 
 from ..utils import (
     get_logger,
@@ -245,9 +246,6 @@ def attention_backend(backend: AttentionBackendName = AttentionBackendName.NATIV
 
 @contextlib.contextmanager
 def _parallel_context(parallel_config: "ParallelConfig"):
-    """
-    Context manager to set the parallel configuration for attention backends that support it.
-    """
     old_parallel_config = _AttentionBackendRegistry._parallel_config
     _AttentionBackendRegistry._parallel_config = parallel_config
 
@@ -789,6 +787,16 @@ class _sage_attention_af(torch.autograd.Function):
 # ===== Context parallel =====
 
 
+# Reference:
+# - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L827
+# - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L246
+# For fullgraph=True tracing compatibility (since FakeTensor does not have a `wait` method):
+def _wait_tensor(tensor):
+    if isinstance(tensor, funcol.AsyncCollectiveTensor):
+        tensor = tensor.wait()
+    return tensor
+
+
 class TemplatedRingAttention(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -875,7 +883,9 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
             x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
             for x in (query, key, value)
         )
-        query, key, value = (funcol.all_to_all_single(x, None, None, group=group).wait() for x in (query, key, value))
+        query, key, value = (
+            _wait_tensor(funcol.all_to_all_single(x, None, None, group=group)) for x in (query, key, value)
+        )
         query, key, value = (x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
         out = op.apply(query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse)
@@ -883,12 +893,12 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         out = out.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-        out = funcol.all_to_all_single(out, None, None, group=group).wait()
+        out = _wait_tensor(funcol.all_to_all_single(out, None, None, group=group))
         out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
 
         if return_lse:
             lse = lse.reshape(B, world_size, S_LOCAL, H_LOCAL).permute(1, 3, 0, 2).contiguous()
-            lse = funcol.all_to_all_single(lse, None, None, group=group).wait()
+            lse = _wait_tensor(funcol.all_to_all_single(lse, None, None, group=group))
             lse = lse.flatten(0, 1).permute(1, 2, 0).contiguous()
         else:
             lse = None
