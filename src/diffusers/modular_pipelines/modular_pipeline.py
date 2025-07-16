@@ -478,23 +478,22 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                     combined_dict[output_param.name] = output_param
 
         return list(combined_dict.values())
-    
+
     @property
     def input_names(self) -> List[str]:
         return [input_param.name for input_param in self.inputs]
-    
+
     @property
     def intermediate_input_names(self) -> List[str]:
         return [input_param.name for input_param in self.intermediate_inputs]
-    
+
     @property
     def intermediate_output_names(self) -> List[str]:
         return [output_param.name for output_param in self.intermediate_outputs]
-    
+
     @property
     def output_names(self) -> List[str]:
         return [output_param.name for output_param in self.outputs]
-    
 
 
 class PipelineBlock(ModularPipelineBlocks):
@@ -2842,7 +2841,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             type_hint=type_hint,
             **spec_dict,
         )
-
 
     def set_progress_bar_config(self, **kwargs):
         for sub_block_name, sub_block in self.blocks.sub_blocks.items():

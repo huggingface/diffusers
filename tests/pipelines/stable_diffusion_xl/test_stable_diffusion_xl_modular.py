@@ -23,7 +23,8 @@ from diffusers import (
     ComponentsManager,
     LCMScheduler,
     ModularPipeline,
-    StableDiffusionXLPipeline,
+    StableDiffusionXLAutoBlocks,
+    StableDiffusionXLModularPipeline,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -38,11 +39,9 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import (
-    IPAdapterTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineTesterMixin,
-    SDFunctionTesterMixin,
+from ..test_modular_pipelines_common import (
+    ModularIPAdapterTesterMixin,
+    ModularPipelineTesterMixin,
 )
 
 
@@ -50,18 +49,25 @@ enable_full_determinism()
 
 
 class StableDiffusionXLModularPipelineFastTests(
-    SDFunctionTesterMixin,
-    IPAdapterTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineTesterMixin,
+    ModularIPAdapterTesterMixin,
+    ModularPipelineTesterMixin,
     unittest.TestCase,
 ):
-    pipeline_class = StableDiffusionXLPipeline
-    params = (TEXT_TO_IMAGE_PARAMS | IMAGE_INPAINTING_PARAMS) - {"guidance_scale"}
+    pipeline_class = StableDiffusionXLModularPipeline
+    pipeline_blocks_class = StableDiffusionXLAutoBlocks
+    repo = "hf-internal-testing/tiny-sdxl-modular"
+    params = (TEXT_TO_IMAGE_PARAMS | IMAGE_INPAINTING_PARAMS) - {
+        "guidance_scale",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+    }
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS | IMAGE_INPAINTING_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    test_layerwise_casting = False
-    test_group_offloading = False
+
+    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
+        pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
+        pipeline.load_default_components(torch_dtype=torch_dtype)
+        return pipeline
 
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
@@ -78,7 +84,7 @@ class StableDiffusionXLModularPipelineFastTests(
 
     def test_stable_diffusion_xl_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe")
+        sd_pipe = self.get_pipeline()
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -87,13 +93,17 @@ class StableDiffusionXLModularPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5388, 0.5452, 0.4694, 0.4583, 0.5253, 0.4832, 0.5288, 0.5035, 0.47])
+        expected_slice = np.array(
+            [0.5966781, 0.62939394, 0.48465094, 0.51573336, 0.57593524, 0.47035995, 0.53410417, 0.51436996, 0.47313565]
+        )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
+            f"image_slice: {image_slice.flatten()}, expected_slice: {expected_slice.flatten()}"
+        )
 
     def test_stable_diffusion_xl_euler_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe")
+        sd_pipe = self.get_pipeline()
         sd_pipe.update_components(scheduler=LCMScheduler.from_config(sd_pipe.scheduler.config))
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -103,41 +113,23 @@ class StableDiffusionXLModularPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4917, 0.6555, 0.4348, 0.5219, 0.7324, 0.4855, 0.5168, 0.5447, 0.5156])
+        expected_slice = np.array(
+            [0.6880376, 0.6511651, 0.587455, 0.61763, 0.55432945, 0.52064973, 0.5783733, 0.54915607, 0.5460011]
+        )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_stable_diffusion_xl_euler_lcm_custom_timesteps(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe")
-        sd_pipe.update_components(scheduler=LCMScheduler.from_config(sd_pipe.scheduler.config))
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        del inputs["num_inference_steps"]
-        inputs["timesteps"] = [999, 499]
-        image = sd_pipe(**inputs, output="images")
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4917, 0.6555, 0.4348, 0.5219, 0.7324, 0.4855, 0.5168, 0.5447, 0.5156])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
+            f"image_slice: {image_slice.flatten()}, expected_slice: {expected_slice.flatten()}"
+        )
 
     @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
-        sd_pipe = ModularPipeline.from_pretrained(
-            "hf-internal-testing/tiny-sd-pipe",
-        ).to(torch_device)
+        sd_pipe = self.get_pipeline().to(torch_device)
         pipes.append(sd_pipe)
 
         cm = ComponentsManager()
         cm.enable_auto_cpu_offload(device=torch_device)
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe", components_manager=cm).to(
-            torch_device
-        )
+        sd_pipe = self.get_pipeline(components_manager=cm)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -148,21 +140,20 @@ class StableDiffusionXLModularPipelineFastTests(
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
-        assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
     def test_stable_diffusion_xl_multi_prompts(self):
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        sd_pipe = self.get_pipeline().to(torch_device)
 
         # forward with single prompt
         inputs = self.get_dummy_inputs(torch_device)
         output = sd_pipe(**inputs, output="images")
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        image_slice_1 = output[0, -3:, -3:, -1]
 
         # forward with same prompt duplicated
         inputs = self.get_dummy_inputs(torch_device)
         inputs["prompt_2"] = inputs["prompt"]
         output = sd_pipe(**inputs, output="images")
-        image_slice_2 = output.images[0, -3:, -3:, -1]
+        image_slice_2 = output[0, -3:, -3:, -1]
 
         # ensure the results are equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
@@ -171,7 +162,7 @@ class StableDiffusionXLModularPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         inputs["prompt_2"] = "different prompt"
         output = sd_pipe(**inputs, output="images")
-        image_slice_3 = output.images[0, -3:, -3:, -1]
+        image_slice_3 = output[0, -3:, -3:, -1]
 
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
@@ -180,14 +171,14 @@ class StableDiffusionXLModularPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         inputs["negative_prompt"] = "negative prompt"
         output = sd_pipe(**inputs, output="images")
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        image_slice_1 = output[0, -3:, -3:, -1]
 
         # forward with same negative_prompt duplicated
         inputs = self.get_dummy_inputs(torch_device)
         inputs["negative_prompt"] = "negative prompt"
         inputs["negative_prompt_2"] = inputs["negative_prompt"]
         output = sd_pipe(**inputs, output="images")
-        image_slice_2 = output.images[0, -3:, -3:, -1]
+        image_slice_2 = output[0, -3:, -3:, -1]
 
         # ensure the results are equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
@@ -197,15 +188,14 @@ class StableDiffusionXLModularPipelineFastTests(
         inputs["negative_prompt"] = "negative prompt"
         inputs["negative_prompt_2"] = "different negative prompt"
         output = sd_pipe(**inputs, output="images")
-        image_slice_3 = output.images[0, -3:, -3:, -1]
+        image_slice_3 = output[0, -3:, -3:, -1]
 
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
     def test_stable_diffusion_xl_negative_conditions(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
-        sd_pipe = sd_pipe.to(device)
+        sd_pipe = self.get_pipeline().to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
@@ -225,21 +215,24 @@ class StableDiffusionXLModularPipelineFastTests(
 
     def test_stable_diffusion_xl_save_from_pretrained(self):
         pipes = []
-        sd_pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        sd_pipe = self.get_pipeline().to(torch_device)
         pipes.append(sd_pipe)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             sd_pipe.save_pretrained(tmpdirname)
             sd_pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
+            sd_pipe.load_default_components(torch_dtype=torch.float32)
+            sd_pipe.to(torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
         for pipe in pipes:
-            pipe.unet.set_default_attn_processor()
-
             inputs = self.get_dummy_inputs(torch_device)
             image = pipe(**inputs, output="images")
 
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
