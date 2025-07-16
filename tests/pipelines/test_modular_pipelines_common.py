@@ -30,8 +30,13 @@ def to_np(tensor):
 class ModularPipelineTesterMixin:
     """
     This mixin is designed to be used with unittest.TestCase classes.
-    It provides a set of common tests for each PyTorch pipeline, e.g. saving and loading the pipeline,
-    equivalence of dict and tuple outputs, etc.
+    It provides a set of common tests for each modular pipeline,
+    including:
+    - test_pipeline_call_signature: check if the pipeline's __call__ method has all required parameters
+    - test_inference_batch_consistent: check if the pipeline's __call__ method can handle batch inputs
+    - test_inference_batch_single_identical: check if the pipeline's __call__ method can handle single input
+    - test_float16_inference: check if the pipeline's __call__ method can handle float16 inputs
+    - test_to_device: check if the pipeline's __call__ method can handle different devices
     """
 
     # Canonical parameters that are passed to `__call__` regardless
@@ -45,7 +50,7 @@ class ModularPipelineTesterMixin:
             "output_type",
         ]
     )
-    # generator needs to be a intermediate input because it's mutable
+    # this is modular specific: generator needs to be a intermediate input because it's mutable
     required_intermediate_params = frozenset(
         [
             "generator",
