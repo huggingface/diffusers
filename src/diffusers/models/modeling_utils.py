@@ -62,10 +62,14 @@ from ..utils.hub_utils import (
     load_or_create_model_card,
     populate_model_card,
 )
+from ..utils.torch_utils import empty_device_cache
 from .model_loading_utils import (
+    _caching_allocator_warmup,
     _determine_device_map,
+    _expand_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
+    _find_mismatched_keys,
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
@@ -1469,11 +1473,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             for pat in cls._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
-        mismatched_keys = []
-
-        assign_to_params_buffers = None
-        error_msgs = []
-
         # Deal with offload
         if device_map is not None and "disk" in device_map.values():
             if offload_folder is None:
@@ -1482,18 +1481,27 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     " for them. Alternatively, make sure you have `safetensors` installed if the model you are using"
                     " offers the weights in this format."
                 )
-            if offload_folder is not None:
+            else:
                 os.makedirs(offload_folder, exist_ok=True)
             if offload_state_dict is None:
                 offload_state_dict = True
 
+        # If a device map has been used, we can speedup the load time by warming up the device caching allocator.
+        # If we don't warmup, each tensor allocation on device calls to the allocator for memory (effectively, a
+        # lot of individual calls to device malloc). We can, however, preallocate the memory required by the
+        # tensors using their expected shape and not performing any initialization of the memory (empty data).
+        # When the actual device allocations happen, the allocator already has a pool of unused device memory
+        # that it can re-use for faster loading of the model.
+        # TODO: add support for warmup with hf_quantizer
+        if device_map is not None and hf_quantizer is None:
+            expanded_device_map = _expand_device_map(device_map, expected_keys)
+            _caching_allocator_warmup(model, expanded_device_map, dtype)
+
         offload_index = {} if device_map is not None and "disk" in device_map.values() else None
+        state_dict_folder, state_dict_index = None, None
         if offload_state_dict:
             state_dict_folder = tempfile.mkdtemp()
             state_dict_index = {}
-        else:
-            state_dict_folder = None
-            state_dict_index = None
 
         if state_dict is not None:
             # load_state_dict will manage the case where we pass a dict instead of a file
@@ -1503,38 +1511,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if len(resolved_model_file) > 1:
             resolved_model_file = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
 
+        mismatched_keys = []
+        assign_to_params_buffers = None
+        error_msgs = []
+
         for shard_file in resolved_model_file:
             state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
-
-            def _find_mismatched_keys(
-                state_dict,
-                model_state_dict,
-                loaded_keys,
-                ignore_mismatched_sizes,
-            ):
-                mismatched_keys = []
-                if ignore_mismatched_sizes:
-                    for checkpoint_key in loaded_keys:
-                        model_key = checkpoint_key
-                        # If the checkpoint is sharded, we may not have the key here.
-                        if checkpoint_key not in state_dict:
-                            continue
-
-                        if (
-                            model_key in model_state_dict
-                            and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape
-                        ):
-                            mismatched_keys.append(
-                                (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
-                            )
-                            del state_dict[checkpoint_key]
-                return mismatched_keys
-
             mismatched_keys += _find_mismatched_keys(
-                state_dict,
-                model_state_dict,
-                loaded_keys,
-                ignore_mismatched_sizes,
+                state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes
             )
 
             if low_cpu_mem_usage:
@@ -1554,8 +1538,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 if assign_to_params_buffers is None:
                     assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
-
                 error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
+
+        empty_device_cache()
 
         if offload_index is not None and len(offload_index) > 0:
             save_offload_index(offload_index, offload_folder)
@@ -1892,4 +1877,9 @@ class LegacyModelMixin(ModelMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
+        if remapped_class is cls:
+            return super(LegacyModelMixin, remapped_class).from_pretrained(
+                pretrained_model_name_or_path, **kwargs_copy
+            )
+        else:
+            return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)

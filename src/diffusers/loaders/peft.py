@@ -22,7 +22,6 @@ from typing import Dict, List, Literal, Optional, Union
 import safetensors
 import torch
 
-from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
@@ -164,6 +163,8 @@ class PeftAdapterMixin:
         from peft import inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
 
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -244,12 +245,19 @@ class PeftAdapterMixin:
                     k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
                 }
 
-            # create LoraConfig
-            lora_config = _create_lora_config(state_dict, network_alphas, metadata, rank)
-
             # adapter_name
             if adapter_name is None:
                 adapter_name = get_adapter_name(self)
+
+            # create LoraConfig
+            lora_config = _create_lora_config(
+                state_dict,
+                network_alphas,
+                metadata,
+                rank,
+                model_state_dict=self.state_dict(),
+                adapter_name=adapter_name,
+            )
 
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
@@ -688,6 +696,7 @@ class PeftAdapterMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `unload_lora()`.")
 
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
         from ..utils import recurse_remove_peft_layers
 
         recurse_remove_peft_layers(self)

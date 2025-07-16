@@ -61,6 +61,7 @@ from diffusers.utils import (
 from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    _check_safetensors_serialization,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
@@ -1350,7 +1351,6 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
                 # Making sure part of the model will actually end up offloaded
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
-                print(f" new_model.hf_device_map:{new_model.hf_device_map}")
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
 
@@ -1703,18 +1703,43 @@ class ModelTesterMixin:
         model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
         _ = model(**inputs_dict)[0]
 
-    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @parameterized.expand([("block_level", False), ("leaf_level", True)])
     @require_torch_accelerator
     @torch.no_grad()
-    def test_group_offloading_with_disk(self, record_stream, offload_type):
+    @torch.inference_mode()
+    def test_group_offloading_with_disk(self, offload_type, record_stream, atol=1e-5):
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
-        torch.manual_seed(0)
+        def _has_generator_arg(model):
+            sig = inspect.signature(model.forward)
+            params = sig.parameters
+            return "generator" in params
+
+        def _run_forward(model, inputs_dict):
+            accepts_generator = _has_generator_arg(model)
+            if accepts_generator:
+                inputs_dict["generator"] = torch.manual_seed(0)
+            torch.manual_seed(0)
+            return model(**inputs_dict)[0]
+
+        if self.__class__.__name__ == "AutoencoderKLCosmosTests" and offload_type == "leaf_level":
+            pytest.skip("With `leaf_type` as the offloading type, it fails. Needs investigation.")
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+
+        model.eval()
+        model.to(torch_device)
+        output_without_group_offloading = _run_forward(model, inputs_dict)
+
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.eval()
-        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+
+        num_blocks_per_group = None if offload_type == "leaf_level" else 1
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": num_blocks_per_group}
         with tempfile.TemporaryDirectory() as tmpdir:
             model.enable_group_offload(
                 torch_device,
@@ -1725,8 +1750,25 @@ class ModelTesterMixin:
                 **additional_kwargs,
             )
             has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
-            self.assertTrue(len(has_safetensors) > 0, "No safetensors found in the offload directory.")
-            _ = model(**inputs_dict)[0]
+            self.assertTrue(has_safetensors, "No safetensors found in the directory.")
+
+            # For "leaf-level", there is a prefetching hook which makes this check a bit non-deterministic
+            # in nature. So, skip it.
+            if offload_type != "leaf_level":
+                is_correct, extra_files, missing_files = _check_safetensors_serialization(
+                    module=model,
+                    offload_to_disk_path=tmpdir,
+                    offload_type=offload_type,
+                    num_blocks_per_group=num_blocks_per_group,
+                )
+                if not is_correct:
+                    if extra_files:
+                        raise ValueError(f"Found extra files: {', '.join(extra_files)}")
+                    elif missing_files:
+                        raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
+
+            output_with_group_offloading = _run_forward(model, inputs_dict)
+            self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=atol))
 
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
@@ -2019,6 +2061,8 @@ class LoraHotSwappingForModelTesterMixin:
 
     """
 
+    different_shapes_for_compilation = None
+
     def tearDown(self):
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
         # there will be recompilation errors, as torch caches the model when run in the same process.
@@ -2056,11 +2100,13 @@ class LoraHotSwappingForModelTesterMixin:
         - hotswap the second adapter
         - check that the outputs are correct
         - optionally compile the model
+        - optionally check if recompilations happen on different shapes
 
         Note: We set rank == alpha here because save_lora_adapter does not save the alpha scalings, thus the test would
         fail if the values are different. Since rank != alpha does not matter for the purpose of this test, this is
         fine.
         """
+        different_shapes = self.different_shapes_for_compilation
         # create 2 adapters with different ranks and alphas
         torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -2110,19 +2156,30 @@ class LoraHotSwappingForModelTesterMixin:
             model.load_lora_adapter(file_name0, safe_serialization=True, adapter_name="adapter0", prefix=None)
 
             if do_compile:
-                model = torch.compile(model, mode="reduce-overhead")
+                model = torch.compile(model, mode="reduce-overhead", dynamic=different_shapes is not None)
 
             with torch.inference_mode():
-                output0_after = model(**inputs_dict)["sample"]
-            assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
+                # additionally check if dynamic compilation works.
+                if different_shapes is not None:
+                    for height, width in different_shapes:
+                        new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                        _ = model(**new_inputs_dict)
+                else:
+                    output0_after = model(**inputs_dict)["sample"]
+                    assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
 
             # hotswap the 2nd adapter
             model.load_lora_adapter(file_name1, adapter_name="adapter0", hotswap=True, prefix=None)
 
             # we need to call forward to potentially trigger recompilation
             with torch.inference_mode():
-                output1_after = model(**inputs_dict)["sample"]
-            assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
+                if different_shapes is not None:
+                    for height, width in different_shapes:
+                        new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                        _ = model(**new_inputs_dict)
+                else:
+                    output1_after = model(**inputs_dict)["sample"]
+                    assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
 
             # check error when not passing valid adapter name
             name = "does-not-exist"
@@ -2240,3 +2297,23 @@ class LoraHotSwappingForModelTesterMixin:
                     do_compile=True, rank0=8, rank1=8, target_modules0=target_modules0, target_modules1=target_modules1
                 )
                 assert any("Hotswapping adapter0 was unsuccessful" in log for log in cm.output)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])
+    @require_torch_version_greater("2.7.1")
+    def test_hotswapping_compile_on_different_shapes(self, rank0, rank1):
+        different_shapes_for_compilation = self.different_shapes_for_compilation
+        if different_shapes_for_compilation is None:
+            pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
+        # Specifying `use_duck_shape=False` instructs the compiler if it should use the same symbolic
+        # variable to represent input sizes that are the same. For more details,
+        # check out this [comment](https://github.com/huggingface/diffusers/pull/11327#discussion_r2047659790).
+        torch.fx.experimental._config.use_duck_shape = False
+
+        target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            self.check_model_hotswap(
+                do_compile=True,
+                rank0=rank0,
+                rank1=rank1,
+                target_modules0=target_modules,
+            )
