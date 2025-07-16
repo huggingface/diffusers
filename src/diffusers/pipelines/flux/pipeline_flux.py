@@ -840,6 +840,8 @@ class FluxPipeline(
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        if hasattr(self.scheduler.config, "use_flow_sigmas") and self.scheduler.config.use_flow_sigmas:
+            sigmas = None
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
