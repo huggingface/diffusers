@@ -277,7 +277,6 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
         dim_head: int = 64,
         dropout: float = 0.0,
         bias: bool = False,
-        qk_norm: Optional[str] = None,
         added_kv_proj_dim: Optional[int] = None,
         added_proj_bias: Optional[bool] = True,
         out_bias: bool = True,
@@ -289,7 +288,6 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
         processor=None,
     ):
         super().__init__()
-        assert qk_norm == "rms_norm", "Flux uses RMSNorm"
 
         self.head_dim = dim_head
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
@@ -375,7 +373,6 @@ class FluxSingleTransformerBlock(nn.Module):
             out_dim=dim,
             bias=True,
             processor=processor,
-            qk_norm="rms_norm",
             eps=1e-6,
             pre_only=True,
         )
@@ -431,7 +428,6 @@ class FluxTransformerBlock(nn.Module):
             context_pre_only=False,
             bias=True,
             processor=FluxAttnProcessor(),
-            qk_norm=qk_norm,
             eps=eps,
         )
 
