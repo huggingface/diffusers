@@ -18,6 +18,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import numpy as np
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, get_logger, scale_lora_layers, unscale_lora_layers
@@ -197,6 +199,8 @@ class HunyuanVideoFramepackTransformer3DModel(
         self.proj_out = nn.Linear(inner_dim, patch_size_t * patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
+        
+        self.enable_teacache = False
 
     def forward(
         self,
@@ -304,28 +308,74 @@ class HunyuanVideoFramepackTransformer3DModel(
                 attention_mask[i, : effective_sequence_length[i]] = True
             # [B, 1, 1, N], for broadcasting across attention heads
             attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
+            
+        if self.enable_teacache:
+            hidden_states_ = hidden_states.clone()
+            temb_ = temb.clone()
+            modulated_hidden_states = self.transformer_blocks[0].norm1(hidden_states_, emb=temb_)[0]
+            
+            if self.cnt == 0 or self.cnt == self.num_steps-1:
+                should_calc = True
+                self.accumulated_rel_l1_distance = 0
+            else:
+                curr_rel_l1 = (
+                    (modulated_inp - self.previous_modulated_input).abs().mean() / 
+                    self.previous_modulated_input.abs().mean()
+                ).cpu().item()
+                
+                self.accumulated_rel_l1_distance += self.teacache_rescale_func(curr_rel_l1)
+                
+                if self.accumulated_rel_l1_distance < self.rel_l1_thresh:
+                    should_calc = False
+                else:
+                    should_calc = True
+                    self.accumulated_rel_l1_distance = 0
 
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for block in self.transformer_blocks:
-                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
-                )
+            self.previous_modulated_input = modulated_inp
+            self.cnt += 1
 
-            for block in self.single_transformer_blocks:
-                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
-                )
+            if self.cnt == self.num_steps:
+                self.cnt = 0
 
+            if not should_calc:
+                hidden_states += self.previous_residual
+            else:
+                ori_hidden_states = hidden_states.clone()
+                
+                for block in self.transformer_blocks:
+                    hidden_states, encoder_hidden_states = block(
+                        hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
+                    )
+
+                for block in self.single_transformer_blocks:
+                    hidden_states, encoder_hidden_states = block(
+                        hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
+                    )
+                    
+                self.previous_residual = hidden_states - ori_hidden_states
+            
         else:
-            for block in self.transformer_blocks:
-                hidden_states, encoder_hidden_states = block(
-                    hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
-                )
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                for block in self.transformer_blocks:
+                    hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                        block, hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
+                    )
 
-            for block in self.single_transformer_blocks:
-                hidden_states, encoder_hidden_states = block(
-                    hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
-                )
+                for block in self.single_transformer_blocks:
+                    hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                        block, hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
+                    )
+
+            else:
+                for block in self.transformer_blocks:
+                    hidden_states, encoder_hidden_states = block(
+                        hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
+                    )
+
+                for block in self.single_transformer_blocks:
+                    hidden_states, encoder_hidden_states = block(
+                        hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
+                    )
 
         hidden_states = hidden_states[:, -original_context_length:]
         hidden_states = self.norm_out(hidden_states, temb)
@@ -397,6 +447,18 @@ class HunyuanVideoFramepackTransformer3DModel(
         freqs_cos = freqs_cos.flatten(2).permute(0, 2, 1).squeeze(0)
         freqs_sin = freqs_sin.flatten(2).permute(0, 2, 1).squeeze(0)
         return freqs_cos, freqs_sin
+    
+        
+    def initialize_teacache(self, enable_teacache=True, num_steps=25, rel_l1_thresh=0.15):
+        self.enable_teacache = enable_teacache
+        self.cnt = 0
+        self.num_steps = num_steps
+        self.rel_l1_thresh = rel_l1_thresh  # 0.1 for 1.6x speedup, 0.15 for 2.1x speedup
+        self.accumulated_rel_l1_distance = 0
+        self.previous_modulated_input = None
+        self.previous_residual = None
+        self.coeffs = [7.33226126e+02, -4.01131952e+02, 6.75869174e+01, -3.14987800e+00, 9.61237896e-02]
+        self.teacache_rescale_func = np.poly1d(self.coeffs)
 
 
 def _pad_for_3d_conv(x, kernel_size):

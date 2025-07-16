@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import unittest
+from unittest.mock import patch, MagicMock
 
 import torch
 
@@ -114,3 +115,28 @@ class HunyuanVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideoFramepackTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+        
+    def test_teacache_initialization(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        
+        custom_num_steps = 50
+        custom_thresh = 0.1
+        
+        model.initialize_teacache(
+            enable_teacache=True,
+            num_steps=custom_num_steps,
+            rel_l1_thresh=custom_thresh
+        )
+        
+        self.assertTrue(model.enable_teacache)
+        self.assertEqual(model.num_steps, custom_num_steps)
+        self.assertEqual(model.rel_l1_thresh, custom_thresh)
+        
+        self.assertEqual(model.cnt, 0)
+        self.assertEqual(model.accumulated_rel_l1_distance, 0)
+        self.assertIsNone(model.previous_modulated_input)
+        self.assertIsNone(model.previous_residual)
+        self.assertTrue(hasattr(model, 'coeffs'))
+        self.assertTrue(hasattr(model, 'teacache_rescale_func'))
