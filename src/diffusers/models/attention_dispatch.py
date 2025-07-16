@@ -556,7 +556,7 @@ def _(
 # ===== Autograd functions =====
 
 
-class _cudnn_attention(torch.autograd.Function):
+class _cudnn_attention_af(torch.autograd.Function):
     # https://github.com/pytorch/pytorch/blob/8904ba638726f8c9a5aff5977c4aa76c9d2edfa6/aten/src/ATen/native/native_functions.yaml#L14958
     # forward declaration:
     #   aten::_scaled_dot_product_cudnn_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_bias, bool compute_log_sumexp, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor philox_seed, Tensor philox_offset, Tensor debug_attn_mask)
@@ -614,7 +614,7 @@ class _cudnn_attention(torch.autograd.Function):
     def backward(
         ctx: torch.autograd.function.FunctionCtx,
         grad_out: torch.Tensor,
-        *args: torch.Tensor,
+        *args,
     ):
         query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = ctx.saved_tensors
         grad_out = grad_out.transpose(1, 2).contiguous()
@@ -644,7 +644,7 @@ class _cudnn_attention(torch.autograd.Function):
 
 
 # Adapted from: https://github.com/Dao-AILab/flash-attention/blob/fd2fc9d85c8e54e5c20436465bca709bc1a6c5a1/flash_attn/flash_attn_interface.py#L807
-class _flash_attention_2(torch.autograd.Function):
+class _flash_attention_2_af(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx: torch.autograd.function.FunctionCtx,
@@ -707,7 +707,7 @@ class _flash_attention_2(torch.autograd.Function):
     def backward(
         ctx: torch.autograd.function.FunctionCtx,
         grad_out: torch.Tensor,
-        *args: torch.Tensor,
+        *args,
     ):
         query, key, value, out, lse, rng_state = ctx.saved_tensors
         grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
@@ -739,6 +739,51 @@ class _flash_attention_2(torch.autograd.Function):
         grad_value = grad_value[..., : grad_out.shape[-1]]
 
         return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
+
+
+class _sage_attention_af(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        is_causal: bool = False,
+        scale: Optional[float] = None,
+        enable_gqa: bool = False,
+        return_lse: bool = False,
+    ):
+        if attn_mask is not None:
+            raise ValueError("`attn_mask` is not yet supported for Sage attention.")
+        if dropout_p > 0.0:
+            raise ValueError("`dropout_p` is not yet supported for Sage attention.")
+        if enable_gqa:
+            raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
+
+        out = sageattn(
+            q=query,
+            k=key,
+            v=value,
+            tensor_layout="NHD",
+            is_causal=is_causal,
+            sm_scale=scale,
+            return_lse=return_lse,
+        )
+        lse = None
+        if return_lse:
+            out, lse, *_ = out
+
+        return (out, lse) if return_lse else out
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+    ):
+        raise NotImplementedError("Backward pass is not implemented for Sage attention.")
 
 
 # ===== Context parallel =====
@@ -799,7 +844,7 @@ class TemplatedRingAttention(torch.autograd.Function):
     def backward(
         ctx: torch.autograd.function.FunctionCtx,
         grad_out: torch.Tensor,
-        *args: torch.Tensor,
+        *args,
     ):
         raise NotImplementedError("Backward pass is not implemented for TemplatedRingAttention.")
 
@@ -854,7 +899,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
     def backward(
         ctx: torch.autograd.function.FunctionCtx,
         grad_out: torch.Tensor,
-        *args: torch.Tensor,
+        *args,
     ):
         raise NotImplementedError("Backward pass is not implemented for TemplatedUlyssesAttention.")
 
@@ -927,7 +972,7 @@ def _flash_attention(
             out, lse, *_ = out
     else:
         out = _templated_context_parallel_attention(
-            query, key, value, None, dropout_p, is_causal, scale, False, return_lse, op=_flash_attention_2
+            query, key, value, None, dropout_p, is_causal, scale, False, return_lse, op=_flash_attention_2_af
         )
         if return_lse:
             out, lse = out
@@ -1191,7 +1236,7 @@ def _native_cudnn_attention(
         out = out.permute(0, 2, 1, 3)
     else:
         out = _templated_context_parallel_attention(
-            query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, op=_cudnn_attention
+            query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, op=_cudnn_attention_af
         )
         if return_lse:
             out, lse = out
@@ -1356,6 +1401,7 @@ def _native_xla_attention(
 @_AttentionBackendRegistry.register(
     AttentionBackendName.SAGE,
     constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=True,
 )
 def _sage_attention(
     query: torch.Tensor,
@@ -1365,15 +1411,29 @@ def _sage_attention(
     scale: Optional[float] = None,
     return_lse: bool = False,
 ) -> torch.Tensor:
-    return sageattn(
-        q=query,
-        k=key,
-        v=value,
-        tensor_layout="NHD",
-        is_causal=is_causal,
-        sm_scale=scale,
-        return_lse=return_lse,
-    )
+    parallel_config = _AttentionBackendRegistry._parallel_config
+
+    lse = None
+    if parallel_config is None:
+        out = sageattn(
+            q=query,
+            k=key,
+            v=value,
+            tensor_layout="NHD",
+            is_causal=is_causal,
+            sm_scale=scale,
+            return_lse=return_lse,
+        )
+        if return_lse:
+            out, lse, *_ = out
+    else:
+        out = _templated_context_parallel_attention(
+            query, key, value, None, 0.0, is_causal, scale, False, return_lse, op=_sage_attention_af
+        )
+        if return_lse:
+            out, lse = out
+
+    return (out, lse) if return_lse else out
 
 
 @_AttentionBackendRegistry.register(
