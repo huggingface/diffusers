@@ -235,7 +235,6 @@ class ChromaSingleTransformerBlock(nn.Module):
             out_dim=dim,
             bias=True,
             processor=processor,
-            qk_norm="rms_norm",
             eps=1e-6,
             pre_only=True,
         )
@@ -296,7 +295,6 @@ class ChromaTransformerBlock(nn.Module):
             context_pre_only=False,
             bias=True,
             processor=FluxAttnProcessor(),
-            qk_norm=qk_norm,
             eps=eps,
         )
 
