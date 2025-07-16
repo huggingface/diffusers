@@ -1876,18 +1876,38 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # update component_specs and config_specs from modular_repo
         if pretrained_model_name_or_path is not None:
-            config_dict = self.load_config(pretrained_model_name_or_path, **kwargs)
 
-            for name, value in config_dict.items():
-                # all the components in modular_model_index.json are from_pretrained components
-                if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 3:
-                    library, class_name, component_spec_dict = value
-                    component_spec = self._dict_to_component_spec(name, component_spec_dict)
-                    component_spec.default_creation_method = "from_pretrained"
-                    self._component_specs[name] = component_spec
+            try:
+                config_dict = self.load_config(pretrained_model_name_or_path, **kwargs)
+                for name, value in config_dict.items():
+                    # all the components in modular_model_index.json are from_pretrained components
+                    if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 3:
+                        library, class_name, component_spec_dict = value
+                        component_spec = self._dict_to_component_spec(name, component_spec_dict)
+                        component_spec.default_creation_method = "from_pretrained"
+                        self._component_specs[name] = component_spec
 
-                elif name in self._config_specs:
-                    self._config_specs[name].default = value
+                    elif name in self._config_specs:
+                        self._config_specs[name].default = value
+
+            except EnvironmentError as e:
+                logger.debug(e)
+                logger.debug(f" modular_model_index.json not found in the repo, trying to load from model_index.json")
+                from diffusers import DiffusionPipeline
+                config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path)
+                for name, value in config_dict.items():
+                    if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 2:
+                        library, class_name = value
+                        component_spec_dict = {
+                            "repo": pretrained_model_name_or_path,
+                            "subfolder": name,
+                            "type_hint": (library, class_name),
+                        }
+                        component_spec = self._dict_to_component_spec(name, component_spec_dict)
+                        component_spec.default_creation_method = "from_pretrained"
+                        self._component_specs[name] = component_spec
+                    elif name in self._config_specs:
+                        self._config_specs[name].default = value
 
         register_components_dict = {}
         for name, component_spec in self._component_specs.items():
