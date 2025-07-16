@@ -304,6 +304,8 @@
       title: Pipeline blocks
     - local: api/modular_diffusers/pipeline_states
       title: Pipeline states
+    - local: api/modular_diffusers/pipeline_components
+      title: Components and configs
     title: Modular Diffusers
   - isExpanded: false
     sections:
