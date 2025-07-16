@@ -10,25 +10,25 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# PipelineState and BlockState
+# Block states
 
-<Tip warning={true}>
+Blocks rely on the [`PipelineState`] and [`BlockState`] data structures for communicating and sharing data.
 
-🧪 **Experimental Feature**: Modular Diffusers is an experimental feature we are actively developing. The API may be subject to breaking changes.
+| State | Description |
+|-------|-------------|
+| `PipelineState` | Maintains the overall data required for a pipeline's execution and allows blocks to read and update its data. |
+| `BlockState` | Allows each block to perform its computation with the necessary data from `inputs` and `intermediate_inputs` |
 
-</Tip>
+This guide explains how states work and how they connect blocks.
 
-In Modular Diffusers, `PipelineState` and `BlockState` are the core data structures that enable blocks to communicate and share data. The concept is fundamental to understand how blocks interact with each other and the pipeline system.
+## PipelineState
 
-In the modular diffusers system, `PipelineState` acts as the global state container that all pipeline blocks operate on. It maintains the complete runtime state of the pipeline and provides a structured way for blocks to read from and write to shared data.
+The [`PipelineState`] is a global state container for all pipeline blocks. It maintains the complete runtime state of the pipeline and provides a structured way for blocks to read from and write to shared data.
 
-A `PipelineState` consists of two distinct states:
+There are two dict's in [`PipelineState`] for structuring data.
 
-- **The immutable state** (i.e. the `inputs` dict) contains a copy of values provided by users. Once a value is added to the immutable state, it cannot be changed. Blocks can read from the immutable state but cannot write to it.
-
-- **The mutable state** (i.e. the `intermediates` dict) contains variables that are passed between blocks and can be modified by them.
-
-Here's an example of what a `PipelineState` looks like:
+- The `inputs` dict is an **immutable** state containing a copy of user provided values. A value added to `inputs` cannot be changed. Blocks can read from `inputs` but cannot write to it.
+- The `intermediates` dict is a **mutable** state containing variables that are passed between blocks and can be modified by them.
 
 ```py
 PipelineState(
@@ -44,9 +44,11 @@ PipelineState(
 )
 ```
 
-Each pipeline blocks define what parts of that state they can read from and write to through their `inputs`, `intermediate_inputs`, and `intermediate_outputs` properties. At run time, they gets a local view (`BlockState`) of the relevant variables it needs from `PipelineState`, performs its operations, and then updates `PipelineState` with any changes.
+## BlockState
 
-For example, if a block defines an input `image`, inside the block's `__call__` method, the `BlockState` would contain:
+The [`BlockState`] is a local view of the relevant variables, `inputs` and `intermediate_inputs`, that an individual pipeline block needs from [`PipelineState`] for performing it's computations.
+
+You can access these variables directly as attributes like `block_state.image`.
 
 ```py
 BlockState(
@@ -54,6 +56,29 @@ BlockState(
 )
 ```
 
-You can access the variables directly as attributes: `block_state.image`.
+When a block's `__call__` method is executed, it retrieves the [`BlockState`] with `self.get_block_state(state)`, performs it's operations, and updates [`PipelineState`] with `self.set_block_state(state, block_state)`.
 
-We will explore more on how blocks interact with pipeline state through their `inputs`, `intermediate_inputs`, and `intermediate_outputs` properties, see the [PipelineBlock guide](./pipeline_block.md).
+```py
+def __call__(self, components, state):
+    # retrieve BlockState
+    block_state = self.get_block_state(state)
+    
+    # computation logic on inputs and intermediate_inputs
+    
+    # update PipelineState
+    self.set_block_state(state, block_state)
+    return components, state
+```
+
+## State interaction
+
+[`PipelineState`] and [`BlockState`] interaction is defined by a block's `inputs`, `intermediate_inputs`, and `intermediate_outputs`.
+
+- `inputs`, a block can modify an input - like `block_state.image` - but the change is local to the [`BlockState`] and won't affect the original image in [`PipelineState`].
+- `intermediate_inputs`, is often values created from a previous block. When a block modifies `intermediate_inputs` - like `batch_size` - this change is reflected in both the [`BlockState`] and [`PipelineState`]. Any subsequent blocks are also affected.
+
+  If a previous block doesn't provide an `intermediate_inputs`, then the pipeline makes it available as a user input. However, the value is still a mutable intermediate state.
+
+- `intermediate_outputs`, is a new variable that a block creates from `intermediate_inputs`. It is added to the [`PipelineState`]'s `intermediates` dict and available as an `intermediate_inputs` for subsequent blocks or accessed by users as a final output from the pipeline.
+
+  If a variable is modified in `block_state` but not declared as an `intermediate_outputs`, it won't be added to [`PipelineState`].
