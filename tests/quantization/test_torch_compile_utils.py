@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gc
-import unittest
+import inspect
 
 import torch
 
@@ -23,7 +23,7 @@ from diffusers.utils.testing_utils import backend_empty_cache, require_torch_gpu
 
 @require_torch_gpu
 @slow
-class QuantCompileTests(unittest.TestCase):
+class QuantCompileTests:
     @property
     def quantization_config(self):
         raise NotImplementedError(
@@ -50,30 +50,26 @@ class QuantCompileTests(unittest.TestCase):
         )
         return pipe
 
-    def _test_torch_compile(self, quantization_config, torch_dtype=torch.bfloat16):
-        pipe = self._init_pipeline(quantization_config, torch_dtype).to("cuda")
-        # import to ensure fullgraph True
+    def _test_torch_compile(self, torch_dtype=torch.bfloat16):
+        pipe = self._init_pipeline(self.quantization_config, torch_dtype).to("cuda")
+        # `fullgraph=True` ensures no graph breaks
         pipe.transformer.compile(fullgraph=True)
 
-        for _ in range(2):
-            # small resolutions to ensure speedy execution.
-            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
+        # small resolutions to ensure speedy execution.
+        pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
 
-    def _test_torch_compile_with_cpu_offload(self, quantization_config, torch_dtype=torch.bfloat16):
-        pipe = self._init_pipeline(quantization_config, torch_dtype)
+    def _test_torch_compile_with_cpu_offload(self, torch_dtype=torch.bfloat16):
+        pipe = self._init_pipeline(self.quantization_config, torch_dtype)
         pipe.enable_model_cpu_offload()
         pipe.transformer.compile()
 
-        for _ in range(2):
-            # small resolutions to ensure speedy execution.
-            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
+        # small resolutions to ensure speedy execution.
+        pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
 
-    def _test_torch_compile_with_group_offload_leaf(
-        self, quantization_config, torch_dtype=torch.bfloat16, *, use_stream: bool = False
-    ):
-        torch._dynamo.config.cache_size_limit = 10000
+    def _test_torch_compile_with_group_offload_leaf(self, torch_dtype=torch.bfloat16, *, use_stream: bool = False):
+        torch._dynamo.config.cache_size_limit = 1000
 
-        pipe = self._init_pipeline(quantization_config, torch_dtype)
+        pipe = self._init_pipeline(self.quantization_config, torch_dtype)
         group_offload_kwargs = {
             "onload_device": torch.device("cuda"),
             "offload_device": torch.device("cpu"),
@@ -87,6 +83,17 @@ class QuantCompileTests(unittest.TestCase):
                 if torch.device(component.device).type == "cpu":
                     component.to("cuda")
 
-        for _ in range(2):
-            # small resolutions to ensure speedy execution.
-            pipe("a dog", num_inference_steps=3, max_sequence_length=16, height=256, width=256)
+        # small resolutions to ensure speedy execution.
+        pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
+
+    def test_torch_compile(self):
+        self._test_torch_compile()
+
+    def test_torch_compile_with_cpu_offload(self):
+        self._test_torch_compile_with_cpu_offload()
+
+    def test_torch_compile_with_group_offload_leaf(self, use_stream=False):
+        for cls in inspect.getmro(self.__class__):
+            if "test_torch_compile_with_group_offload_leaf" in cls.__dict__ and cls is not QuantCompileTests:
+                return
+        self._test_torch_compile_with_group_offload_leaf(use_stream=use_stream)

@@ -230,6 +230,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
         rescale_betas_zero_snr: bool = False,
+        use_dynamic_shifting: bool = False,
+        time_shift_type: str = "exponential",
     ):
         if self.config.use_beta_sigmas and not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
@@ -330,6 +332,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: int = None,
         device: Union[str, torch.device] = None,
+        mu: Optional[float] = None,
         timesteps: Optional[List[int]] = None,
     ):
         """
@@ -345,6 +348,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 based on the `timestep_spacing` attribute. If `timesteps` is passed, `num_inference_steps` and `sigmas`
                 must be `None`, and `timestep_spacing` attribute will be ignored.
         """
+        if mu is not None:
+            assert self.config.use_dynamic_shifting and self.config.time_shift_type == "exponential"
+            self.config.flow_shift = np.exp(mu)
         if num_inference_steps is None and timesteps is None:
             raise ValueError("Must pass exactly one of `num_inference_steps` or `timesteps`.")
         if num_inference_steps is not None and timesteps is not None:

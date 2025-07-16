@@ -18,11 +18,8 @@ from ..models.embeddings import (
     MultiIPAdapterImageProjection,
 )
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
-from ..utils import (
-    is_accelerate_available,
-    is_torch_version,
-    logging,
-)
+from ..utils import is_accelerate_available, is_torch_version, logging
+from ..utils.torch_utils import empty_device_cache
 
 
 if is_accelerate_available():
@@ -84,6 +81,7 @@ class FluxTransformer2DLoadersMixin:
         else:
             device_map = {"": self.device}
             load_model_dict_into_meta(image_projection, updated_state_dict, device_map=device_map, dtype=self.dtype)
+            empty_device_cache()
 
         return image_projection
 
@@ -157,6 +155,8 @@ class FluxTransformer2DLoadersMixin:
                     load_model_dict_into_meta(attn_procs[name], value_dict, device_map=device_map, dtype=dtype)
 
                 key_id += 1
+
+        empty_device_cache()
 
         return attn_procs
 
