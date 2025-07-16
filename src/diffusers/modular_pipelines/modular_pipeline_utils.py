@@ -93,7 +93,7 @@ class ComponentSpec:
     config: Optional[FrozenDict] = None
     # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
     repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
-    subfolder: Optional[str] = field(default=None, metadata={"loading": True})
+    subfolder: Optional[str] = field(default="", metadata={"loading": True})
     variant: Optional[str] = field(default=None, metadata={"loading": True})
     revision: Optional[str] = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
