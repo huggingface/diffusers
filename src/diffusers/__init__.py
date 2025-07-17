@@ -163,6 +163,7 @@ else:
         [
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
+            "AttentionBackendName",
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
@@ -238,6 +239,7 @@ else:
             "VQModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
+            "attention_backend",
         ]
     )
     _import_structure["modular_pipelines"].extend(
@@ -815,6 +817,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
+            AttentionBackendName,
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
@@ -889,6 +892,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            attention_backend,
         )
         from .modular_pipelines import (
             ComponentsManager,
