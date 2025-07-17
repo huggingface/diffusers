@@ -46,7 +46,10 @@ class DiTPipeline(DiffusionPipeline):
 
     Parameters:
         transformer ([`DiTTransformer2DModel`]):
-            A class conditioned `DiTTransformer2DModel` to denoise the encoded image latents.
+            A class conditioned `DiTTransformer2DModel` to denoise the encoded image latents. It was initially
+            published as `Transformer2DModel` which is why [the
+            configuration](https://huggingface.co/facebook/DiT-XL-2-256/blob/main/transformer/config.json#L2) still
+            shows the class name as `Transformer2DModel`. This mismatch can be safely ignored.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         scheduler ([`DDIMScheduler`]):
