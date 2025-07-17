@@ -12,11 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # SequentialPipelineBlocks
 
-[`SequentialPipelineBlocks`] are a multi-block type that composes other [`PipelineBlocks`] together in a sequence. Data flows linearly from one block to the next using `intermediate_inputs` and `intermediate_outputs`. Each block in [`SequentialPipelineBlocks`] usually represents a step in the pipeline, and by combining them, you gradually build a pipeline.
+[`~modular_pipelines.SequentialPipelineBlocks`] are a multi-block type that composes other [`~modular_pipelines.PipelineBlocks`] together in a sequence. Data flows linearly from one block to the next using `intermediate_inputs` and `intermediate_outputs`. Each block in [`~modular_pipelines.SequentialPipelineBlocks`] usually represents a step in the pipeline, and by combining them, you gradually build a pipeline.
 
-This guide shows you how to connect two blocks into a [`SequentialPipelineBlocks`].
+This guide shows you how to connect two blocks into a [`~modular_pipelines.SequentialPipelineBlocks`].
 
-Create two [`PipelineBlocks`]. The first block, `InputBlock`, outputs a `batch_size` value and the second block, `ImageEncoderBlock` uses `batch_size` as `intermediate_inputs`.
+Create two [`~modular_pipelines.PipelineBlocks`]. The first block, `InputBlock`, outputs a `batch_size` value and the second block, `ImageEncoderBlock` uses `batch_size` as `intermediate_inputs`.
 
 <hfoptions id="sequential">
 <hfoption id="InputBlock">
@@ -101,7 +101,7 @@ class ImageEncoderBlock(PipelineBlock):
 
 Connect the two blocks by defining an [`InsertableDict`] to map the block names to the block instances. Blocks are executed in the order they're registered in `blocks_dict`.
 
-Use [`~SequentialPipelineBlocks.from_blocks_dict`] to create a [`SequentialPipelineBlocks`].
+Use [`~modular_pipelines.SequentialPipelineBlocks.from_blocks_dict`] to create a [`~modular_pipelines.SequentialPipelineBlocks`].
 
 ```py
 from diffusers.modular_pipelines import SequentialPipelineBlocks, InsertableDict
@@ -113,7 +113,7 @@ blocks_dict["image_encoder"] = image_encoder_block
 blocks = SequentialPipelineBlocks.from_blocks_dict(blocks_dict)
 ```
 
-Inspect the sub-blocks in [`SequentialPipelineBlocks`] by calling `blocks`, and for more details about the inputs and outputs, access the `docs` attribute.
+Inspect the sub-blocks in [`~modular_pipelines.SequentialPipelineBlocks`] by calling `blocks`, and for more details about the inputs and outputs, access the `docs` attribute.
 
 ```py
 print(blocks)
