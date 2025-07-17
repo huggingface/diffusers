@@ -323,6 +323,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     """
 
     config_name = "config.json"
+    model_name = None
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -332,6 +333,14 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         expected_modules = set(required_parameters.keys()) - {"self"}
 
         return expected_modules, optional_parameters
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return []
+
+    @property
+    def expected_configs(self) -> List[ConfigSpec]:
+        return []
 
     @classmethod
     def from_pretrained(
@@ -386,39 +395,10 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
         full_mod = type(self).__module__
         module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
-        parent_module = self.__class__.__bases__[0].__name__
+        parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]
         auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
 
         self.register_to_config(auto_map=auto_map)
-
-        _component_specs = {spec.name: deepcopy(spec) for spec in self.expected_components}
-        _config_specs = {spec.name: deepcopy(spec) for spec in self.expected_configs}
-
-        register_components_dict = {}
-        for name, component_spec in _component_specs.items():
-            if component_spec.type_hint is not None:
-                lib_name, cls_name = _fetch_class_library_tuple(component_spec.type_hint)
-            else:
-                lib_name = cls_name = None
-            load_spec_dict = {k: getattr(component_spec, k) for k in component_spec.loading_fields()}
-
-            # Since ModularPipelineBlocks can never have loaded components we set
-            # first two fields in the config dict to None
-            register_components_dict[name] = (
-                None,
-                None,
-                {
-                    "type_hint": (lib_name, cls_name),
-                    **load_spec_dict,
-                },
-            )
-        self.register_to_config(**register_components_dict)
-
-        default_configs = {}
-        for name, config_spec in _config_specs.items():
-            default_configs[name] = config_spec.default
-        self.register_to_config(**default_configs)
-
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
         config = dict(self.config)
         self._internal_dict = FrozenDict(config)
