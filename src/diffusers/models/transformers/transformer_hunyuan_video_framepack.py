@@ -312,7 +312,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         if self.enable_teacache:
             hidden_states_ = hidden_states.clone()
             temb_ = temb.clone()
-            modulated_hidden_states = self.transformer_blocks[0].norm1(hidden_states_, emb=temb_)[0]
+            modulated_inp = self.transformer_blocks[0].norm1(hidden_states_, emb=temb_)[0]
             
             if self.cnt == 0 or self.cnt == self.num_steps-1:
                 should_calc = True
@@ -338,7 +338,7 @@ class HunyuanVideoFramepackTransformer3DModel(
                 self.cnt = 0
 
             if not should_calc:
-                hidden_states += self.previous_residual
+                    hidden_states += self.previous_residual
             else:
                 ori_hidden_states = hidden_states.clone()
                 
