@@ -1878,6 +1878,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         if pretrained_model_name_or_path is not None:
             try:
                 config_dict = self.load_config(pretrained_model_name_or_path, **kwargs)
+            except EnvironmentError as e:
+                logger.debug(f"modular_model_index.json not found: {e}")
+                config_dict = None
+
+            if config_dict is not None:
                 for name, value in config_dict.items():
                     # all the components in modular_model_index.json are from_pretrained components
                     if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 3:
@@ -1889,12 +1894,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     elif name in self._config_specs:
                         self._config_specs[name].default = value
 
-            except EnvironmentError as e:
-                logger.debug(e)
-                logger.debug(" modular_model_index.json not found in the repo, trying to load from model_index.json")
+            else:
+                logger.debug(" loading config from model_index.json")
                 from diffusers import DiffusionPipeline
 
-                config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path)
+                config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path, **kwargs)
                 for name, value in config_dict.items():
                     if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 2:
                         library, class_name = value
@@ -2094,10 +2098,23 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         try:
             config_dict = cls.load_config(pretrained_model_name_or_path, **load_config_kwargs)
+        except EnvironmentError as e:
+            logger.debug(f" modular_model_index.json not found in the repo: {e}")
+            config_dict = None
+
+        if config_dict is not None:
             pipeline_class = _get_pipeline_class(cls, config=config_dict)
-        except EnvironmentError:
-            pipeline_class = cls
-            pretrained_model_name_or_path = None
+        else:
+            logger.debug(" determining the modular pipeline class from model_index.json")
+            from diffusers import DiffusionPipeline
+            from diffusers.pipelines.auto_pipeline import _get_model
+
+            config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path, **load_config_kwargs)
+            standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
+            model_name = _get_model(standard_pipeline_class.__name__)
+            pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(model_name, ModularPipeline.__name__)
+            diffusers_module = importlib.import_module("diffusers")
+            pipeline_class = getattr(diffusers_module, pipeline_class_name)
 
         pipeline = pipeline_class(
             blocks=blocks,
