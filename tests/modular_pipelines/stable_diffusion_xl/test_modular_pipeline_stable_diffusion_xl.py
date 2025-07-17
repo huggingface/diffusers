@@ -40,12 +40,6 @@ from diffusers.utils.testing_utils import (
 from ...models.unets.test_models_unet_2d_condition import (
     create_ip_adapter_state_dict,
 )
-from ..pipeline_params import (
-    IMAGE_INPAINTING_BATCH_PARAMS,
-    IMAGE_INPAINTING_PARAMS,
-    TEXT_TO_IMAGE_BATCH_PARAMS,
-    TEXT_TO_IMAGE_PARAMS,
-)
 from ..test_modular_pipelines_common import (
     ModularPipelineTesterMixin,
 )
@@ -62,12 +56,18 @@ class SDXLModularTests:
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     repo = "hf-internal-testing/tiny-sdxl-modular"
-    params = (TEXT_TO_IMAGE_PARAMS | IMAGE_INPAINTING_PARAMS) - {
-        "guidance_scale",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-    }
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS | IMAGE_INPAINTING_BATCH_PARAMS
+    params = frozenset(
+        [
+            "prompt",
+            "height",
+            "width",
+            "negative_prompt",
+            "cross_attention_kwargs",
+            "image",
+            "mask_image",
+        ]
+    )
+    batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
         pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
@@ -99,9 +99,9 @@ class SDXLModularTests:
 
         assert image.shape == expected_image_shape
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < expected_max_diff, (
-            f"image_slice: {image_slice.flatten()}, expected_slice: {expected_slice}"
-        )
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < expected_max_diff
+        ), f"Image Slice does not match expected slice"
 
 
 class SDXLModularIPAdapterTests:

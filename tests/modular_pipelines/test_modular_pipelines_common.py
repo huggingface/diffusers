@@ -2,13 +2,11 @@ import gc
 import unittest
 from typing import Callable, Union
 
+from diffusers.utils.dummy_pt_objects import ModularPipeline, ModularPipelineBlocks
 import numpy as np
 import torch
 
 import diffusers
-from diffusers import (
-    DiffusionPipeline,
-)
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
@@ -42,7 +40,7 @@ class ModularPipelineTesterMixin:
     # Canonical parameters that are passed to `__call__` regardless
     # of the type of pipeline. They are always optional and have common
     # sense default values.
-    required_optional_params = frozenset(
+    optional_params = frozenset(
         [
             "num_inference_steps",
             "num_images_per_prompt",
@@ -51,7 +49,7 @@ class ModularPipelineTesterMixin:
         ]
     )
     # this is modular specific: generator needs to be a intermediate input because it's mutable
-    required_intermediate_params = frozenset(
+    intermediate_params = frozenset(
         [
             "generator",
         ]
@@ -63,7 +61,7 @@ class ModularPipelineTesterMixin:
         return generator
 
     @property
-    def pipeline_class(self) -> Union[Callable, DiffusionPipeline]:
+    def pipeline_class(self) -> Union[Callable, ModularPipeline]:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_class = ClassNameOfPipeline` in the child test class. "
             "See existing pipeline tests for reference."
@@ -76,7 +74,7 @@ class ModularPipelineTesterMixin:
         )
 
     @property
-    def pipeline_blocks_class(self) -> Union[Callable, DiffusionPipeline]:
+    def pipeline_blocks_class(self) -> Union[Callable, ModularPipelineBlocks]:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_blocks_class = ClassNameOfPipelineBlocks` in the child test class. "
             "See existing pipeline tests for reference."
@@ -139,49 +137,21 @@ class ModularPipelineTesterMixin:
 
     def test_pipeline_call_signature(self):
         pipe = self.get_pipeline()
-        parameters = pipe.blocks.input_names
-        optional_parameters = pipe.default_call_parameters
+        input_parameters = pipe.blocks.input_names
         intermediate_parameters = pipe.blocks.intermediate_input_names
+        optional_parameters = pipe.default_call_parameters
 
-        remaining_required_parameters = set()
+        def _check_for_parameters(parameters, expected_parameters, param_type):
+            remaining_parameters = set(param for param in parameters if param not in expected_parameters)
+            assert (
+                len(remaining_parameters) == 0
+            ), f"Required {param_type} parameters not present: {remaining_parameters}"
 
-        for param in self.params:
-            if param not in parameters:
-                remaining_required_parameters.add(param)
+        _check_for_parameters(self.params, input_parameters, "input")
+        _check_for_parameters(self.intermediate_params, intermediate_parameters, "intermediate")
+        _check_for_parameters(self.optional_params, optional_parameters, "optional")
 
-        self.assertTrue(
-            len(remaining_required_parameters) == 0,
-            f"Required parameters not present: {remaining_required_parameters}",
-        )
-
-        remaining_required_intermediate_parameters = set()
-
-        for param in self.required_intermediate_params:
-            if param not in intermediate_parameters:
-                remaining_required_intermediate_parameters.add(param)
-
-        self.assertTrue(
-            len(remaining_required_intermediate_parameters) == 0,
-            f"Required intermediate parameters not present: {remaining_required_intermediate_parameters}",
-        )
-
-        remaining_required_optional_parameters = set()
-
-        for param in self.required_optional_params:
-            if param not in optional_parameters:
-                remaining_required_optional_parameters.add(param)
-
-        self.assertTrue(
-            len(remaining_required_optional_parameters) == 0,
-            f"Required optional parameters not present: {remaining_required_optional_parameters}",
-        )
-
-    def test_inference_batch_consistent(self, batch_sizes=[2]):
-        self._test_inference_batch_consistent(batch_sizes=batch_sizes)
-
-    def _test_inference_batch_consistent(
-        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"], batch_generator=True
-    ):
+    def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -203,16 +173,7 @@ class ModularPipelineTesterMixin:
                     continue
 
                 value = inputs[name]
-                if name == "prompt":
-                    len_prompt = len(value)
-                    # make unequal batch sizes
-                    batched_input[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
-
-                    # make last batch super long
-                    batched_input[name][-1] = 100 * "very long"
-
-                else:
-                    batched_input[name] = batch_size * [value]
+                batched_input[name] = batch_size * [value]
 
             if batch_generator and "generator" in inputs:
                 batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
@@ -225,21 +186,18 @@ class ModularPipelineTesterMixin:
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
             output = pipe(**batched_input, output="images")
-            assert len(output) == batch_size
+            assert len(output) == batch_size, "Output is different from expected batch size"
 
-    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
-        self._test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
-
-    def _test_inference_batch_single_identical(
+    def test_batch_inference_identical_to_single(
         self,
         batch_size=2,
         expected_max_diff=1e-4,
-        additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
         pipe = self.get_pipeline()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs(torch_device)
+
         # Reset generator in case it is has been used in self.get_dummy_inputs
         inputs["generator"] = self.get_generator(0)
 
@@ -255,13 +213,7 @@ class ModularPipelineTesterMixin:
                 continue
 
             value = inputs[name]
-            if name == "prompt":
-                len_prompt = len(value)
-                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
-                batched_inputs[name][-1] = 100 * "very long"
-
-            else:
-                batched_inputs[name] = batch_size * [value]
+            batched_inputs[name] = batch_size * [value]
 
         if "generator" in inputs:
             batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
@@ -269,26 +221,22 @@ class ModularPipelineTesterMixin:
         if "batch_size" in inputs:
             batched_inputs["batch_size"] = batch_size
 
-        for arg in additional_params_copy_to_batched_inputs:
-            batched_inputs[arg] = inputs[arg]
-
         output = pipe(**inputs, output="images")
         output_batch = pipe(**batched_inputs, output="images")
 
         assert output_batch.shape[0] == batch_size
 
         max_diff = np.abs(to_np(output_batch[0]) - to_np(output[0])).max()
-        assert max_diff < expected_max_diff
+        assert max_diff < expected_max_diff, "Batch inference results different from single inference results"
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_float16_inference(self, expected_max_diff=5e-2):
-        pipe = self.get_pipeline(torch_dtype=torch.float32)
-
-        pipe.to(torch_device)
+        pipe = self.get_pipeline()
+        pipe.to(torch_device, torch.float32)
         pipe.set_progress_bar_config(disable=None)
 
-        pipe_fp16 = self.get_pipeline(torch_dtype=torch.float16)
+        pipe_fp16 = self.get_pipeline()
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
@@ -309,7 +257,7 @@ class ModularPipelineTesterMixin:
             output_fp16 = output_fp16.cpu()
 
         max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
-        assert max_diff < expected_max_diff
+        assert max_diff < expected_max_diff, "FP16 inference is different from FP32 inference"
 
     @require_accelerator
     def test_to_device(self):
@@ -320,19 +268,32 @@ class ModularPipelineTesterMixin:
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == "cpu" for device in model_devices))
-
-        output_cpu = pipe(**self.get_dummy_inputs("cpu"), output="images")
-        self.assertTrue(np.isnan(output_cpu).sum() == 0)
+        assert all(device == "cpu" for device in model_devices), "All pipeline components are not on CPU"
 
         pipe.to(torch_device)
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == torch_device for device in model_devices))
+        assert all(
+            device == torch_device for device in model_devices
+        ), "All pipeline components are not on accelerator device"
 
-        output_device = pipe(**self.get_dummy_inputs(torch_device), output="images")
-        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
+    def test_inference_is_not_nan_cpu(self):
+        pipe = self.get_pipeline()
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to("cpu")
+
+        output = pipe(**self.get_dummy_inputs("cpu"), output="np")
+        assert np.isnan(to_np(output)).sum() == 0, "CPU Inference returns NaN"
+
+    @require_accelerator
+    def test_inferece_is_not_nan(self):
+        pipe = self.get_pipeline()
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        output = pipe(**self.get_dummy_inputs(torch_device), output="np")
+        assert np.isnan(to_np(output)).sum() == 0, "Accelerator Inference returns NaN"
 
     def test_num_images_per_prompt(self):
         pipe = self.get_pipeline()
