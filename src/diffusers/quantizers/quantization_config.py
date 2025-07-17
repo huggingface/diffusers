@@ -46,6 +46,7 @@ class QuantizationMethod(str, Enum):
     GGUF = "gguf"
     TORCHAO = "torchao"
     QUANTO = "quanto"
+    SVDQUANT = "svdquant"
 
 
 if is_torchao_available():
@@ -724,3 +725,12 @@ class QuantoConfig(QuantizationConfigMixin):
         accepted_weights = ["float8", "int8", "int4", "int2"]
         if self.weights_dtype not in accepted_weights:
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
+
+@dataclass
+class SVDQuantConfig(QuantizationConfigMixin):
+    """Config for SVDQuant models. This is a placeholder for loading pre-quantized nunchaku models."""
+
+    def __init__(self, **kwargs):
+        self.quant_method = QuantizationMethod.SVDQUANT
+        for key, value in kwargs.items():
+            setattr(self, key, value)
