@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, 
 
 import torch
 import torch.distributed._functional_collectives as funcol
-import torch.distributed.tensor
 
 from ..utils import (
     get_logger,
