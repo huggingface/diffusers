@@ -86,9 +86,7 @@ class FluxTransformer2DLoadersMixin:
         return image_projection
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
-        from ..models.attention_processor import (
-            FluxIPAdapterJointAttnProcessor2_0,
-        )
+        from ..models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 
         if low_cpu_mem_usage:
             if is_accelerate_available():
@@ -120,7 +118,7 @@ class FluxTransformer2DLoadersMixin:
             else:
                 cross_attention_dim = self.config.joint_attention_dim
                 hidden_size = self.inner_dim
-                attn_processor_class = FluxIPAdapterJointAttnProcessor2_0
+                attn_processor_class = FluxIPAdapterAttnProcessor
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
                     if "proj.weight" in state_dict["image_proj"]:
