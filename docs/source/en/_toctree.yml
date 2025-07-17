@@ -9,7 +9,7 @@
   - local: stable_diffusion
     title: Effective and efficient diffusion
 
-- title: Pipeline
+- title: DiffusionPipeline
   isExpanded: false
   sections:
   - local: using-diffusers/loading
@@ -68,6 +68,7 @@
     title: Controlling image quality
 
 - title: Inference optimization
+  isExpanded: false
   sections:
   - local: optimization/fp16
     title: Accelerate inference
@@ -77,22 +78,25 @@
     title: Reduce memory usage
   - local: optimization/speed-memory-optims
     title: Compile and offloading quantized models
-  - local: optimization/pruna
-    title: Pruna
-  - local: optimization/xformers
-    title: xFormers
-  - local: optimization/tome
-    title: Token merging
-  - local: optimization/deepcache
-    title: DeepCache
-  - local: optimization/tgate
-    title: TGATE
-  - local: optimization/xdit
-    title: xDiT
-  - local: optimization/para_attn
-    title: ParaAttention
+  - title: Community optimizations
+    sections:
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xformers
+      title: xFormers
+    - local: optimization/tome
+      title: Token merging
+    - local: optimization/deepcache
+      title: DeepCache
+    - local: optimization/tgate
+      title: TGATE
+    - local: optimization/xdit
+      title: xDiT
+    - local: optimization/para_attn
+      title: ParaAttention
 
 - title: Hybrid Inference
+  isExpanded: false
   sections:
   - local: hybrid_inference/overview
     title: Overview
