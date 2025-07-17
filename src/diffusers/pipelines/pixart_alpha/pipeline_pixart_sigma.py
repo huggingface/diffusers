@@ -200,10 +200,9 @@ class PixArtSigmaPipeline(DiffusionPipeline):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
         transformer ([`PixArtTransformer2DModel`]):
-            A text conditioned `PixArtTransformer2DModel` to denoise the encoded image latents. It was initially
-            published as `Transformer2DModel` which is why [the configuration
-            still](https://huggingface.co/PixArt-alpha/PixArt-Sigma-XL-2-1024-MS/blob/main/transformer/config.json#L2)
-            shows the class name as `Transformer2DModel`. This mismatch can be safely ignored.
+            A text conditioned `PixArtTransformer2DModel` to denoise the encoded image latents. Initially published as
+            [`Transformer2DModel`](https://huggingface.co/PixArt-alpha/PixArt-Sigma-XL-2-1024-MS/blob/main/transformer/config.json#L2)
+            in the config, but the mismatch can be ignored.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
