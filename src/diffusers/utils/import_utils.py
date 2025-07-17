@@ -562,7 +562,8 @@ NLTK_IMPORT_ERROR = """
 """
 
 NUNCHAKU_IMPORT_ERROR = """
-{0} requires the nunchaku library but it was not found in your environment. You can install it with pip: `pip install nunchaku`
+{0} requires the nunchaku library but it was not found in your environment. You can install it with pip: `pip install
+nunchaku`
 """
 
 

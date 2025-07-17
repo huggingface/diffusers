@@ -258,16 +258,12 @@ class FromOriginalModelMixin:
                 from nunchaku import NunchakuFluxTransformer2dModel
 
                 kwargs.pop("quantization_config", None)
-                return NunchakuFluxTransformer2dModel.from_pretrained(
-                    pretrained_model_link_or_path_or_dict, **kwargs
-                )
+                return NunchakuFluxTransformer2dModel.from_pretrained(pretrained_model_link_or_path_or_dict, **kwargs)
             elif "SanaTransformer2DModel" in cls.__name__:
                 from nunchaku import NunchakuSanaTransformer2DModel
 
                 kwargs.pop("quantization_config", None)
-                return NunchakuSanaTransformer2DModel.from_pretrained(
-                    pretrained_model_link_or_path_or_dict, **kwargs
-                )
+                return NunchakuSanaTransformer2DModel.from_pretrained(pretrained_model_link_or_path_or_dict, **kwargs)
             else:
                 raise NotImplementedError(f"SVDQuant loading is not implemented for {cls.__name__}")
 

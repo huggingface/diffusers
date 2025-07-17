@@ -726,6 +726,7 @@ class QuantoConfig(QuantizationConfigMixin):
         if self.weights_dtype not in accepted_weights:
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
 
+
 @dataclass
 class SVDQuantConfig(QuantizationConfigMixin):
     """Config for SVDQuant models. This is a placeholder for loading pre-quantized nunchaku models."""
