@@ -360,7 +360,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
-        hub_kwargs.update({"trust_remote_code": trust_remote_code})
 
         config = cls.load_config(pretrained_model_name_or_path)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
