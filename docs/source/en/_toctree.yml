@@ -355,6 +355,8 @@
         title: SanaTransformer2DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
+      - local: api/models/skyreels_v2_transformer_3d
+        title: SkyReelsV2Transformer3DModel
       - local: api/models/stable_audio_transformer
         title: StableAudioDiTModel
       - local: api/models/transformer2d
@@ -553,6 +555,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/skyreels_v2
+      title: SkyReels-V2
     - local: api/pipelines/stable_audio
       title: Stable Audio
     - local: api/pipelines/stable_cascade
