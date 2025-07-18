@@ -41,6 +41,11 @@ Learn how to quantize models in the [Quantization](../quantization/overview) gui
 
 [[autodoc]] TorchAoConfig
 
+## FinegrainedFP8Config
+
+[[autodoc]] FinegrainedFP8Config
+
 ## DiffusersQuantizer
 
 [[autodoc]] quantizers.base.DiffusersQuantizer
+
