@@ -78,12 +78,14 @@ if is_torch_available():
             "Lumina2LoraLoaderMixin",
             "WanLoraLoaderMixin",
             "HiDreamImageLoraLoaderMixin",
+            "SkyReelsV2LoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
             "IPAdapterMixin",
             "FluxIPAdapterMixin",
             "SD3IPAdapterMixin",
+            "ModularIPAdapterMixin",
         ]
 
 _import_structure["peft"] = ["PeftAdapterMixin"]
@@ -101,6 +103,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .ip_adapter import (
                 FluxIPAdapterMixin,
                 IPAdapterMixin,
+                ModularIPAdapterMixin,
                 SD3IPAdapterMixin,
             )
             from .lora_pipeline import (
@@ -117,6 +120,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 Mochi1LoraLoaderMixin,
                 SanaLoraLoaderMixin,
                 SD3LoraLoaderMixin,
+                SkyReelsV2LoraLoaderMixin,
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
                 WanLoraLoaderMixin,

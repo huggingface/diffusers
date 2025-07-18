@@ -16,9 +16,10 @@
 
 import importlib
 import inspect
+import math
 import os
 from array import array
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from zipfile import is_zipfile
@@ -38,6 +39,7 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_accelerate_version,
     is_gguf_available,
     is_torch_available,
     is_torch_version,
@@ -251,6 +253,10 @@ def load_model_dict_into_meta(
             else:
                 param = param.to(dtype)
                 set_module_kwargs["dtype"] = dtype
+
+        if is_accelerate_version(">", "1.8.1"):
+            set_module_kwargs["non_blocking"] = True
+            set_module_kwargs["clear_cache"] = False
 
         # For compatibility with PyTorch load_state_dict which converts state dict dtype to existing dtype in model, and which
         # uses `param.copy_(input_param)` that preserves the contiguity of the parameter in the model.
@@ -520,3 +526,60 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
 
     return parsed_parameters
+
+
+def _find_mismatched_keys(state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes):
+    mismatched_keys = []
+    if not ignore_mismatched_sizes:
+        return mismatched_keys
+    for checkpoint_key in loaded_keys:
+        model_key = checkpoint_key
+        # If the checkpoint is sharded, we may not have the key here.
+        if checkpoint_key not in state_dict:
+            continue
+
+        if model_key in model_state_dict and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape:
+            mismatched_keys.append(
+                (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
+            )
+            del state_dict[checkpoint_key]
+    return mismatched_keys
+
+
+def _expand_device_map(device_map, param_names):
+    """
+    Expand a device map to return the correspondence parameter name to device.
+    """
+    new_device_map = {}
+    for module, device in device_map.items():
+        new_device_map.update(
+            {p: device for p in param_names if p == module or p.startswith(f"{module}.") or module == ""}
+        )
+    return new_device_map
+
+
+# Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
+def _caching_allocator_warmup(model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype) -> None:
+    """
+    This function warm-ups the caching allocator based on the size of the model tensors that will reside on each
+    device. It allows to have one large call to Malloc, instead of recursively calling it later when loading the model,
+    which is actually the loading speed bottleneck. Calling this function allows to cut the model loading time by a
+    very large margin.
+    """
+    # Remove disk and cpu devices, and cast to proper torch.device
+    accelerator_device_map = {
+        param: torch.device(device)
+        for param, device in expanded_device_map.items()
+        if str(device) not in ["cpu", "disk"]
+    }
+    parameter_count = defaultdict(lambda: 0)
+    for param_name, device in accelerator_device_map.items():
+        try:
+            param = model.get_parameter(param_name)
+        except AttributeError:
+            param = model.get_buffer(param_name)
+        parameter_count[device] += math.prod(param.shape)
+
+    # This will kick off the caching allocator to avoid having to Malloc afterwards
+    for device, param_count in parameter_count.items():
+        _ = torch.empty(param_count, dtype=dtype, device=device, requires_grad=False)

@@ -94,6 +94,26 @@
     title: API Reference
   title: Hybrid Inference
 - sections:
+  - local: modular_diffusers/overview
+    title: Overview
+  - local: modular_diffusers/modular_pipeline
+    title: Modular Pipeline
+  - local: modular_diffusers/components_manager
+    title: Components Manager
+  - local: modular_diffusers/modular_diffusers_states
+    title: Modular Diffusers States
+  - local: modular_diffusers/pipeline_block
+    title: Pipeline Block
+  - local: modular_diffusers/sequential_pipeline_blocks
+    title: Sequential Pipeline Blocks
+  - local: modular_diffusers/loop_sequential_pipeline_blocks
+    title: Loop Sequential Pipeline Blocks
+  - local: modular_diffusers/auto_pipeline_blocks
+    title: Auto Pipeline Blocks
+  - local: modular_diffusers/end_to_end_guide
+    title: End-to-End Example
+  title: Modular Diffusers
+- sections:
   - local: using-diffusers/consisid
     title: ConsisID
   - local: using-diffusers/sdxl
@@ -333,6 +353,8 @@
         title: SanaTransformer2DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
+      - local: api/models/skyreels_v2_transformer_3d
+        title: SkyReelsV2Transformer3DModel
       - local: api/models/stable_audio_transformer
         title: StableAudioDiTModel
       - local: api/models/transformer2d
@@ -527,6 +549,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/skyreels_v2
+      title: SkyReels-V2
     - local: api/pipelines/stable_audio
       title: Stable Audio
     - local: api/pipelines/stable_cascade
