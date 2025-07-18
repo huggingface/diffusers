@@ -132,6 +132,7 @@ class WanPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        print("txt2video:", [round(x, 4) for x in generated_slice.tolist()])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
     @unittest.skip("Test not supported")
