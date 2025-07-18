@@ -62,7 +62,7 @@ from ..utils.hub_utils import (
     load_or_create_model_card,
     populate_model_card,
 )
-from ..utils.torch_utils import device_synchronize, empty_device_cache
+from ..utils.torch_utils import empty_device_cache
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,
@@ -172,7 +172,11 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
 
     for name, param in parameter.named_parameters():
         last_dtype = param.dtype
-        if parameter._keep_in_fp32_modules and any(m in name for m in parameter._keep_in_fp32_modules):
+        if (
+            hasattr(parameter, "_keep_in_fp32_modules")
+            and parameter._keep_in_fp32_modules
+            and any(m in name for m in parameter._keep_in_fp32_modules)
+        ):
             continue
 
         if param.is_floating_point():
@@ -605,6 +609,56 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             low_cpu_mem_usage=low_cpu_mem_usage,
             offload_to_disk_path=offload_to_disk_path,
         )
+
+    def set_attention_backend(self, backend: str) -> None:
+        """
+        Set the attention backend for the model.
+
+        Args:
+            backend (`str`):
+                The name of the backend to set. Must be one of the available backends defined in
+                `AttentionBackendName`. Available backends can be found in
+                `diffusers.attention_dispatch.AttentionBackendName`. Defaults to torch native scaled dot product
+                attention as backend.
+        """
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName
+
+        # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
+        from .attention_processor import Attention, MochiAttention
+
+        backend = backend.lower()
+        available_backends = {x.value for x in AttentionBackendName.__members__.values()}
+        if backend not in available_backends:
+            raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
+
+        backend = AttentionBackendName(backend)
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+            processor._attention_backend = backend
+
+    def reset_attention_backend(self) -> None:
+        """
+        Resets the attention backend for the model. Following calls to `forward` will use the environment default or
+        the torch native scaled dot product attention.
+        """
+        from .attention import AttentionModuleMixin
+        from .attention_processor import Attention, MochiAttention
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+            processor._attention_backend = None
 
     def save_pretrained(
         self,
@@ -1540,10 +1594,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
                 error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
 
-        # Ensure tensors are correctly placed on device by synchronizing before returning control to user. This is
-        # required because we move tensors with non_blocking=True, which is slightly faster for model loading.
         empty_device_cache()
-        device_synchronize()
 
         if offload_index is not None and len(offload_index) > 0:
             save_offload_index(offload_index, offload_folder)
@@ -1880,4 +1931,9 @@ class LegacyModelMixin(ModelMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
+        if remapped_class is cls:
+            return super(LegacyModelMixin, remapped_class).from_pretrained(
+                pretrained_model_name_or_path, **kwargs_copy
+            )
+        else:
+            return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
