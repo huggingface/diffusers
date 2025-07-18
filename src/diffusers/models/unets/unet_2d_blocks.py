@@ -2557,8 +2557,6 @@ class UpBlock2D(nn.Module):
                     b1=self.b1,
                     b2=self.b2,
                 )
-            if hidden_states.device != res_hidden_states.device:
-                res_hidden_states = res_hidden_states.to(hidden_states.device)
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:

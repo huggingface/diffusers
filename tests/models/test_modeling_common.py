@@ -1828,8 +1828,8 @@ class ModelTesterMixin:
 
         assert msg_substring in str(err_ctx.exception)
 
-    @parameterized.expand([0, "cuda", torch.device("cuda")])
-    @require_torch_gpu
+    @parameterized.expand([0, torch_device, torch.device(torch_device)])
+    @require_torch_accelerator
     def test_passing_non_dict_device_map_works(self, device_map):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).eval()
@@ -1838,8 +1838,8 @@ class ModelTesterMixin:
             loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
             _ = loaded_model(**inputs_dict)
 
-    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
-    @require_torch_gpu
+    @parameterized.expand([("", torch_device), ("", torch.device(torch_device))])
+    @require_torch_accelerator
     def test_passing_dict_device_map_works(self, name, device):
         # There are other valid dict-based `device_map` values too. It's best to refer to
         # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
