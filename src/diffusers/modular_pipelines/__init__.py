@@ -40,6 +40,7 @@ else:
         "InsertableDict",
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
+    _import_structure["wan"] = ["WanAutoBlocks", "WanModularPipeline"]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -71,6 +72,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
         )
+        from .wan import WanAutoBlocks, WanModularPipeline
 else:
     import sys
 
