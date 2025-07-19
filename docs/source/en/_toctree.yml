@@ -130,34 +130,10 @@
     title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: Components Manager
-  title: Modular Diffusers
-- sections:
-  - local: using-diffusers/consisid
-    title: ConsisID
-  - local: using-diffusers/sdxl
-    title: Stable Diffusion XL
-  - local: using-diffusers/sdxl_turbo
-    title: SDXL Turbo
-  - local: using-diffusers/kandinsky
-    title: Kandinsky
-  - local: using-diffusers/omnigen
-    title: OmniGen
-  - local: using-diffusers/pag
-    title: PAG
-  - local: using-diffusers/inference_with_lcm
-    title: Latent Consistency Model
-  - local: using-diffusers/shap-e
-    title: Shap-E
-  - local: using-diffusers/diffedit
-    title: DiffEdit
-  - local: using-diffusers/inference_with_tcd_lora
-    title: Trajectory Consistency Distillation-LoRA
-  - local: using-diffusers/svd
-    title: Stable Video Diffusion
-  - local: using-diffusers/marigold_usage
-    title: Marigold Computer Vision
-  title: Specific pipeline examples
-- sections:
+
+- title: Training
+  isExpanded: false
+  sections:
   - local: training/overview
     title: Overview
   - local: training/create_dataset
