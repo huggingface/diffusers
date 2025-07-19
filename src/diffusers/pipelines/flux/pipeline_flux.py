@@ -691,7 +691,11 @@ class FluxPipeline(
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
+                the text `prompt`, usually at the expense of lower image quality. In case of Flux, which is a guidance-
+                distilled model, `guidance_scale > 1` doesn't implement true classifier-free guidance. Specifying
+                `guidance_scale > 1` just mimics it. In case of Flux, which is a guidance- distilled model,
+                `guidance_scale > 1` doesn't implement true classifier-free guidance. Specifying `guidance_scale > 1`
+                just mimics it.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
