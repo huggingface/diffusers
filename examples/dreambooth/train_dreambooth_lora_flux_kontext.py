@@ -1614,7 +1614,7 @@ def main(args):
     )
     if args.cond_image_column is not None:
         logger.info("I2I fine-tuning enabled.")
-    batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=False)
+    batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=True)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_sampler=batch_sampler,
