@@ -27,9 +27,11 @@ from .quantization_config import (
     QuantizationConfigMixin,
     QuantizationMethod,
     QuantoConfig,
+    SVDQuantConfig,
     TorchAoConfig,
 )
 from .quanto import QuantoQuantizer
+from .svdquant import SVDQuantizer
 from .torchao import TorchAoHfQuantizer
 
 
@@ -39,6 +41,7 @@ AUTO_QUANTIZER_MAPPING = {
     "gguf": GGUFQuantizer,
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
+    "svdquant": SVDQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -47,6 +50,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "gguf": GGUFQuantizationConfig,
     "quanto": QuantoConfig,
     "torchao": TorchAoConfig,
+    "svdquant": SVDQuantConfig,
 }
 
 
