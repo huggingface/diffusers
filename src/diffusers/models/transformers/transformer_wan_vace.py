@@ -22,12 +22,17 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import FeedForward
-from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
-from .transformer_wan import WanAttnProcessor2_0, WanRotaryPosEmbed, WanTimeTextImageEmbedding, WanTransformerBlock
+from .transformer_wan import (
+    WanAttention,
+    WanAttnProcessor,
+    WanRotaryPosEmbed,
+    WanTimeTextImageEmbedding,
+    WanTransformerBlock,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -55,33 +60,22 @@ class WanVACETransformerBlock(nn.Module):
 
         # 2. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-        self.attn1 = Attention(
-            query_dim=dim,
+        self.attn1 = WanAttention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
-            processor=WanAttnProcessor2_0(),
+            processor=WanAttnProcessor(),
         )
 
         # 3. Cross-attention
-        self.attn2 = Attention(
-            query_dim=dim,
+        self.attn2 = WanAttention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
             added_kv_proj_dim=added_kv_proj_dim,
-            added_proj_bias=True,
-            processor=WanAttnProcessor2_0(),
+            processor=WanAttnProcessor(),
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
