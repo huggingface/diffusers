@@ -385,8 +385,9 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
             if group_offloading_hook is not None:
                 # For the first forward pass, we have to load in a blocking manner
                 group_offloading_hook.group.non_blocking = False
-                layer_tracker_hook = LayerExecutionTrackerHook(make_execution_order_update_callback(name, submodule))
-                registry.register_hook(layer_tracker_hook, _LAYER_EXECUTION_TRACKER)
+                if registry.get_hook(_LAYER_EXECUTION_TRACKER) is None:
+                    layer_tracker_hook = LayerExecutionTrackerHook(make_execution_order_update_callback(name, submodule))
+                    registry.register_hook(layer_tracker_hook, _LAYER_EXECUTION_TRACKER)
                 self._layer_execution_tracker_module_names.add(name)
 
         return module
