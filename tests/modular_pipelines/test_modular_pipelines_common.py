@@ -2,12 +2,12 @@ import gc
 import unittest
 from typing import Callable, Union
 
-from diffusers.utils.dummy_pt_objects import ModularPipeline, ModularPipelineBlocks
 import numpy as np
 import torch
 
 import diffusers
 from diffusers.utils import logging
+from diffusers.utils.dummy_pt_objects import ModularPipeline, ModularPipelineBlocks
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     numpy_cosine_similarity_distance,
@@ -142,7 +142,7 @@ class ModularPipelineTesterMixin:
         optional_parameters = pipe.default_call_parameters
 
         def _check_for_parameters(parameters, expected_parameters, param_type):
-            remaining_parameters = set(param for param in parameters if param not in expected_parameters)
+            remaining_parameters = {param for param in parameters if param not in expected_parameters}
             assert (
                 len(remaining_parameters) == 0
             ), f"Required {param_type} parameters not present: {remaining_parameters}"
@@ -188,7 +188,7 @@ class ModularPipelineTesterMixin:
             output = pipe(**batched_input, output="images")
             assert len(output) == batch_size, "Output is different from expected batch size"
 
-    def test_batch_inference_identical_to_single(
+    def test_inference_batch_single_identical(
         self,
         batch_size=2,
         expected_max_diff=1e-4,
@@ -283,16 +283,16 @@ class ModularPipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
         pipe.to("cpu")
 
-        output = pipe(**self.get_dummy_inputs("cpu"), output="np")
+        output = pipe(**self.get_dummy_inputs("cpu"), output="images")
         assert np.isnan(to_np(output)).sum() == 0, "CPU Inference returns NaN"
 
     @require_accelerator
-    def test_inferece_is_not_nan(self):
+    def test_inference_is_not_nan(self):
         pipe = self.get_pipeline()
         pipe.set_progress_bar_config(disable=None)
         pipe.to(torch_device)
 
-        output = pipe(**self.get_dummy_inputs(torch_device), output="np")
+        output = pipe(**self.get_dummy_inputs(torch_device), output="images")
         assert np.isnan(to_np(output)).sum() == 0, "Accelerator Inference returns NaN"
 
     def test_num_images_per_prompt(self):

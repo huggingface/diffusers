@@ -101,7 +101,7 @@ class SDXLModularTests:
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < expected_max_diff
-        ), f"Image Slice does not match expected slice"
+        ), "Image Slice does not match expected slice"
 
 
 class SDXLModularIPAdapterTests:
@@ -114,30 +114,20 @@ class SDXLModularIPAdapterTests:
         parameters = blocks.input_names
 
         assert issubclass(self.pipeline_class, ModularIPAdapterMixin)
-        self.assertIn(
-            "ip_adapter_image",
-            parameters,
-            "`ip_adapter_image` argument must be supported by the `__call__` method",
-        )
-        self.assertIn(
-            "ip_adapter",
-            blocks.sub_blocks,
-            "pipeline must contain an IPAdapter block",
-        )
+        assert (
+            "ip_adapter_image" in parameters
+        ), "`ip_adapter_image` argument must be supported by the `__call__` method"
+        assert "ip_adapter" in blocks.sub_blocks, "pipeline must contain an IPAdapter block"
 
         _ = blocks.sub_blocks.pop("ip_adapter")
         parameters = blocks.input_names
         intermediate_parameters = blocks.intermediate_input_names
-        self.assertNotIn(
-            "ip_adapter_image",
-            parameters,
-            "`ip_adapter_image` argument must be removed from the `__call__` method",
-        )
-        self.assertNotIn(
-            "ip_adapter_image_embeds",
-            intermediate_parameters,
-            "`ip_adapter_image_embeds` argument must be supported by the `__call__` method",
-        )
+        assert (
+            "ip_adapter_image" not in parameters
+        ), "`ip_adapter_image` argument must be removed from the `__call__` method"
+        assert (
+            "ip_adapter_image_embeds" not in intermediate_parameters
+        ), "`ip_adapter_image_embeds` argument must be supported by the `__call__` method"
 
     def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
         return torch.randn((1, 1, cross_attention_dim), device=torch_device)
@@ -213,14 +203,10 @@ class SDXLModularIPAdapterTests:
         max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
         max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
 
-        self.assertLess(
-            max_diff_without_adapter_scale,
-            expected_max_diff,
-            "Output without ip-adapter must be same as normal inference",
-        )
-        self.assertGreater(
-            max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
-        )
+        assert (
+            max_diff_without_adapter_scale < expected_max_diff
+        ), "Output without ip-adapter must be same as normal inference"
+        assert max_diff_with_adapter_scale > 1e-2, "Output with ip-adapter must be different from normal inference"
 
         # 2. Multi IP-Adapter test cases
         adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
@@ -249,16 +235,12 @@ class SDXLModularIPAdapterTests:
             output_without_multi_adapter_scale - output_without_adapter
         ).max()
         max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
-        self.assertLess(
-            max_diff_without_multi_adapter_scale,
-            expected_max_diff,
-            "Output without multi-ip-adapter must be same as normal inference",
-        )
-        self.assertGreater(
-            max_diff_with_multi_adapter_scale,
-            1e-2,
-            "Output with multi-ip-adapter scale must be different from normal inference",
-        )
+        assert (
+            max_diff_without_multi_adapter_scale < expected_max_diff
+        ), "Output without multi-ip-adapter must be same as normal inference"
+        assert (
+            max_diff_with_multi_adapter_scale > 1e-2
+        ), "Output with multi-ip-adapter scale must be different from normal inference"
 
 
 class SDXLModularControlNetTests:
@@ -270,16 +252,10 @@ class SDXLModularControlNetTests:
         blocks = self.pipeline_blocks_class()
         parameters = blocks.input_names
 
-        self.assertIn(
-            "control_image",
-            parameters,
-            "`control_image` argument must be supported by the `__call__` method",
-        )
-        self.assertIn(
-            "controlnet_conditioning_scale",
-            parameters,
-            "`controlnet_conditioning_scale` argument must be supported by the `__call__` method",
-        )
+        assert "control_image" in parameters, "`control_image` argument must be supported by the `__call__` method"
+        assert (
+            "controlnet_conditioning_scale" in parameters
+        ), "`controlnet_conditioning_scale` argument must be supported by the `__call__` method"
 
     def _modify_inputs_for_controlnet_test(self, inputs: Dict[str, Any]):
         controlnet_embedder_scale_factor = 2
@@ -325,14 +301,10 @@ class SDXLModularControlNetTests:
         max_diff_without_controlnet_scale = np.abs(output_without_controlnet_scale - output_without_controlnet).max()
         max_diff_with_controlnet_scale = np.abs(output_with_controlnet_scale - output_without_controlnet).max()
 
-        self.assertLess(
-            max_diff_without_controlnet_scale,
-            expected_max_diff,
-            "Output without controlnet must be same as normal inference",
-        )
-        self.assertGreater(
-            max_diff_with_controlnet_scale, 1e-2, "Output with controlnet must be different from normal inference"
-        )
+        assert (
+            max_diff_without_controlnet_scale < expected_max_diff
+        ), "Output without controlnet must be same as normal inference"
+        assert max_diff_with_controlnet_scale > 1e-2, "Output with controlnet must be different from normal inference"
 
     def test_controlnet_cfg(self):
         pipe = self.get_pipeline()
@@ -354,7 +326,7 @@ class SDXLModularControlNetTests:
 
         assert out_cfg.shape == out_no_cfg.shape
         max_diff = np.abs(out_cfg - out_no_cfg).max()
-        self.assertGreater(max_diff, 1e-2)
+        assert max_diff > 1e-2, "Output with CFG must be different from normal inference"
 
 
 class SDXLModularGuiderTests:
@@ -378,7 +350,7 @@ class SDXLModularGuiderTests:
 
         assert out_cfg.shape == out_no_cfg.shape
         max_diff = np.abs(out_cfg - out_no_cfg).max()
-        self.assertGreater(max_diff, 1e-2)
+        assert max_diff > 1e-2, "Output with CFG must be different from normal inference"
 
 
 class SDXLModularPipelineFastTests(
