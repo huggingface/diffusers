@@ -386,6 +386,7 @@ class ComponentsManager:
                  id(component) is Python's built-in unique identifier for the object
         """
         component_id = f"{name}_{id(component)}"
+        is_new_component = True
 
         # check for duplicated components
         for comp_id, comp in self.components.items():
@@ -394,6 +395,7 @@ class ComponentsManager:
                 if comp_name == name:
                     logger.warning(f"ComponentsManager: component '{name}' already exists as '{comp_id}'")
                     component_id = comp_id
+                    is_new_component = False
                     break
                 else:
                     logger.warning(
@@ -436,7 +438,7 @@ class ComponentsManager:
         else:
             logger.info(f"ComponentsManager: added component '{name}' as '{component_id}'")
 
-        if self._auto_offload_enabled:
+        if self._auto_offload_enabled and is_new_component:
             self.enable_auto_cpu_offload(self._auto_offload_device)
 
         return component_id
