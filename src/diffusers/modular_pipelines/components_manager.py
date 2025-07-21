@@ -426,12 +426,9 @@ class ComponentsManager:
                     logger.warning(
                         f"ComponentsManager: removing existing {name} from collection '{collection}': {comp_id}"
                     )
-                    # remove only from this collection
-                    self.collections[collection].remove(comp_id)
-                    comp_colls = [coll for coll, comps in self.collections.items() if comp_id in comps]
-                    if not comp_colls:  # only if no other collection contains this component, remove it
-                        logger.info(f"ComponentsManager: removing component '{comp_id}' from ComponentsManager")
-                        self.remove(comp_id)
+                    # remove existing component from this collection (if it is not in any other collection, will be removed from ComponentsManager)
+                    self.remove_from_collection(comp_id, collection)
+
                 self.collections[collection].add(component_id)
                 logger.info(
                     f"ComponentsManager: added component '{name}' in collection '{collection}': {component_id}"
@@ -443,6 +440,24 @@ class ComponentsManager:
             self.enable_auto_cpu_offload(self._auto_offload_device)
 
         return component_id
+
+    def remove_from_collection(self, component_id: str, collection: str):
+        """
+        Remove a component from a collection.
+        """
+        if collection not in self.collections:
+            logger.warning(f"Collection '{collection}' not found in ComponentsManager")
+            return
+        if component_id not in self.collections[collection]:
+            logger.warning(f"Component '{component_id}' not found in collection '{collection}'")
+            return
+        # remove from the collection
+        self.collections[collection].remove(component_id)
+        # check if this component is in any other collection
+        comp_colls = [coll for coll, comps in self.collections.items() if component_id in comps]
+        if not comp_colls:  # only if no other collection contains this component, remove it
+            logger.warning(f"ComponentsManager: removing component '{component_id}' from ComponentsManager")
+            self.remove(component_id)
 
     def remove(self, component_id: str = None):
         """
