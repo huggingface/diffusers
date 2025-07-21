@@ -22,7 +22,6 @@ from typing import Dict, List, Literal, Optional, Union
 import safetensors
 import torch
 
-from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
@@ -164,6 +163,8 @@ class PeftAdapterMixin:
         """
         from peft import inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
+
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -711,6 +712,7 @@ class PeftAdapterMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `unload_lora()`.")
 
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
         from ..utils import recurse_remove_peft_layers
 
         recurse_remove_peft_layers(self)

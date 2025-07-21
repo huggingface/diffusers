@@ -176,6 +176,7 @@ class ConfigMixin:
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+            subfolder = kwargs.pop("subfolder", None)
 
             self._upload_folder(
                 save_directory,
@@ -183,6 +184,7 @@ class ConfigMixin:
                 token=token,
                 commit_message=commit_message,
                 create_pr=create_pr,
+                subfolder=subfolder,
             )
 
     @classmethod
@@ -601,6 +603,10 @@ class ConfigMixin:
                 value = value.tolist()
             elif isinstance(value, Path):
                 value = value.as_posix()
+            elif hasattr(value, "to_dict") and callable(value.to_dict):
+                value = value.to_dict()
+            elif isinstance(value, list):
+                value = [to_json_saveable(v) for v in value]
             return value
 
         if "quantization_config" in config_dict:
@@ -757,4 +763,7 @@ class LegacyConfigMixin(ConfigMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_config(config, return_unused_kwargs, **kwargs)
+        if remapped_class is cls:
+            return super(LegacyConfigMixin, remapped_class).from_config(config, return_unused_kwargs, **kwargs)
+        else:
+            return remapped_class.from_config(config, return_unused_kwargs, **kwargs)

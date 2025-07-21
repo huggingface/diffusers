@@ -263,9 +263,19 @@ This reduces memory requirements significantly w/o a significant quality loss. N
 ## Training Kontext
 
 [Kontext](https://bfl.ai/announcements/flux-1-kontext) lets us perform image editing as well as image generation. Even though it can accept both image and text as inputs, one can use it for text-to-image (T2I) generation, too. We
-provide a simple script for LoRA fine-tuning Kontext in [train_dreambooth_lora_flux_kontext.py](./train_dreambooth_lora_flux_kontext.py) for T2I. The optimizations discussed above apply this script, too.
+provide a simple script for LoRA fine-tuning Kontext in [train_dreambooth_lora_flux_kontext.py](./train_dreambooth_lora_flux_kontext.py) for both T2I and I2I. The optimizations discussed above apply this script, too.
 
-Make sure to follow the [instructions to set up your environment](#running-locally-with-pytorch) before proceeding to the rest of the section.
+**important**
+
+> [!NOTE] 
+> To make sure you can successfully run the latest version of the kontext example script, we highly recommend installing from source, specifically from the commit mentioned below.
+> To do this, execute the following steps in a new virtual environment:
+> ```
+> git clone https://github.com/huggingface/diffusers
+> cd diffusers
+> git checkout 05e7a854d0a5661f5b433f6dd5954c224b104f0b
+> pip install -e .
+> ```
 
 Below is an example training command:
 
@@ -293,6 +303,42 @@ accelerate launch train_dreambooth_lora_flux_kontext.py \
 
 Fine-tuning Kontext on the T2I task can be useful when working with specific styles/subjects where it may not
 perform as expected.
+
+Image-guided fine-tuning (I2I) is also supported. To start, you must have a dataset containing triplets:
+
+* Condition image
+* Target image
+* Instruction
+
+[kontext-community/relighting](https://huggingface.co/datasets/kontext-community/relighting) is a good example of such a dataset. If you are using such a dataset, you can use the command below to launch training:
+
+```bash
+accelerate launch train_dreambooth_lora_flux_kontext.py \
+  --pretrained_model_name_or_path=black-forest-labs/FLUX.1-Kontext-dev  \
+  --output_dir="kontext-i2i" \
+  --dataset_name="kontext-community/relighting" \
+  --image_column="output" --cond_image_column="file_name" --caption_column="instruction" \
+  --mixed_precision="bf16" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --guidance_scale=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --optimizer="adamw" \
+  --use_8bit_adam \
+  --cache_latents \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=200 \
+  --max_train_steps=1000 \
+  --rank=16\
+  --seed="0" 
+```
+
+More generally, when performing I2I fine-tuning, we expect you to:
+
+* Have a dataset `kontext-community/relighting`
+* Supply `image_column`, `cond_image_column`, and `caption_column` values when launching training
 
 ### Misc notes
 

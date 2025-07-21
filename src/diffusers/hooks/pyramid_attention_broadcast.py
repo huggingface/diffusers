@@ -18,6 +18,7 @@ from typing import Any, Callable, Optional, Tuple, Union
 
 import torch
 
+from ..models.attention import AttentionModuleMixin
 from ..models.attention_processor import Attention, MochiAttention
 from ..utils import logging
 from .hooks import HookRegistry, ModelHook
@@ -227,7 +228,7 @@ def apply_pyramid_attention_broadcast(module: torch.nn.Module, config: PyramidAt
         config.spatial_attention_block_skip_range = 2
 
     for name, submodule in module.named_modules():
-        if not isinstance(submodule, _ATTENTION_CLASSES):
+        if not isinstance(submodule, (*_ATTENTION_CLASSES, AttentionModuleMixin)):
             # PAB has been implemented specific to Diffusers' Attention classes. However, this does not mean that PAB
             # cannot be applied to this layer. For custom layers, users can extend this functionality and implement
             # their own PAB logic similar to `_apply_pyramid_attention_broadcast_on_attention_class`.
