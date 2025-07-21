@@ -143,9 +143,9 @@ class ModularPipelineTesterMixin:
 
         def _check_for_parameters(parameters, expected_parameters, param_type):
             remaining_parameters = {param for param in parameters if param not in expected_parameters}
-            assert (
-                len(remaining_parameters) == 0
-            ), f"Required {param_type} parameters not present: {remaining_parameters}"
+            assert len(remaining_parameters) == 0, (
+                f"Required {param_type} parameters not present: {remaining_parameters}"
+            )
 
         _check_for_parameters(self.params, input_parameters, "input")
         _check_for_parameters(self.intermediate_params, intermediate_parameters, "intermediate")
@@ -274,9 +274,9 @@ class ModularPipelineTesterMixin:
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        assert all(
-            device == torch_device for device in model_devices
-        ), "All pipeline components are not on accelerator device"
+        assert all(device == torch_device for device in model_devices), (
+            "All pipeline components are not on accelerator device"
+        )
 
     def test_inference_is_not_nan_cpu(self):
         pipe = self.get_pipeline()
