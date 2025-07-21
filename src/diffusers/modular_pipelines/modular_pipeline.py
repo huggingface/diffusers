@@ -210,6 +210,15 @@ class PipelineState:
         """
         return {**self.__dict__, "inputs": self.inputs, "intermediates": self.intermediates}
 
+    def __getattr__(self, name):
+        """
+        Allow attribute access to intermediate values.
+        If an attribute is not found in the object, look for it in the intermediates dict.
+        """
+        if name in self.intermediates:
+            return self.intermediates[name]
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
     def __repr__(self):
         def format_value(v):
             if hasattr(v, "shape") and hasattr(v, "dtype"):
@@ -874,7 +883,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
                 break
 
         if block is None:
-            logger.warning(f"skipping auto block: {self.__class__.__name__}")
+            logger.info(f"skipping auto block: {self.__class__.__name__}")
             return pipeline, state
 
         try:
