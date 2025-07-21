@@ -426,7 +426,12 @@ class ComponentsManager:
                     logger.warning(
                         f"ComponentsManager: removing existing {name} from collection '{collection}': {comp_id}"
                     )
-                    self.remove(comp_id)
+                    # remove only from this collection
+                    self.collections[collection].remove(comp_id)
+                    comp_colls = [coll for coll, comps in self.collections.items() if comp_id in comps]
+                    if not comp_colls:  # only if no other collection contains this component, remove it
+                        logger.info(f"ComponentsManager: removing component '{comp_id}' from ComponentsManager")
+                        self.remove(comp_id)
                 self.collections[collection].add(component_id)
                 logger.info(
                     f"ComponentsManager: added component '{name}' in collection '{collection}': {component_id}"
