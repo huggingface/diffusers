@@ -70,11 +70,10 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
-        from modelopt.torch.quantization.qtensor import BaseQuantizedTensor
         from modelopt.torch.quantization.utils import is_quantized
 
         module, tensor_name = get_module_from_name(model, param_name)
-        if self.pre_quantized and any(isinstance(module, t) for t in [BaseQuantizedTensor]):
+        if self.pre_quantized:
             return True
         elif is_quantized(module) and "weight" in tensor_name:
             return True
@@ -98,9 +97,9 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         dtype = kwargs.get("dtype", torch.float32)
         module, tensor_name = get_module_from_name(model, param_name)
         if self.pre_quantized:
-            setattr(module, tensor_name, param_value)
+            module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
         else:
-            set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
+            set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)    
             mtq.calibrate(module, self.quantization_config.modelopt_config["algorithm"], self.quantization_config.forward_loop)
             mtq.compress(module)
             module.weight.requires_grad = False
@@ -129,6 +128,9 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
         import modelopt.torch.opt as mto
+        
+        if self.pre_quantized:
+            return
 
         modules_to_not_convert = self.quantization_config.modules_to_not_convert
 
@@ -141,11 +143,20 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         for module in modules_to_not_convert:
             self.quantization_config.modelopt_config["quant_cfg"]["*" + module + "*"] = {"enable": False}
         self.quantization_config.modules_to_not_convert = modules_to_not_convert
-
         mto.apply_mode(model, mode=[("quantize", self.quantization_config.modelopt_config)])
         model.config.quantization_config = self.quantization_config
 
     def _process_model_after_weight_loading(self, model, **kwargs):
+        # ModelOpt imports diffusers internally. This is here to prevent circular imports
+        from modelopt.torch.opt import ModeloptStateManager
+        
+        if self.pre_quantized:
+            return model
+        
+        for _, m in model.named_modules():
+            if hasattr(m, ModeloptStateManager._state_key) and m is not model:
+                ModeloptStateManager.remove_state(m)
+        
         return model
 
     @property
