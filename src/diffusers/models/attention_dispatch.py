@@ -187,12 +187,15 @@ class _AttentionBackendRegistry:
 
 
 @contextlib.contextmanager
-def attention_backend(backend: AttentionBackendName = AttentionBackendName.NATIVE):
+def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBackendName.NATIVE):
     """
     Context manager to set the active attention backend.
     """
     if backend not in _AttentionBackendRegistry._backends:
         raise ValueError(f"Backend {backend} is not registered.")
+
+    backend = AttentionBackendName(backend)
+    _check_attention_backend_requirements(backend)
 
     old_backend = _AttentionBackendRegistry._active_backend
     _AttentionBackendRegistry._active_backend = backend
@@ -225,8 +228,6 @@ def dispatch_attention_fn(
     else:
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
-
-    _check_backend_requirements(backend_name)
 
     kwargs = {
         "query": query,
@@ -316,10 +317,7 @@ def _check_shape(
 # ===== Helper functions =====
 
 
-# LRU cache is hack to avoid checking the backend requirements multiple times. Maybe not needed
-# because CPU is running much farther ahead of the accelerator and this will not be blocking anyway.
-@functools.lru_cache(maxsize=16)
-def _check_backend_requirements(backend: AttentionBackendName) -> None:
+def _check_attention_backend_requirements(backend: AttentionBackendName) -> None:
     if backend in [AttentionBackendName.FLASH, AttentionBackendName.FLASH_VARLEN]:
         if not _CAN_USE_FLASH_ATTN:
             raise RuntimeError(

@@ -622,7 +622,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 attention as backend.
         """
         from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName
+        from .attention_dispatch import AttentionBackendName, _check_attention_backend_requirements
 
         # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
@@ -633,10 +633,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         available_backends = {x.value for x in AttentionBackendName.__members__.values()}
         if backend not in available_backends:
             raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
-
         backend = AttentionBackendName(backend)
-        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+        _check_attention_backend_requirements(backend)
 
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
         for module in self.modules():
             if not isinstance(module, attention_classes):
                 continue
