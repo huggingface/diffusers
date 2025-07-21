@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -94,6 +94,23 @@ Use the Space below to gauge a pipeline's memory requirements before you downloa
         height="1600"
     ></iframe>
 </div>
+
+### Specifying Component-Specific Data Types
+
+You can customize the data types for individual sub-models by passing a dictionary to the `torch_dtype` parameter. This allows you to load different components of a pipeline in different floating point precisions. For instance, if you want to load the transformer with `torch.bfloat16` and all other components with `torch.float16`, you can pass a dictionary mapping:
+
+```python
+from diffusers import HunyuanVideoPipeline
+import torch
+
+pipe = HunyuanVideoPipeline.from_pretrained(
+    "hunyuanvideo-community/HunyuanVideo",
+    torch_dtype={"transformer": torch.bfloat16, "default": torch.float16},
+)
+print(pipe.transformer.dtype, pipe.vae.dtype)  # (torch.bfloat16, torch.float16)
+```
+
+If a component is not explicitly specified in the dictionary and no `default` is provided, it will be loaded with `torch.float32`.
 
 ### Local pipeline
 

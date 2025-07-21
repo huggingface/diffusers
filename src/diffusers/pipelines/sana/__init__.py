@@ -23,6 +23,9 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_sana"] = ["SanaPipeline"]
+    _import_structure["pipeline_sana_controlnet"] = ["SanaControlNetPipeline"]
+    _import_structure["pipeline_sana_sprint"] = ["SanaSprintPipeline"]
+    _import_structure["pipeline_sana_sprint_img2img"] = ["SanaSprintImg2ImgPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +36,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_sana import SanaPipeline
+        from .pipeline_sana_controlnet import SanaControlNetPipeline
+        from .pipeline_sana_sprint import SanaSprintPipeline
+        from .pipeline_sana_sprint_img2img import SanaSprintImg2ImgPipeline
 else:
     import sys
 

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -162,6 +162,9 @@ Models are initiated with the [`~ModelMixin.from_pretrained`] method which also 
 >>> repo_id = "google/ddpm-cat-256"
 >>> model = UNet2DModel.from_pretrained(repo_id, use_safetensors=True)
 ```
+
+> [!TIP]
+> Use the [`AutoModel`] API to automatically select a model class if you're unsure of which one to use.
 
 To access the model parameters, call `model.config`:
 

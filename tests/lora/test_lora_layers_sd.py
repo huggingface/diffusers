@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
+    Expectations,
     backend_empty_cache,
     load_image,
     nightly,
@@ -92,12 +93,12 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     # Keeping this test here makes sense because it doesn't look any integration
     # (value assertions on logits).
@@ -119,7 +120,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         self.assertTrue(
             check_if_lora_correctly_set(pipe.unet),
-            "Lora not correctly set in text encoder",
+            "Lora not correctly set in unet",
         )
 
         # We will offload the first adapter in CPU and check if the offloading
@@ -186,7 +187,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         self.assertTrue(
             check_if_lora_correctly_set(pipe.unet),
-            "Lora not correctly set in text encoder",
+            "Lora not correctly set in unet",
         )
 
         for name, param in pipe.unet.named_parameters():
@@ -206,6 +207,53 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         for name, param in pipe.text_encoder.named_parameters():
             if "lora_" in name:
                 self.assertNotEqual(param.device, torch.device("cpu"))
+
+    @slow
+    @require_torch_accelerator
+    def test_integration_set_lora_device_different_target_layers(self):
+        # fixes a bug that occurred when calling set_lora_device with multiple adapters loaded that target different
+        # layers, see #11833
+        from peft import LoraConfig
+
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
+        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
+        # configs partly target the same, partly different layers
+        config0 = LoraConfig(target_modules=["to_k", "to_v"])
+        config1 = LoraConfig(target_modules=["to_k", "to_q"])
+        pipe.unet.add_adapter(config0, adapter_name="adapter-0")
+        pipe.unet.add_adapter(config1, adapter_name="adapter-1")
+        pipe = pipe.to(torch_device)
+
+        self.assertTrue(
+            check_if_lora_correctly_set(pipe.unet),
+            "Lora not correctly set in unet",
+        )
+
+        # sanity check that the adapters don't target the same layers, otherwise the test passes even without the fix
+        modules_adapter_0 = {n for n, _ in pipe.unet.named_modules() if n.endswith(".adapter-0")}
+        modules_adapter_1 = {n for n, _ in pipe.unet.named_modules() if n.endswith(".adapter-1")}
+        self.assertNotEqual(modules_adapter_0, modules_adapter_1)
+        self.assertTrue(modules_adapter_0 - modules_adapter_1)
+        self.assertTrue(modules_adapter_1 - modules_adapter_0)
+
+        # setting both separately works
+        pipe.set_lora_device(["adapter-0"], "cpu")
+        pipe.set_lora_device(["adapter-1"], "cpu")
+
+        for name, module in pipe.unet.named_modules():
+            if "adapter-0" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device == torch.device("cpu"))
+            elif "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device == torch.device("cpu"))
+
+        # setting both at once also works
+        pipe.set_lora_device(["adapter-0", "adapter-1"], torch_device)
+
+        for name, module in pipe.unet.named_modules():
+            if "adapter-0" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device != torch.device("cpu"))
+            elif "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device != torch.device("cpu"))
 
 
 @slow
@@ -455,11 +503,54 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = pipe("A pokemon with blue eyes.", output_type="np", generator=generator, num_inference_steps=2).images
 
-        images = images[0, -3:, -3:, -1].flatten()
+        image_slice = images[0, -3:, -3:, -1].flatten()
 
-        expected = np.array([0.7406, 0.699, 0.5963, 0.7493, 0.7045, 0.6096, 0.6886, 0.6388, 0.583])
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.6544,
+                        0.6127,
+                        0.5397,
+                        0.6845,
+                        0.6047,
+                        0.5469,
+                        0.6349,
+                        0.5906,
+                        0.5382,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.7406,
+                        0.699,
+                        0.5963,
+                        0.7493,
+                        0.7045,
+                        0.6096,
+                        0.6886,
+                        0.6388,
+                        0.583,
+                    ]
+                ),
+                ("cuda", 8): np.array(
+                    [
+                        0.6542,
+                        0.61253,
+                        0.5396,
+                        0.6843,
+                        0.6044,
+                        0.5468,
+                        0.6349,
+                        0.5905,
+                        0.5381,
+                    ]
+                ),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
-        max_diff = numpy_cosine_similarity_distance(expected, images)
+        max_diff = numpy_cosine_similarity_distance(expected_slice, image_slice)
         assert max_diff < 1e-4
 
         pipe.unload_lora_weights()

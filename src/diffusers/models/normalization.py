@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -237,7 +237,7 @@ class AdaLayerNormSingle(nn.Module):
     r"""
     Norm layer adaptive layer norm single (adaLN-single).
 
-    As proposed in PixArt-Alpha (see: https://arxiv.org/abs/2310.00426; Section 2.3).
+    As proposed in PixArt-Alpha (see: https://huggingface.co/papers/2310.00426; Section 2.3).
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
@@ -510,7 +510,7 @@ else:
 
 class RMSNorm(nn.Module):
     r"""
-    RMS Norm as introduced in https://arxiv.org/abs/1910.07467 by Zhang et al.
+    RMS Norm as introduced in https://huggingface.co/papers/1910.07467 by Zhang et al.
 
     Args:
         dim (`int`): Number of dimensions to use for `weights`. Only effective when `elementwise_affine` is True.
@@ -548,16 +548,6 @@ class RMSNorm(nn.Module):
                 if self.weight.dtype in [torch.float16, torch.bfloat16]:
                     hidden_states = hidden_states.to(self.weight.dtype)
             hidden_states = torch_npu.npu_rms_norm(hidden_states, self.weight, epsilon=self.eps)[0]
-            if self.bias is not None:
-                hidden_states = hidden_states + self.bias
-        elif is_torch_version(">=", "2.4"):
-            if self.weight is not None:
-                # convert into half-precision if necessary
-                if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                    hidden_states = hidden_states.to(self.weight.dtype)
-            hidden_states = nn.functional.rms_norm(
-                hidden_states, normalized_shape=(hidden_states.shape[-1],), weight=self.weight, eps=self.eps
-            )
             if self.bias is not None:
                 hidden_states = hidden_states + self.bias
         else:
@@ -610,7 +600,7 @@ class MochiRMSNorm(nn.Module):
 
 class GlobalResponseNorm(nn.Module):
     r"""
-    Global response normalization as introduced in ConvNeXt-v2 (https://arxiv.org/abs/2301.00808).
+    Global response normalization as introduced in ConvNeXt-v2 (https://huggingface.co/papers/2301.00808).
 
     Args:
         dim (`int`): Number of dimensions to use for the `gamma` and `beta`.

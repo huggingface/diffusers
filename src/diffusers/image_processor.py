@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -116,6 +116,7 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         vae_latent_channels: int = 4,
         resample: str = "lanczos",
+        reducing_gap: int = None,
         do_normalize: bool = True,
         do_binarize: bool = False,
         do_convert_rgb: bool = False,
@@ -498,7 +499,11 @@ class VaeImageProcessor(ConfigMixin):
             raise ValueError(f"Only PIL image input is supported for resize_mode {resize_mode}")
         if isinstance(image, PIL.Image.Image):
             if resize_mode == "default":
-                image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+                image = image.resize(
+                    (width, height),
+                    resample=PIL_INTERPOLATION[self.config.resample],
+                    reducing_gap=self.config.reducing_gap,
+                )
             elif resize_mode == "fill":
                 image = self._resize_and_fill(image, width, height)
             elif resize_mode == "crop":

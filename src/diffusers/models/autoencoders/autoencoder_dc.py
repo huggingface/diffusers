@@ -1,4 +1,4 @@
-# Copyright 2024 MIT, Tsinghua University, NVIDIA CORPORATION and The HuggingFace Team.
+# Copyright 2025 MIT, Tsinghua University, NVIDIA CORPORATION and The HuggingFace Team.
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -190,7 +190,7 @@ class DCUpBlock2d(nn.Module):
             x = F.pixel_shuffle(x, self.factor)
 
         if self.shortcut:
-            y = hidden_states.repeat_interleave(self.repeats, dim=1)
+            y = hidden_states.repeat_interleave(self.repeats, dim=1, output_size=hidden_states.shape[1] * self.repeats)
             y = F.pixel_shuffle(y, self.factor)
             hidden_states = x + y
         else:
@@ -361,7 +361,9 @@ class Decoder(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.in_shortcut:
-            x = hidden_states.repeat_interleave(self.in_shortcut_repeats, dim=1)
+            x = hidden_states.repeat_interleave(
+                self.in_shortcut_repeats, dim=1, output_size=hidden_states.shape[1] * self.in_shortcut_repeats
+            )
             hidden_states = self.conv_in(hidden_states) + x
         else:
             hidden_states = self.conv_in(hidden_states)
@@ -377,8 +379,8 @@ class Decoder(nn.Module):
 
 class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
-    An Autoencoder model introduced in [DCAE](https://arxiv.org/abs/2410.10733) and used in
-    [SANA](https://arxiv.org/abs/2410.10629).
+    An Autoencoder model introduced in [DCAE](https://huggingface.co/papers/2410.10733) and used in
+    [SANA](https://huggingface.co/papers/2410.10629).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).

@@ -468,7 +468,7 @@ def make_vqvae(old_vae):
 
     # assert (old_output == new_output).all()
     print("skipping full vae equivalence check")
-    print(f"vae full diff { (old_output - new_output).float().abs().sum()}")
+    print(f"vae full diff {(old_output - new_output).float().abs().sum()}")
 
     return new_vae
 

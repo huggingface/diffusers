@@ -23,16 +23,21 @@ from diffusers import (
     ConsistencyDecoderVAE,
     DDIMScheduler,
     DiffusionPipeline,
+    FasterCacheConfig,
     KolorsPipeline,
     PyramidAttentionBroadcastConfig,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
+    apply_faster_cache,
 )
 from diffusers.hooks import apply_group_offloading
+from diffusers.hooks.faster_cache import FasterCacheBlockHook, FasterCacheDenoiserHook
+from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
+from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
@@ -45,11 +50,13 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
+    numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
     require_accelerator,
     require_hf_hub_version_greater,
     require_torch,
-    require_torch_gpu,
+    require_torch_accelerator,
     require_transformers_version_greater,
     skip_mps,
     torch_device,
@@ -90,6 +97,20 @@ def check_qkv_fusion_processors_exist(model):
     current_attn_processors = model.attn_processors
     proc_names = [v.__class__.__name__ for _, v in current_attn_processors.items()]
     return all(p.startswith("Fused") for p in proc_names)
+
+
+def check_qkv_fused_layers_exist(model, layer_names):
+    is_fused_submodules = []
+    for submodule in model.modules():
+        if not isinstance(submodule, AttentionModuleMixin):
+            continue
+        is_fused_attribute_set = submodule.fused_projections
+        is_fused_layer = True
+        for layer in layer_names:
+            is_fused_layer = is_fused_layer and getattr(submodule, layer, None) is not None
+        is_fused = is_fused_attribute_set and is_fused_layer
+        is_fused_submodules.append(is_fused)
+    return all(is_fused_submodules)
 
 
 class SDFunctionTesterMixin:
@@ -187,12 +208,12 @@ class SDFunctionTesterMixin:
         inputs["output_type"] = "np"
         output_no_freeu = pipe(**inputs)[0]
 
-        assert not np.allclose(
-            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
-        ), "Enabling of FreeU should lead to different results."
-        assert np.allclose(
-            output, output_no_freeu, atol=1e-2
-        ), f"Disabling of FreeU should lead to results similar to the default pipeline results but Max Abs Error={np.abs(output_no_freeu - output).max()}."
+        assert not np.allclose(output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]), (
+            "Enabling of FreeU should lead to different results."
+        )
+        assert np.allclose(output, output_no_freeu, atol=1e-2), (
+            f"Disabling of FreeU should lead to results similar to the default pipeline results but Max Abs Error={np.abs(output_no_freeu - output).max()}."
+        )
 
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -213,12 +234,12 @@ class SDFunctionTesterMixin:
                 and hasattr(component, "original_attn_processors")
                 and component.original_attn_processors is not None
             ):
-                assert check_qkv_fusion_processors_exist(
-                    component
-                ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-                assert check_qkv_fusion_matches_attn_procs_length(
-                    component, component.original_attn_processors
-                ), "Something wrong with the attention processors concerning the fused QKV projections."
+                assert check_qkv_fusion_processors_exist(component), (
+                    "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+                )
+                assert check_qkv_fusion_matches_attn_procs_length(component, component.original_attn_processors), (
+                    "Something wrong with the attention processors concerning the fused QKV projections."
+                )
 
         inputs = self.get_dummy_inputs(device)
         inputs["return_dict"] = False
@@ -231,15 +252,15 @@ class SDFunctionTesterMixin:
         image_disabled = pipe(**inputs)[0]
         image_slice_disabled = image_disabled[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
 
 
 class IPAdapterTesterMixin:
@@ -517,7 +538,8 @@ class FluxIPAdapterTesterMixin:
 
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
         inputs["negative_prompt"] = ""
-        inputs["true_cfg_scale"] = 4.0
+        if "true_cfg_scale" in inspect.signature(self.pipeline_class.__call__).parameters:
+            inputs["true_cfg_scale"] = 4.0
         inputs["output_type"] = "np"
         inputs["return_dict"] = False
         return inputs
@@ -538,7 +560,11 @@ class FluxIPAdapterTesterMixin:
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        image_embed_dim = pipe.transformer.config.pooled_projection_dim
+        image_embed_dim = (
+            pipe.transformer.config.pooled_projection_dim
+            if hasattr(pipe.transformer.config, "pooled_projection_dim")
+            else 768
+        )
 
         # forward pass without ip adapter
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
@@ -905,9 +931,9 @@ class PipelineFromPipeTesterMixin:
 
         for component in pipe_original.components.values():
             if hasattr(component, "attn_processors"):
-                assert all(
-                    type(proc) == AttnProcessor for proc in component.attn_processors.values()
-                ), "`from_pipe` changed the attention processor in original pipeline."
+                assert all(type(proc) == AttnProcessor for proc in component.attn_processors.values()), (
+                    "`from_pipe` changed the attention processor in original pipeline."
+                )
 
     @require_accelerator
     @require_accelerate_version_greater("0.14.0")
@@ -1107,14 +1133,24 @@ class PipelineTesterMixin:
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
+        torch.compiler.reset()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
+
+        # Skip tests for pipelines that inherit from DeprecatedPipelineMixin
+        from diffusers.pipelines.pipeline_utils import DeprecatedPipelineMixin
+
+        if hasattr(self, "pipeline_class") and issubclass(self.pipeline_class, DeprecatedPipelineMixin):
+            import pytest
+
+            pytest.skip(reason=f"Deprecated Pipeline: {self.pipeline_class.__name__}")
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
+        torch.compiler.reset()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
@@ -1358,7 +1394,6 @@ class PipelineTesterMixin:
         for component in pipe_fp16.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
-
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
@@ -1366,18 +1401,20 @@ class PipelineTesterMixin:
         # Reset generator in case it is used inside dummy inputs
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
-
         output = pipe(**inputs)[0]
 
         fp16_inputs = self.get_dummy_inputs(torch_device)
         # Reset generator in case it is used inside dummy inputs
         if "generator" in fp16_inputs:
             fp16_inputs["generator"] = self.get_generator(0)
-
         output_fp16 = pipe_fp16(**fp16_inputs)[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
-        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
+        if isinstance(output, torch.Tensor):
+            output = output.cpu()
+            output_fp16 = output_fp16.cpu()
+
+        max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
+        assert max_diff < expected_max_diff
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
@@ -1423,7 +1460,6 @@ class PipelineTesterMixin:
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -1438,6 +1474,7 @@ class PipelineTesterMixin:
 
         generator_device = "cpu"
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1456,6 +1493,7 @@ class PipelineTesterMixin:
             )
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
@@ -1478,8 +1516,8 @@ class PipelineTesterMixin:
         model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
         self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs(torch_device))[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
@@ -1550,12 +1588,14 @@ class PipelineTesterMixin:
 
         generator_device = "cpu"
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
@@ -1613,12 +1653,14 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_model_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
@@ -1666,11 +1708,11 @@ class PipelineTesterMixin:
 
         pipe.set_progress_bar_config(disable=None)
 
-        pipe.enable_model_cpu_offload(device=torch_device)
+        pipe.enable_model_cpu_offload()
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
-        pipe.enable_model_cpu_offload(device=torch_device)
+        pipe.enable_model_cpu_offload()
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload_twice = pipe(**inputs)[0]
 
@@ -2085,11 +2127,11 @@ class PipelineTesterMixin:
         with torch.no_grad():
             encoded_prompt_outputs = pipe_with_just_text_encoder.encode_prompt(**encode_prompt_inputs)
 
-        # Programatically determine the reutrn names of `encode_prompt.`
-        ast_vistor = ReturnNameVisitor()
-        encode_prompt_tree = ast_vistor.get_ast_tree(cls=self.pipeline_class)
-        ast_vistor.visit(encode_prompt_tree)
-        prompt_embed_kwargs = ast_vistor.return_names
+        # Programmatically determine the return names of `encode_prompt.`
+        ast_visitor = ReturnNameVisitor()
+        encode_prompt_tree = ast_visitor.get_ast_tree(cls=self.pipeline_class)
+        ast_visitor.visit(encode_prompt_tree)
+        prompt_embed_kwargs = ast_visitor.return_names
         prompt_embeds_kwargs = dict(zip(prompt_embed_kwargs, encoded_prompt_outputs))
 
         # Pack the outputs of `encode_prompt`.
@@ -2201,7 +2243,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         _ = pipe(**inputs)[0]
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_group_offloading_inference(self):
         if not self.test_group_offloading:
             return
@@ -2215,7 +2257,7 @@ class PipelineTesterMixin:
 
         def enable_group_offload_on_component(pipe, group_offloading_kwargs):
             # We intentionally don't test VAE's here. This is because some tests enable tiling on the VAE. If
-            # tiling is enabled and a forward pass is run, when cuda streams are used, the execution order of
+            # tiling is enabled and a forward pass is run, when accelerator streams are used, the execution order of
             # the layers is not traced correctly. This causes errors. For apply group offloading to VAE, a
             # warmup forward pass (even with dummy small inputs) is recommended.
             for component_name in [
@@ -2246,9 +2288,10 @@ class PipelineTesterMixin:
                         if hasattr(module, "_diffusers_hook")
                     )
                 )
-            for component_name in ["vae", "vqvae"]:
-                if hasattr(pipe, component_name):
-                    getattr(pipe, component_name).to(torch_device)
+            for component_name in ["vae", "vqvae", "image_encoder"]:
+                component = getattr(pipe, component_name, None)
+                if isinstance(component, torch.nn.Module):
+                    component.to(torch_device)
 
         def run_forward(pipe):
             torch.manual_seed(0)
@@ -2273,6 +2316,28 @@ class PipelineTesterMixin:
 
         self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-4))
         self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-4))
+
+    def test_torch_dtype_dict(self):
+        components = self.get_dummy_components()
+        if not components:
+            self.skipTest("No dummy components defined.")
+
+        pipe = self.pipeline_class(**components)
+        specified_key = next(iter(components.keys()))
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
+            torch_dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, torch_dtype=torch_dtype_dict)
+
+        for name, component in loaded_pipe.components.items():
+            if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
+                expected_dtype = torch_dtype_dict.get(name, torch_dtype_dict.get("default", torch.float32))
+                self.assertEqual(
+                    component.dtype,
+                    expected_dtype,
+                    f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
+                )
 
 
 @is_staging_test
@@ -2537,12 +2602,222 @@ class PyramidAttentionBroadcastTesterMixin:
         image_slice_pab_disabled = output.flatten()
         image_slice_pab_disabled = np.concatenate((image_slice_pab_disabled[:8], image_slice_pab_disabled[-8:]))
 
-        assert np.allclose(
-            original_image_slice, image_slice_pab_enabled, atol=expected_atol
-        ), "PAB outputs should not differ much in specified timestep range."
-        assert np.allclose(
-            original_image_slice, image_slice_pab_disabled, atol=1e-4
-        ), "Outputs from normal inference and after disabling cache should not differ."
+        assert np.allclose(original_image_slice, image_slice_pab_enabled, atol=expected_atol), (
+            "PAB outputs should not differ much in specified timestep range."
+        )
+        assert np.allclose(original_image_slice, image_slice_pab_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
+
+
+class FasterCacheTesterMixin:
+    faster_cache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
+    )
+
+    def test_faster_cache_basic_warning_or_errors_raised(self):
+        components = self.get_dummy_components()
+
+        logger = logging.get_logger("diffusers.hooks.faster_cache")
+        logger.setLevel(logging.INFO)
+
+        # Check if warning is raise when no attention_weight_callback is provided
+        pipe = self.pipeline_class(**components)
+        with CaptureLogger(logger) as cap_logger:
+            config = FasterCacheConfig(spatial_attention_block_skip_range=2, attention_weight_callback=None)
+            apply_faster_cache(pipe.transformer, config)
+        self.assertTrue("No `attention_weight_callback` provided when enabling FasterCache" in cap_logger.out)
+
+        # Check if error raised when unsupported tensor format used
+        pipe = self.pipeline_class(**components)
+        with self.assertRaises(ValueError):
+            config = FasterCacheConfig(spatial_attention_block_skip_range=2, tensor_format="BFHWC")
+            apply_faster_cache(pipe.transformer, config)
+
+    def test_faster_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        def create_pipe():
+            torch.manual_seed(0)
+            num_layers = 2
+            components = self.get_dummy_components(num_layers=num_layers)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            inputs["num_inference_steps"] = 4
+            return pipe(**inputs)[0]
+
+        # Run inference without FasterCache
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_image_slice = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with FasterCache enabled
+        self.faster_cache_config.current_timestep_callback = lambda: pipe.current_timestep
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.faster_cache_config)
+        output = run_forward(pipe).flatten()
+        image_slice_faster_cache_enabled = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with FasterCache disabled
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        image_slice_faster_cache_disabled = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(original_image_slice, image_slice_faster_cache_enabled, atol=expected_atol), (
+            "FasterCache outputs should not differ much in specified timestep range."
+        )
+        assert np.allclose(original_image_slice, image_slice_faster_cache_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
+
+    def test_faster_cache_state(self):
+        from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        num_layers = 0
+        num_single_layers = 0
+        dummy_component_kwargs = {}
+        dummy_component_parameters = inspect.signature(self.get_dummy_components).parameters
+        if "num_layers" in dummy_component_parameters:
+            num_layers = 2
+            dummy_component_kwargs["num_layers"] = num_layers
+        if "num_single_layers" in dummy_component_parameters:
+            num_single_layers = 2
+            dummy_component_kwargs["num_single_layers"] = num_single_layers
+
+        components = self.get_dummy_components(**dummy_component_kwargs)
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        self.faster_cache_config.current_timestep_callback = lambda: pipe.current_timestep
+        pipe.transformer.enable_cache(self.faster_cache_config)
+
+        expected_hooks = 0
+        if self.faster_cache_config.spatial_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.faster_cache_config.temporal_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+
+        # Check if faster_cache denoiser hook is attached
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        self.assertTrue(
+            hasattr(denoiser, "_diffusers_hook")
+            and isinstance(denoiser._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK), FasterCacheDenoiserHook),
+            "Hook should be of type FasterCacheDenoiserHook.",
+        )
+
+        # Check if all blocks have faster_cache block hook attached
+        count = 0
+        for name, module in denoiser.named_modules():
+            if hasattr(module, "_diffusers_hook"):
+                if name == "":
+                    # Skip the root denoiser module
+                    continue
+                count += 1
+                self.assertTrue(
+                    isinstance(module._diffusers_hook.get_hook(_FASTER_CACHE_BLOCK_HOOK), FasterCacheBlockHook),
+                    "Hook should be of type FasterCacheBlockHook.",
+                )
+        self.assertEqual(count, expected_hooks, "Number of hooks should match expected number.")
+
+        # Perform inference to ensure that states are updated correctly
+        def faster_cache_state_check_callback(pipe, i, t, kwargs):
+            for name, module in denoiser.named_modules():
+                if not hasattr(module, "_diffusers_hook"):
+                    continue
+                if name == "":
+                    # Root denoiser module
+                    state = module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state
+                    if not self.faster_cache_config.is_guidance_distilled:
+                        self.assertTrue(state.low_frequency_delta is not None, "Low frequency delta should be set.")
+                        self.assertTrue(state.high_frequency_delta is not None, "High frequency delta should be set.")
+                else:
+                    # Internal blocks
+                    state = module._diffusers_hook.get_hook(_FASTER_CACHE_BLOCK_HOOK).state
+                    self.assertTrue(state.cache is not None and len(state.cache) == 2, "Cache should be set.")
+                self.assertTrue(state.iteration == i + 1, "Hook iteration state should have updated during inference.")
+            return {}
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        inputs["callback_on_step_end"] = faster_cache_state_check_callback
+        _ = pipe(**inputs)[0]
+
+        # After inference, reset_stateful_hooks is called within the pipeline, which should have reset the states
+        for name, module in denoiser.named_modules():
+            if not hasattr(module, "_diffusers_hook"):
+                continue
+
+            if name == "":
+                # Root denoiser module
+                state = module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state
+                self.assertTrue(state.iteration == 0, "Iteration should be reset to 0.")
+                self.assertTrue(state.low_frequency_delta is None, "Low frequency delta should be reset to None.")
+                self.assertTrue(state.high_frequency_delta is None, "High frequency delta should be reset to None.")
+            else:
+                # Internal blocks
+                state = module._diffusers_hook.get_hook(_FASTER_CACHE_BLOCK_HOOK).state
+                self.assertTrue(state.iteration == 0, "Iteration should be reset to 0.")
+                self.assertTrue(state.batch_size is None, "Batch size should be reset to None.")
+                self.assertTrue(state.cache is None, "Cache should be reset to None.")
+
+
+# TODO(aryan, dhruv): the cache tester mixins should probably be rewritten so that more models can be tested out
+# of the box once there is better cache support/implementation
+class FirstBlockCacheTesterMixin:
+    # threshold is intentionally set higher than usual values since we're testing with random unconverged models
+    # that will not satisfy the expected properties of the denoiser for caching to be effective
+    first_block_cache_config = FirstBlockCacheConfig(threshold=0.8)
+
+    def test_first_block_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        def create_pipe():
+            torch.manual_seed(0)
+            num_layers = 2
+            components = self.get_dummy_components(num_layers=num_layers)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            inputs["num_inference_steps"] = 4
+            return pipe(**inputs)[0]
+
+        # Run inference without FirstBlockCache
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_image_slice = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with FirstBlockCache enabled
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.first_block_cache_config)
+        output = run_forward(pipe).flatten()
+        image_slice_fbc_enabled = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with FirstBlockCache disabled
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        image_slice_fbc_disabled = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(original_image_slice, image_slice_fbc_enabled, atol=expected_atol), (
+            "FirstBlockCache outputs should not differ much."
+        )
+        assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -183,7 +183,7 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
         return model
 
     def get_generator(self, seed=0):
-        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
+        generator_device = "cpu" if not torch_device.startswith(torch_device) else torch_device
         if torch_device != "mps":
             return torch.Generator(device=generator_device).manual_seed(seed)
         return torch.manual_seed(seed)

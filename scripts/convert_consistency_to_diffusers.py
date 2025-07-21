@@ -239,7 +239,7 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
 
             if i != len(up_block_types) - 1:
                 new_prefix = f"up_blocks.{i}.upsamplers.0"
-                old_prefix = f"output_blocks.{current_layer-1}.1"
+                old_prefix = f"output_blocks.{current_layer - 1}.1"
                 new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
         elif layer_type == "AttnUpBlock2D":
             for j in range(layers_per_block + 1):
@@ -255,7 +255,7 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
 
             if i != len(up_block_types) - 1:
                 new_prefix = f"up_blocks.{i}.upsamplers.0"
-                old_prefix = f"output_blocks.{current_layer-1}.2"
+                old_prefix = f"output_blocks.{current_layer - 1}.2"
                 new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
 
     new_checkpoint["conv_norm_out.weight"] = checkpoint["out.0.weight"]

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team and City96. All rights reserved.
+# Copyright 2025 The HuggingFace Team and City96. All rights reserved.
 # #
 # # Licensed under the Apache License, Version 2.0 (the "License");
 # # you may not use this file except in compliance with the License.
@@ -400,11 +400,25 @@ class GGUFParameter(torch.nn.Parameter):
         data = data if data is not None else torch.empty(0)
         self = torch.Tensor._make_subclass(cls, data, requires_grad)
         self.quant_type = quant_type
+        block_size, type_size = GGML_QUANT_SIZES[quant_type]
+        self.quant_shape = _quant_shape_from_byte_shape(self.shape, type_size, block_size)
 
         return self
 
     def as_tensor(self):
         return torch.Tensor._make_subclass(torch.Tensor, self, self.requires_grad)
+
+    @staticmethod
+    def _extract_quant_type(args):
+        # When converting from original format checkpoints we often use splits, cats etc on tensors
+        # this method ensures that the returned tensor type from those operations remains GGUFParameter
+        # so that we preserve quant_type information
+        for arg in args:
+            if isinstance(arg, list) and isinstance(arg[0], GGUFParameter):
+                return arg[0].quant_type
+            if isinstance(arg, GGUFParameter):
+                return arg.quant_type
+        return None
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
@@ -413,22 +427,13 @@ class GGUFParameter(torch.nn.Parameter):
 
         result = super().__torch_function__(func, types, args, kwargs)
 
-        # When converting from original format checkpoints we often use splits, cats etc on tensors
-        # this method ensures that the returned tensor type from those operations remains GGUFParameter
-        # so that we preserve quant_type information
-        quant_type = None
-        for arg in args:
-            if isinstance(arg, list) and isinstance(arg[0], GGUFParameter):
-                quant_type = arg[0].quant_type
-                break
-            if isinstance(arg, GGUFParameter):
-                quant_type = arg.quant_type
-                break
         if isinstance(result, torch.Tensor):
+            quant_type = cls._extract_quant_type(args)
             return cls(result, quant_type=quant_type)
         # Handle tuples and lists
-        elif isinstance(result, (tuple, list)):
+        elif type(result) in (list, tuple):
             # Preserve the original type (tuple or list)
+            quant_type = cls._extract_quant_type(args)
             wrapped = [cls(x, quant_type=quant_type) if isinstance(x, torch.Tensor) else x for x in result]
             return type(result)(wrapped)
         else:

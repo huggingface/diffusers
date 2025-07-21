@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -36,7 +36,7 @@ Hybrid Inference offers a fast and simple way to offload local generation requir
 ## Available Models
 
 * **VAE Decode 🖼️:** Quickly decode latent representations into high-quality images without compromising performance or workflow speed.
-* **VAE Encode 🔢 (coming soon):** Efficiently encode images into latent representations for generation and training.
+* **VAE Encode 🔢:** Efficiently encode images into latent representations for generation and training.
 * **Text Encoders 📃 (coming soon):** Compute text embeddings for your prompts quickly and accurately, ensuring a smooth and high-quality workflow.
 
 ---
@@ -46,9 +46,15 @@ Hybrid Inference offers a fast and simple way to offload local generation requir
 * **[SD.Next](https://github.com/vladmandic/sdnext):** All-in-one UI with direct supports Hybrid Inference.
 * **[ComfyUI-HFRemoteVae](https://github.com/kijai/ComfyUI-HFRemoteVae):** ComfyUI node for Hybrid Inference.
 
+## Changelog
+
+- March 10 2025: Added VAE encode
+- March 2 2025: Initial release with VAE decoding
+
 ## Contents
 
-The documentation is organized into two sections:
+The documentation is organized into three sections:
 
 * **VAE Decode** Learn the basics of how to use VAE Decode with Hybrid Inference.
+* **VAE Encode** Learn the basics of how to use VAE Encode with Hybrid Inference.
 * **API Reference** Dive into task-specific settings and parameters.

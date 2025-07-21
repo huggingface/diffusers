@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import inspect
+import tempfile
 import unittest
 
 import numpy as np
@@ -27,9 +28,7 @@ from diffusers import (
     HunyuanDiTPAGPipeline,
     HunyuanDiTPipeline,
 )
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-)
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -178,15 +177,15 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_disabled = pipe(**inputs)[0]
         image_slice_disabled = image_disabled[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
 
     def test_pag_disable_enable(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -199,9 +198,9 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert (
-            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
+            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        )
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         components = self.get_dummy_components()
@@ -269,3 +268,96 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+    def test_save_load_optional_components(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        prompt = inputs["prompt"]
+        generator = inputs["generator"]
+        num_inference_steps = inputs["num_inference_steps"]
+        output_type = inputs["output_type"]
+
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_attention_mask,
+        ) = pipe.encode_prompt(prompt, device=torch_device, dtype=torch.float32, text_encoder_index=0)
+
+        (
+            prompt_embeds_2,
+            negative_prompt_embeds_2,
+            prompt_attention_mask_2,
+            negative_prompt_attention_mask_2,
+        ) = pipe.encode_prompt(
+            prompt,
+            device=torch_device,
+            dtype=torch.float32,
+            text_encoder_index=1,
+        )
+
+        # inputs with prompt converted to embeddings
+        inputs = {
+            "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attention_mask,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": negative_prompt_attention_mask,
+            "prompt_embeds_2": prompt_embeds_2,
+            "prompt_attention_mask_2": prompt_attention_mask_2,
+            "negative_prompt_embeds_2": negative_prompt_embeds_2,
+            "negative_prompt_attention_mask_2": negative_prompt_attention_mask_2,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+            "output_type": output_type,
+            "use_resolution_binning": False,
+        }
+
+        # set all optional components to None
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        generator = inputs["generator"]
+        num_inference_steps = inputs["num_inference_steps"]
+        output_type = inputs["output_type"]
+
+        # inputs with prompt converted to embeddings
+        inputs = {
+            "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attention_mask,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": negative_prompt_attention_mask,
+            "prompt_embeds_2": prompt_embeds_2,
+            "prompt_attention_mask_2": prompt_attention_mask_2,
+            "negative_prompt_embeds_2": negative_prompt_embeds_2,
+            "negative_prompt_attention_mask_2": negative_prompt_attention_mask_2,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+            "output_type": output_type,
+            "use_resolution_binning": False,
+        }
+
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, 1e-4)

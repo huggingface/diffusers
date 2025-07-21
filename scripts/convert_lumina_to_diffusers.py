@@ -5,7 +5,7 @@ import torch
 from safetensors.torch import load_file
 from transformers import AutoModel, AutoTokenizer
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, LuminaNextDiT2DModel, LuminaText2ImgPipeline
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, LuminaNextDiT2DModel, LuminaPipeline
 
 
 def main(args):
@@ -115,7 +115,7 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
         text_encoder = AutoModel.from_pretrained("google/gemma-2b")
 
-        pipeline = LuminaText2ImgPipeline(
+        pipeline = LuminaPipeline(
             tokenizer=tokenizer, text_encoder=text_encoder, transformer=transformer, vae=vae, scheduler=scheduler
         )
         pipeline.save_pretrained(args.dump_path)

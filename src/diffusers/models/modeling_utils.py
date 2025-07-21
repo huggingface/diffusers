@@ -37,7 +37,6 @@ from torch import Tensor, nn
 from typing_extensions import Self
 
 from .. import __version__
-from ..hooks import apply_group_offloading, apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -63,10 +62,14 @@ from ..utils.hub_utils import (
     load_or_create_model_card,
     populate_model_card,
 )
+from ..utils.torch_utils import empty_device_cache
 from .model_loading_utils import (
+    _caching_allocator_warmup,
     _determine_device_map,
+    _expand_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
+    _find_mismatched_keys,
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
@@ -169,7 +172,11 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
 
     for name, param in parameter.named_parameters():
         last_dtype = param.dtype
-        if parameter._keep_in_fp32_modules and any(m in name for m in parameter._keep_in_fp32_modules):
+        if (
+            hasattr(parameter, "_keep_in_fp32_modules")
+            and parameter._keep_in_fp32_modules
+            and any(m in name for m in parameter._keep_in_fp32_modules)
+        ):
             continue
 
         if param.is_floating_point():
@@ -267,6 +274,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _keep_in_fp32_modules = None
     _skip_layerwise_casting_patterns = None
     _supports_group_offloading = True
+    _repeated_blocks = []
 
     def __init__(self):
         super().__init__()
@@ -504,6 +512,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
         """
+        from ..hooks import apply_layerwise_casting
 
         user_provided_patterns = True
         if skip_modules_pattern is None:
@@ -546,6 +555,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         num_blocks_per_group: Optional[int] = None,
         non_blocking: bool = False,
         use_stream: bool = False,
+        record_stream: bool = False,
+        low_cpu_mem_usage=False,
+        offload_to_disk_path: Optional[str] = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -569,6 +581,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             ... )
             ```
         """
+        from ..hooks import apply_group_offloading
+
         if getattr(self, "enable_tiling", None) is not None and getattr(self, "use_tiling", False) and use_stream:
             msg = (
                 "Applying group offloading on autoencoders, with CUDA streams, may not work as expected if the first "
@@ -584,8 +598,67 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
         apply_group_offloading(
-            self, onload_device, offload_device, offload_type, num_blocks_per_group, non_blocking, use_stream
+            module=self,
+            onload_device=onload_device,
+            offload_device=offload_device,
+            offload_type=offload_type,
+            num_blocks_per_group=num_blocks_per_group,
+            non_blocking=non_blocking,
+            use_stream=use_stream,
+            record_stream=record_stream,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            offload_to_disk_path=offload_to_disk_path,
         )
+
+    def set_attention_backend(self, backend: str) -> None:
+        """
+        Set the attention backend for the model.
+
+        Args:
+            backend (`str`):
+                The name of the backend to set. Must be one of the available backends defined in
+                `AttentionBackendName`. Available backends can be found in
+                `diffusers.attention_dispatch.AttentionBackendName`. Defaults to torch native scaled dot product
+                attention as backend.
+        """
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName
+
+        # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
+        from .attention_processor import Attention, MochiAttention
+
+        backend = backend.lower()
+        available_backends = {x.value for x in AttentionBackendName.__members__.values()}
+        if backend not in available_backends:
+            raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
+
+        backend = AttentionBackendName(backend)
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+            processor._attention_backend = backend
+
+    def reset_attention_backend(self) -> None:
+        """
+        Resets the attention backend for the model. Following calls to `forward` will use the environment default or
+        the torch native scaled dot product attention.
+        """
+        from .attention import AttentionModuleMixin
+        from .attention_processor import Attention, MochiAttention
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+            processor._attention_backend = None
 
     def save_pretrained(
         self,
@@ -775,9 +848,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
-                dtype is automatically derived from the model's weights.
+            torch_dtype (`torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -803,14 +875,43 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`Union[int, str, torch.device]` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device. Defaults to `None`, meaning that the model will be loaded on CPU.
 
+                Examples:
+
+                ```py
+                >>> from diffusers import AutoModel
+                >>> import torch
+
+                >>> # This works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map="cuda"
+                ... )
+                >>> # This also works (integer accelerator device ID).
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map=0
+                ... )
+                >>> # Specifying a supported offloading strategy like "auto" also works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", device_map="auto"
+                ... )
+                >>> # Specifying a dictionary as `device_map` also works.
+                >>> model = AutoModel.from_pretrained(
+                ...     "stabilityai/stable-diffusion-xl-base-1.0",
+                ...     subfolder="unet",
+                ...     device_map={"": torch.device("cuda")},
+                ... )
+                ```
+
                 Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
-                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+                map](https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap). You
+                can also refer to the [Diffusers-specific
+                documentation](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#model-sharding)
+                for more concrete examples.
             max_memory (`Dict`, *optional*):
                 A dictionary device identifier for the maximum memory. Will default to the maximum memory available for
                 each GPU and the available CPU RAM if unset.
@@ -870,7 +971,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
@@ -883,7 +984,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
-        if not isinstance(torch_dtype, torch.dtype):
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
             logger.warning(
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
@@ -1362,6 +1463,39 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             return super().float(*args)
 
+    def compile_repeated_blocks(self, *args, **kwargs):
+        """
+        Compiles *only* the frequently repeated sub-modules of a model (e.g. the Transformer layers) instead of
+        compiling the entire model. This technique—often called **regional compilation** (see the PyTorch recipe
+        https://docs.pytorch.org/tutorials/recipes/regional_compilation.html) can reduce end-to-end compile time
+        substantially, while preserving the runtime speed-ups you would expect from a full `torch.compile`.
+
+        The set of sub-modules to compile is discovered by the presence of **`_repeated_blocks`** attribute in the
+        model definition. Define this attribute on your model subclass as a list/tuple of class names (strings). Every
+        module whose class name matches will be compiled.
+
+        Once discovered, each matching sub-module is compiled by calling `submodule.compile(*args, **kwargs)`. Any
+        positional or keyword arguments you supply to `compile_repeated_blocks` are forwarded verbatim to
+        `torch.compile`.
+        """
+        repeated_blocks = getattr(self, "_repeated_blocks", None)
+
+        if not repeated_blocks:
+            raise ValueError(
+                "`_repeated_blocks` attribute is empty. "
+                f"Set `_repeated_blocks` for the class `{self.__class__.__name__}` to benefit from faster compilation. "
+            )
+        has_compiled_region = False
+        for submod in self.modules():
+            if submod.__class__.__name__ in repeated_blocks:
+                submod.compile(*args, **kwargs)
+                has_compiled_region = True
+
+        if not has_compiled_region:
+            raise ValueError(
+                f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
+            )
+
     @classmethod
     def _load_pretrained_model(
         cls,
@@ -1376,7 +1510,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage: bool = True,
         dtype: Optional[Union[str, torch.dtype]] = None,
         keep_in_fp32_modules: Optional[List[str]] = None,
-        device_map: Dict[str, Union[int, str, torch.device]] = None,
+        device_map: Union[str, int, torch.device, Dict[str, Union[int, str, torch.device]]] = None,
         offload_state_dict: Optional[bool] = None,
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
@@ -1393,11 +1527,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             for pat in cls._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
-        mismatched_keys = []
-
-        assign_to_params_buffers = None
-        error_msgs = []
-
         # Deal with offload
         if device_map is not None and "disk" in device_map.values():
             if offload_folder is None:
@@ -1406,18 +1535,27 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     " for them. Alternatively, make sure you have `safetensors` installed if the model you are using"
                     " offers the weights in this format."
                 )
-            if offload_folder is not None:
+            else:
                 os.makedirs(offload_folder, exist_ok=True)
             if offload_state_dict is None:
                 offload_state_dict = True
 
+        # If a device map has been used, we can speedup the load time by warming up the device caching allocator.
+        # If we don't warmup, each tensor allocation on device calls to the allocator for memory (effectively, a
+        # lot of individual calls to device malloc). We can, however, preallocate the memory required by the
+        # tensors using their expected shape and not performing any initialization of the memory (empty data).
+        # When the actual device allocations happen, the allocator already has a pool of unused device memory
+        # that it can re-use for faster loading of the model.
+        # TODO: add support for warmup with hf_quantizer
+        if device_map is not None and hf_quantizer is None:
+            expanded_device_map = _expand_device_map(device_map, expected_keys)
+            _caching_allocator_warmup(model, expanded_device_map, dtype)
+
         offload_index = {} if device_map is not None and "disk" in device_map.values() else None
+        state_dict_folder, state_dict_index = None, None
         if offload_state_dict:
             state_dict_folder = tempfile.mkdtemp()
             state_dict_index = {}
-        else:
-            state_dict_folder = None
-            state_dict_index = None
 
         if state_dict is not None:
             # load_state_dict will manage the case where we pass a dict instead of a file
@@ -1427,38 +1565,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if len(resolved_model_file) > 1:
             resolved_model_file = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
 
+        mismatched_keys = []
+        assign_to_params_buffers = None
+        error_msgs = []
+
         for shard_file in resolved_model_file:
             state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
-
-            def _find_mismatched_keys(
-                state_dict,
-                model_state_dict,
-                loaded_keys,
-                ignore_mismatched_sizes,
-            ):
-                mismatched_keys = []
-                if ignore_mismatched_sizes:
-                    for checkpoint_key in loaded_keys:
-                        model_key = checkpoint_key
-                        # If the checkpoint is sharded, we may not have the key here.
-                        if checkpoint_key not in state_dict:
-                            continue
-
-                        if (
-                            model_key in model_state_dict
-                            and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape
-                        ):
-                            mismatched_keys.append(
-                                (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
-                            )
-                            del state_dict[checkpoint_key]
-                return mismatched_keys
-
             mismatched_keys += _find_mismatched_keys(
-                state_dict,
-                model_state_dict,
-                loaded_keys,
-                ignore_mismatched_sizes,
+                state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes
             )
 
             if low_cpu_mem_usage:
@@ -1478,8 +1592,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 if assign_to_params_buffers is None:
                     assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
-
                 error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
+
+        empty_device_cache()
 
         if offload_index is not None and len(offload_index) > 0:
             save_offload_index(offload_index, offload_folder)
@@ -1816,4 +1931,9 @@ class LegacyModelMixin(ModelMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
+        if remapped_class is cls:
+            return super(LegacyModelMixin, remapped_class).from_pretrained(
+                pretrained_model_name_or_path, **kwargs_copy
+            )
+        else:
+            return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)

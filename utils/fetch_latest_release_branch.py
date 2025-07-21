@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 
 import requests
 from packaging.version import parse
@@ -27,7 +28,11 @@ def fetch_all_branches(user, repo):
     page = 1  # Start from first page
     while True:
         # Make a request to the GitHub API for the branches
-        response = requests.get(f"https://api.github.com/repos/{user}/{repo}/branches", params={"page": page})
+        response = requests.get(
+            f"https://api.github.com/repos/{user}/{repo}/branches",
+            params={"page": page},
+            timeout=60,
+        )
 
         # Check if the request was successful
         if response.status_code == 200:

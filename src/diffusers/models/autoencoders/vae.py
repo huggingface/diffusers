@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -255,7 +255,7 @@ class Decoder(nn.Module):
                 num_layers=self.layers_per_block + 1,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
-                prev_output_channel=None,
+                prev_output_channel=prev_output_channel,
                 add_upsample=not is_final_block,
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
@@ -742,6 +742,17 @@ class DiagonalGaussianDistribution(object):
 
     def mode(self) -> torch.Tensor:
         return self.mean
+
+
+class IdentityDistribution(object):
+    def __init__(self, parameters: torch.Tensor):
+        self.parameters = parameters
+
+    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+        return self.parameters
+
+    def mode(self) -> torch.Tensor:
+        return self.parameters
 
 
 class EncoderTiny(nn.Module):

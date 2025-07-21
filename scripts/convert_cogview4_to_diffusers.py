@@ -53,8 +53,18 @@ args = parser.parse_args()
 # this is specific to `AdaLayerNormContinuous`:
 # diffusers implementation split the linear projection into the scale, shift while CogView4 split it tino shift, scale
 def swap_scale_shift(weight, dim):
-    shift, scale = weight.chunk(2, dim=0)
-    new_weight = torch.cat([scale, shift], dim=0)
+    """
+    Swap the scale and shift components in the weight tensor.
+
+    Args:
+        weight (torch.Tensor): The original weight tensor.
+        dim (int): The dimension along which to split.
+
+    Returns:
+        torch.Tensor: The modified weight tensor with scale and shift swapped.
+    """
+    shift, scale = weight.chunk(2, dim=dim)
+    new_weight = torch.cat([scale, shift], dim=dim)
     return new_weight
 
 
@@ -200,6 +210,7 @@ def main(args):
             "norm_num_groups": 32,
             "sample_size": 1024,
             "scaling_factor": 1.0,
+            "shift_factor": 0.0,
             "force_upcast": True,
             "use_quant_conv": False,
             "use_post_quant_conv": False,

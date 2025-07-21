@@ -1,4 +1,4 @@
-# Copyright 2024 Kakao Brain and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Kakao Brain and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ from ...models import UNet2DConditionModel, UNet2DModel
 from ...schedulers import UnCLIPScheduler
 from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 from .text_proj import UnCLIPTextProjModel
 
 
@@ -43,7 +43,7 @@ else:
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class UnCLIPImageVariationPipeline(DiffusionPipeline):
+class UnCLIPImageVariationPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Pipeline to generate image variations from an input image using UnCLIP.
 
@@ -73,6 +73,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
             Scheduler used in the super resolution denoising process (a modified [`DDPMScheduler`]).
     """
 
+    _last_supported_version = "0.33.1"
     decoder: UNet2DConditionModel
     text_proj: UnCLIPTextProjModel
     text_encoder: CLIPTextModelWithProjection

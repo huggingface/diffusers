@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -91,9 +91,9 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between pretrained loading and single file loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )
 
     def test_single_file_arguments(self):
         model_default = self.model_class.from_single_file(self.ckpt_path, config=self.repo_id)

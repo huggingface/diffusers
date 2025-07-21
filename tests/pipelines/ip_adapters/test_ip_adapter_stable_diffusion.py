@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ from diffusers import (
 from diffusers.image_processor import IPAdapterMaskProcessor
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     is_flaky,
@@ -377,9 +378,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.set_ip_adapter_scale(0.7)
 
         inputs = self.get_dummy_inputs()
-        id_embeds = load_pt("https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt")[
-            0
-        ]
+        id_embeds = load_pt(
+            "https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt",
+            map_location=torch_device,
+        )[0]
         id_embeds = id_embeds.reshape((2, 1, 1, 512))
         inputs["ip_adapter_image_embeds"] = [id_embeds]
         inputs["ip_adapter_image"] = None
@@ -663,7 +665,50 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.2323, 0.1026, 0.1338, 0.0638, 0.0662, 0.0000, 0.0000, 0.0000, 0.0199])
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.2520,
+                        0.1050,
+                        0.1510,
+                        0.0997,
+                        0.0893,
+                        0.0019,
+                        0.0000,
+                        0.0000,
+                        0.0210,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.2323,
+                        0.1026,
+                        0.1338,
+                        0.0638,
+                        0.0662,
+                        0.0000,
+                        0.0000,
+                        0.0000,
+                        0.0199,
+                    ]
+                ),
+                ("cuda", 8): np.array(
+                    [
+                        0.2518,
+                        0.1059,
+                        0.1553,
+                        0.0977,
+                        0.0852,
+                        0.0000,
+                        0.0000,
+                        0.0000,
+                        0.0220,
+                    ]
+                ),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4

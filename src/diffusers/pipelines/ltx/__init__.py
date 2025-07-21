@@ -22,8 +22,11 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["modeling_latent_upsampler"] = ["LTXLatentUpsamplerModel"]
     _import_structure["pipeline_ltx"] = ["LTXPipeline"]
+    _import_structure["pipeline_ltx_condition"] = ["LTXConditionPipeline"]
     _import_structure["pipeline_ltx_image2video"] = ["LTXImageToVideoPipeline"]
+    _import_structure["pipeline_ltx_latent_upsample"] = ["LTXLatentUpsamplePipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,8 +36,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .modeling_latent_upsampler import LTXLatentUpsamplerModel
         from .pipeline_ltx import LTXPipeline
+        from .pipeline_ltx_condition import LTXConditionPipeline
         from .pipeline_ltx_image2video import LTXImageToVideoPipeline
+        from .pipeline_ltx_latent_upsample import LTXLatentUpsamplePipeline
 
 else:
     import sys

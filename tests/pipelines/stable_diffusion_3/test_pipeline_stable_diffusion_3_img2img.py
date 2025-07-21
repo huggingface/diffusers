@@ -3,7 +3,6 @@ import random
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
@@ -15,10 +14,11 @@ from diffusers import (
 )
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    Expectations,
     backend_empty_cache,
     floats_tensor,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     slow,
     torch_device,
 )
@@ -166,8 +166,7 @@ class StableDiffusion3Img2ImgPipelineFastTests(PipelineLatentTesterMixin, unitte
 
 
 @slow
-@require_big_gpu_with_torch_cuda
-@pytest.mark.big_gpu_with_torch_cuda
+@require_big_accelerator
 class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Img2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
@@ -202,47 +201,120 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
         }
 
     def test_sd3_img2img_inference(self):
+        torch.manual_seed(0)
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload(device=torch_device)
-
         inputs = self.get_inputs(torch_device)
-
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
-        expected_slice = np.array(
-            [
-                0.5435,
-                0.4673,
-                0.5732,
-                0.4438,
-                0.3557,
-                0.4912,
-                0.4331,
-                0.3491,
-                0.4915,
-                0.4287,
-                0.3477,
-                0.4849,
-                0.4355,
-                0.3469,
-                0.4871,
-                0.4431,
-                0.3538,
-                0.4912,
-                0.4521,
-                0.3643,
-                0.5059,
-                0.4587,
-                0.3730,
-                0.5166,
-                0.4685,
-                0.3845,
-                0.5264,
-                0.4746,
-                0.3914,
-                0.5342,
-            ]
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.5117,
+                        0.4421,
+                        0.3852,
+                        0.5044,
+                        0.4219,
+                        0.3262,
+                        0.5024,
+                        0.4329,
+                        0.3276,
+                        0.4978,
+                        0.4412,
+                        0.3355,
+                        0.4983,
+                        0.4338,
+                        0.3279,
+                        0.4893,
+                        0.4241,
+                        0.3129,
+                        0.4875,
+                        0.4253,
+                        0.3030,
+                        0.4961,
+                        0.4267,
+                        0.2988,
+                        0.5029,
+                        0.4255,
+                        0.3054,
+                        0.5132,
+                        0.4248,
+                        0.3222,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.5435,
+                        0.4673,
+                        0.5732,
+                        0.4438,
+                        0.3557,
+                        0.4912,
+                        0.4331,
+                        0.3491,
+                        0.4915,
+                        0.4287,
+                        0.347,
+                        0.4849,
+                        0.4355,
+                        0.3469,
+                        0.4871,
+                        0.4431,
+                        0.3538,
+                        0.4912,
+                        0.4521,
+                        0.3643,
+                        0.5059,
+                        0.4587,
+                        0.373,
+                        0.5166,
+                        0.4685,
+                        0.3845,
+                        0.5264,
+                        0.4746,
+                        0.3914,
+                        0.5342,
+                    ]
+                ),
+                ("cuda", 8): np.array(
+                    [
+                        0.5146,
+                        0.4385,
+                        0.3826,
+                        0.5098,
+                        0.4150,
+                        0.3218,
+                        0.5142,
+                        0.4312,
+                        0.3298,
+                        0.5127,
+                        0.4431,
+                        0.3411,
+                        0.5171,
+                        0.4424,
+                        0.3374,
+                        0.5088,
+                        0.4348,
+                        0.3242,
+                        0.5073,
+                        0.4380,
+                        0.3174,
+                        0.5132,
+                        0.4397,
+                        0.3115,
+                        0.5132,
+                        0.4343,
+                        0.3118,
+                        0.5219,
+                        0.4328,
+                        0.3256,
+                    ]
+                ),
+            }
         )
+
+        expected_slice = expected_slices.get_expectation()
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 

@@ -5,7 +5,12 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, LuminaNextDiT2DModel, LuminaText2ImgPipeline
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    LuminaNextDiT2DModel,
+    LuminaPipeline,
+)
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     numpy_cosine_similarity_distance,
@@ -17,8 +22,8 @@ from diffusers.utils.testing_utils import (
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
-    pipeline_class = LuminaText2ImgPipeline
+class LuminaPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+    pipeline_class = LuminaPipeline
     params = frozenset(
         [
             "prompt",
@@ -102,8 +107,8 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
 
 @slow
 @require_torch_accelerator
-class LuminaText2ImgPipelineSlowTests(unittest.TestCase):
-    pipeline_class = LuminaText2ImgPipeline
+class LuminaPipelineSlowTests(unittest.TestCase):
+    pipeline_class = LuminaPipeline
     repo_id = "Alpha-VLLM/Lumina-Next-SFT-diffusers"
 
     def setUp(self):

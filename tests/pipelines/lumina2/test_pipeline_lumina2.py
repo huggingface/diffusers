@@ -6,15 +6,15 @@ from transformers import AutoTokenizer, Gemma2Config, Gemma2Model
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    Lumina2Text2ImgPipeline,
+    Lumina2Pipeline,
     Lumina2Transformer2DModel,
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
-    pipeline_class = Lumina2Text2ImgPipeline
+class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+    pipeline_class = Lumina2Pipeline
     params = frozenset(
         [
             "prompt",

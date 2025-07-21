@@ -49,7 +49,7 @@ class GGUFQuantizer(DiffusersQuantizer):
     def validate_environment(self, *args, **kwargs):
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
             raise ImportError(
-                "Loading GGUF Parameters requires `accelerate` installed in your enviroment: `pip install 'accelerate>=0.26.0'`"
+                "Loading GGUF Parameters requires `accelerate` installed in your environment: `pip install 'accelerate>=0.26.0'`"
             )
         if not is_gguf_available() or is_gguf_version("<", "0.10.0"):
             raise ImportError(
@@ -82,7 +82,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         inferred_shape = _quant_shape_from_byte_shape(loaded_param_shape, type_size, block_size)
         if inferred_shape != current_param_shape:
             raise ValueError(
-                f"{param_name} has an expected quantized shape of: {inferred_shape}, but receieved shape: {loaded_param_shape}"
+                f"{param_name} has an expected quantized shape of: {inferred_shape}, but received shape: {loaded_param_shape}"
             )
 
         return True
@@ -108,6 +108,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Optional[Dict[str, Any]] = None,
         unexpected_keys: Optional[List[str]] = None,
+        **kwargs,
     ):
         module, tensor_name = get_module_from_name(model, param_name)
         if tensor_name not in module._parameters and tensor_name not in module._buffers:
@@ -145,13 +146,22 @@ class GGUFQuantizer(DiffusersQuantizer):
     def is_trainable(self) -> bool:
         return False
 
+    @property
+    def is_compileable(self) -> bool:
+        return True
+
     def _dequantize(self, model):
         is_model_on_cpu = model.device.type == "cpu"
         if is_model_on_cpu:
             logger.info(
-                "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to GPU. After dequantization, will move the model back to CPU again to preserve the previous device."
+                "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to accelerator. After dequantization, will move the model back to CPU again to preserve the previous device."
             )
-            model.to(torch.cuda.current_device())
+            device = (
+                torch.accelerator.current_accelerator()
+                if hasattr(torch, "accelerator")
+                else torch.cuda.current_device()
+            )
+            model.to(device)
 
         model = _dequantize_gguf_and_restore_linear(model, self.modules_to_not_convert)
         if is_model_on_cpu:

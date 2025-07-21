@@ -1,4 +1,4 @@
-# Copyright 2024 the Latte Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 the Latte Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,9 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.embeddings import PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..attention import BasicTransformerBlock
 from ..cache_utils import CacheMixin
-from ..embeddings import PatchEmbed
+from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
@@ -31,7 +30,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
 
     """
-    A 3D Transformer model for video-like data, paper: https://arxiv.org/abs/2401.03048, offical code:
+    A 3D Transformer model for video-like data, paper: https://huggingface.co/papers/2401.03048, official code:
     https://github.com/Vchitect/Latte
 
     Parameters:
@@ -217,7 +216,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         )
         num_patches = height * width
 
-        hidden_states = self.pos_embed(hidden_states)  # alrady add positional embeddings
+        hidden_states = self.pos_embed(hidden_states)  # already add positional embeddings
 
         added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
         timestep, embedded_timestep = self.adaln_single(
@@ -227,13 +226,17 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         # Prepare text embeddings for spatial block
         # batch_size num_tokens hidden_size -> (batch_size * num_frame) num_tokens hidden_size
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)  # 3 120 1152
-        encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(num_frame, dim=0).view(
-            -1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1]
-        )
+        encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(
+            num_frame, dim=0, output_size=encoder_hidden_states.shape[0] * num_frame
+        ).view(-1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1])
 
         # Prepare timesteps for spatial and temporal block
-        timestep_spatial = timestep.repeat_interleave(num_frame, dim=0).view(-1, timestep.shape[-1])
-        timestep_temp = timestep.repeat_interleave(num_patches, dim=0).view(-1, timestep.shape[-1])
+        timestep_spatial = timestep.repeat_interleave(
+            num_frame, dim=0, output_size=timestep.shape[0] * num_frame
+        ).view(-1, timestep.shape[-1])
+        timestep_temp = timestep.repeat_interleave(
+            num_patches, dim=0, output_size=timestep.shape[0] * num_patches
+        ).view(-1, timestep.shape[-1])
 
         # Spatial and temporal transformer blocks
         for i, (spatial_block, temp_block) in enumerate(
@@ -269,7 +272,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
                 if i == 0 and num_frame > 1:
-                    hidden_states = hidden_states + self.temp_pos_embed
+                    hidden_states = hidden_states + self.temp_pos_embed.to(hidden_states.dtype)
 
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
                     hidden_states = self._gradient_checkpointing_func(
@@ -299,7 +302,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                 ).permute(0, 2, 1, 3)
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
-        embedded_timestep = embedded_timestep.repeat_interleave(num_frame, dim=0).view(-1, embedded_timestep.shape[-1])
+        embedded_timestep = embedded_timestep.repeat_interleave(
+            num_frame, dim=0, output_size=embedded_timestep.shape[0] * num_frame
+        ).view(-1, embedded_timestep.shape[-1])
         shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
         hidden_states = self.norm_out(hidden_states)
         # Modulation

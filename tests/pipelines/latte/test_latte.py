@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 Latte Team and HuggingFace Inc.
+# Copyright 2025 Latte Team and HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 
 import gc
 import inspect
+import tempfile
 import unittest
 
 import numpy as np
@@ -24,6 +25,7 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    FasterCacheConfig,
     LattePipeline,
     LatteTransformer3DModel,
     PyramidAttentionBroadcastConfig,
@@ -39,13 +41,20 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin
+from ..test_pipelines_common import (
+    FasterCacheTesterMixin,
+    PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    to_np,
+)
 
 
 enable_full_determinism()
 
 
-class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, unittest.TestCase):
+class LattePipelineFastTests(
+    PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase
+):
     pipeline_class = LattePipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -66,6 +75,15 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
         spatial_attention_block_identifiers=["transformer_blocks"],
         temporal_attention_block_identifiers=["temporal_transformer_blocks"],
         cross_attention_block_identifiers=["transformer_blocks"],
+    )
+
+    faster_cache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        temporal_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        temporal_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
     )
 
     def get_dummy_components(self, num_layers: int = 1):
@@ -216,6 +234,73 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
     @unittest.skip("Test not supported because `encode_prompt()` has multiple returns.")
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+    def test_save_load_optional_components(self):
+        if not hasattr(self.pipeline_class, "_optional_components"):
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        prompt = inputs["prompt"]
+        generator = inputs["generator"]
+
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+        ) = pipe.encode_prompt(prompt)
+
+        # inputs with prompt converted to embeddings
+        inputs = {
+            "prompt_embeds": prompt_embeds,
+            "negative_prompt": None,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "height": 8,
+            "width": 8,
+            "video_length": 1,
+            "mask_feature": False,
+            "output_type": "pt",
+            "clean_caption": False,
+        }
+
+        # set all optional components to None
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            pipe_loaded.to(torch_device)
+
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, 1.0)
 
 
 @slow

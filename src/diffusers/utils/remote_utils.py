@@ -55,7 +55,7 @@ def detect_image_type(data: bytes) -> str:
     return "unknown"
 
 
-def check_inputs(
+def check_inputs_decode(
     endpoint: str,
     tensor: "torch.Tensor",
     processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
@@ -89,7 +89,7 @@ def check_inputs(
         )
 
 
-def postprocess(
+def postprocess_decode(
     response: requests.Response,
     processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
     output_type: Literal["mp4", "pil", "pt"] = "pil",
@@ -142,7 +142,7 @@ def postprocess(
     return output
 
 
-def prepare(
+def prepare_decode(
     tensor: "torch.Tensor",
     processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
     do_scaling: bool = True,
@@ -293,7 +293,7 @@ def remote_decode(
             standard_warn=False,
         )
         output_tensor_type = "binary"
-    check_inputs(
+    check_inputs_decode(
         endpoint,
         tensor,
         processor,
@@ -309,7 +309,7 @@ def remote_decode(
         height,
         width,
     )
-    kwargs = prepare(
+    kwargs = prepare_decode(
         tensor=tensor,
         processor=processor,
         do_scaling=do_scaling,
@@ -324,11 +324,102 @@ def remote_decode(
     response = requests.post(endpoint, **kwargs)
     if not response.ok:
         raise RuntimeError(response.json())
-    output = postprocess(
+    output = postprocess_decode(
         response=response,
         processor=processor,
         output_type=output_type,
         return_type=return_type,
         partial_postprocess=partial_postprocess,
+    )
+    return output
+
+
+def check_inputs_encode(
+    endpoint: str,
+    image: Union["torch.Tensor", Image.Image],
+    scaling_factor: Optional[float] = None,
+    shift_factor: Optional[float] = None,
+):
+    pass
+
+
+def postprocess_encode(
+    response: requests.Response,
+):
+    output_tensor = response.content
+    parameters = response.headers
+    shape = json.loads(parameters["shape"])
+    dtype = parameters["dtype"]
+    torch_dtype = DTYPE_MAP[dtype]
+    output_tensor = torch.frombuffer(bytearray(output_tensor), dtype=torch_dtype).reshape(shape)
+    return output_tensor
+
+
+def prepare_encode(
+    image: Union["torch.Tensor", Image.Image],
+    scaling_factor: Optional[float] = None,
+    shift_factor: Optional[float] = None,
+):
+    headers = {}
+    parameters = {}
+    if scaling_factor is not None:
+        parameters["scaling_factor"] = scaling_factor
+    if shift_factor is not None:
+        parameters["shift_factor"] = shift_factor
+    if isinstance(image, torch.Tensor):
+        data = safetensors.torch._tobytes(image.contiguous(), "tensor")
+        parameters["shape"] = list(image.shape)
+        parameters["dtype"] = str(image.dtype).split(".")[-1]
+    else:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        data = buffer.getvalue()
+    return {"data": data, "params": parameters, "headers": headers}
+
+
+def remote_encode(
+    endpoint: str,
+    image: Union["torch.Tensor", Image.Image],
+    scaling_factor: Optional[float] = None,
+    shift_factor: Optional[float] = None,
+) -> "torch.Tensor":
+    """
+    Hugging Face Hybrid Inference that allow running VAE encode remotely.
+
+    Args:
+        endpoint (`str`):
+            Endpoint for Remote Decode.
+        image (`torch.Tensor` or `PIL.Image.Image`):
+            Image to be encoded.
+        scaling_factor (`float`, *optional*):
+            Scaling is applied when passed e.g. [`latents * self.vae.config.scaling_factor`].
+            - SD v1: 0.18215
+            - SD XL: 0.13025
+            - Flux: 0.3611
+            If `None`, input must be passed with scaling applied.
+        shift_factor (`float`, *optional*):
+            Shift is applied when passed e.g. `latents - self.vae.config.shift_factor`.
+            - Flux: 0.1159
+            If `None`, input must be passed with scaling applied.
+
+    Returns:
+        output (`torch.Tensor`).
+    """
+    check_inputs_encode(
+        endpoint,
+        image,
+        scaling_factor,
+        shift_factor,
+    )
+    kwargs = prepare_encode(
+        image=image,
+        scaling_factor=scaling_factor,
+        shift_factor=shift_factor,
+    )
+    response = requests.post(endpoint, **kwargs)
+    if not response.ok:
+        raise RuntimeError(response.json())
+    output = postprocess_encode(
+        response=response,
     )
     return output

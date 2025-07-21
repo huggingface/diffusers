@@ -720,7 +720,7 @@ def main(args):
     # Train!
     logger.info("***** Running training *****")
     logger.info(f"  Num training steps = {args.max_train_steps}")
-    logger.info(f"  Instantaneous batch size per device = { args.train_batch_size}")
+    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
 

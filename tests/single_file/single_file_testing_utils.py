@@ -72,9 +72,9 @@ class SDSingleFileTesterMixin:
                 continue
 
             assert component_name in pipe.components, f"single file {component_name} not found in pretrained pipeline"
-            assert isinstance(
-                component, pipe.components[component_name].__class__
-            ), f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
+            assert isinstance(component, pipe.components[component_name].__class__), (
+                f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
+            )
 
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
@@ -85,9 +85,9 @@ class SDSingleFileTesterMixin:
                 if param_name == "upcast_attention" and pipe.components[component_name].config[param_name] is None:
                     pipe.components[component_name].config[param_name] = param_value
 
-                assert (
-                    pipe.components[component_name].config[param_name] == param_value
-                ), f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
+                assert pipe.components[component_name].config[param_name] == param_value, (
+                    f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
+                )
 
     def test_single_file_components(self, pipe=None, single_file_pipe=None):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -253,9 +253,9 @@ class SDXLSingleFileTesterMixin:
                 continue
 
             assert component_name in pipe.components, f"single file {component_name} not found in pretrained pipeline"
-            assert isinstance(
-                component, pipe.components[component_name].__class__
-            ), f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
+            assert isinstance(component, pipe.components[component_name].__class__), (
+                f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
+            )
 
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
@@ -266,9 +266,9 @@ class SDXLSingleFileTesterMixin:
                 if param_name == "upcast_attention" and pipe.components[component_name].config[param_name] is None:
                     pipe.components[component_name].config[param_name] = param_value
 
-                assert (
-                    pipe.components[component_name].config[param_name] == param_value
-                ), f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
+                assert pipe.components[component_name].config[param_name] == param_value, (
+                    f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
+                )
 
     def test_single_file_components(self, pipe=None, single_file_pipe=None):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(

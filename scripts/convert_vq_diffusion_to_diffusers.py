@@ -51,9 +51,9 @@ PORTED_VQVAES = ["image_synthesis.modeling.codecs.image_codec.patch_vqgan.PatchV
 
 
 def vqvae_model_from_original_config(original_config):
-    assert (
-        original_config["target"] in PORTED_VQVAES
-    ), f"{original_config['target']} has not yet been ported to diffusers."
+    assert original_config["target"] in PORTED_VQVAES, (
+        f"{original_config['target']} has not yet been ported to diffusers."
+    )
 
     original_config = original_config["params"]
 
@@ -464,15 +464,15 @@ PORTED_CONTENT_EMBEDDINGS = ["image_synthesis.modeling.embeddings.dalle_mask_ima
 def transformer_model_from_original_config(
     original_diffusion_config, original_transformer_config, original_content_embedding_config
 ):
-    assert (
-        original_diffusion_config["target"] in PORTED_DIFFUSIONS
-    ), f"{original_diffusion_config['target']} has not yet been ported to diffusers."
-    assert (
-        original_transformer_config["target"] in PORTED_TRANSFORMERS
-    ), f"{original_transformer_config['target']} has not yet been ported to diffusers."
-    assert (
-        original_content_embedding_config["target"] in PORTED_CONTENT_EMBEDDINGS
-    ), f"{original_content_embedding_config['target']} has not yet been ported to diffusers."
+    assert original_diffusion_config["target"] in PORTED_DIFFUSIONS, (
+        f"{original_diffusion_config['target']} has not yet been ported to diffusers."
+    )
+    assert original_transformer_config["target"] in PORTED_TRANSFORMERS, (
+        f"{original_transformer_config['target']} has not yet been ported to diffusers."
+    )
+    assert original_content_embedding_config["target"] in PORTED_CONTENT_EMBEDDINGS, (
+        f"{original_content_embedding_config['target']} has not yet been ported to diffusers."
+    )
 
     original_diffusion_config = original_diffusion_config["params"]
     original_transformer_config = original_transformer_config["params"]

@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -26,13 +26,13 @@ The example below only quantizes the weights to int8.
 
 ```python
 import torch
-from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
+from diffusers import FluxPipeline, AutoModel, TorchAoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
 dtype = torch.bfloat16
 
 quantization_config = TorchAoConfig("int8wo")
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -56,7 +56,7 @@ image = pipe(
 image.save("output.png")
 ```
 
-TorchAO is fully compatible with [torch.compile](./optimization/torch2.0#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
+TorchAO is fully compatible with [torch.compile](../optimization/fp16#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
 
 ```python
 # In the above code, add the following after initializing the transformer
@@ -64,6 +64,9 @@ transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
 ```
 
 For speed and memory benchmarks on Flux and CogVideoX, please refer to the table [here](https://github.com/huggingface/diffusers/pull/10009#issue-2688781450). You can also find some torchao [benchmarks](https://github.com/pytorch/ao/tree/main/torchao/quantization#benchmarks) numbers for various hardware.
+
+> [!TIP]
+> The FP8 post-training quantization schemes in torchao are effective for GPUs with compute capability of at least 8.9 (RTX-4090, Hopper, etc.). FP8 often provides the best speed, memory, and quality trade-off when generating images and videos. We recommend combining FP8 and torch.compile if your GPU is compatible.
 
 torchao also supports an automatic quantization API through [autoquant](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md#autoquantization). Autoquantization determines the best quantization strategy applicable to a model by comparing the performance of each technique on chosen input types and shapes. Currently, this can be used directly on the underlying modeling components. Diffusers will also expose an autoquant configuration option in the future.
 
@@ -85,13 +88,13 @@ The quantization methods supported are as follows:
 | **Category** | **Full Function Names** | **Shorthands** |
 |--------------|-------------------------|----------------|
 | **Integer quantization** | `int4_weight_only`, `int8_dynamic_activation_int4_weight`, `int8_weight_only`, `int8_dynamic_activation_int8_weight` | `int4wo`, `int4dq`, `int8wo`, `int8dq` |
-| **Floating point 8-bit quantization** | `float8_weight_only`, `float8_dynamic_activation_float8_weight`, `float8_static_activation_float8_weight` | `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`, `float8_e4m3_tensor`, `float8_e4m3_row` |
+| **Floating point 8-bit quantization** | `float8_weight_only`, `float8_dynamic_activation_float8_weight`, `float8_static_activation_float8_weight` | `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`, `float8dq_e4m3_tensor`, `float8dq_e4m3_row` |
 | **Floating point X-bit quantization** | `fpx_weight_only` | `fpX_eAwB` where `X` is the number of bits (1-7), `A` is exponent bits, and `B` is mantissa bits. Constraint: `X == A + B + 1` |
 | **Unsigned Integer quantization** | `uintx_weight_only` | `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo` |
 
 Some quantization methods are aliases (for example, `int8wo` is the commonly used shorthand for `int8_weight_only`). This allows using the quantization methods described in the torchao docs as-is, while also making it convenient to remember their shorthand notations.
 
-Refer to the official torchao documentation for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
+Refer to the [official torchao documentation](https://docs.pytorch.org/ao/stable/index.html) for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
 
 ## Serializing and Deserializing quantized models
 
@@ -99,10 +102,10 @@ To serialize a quantized model in a given dtype, first load the model with the d
 
 ```python
 import torch
-from diffusers import FluxTransformer2DModel, TorchAoConfig
+from diffusers import AutoModel, TorchAoConfig
 
 quantization_config = TorchAoConfig("int8wo")
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -115,9 +118,9 @@ To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] me
 
 ```python
 import torch
-from diffusers import FluxPipeline, FluxTransformer2DModel
+from diffusers import FluxPipeline, AutoModel
 
-transformer = FluxTransformer2DModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
+transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
 pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
@@ -126,15 +129,15 @@ image = pipe(prompt, num_inference_steps=30, guidance_scale=7.0).images[0]
 image.save("output.png")
 ```
 
-Some quantization methods, such as `uint4wo`, cannot be loaded directly and may result in an `UnpicklingError` when trying to load the models, but work as expected when saving them. In order to work around this, one can load the state dict manually into the model. Note, however, that this requires using `weights_only=False` in `torch.load`, so it should be run only if the weights were obtained from a trustable source.
+If you are using `torch<=2.6.0`, some quantization methods, such as `uint4wo`, cannot be loaded directly and may result in an `UnpicklingError` when trying to load the models, but work as expected when saving them. In order to work around this, one can load the state dict manually into the model. Note, however, that this requires using `weights_only=False` in `torch.load`, so it should be run only if the weights were obtained from a trustable source.
 
 ```python
 import torch
 from accelerate import init_empty_weights
-from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
+from diffusers import FluxPipeline, AutoModel, TorchAoConfig
 
 # Serialize the model
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=TorchAoConfig("uint4wo"),
@@ -146,11 +149,14 @@ transformer.save_pretrained("/path/to/flux_uint4wo", safe_serialization=False, m
 # Load the model
 state_dict = torch.load("/path/to/flux_uint4wo/diffusion_pytorch_model.bin", weights_only=False, map_location="cpu")
 with init_empty_weights():
-    transformer = FluxTransformer2DModel.from_config("/path/to/flux_uint4wo/config.json")
+    transformer = AutoModel.from_config("/path/to/flux_uint4wo/config.json")
 transformer.load_state_dict(state_dict, strict=True, assign=True)
 ```
 
+> [!TIP]
+> The [`AutoModel`] API is supported for PyTorch >= 2.6 as shown in the examples below.
+
 ## Resources
 
-- [TorchAO Quantization API](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md)
+- [TorchAO Quantization API](https://docs.pytorch.org/ao/stable/index.html)
 - [Diffusers-TorchAO examples](https://github.com/sayakpaul/diffusers-torchao)

@@ -1,6 +1,6 @@
 # Consistency Training
 
-`train_cm_ct_unconditional.py` trains a consistency model (CM) from scratch following the consistency training (CT) algorithm introduced in [Consistency Models](https://arxiv.org/abs/2303.01469) and refined in [Improved Techniques for Training Consistency Models](https://arxiv.org/abs/2310.14189). Both unconditional and class-conditional training are supported.
+`train_cm_ct_unconditional.py` trains a consistency model (CM) from scratch following the consistency training (CT) algorithm introduced in [Consistency Models](https://huggingface.co/papers/2303.01469) and refined in [Improved Techniques for Training Consistency Models](https://huggingface.co/papers/2310.14189). Both unconditional and class-conditional training are supported.
 
 A usage example is as follows:
 

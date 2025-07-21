@@ -1,4 +1,4 @@
-# Copyright 2024 FABRIC authors and the HuggingFace Team. All rights reserved.
+# Copyright 2025 FABRIC authors and the HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -559,7 +559,7 @@ class FabricPipeline(DiffusionPipeline):
                 End point for providing feedback (between 0 and 1).
             min_weight (`float`, *optional*, defaults to `.05`):
                 Minimum weight for feedback.
-            max_weight (`float`, *optional*, defults tp `1.0`):
+            max_weight (`float`, *optional*, defaults tp `1.0`):
                 Maximum weight for feedback.
             neg_scale (`float`, *optional*, defaults to `.5`):
                 Scale factor for negative feedback.

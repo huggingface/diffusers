@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 Optuna, Hugging Face
+# Copyright 2025 Optuna, Hugging Face
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,8 +60,7 @@ def _get_default_logging_level() -> int:
             return log_levels[env_level_str]
         else:
             logging.getLogger().warning(
-                f"Unknown option DIFFUSERS_VERBOSITY={env_level_str}, "
-                f"has to be one of: { ', '.join(log_levels.keys()) }"
+                f"Unknown option DIFFUSERS_VERBOSITY={env_level_str}, has to be one of: {', '.join(log_levels.keys())}"
             )
     return _default_log_level
 
