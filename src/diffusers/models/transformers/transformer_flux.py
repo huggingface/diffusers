@@ -263,6 +263,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
             return hidden_states
 
 
+@maybe_allow_in_graph
 class FluxAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = FluxAttnProcessor
     _available_processors = [
