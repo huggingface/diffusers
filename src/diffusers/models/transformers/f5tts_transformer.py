@@ -12,36 +12,17 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 from torch import nn
-from ..normalization import GlobalResponseNorm, AdaLayerNorm
+from ..normalization import GlobalResponseNorm, AdaLayerNorm, RMSNorm
 import math
 from ..embeddings import get_1d_rotary_pos_embed, apply_rotary_emb
 from typing import Optional, Union
-
+from ..attention_processor import F5TTSAttnProcessor2_0
+from ..attention import Attention
 from einops import rearrange, repeat, reduce, pack, unpack
 from torch import nn, einsum, tensor, Tensor, cat, stack, arange, is_tensor
 
 
-def rotate_half(x):
-    x = rearrange(x, '... (d r) -> ... d r', r = 2)
-    x1, x2 = x.unbind(dim = -1)
-    x = stack((-x2, x1), dim = -1)
-    return rearrange(x, '... d r -> ... (d r)')
 
-def apply_rotary_pos_emb(t, freqs, scale = 1):
-    rot_dim, seq_len, orig_dtype = freqs.shape[-1], t.shape[-2], t.dtype
-
-    freqs = freqs[:, -seq_len:, :]
-    scale = scale[:, -seq_len:, :] if isinstance(scale, torch.Tensor) else scale
-
-    if t.ndim == 4 and freqs.ndim == 3:
-        freqs = rearrange(freqs, 'b n d -> b 1 n d')
-
-    # partial rotary embeddings, Wang et al. GPT-J
-    t, t_unrotated = t[..., :rot_dim], t[..., rot_dim:]
-    t = (t * freqs.cos() * scale) + (rotate_half(t) * freqs.sin() * scale)
-    out = cat((t, t_unrotated), dim = -1)
-
-    return out.type(orig_dtype)
 
 class AdaLayerNorm2(nn.Module):
     def __init__(self, dim):
@@ -62,34 +43,15 @@ class AdaLayerNorm2(nn.Module):
 
 
 
-class RMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
-        self.native_rms_norm = float(torch.__version__[:3]) >= 2.4
-
-    def forward(self, x):
-        if self.native_rms_norm:
-            if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                x = x.to(self.weight.dtype)
-            x = F.rms_norm(x, normalized_shape=(x.shape[-1],), weight=self.weight, eps=self.eps)
-        else:
-            variance = x.to(torch.float32).pow(2).mean(-1, keepdim=True)
-            x = x * torch.rsqrt(variance + self.eps)
-            if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                x = x.to(self.weight.dtype)
-            x = x * self.weight
-
-        return x
 
 
-class FeedForward(nn.Module):
+class F5FeedForward(nn.Module):
     def __init__(self, dim, dim_out=None, mult=4, dropout=0.0, approximate: str = "none"):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
-
+        
+        # a bit different ordering from the diffusers FeedForward class, here the inner projection weight comes first, in diffusers the activation comes first
         activation = nn.GELU(approximate=approximate)
         project_in = nn.Sequential(nn.Linear(dim, inner_dim), activation)
         self.ff = nn.Sequential(project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_out))
@@ -102,76 +64,6 @@ class FeedForward(nn.Module):
 # modified from diffusers/src/diffusers/models/attention_processor.py
 
 
-class Attention(nn.Module):
-    def __init__(
-        self,
-        processor: AttnProcessor,
-        dim: int,
-        heads: int = 8,
-        dim_head: int = 64,
-        dropout: float = 0.0,
-        context_dim: Optional[int] = None,  # if not None -> joint attention
-        context_pre_only: bool = False,
-        qk_norm: Optional[str] = None,
-    ):
-        super().__init__()
-
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("Attention equires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-        self.processor = processor
-
-        self.dim = dim
-        self.heads = heads
-        self.inner_dim = dim_head * heads
-        self.dropout = dropout
-
-        self.context_dim = context_dim
-        self.context_pre_only = context_pre_only
-
-        self.to_q = nn.Linear(dim, self.inner_dim)
-        self.to_k = nn.Linear(dim, self.inner_dim)
-        self.to_v = nn.Linear(dim, self.inner_dim)
-
-        if qk_norm is None:
-            self.q_norm = None
-            self.k_norm = None
-        elif qk_norm == "rms_norm":
-            self.q_norm = RMSNorm(dim_head, eps=1e-6)
-            self.k_norm = RMSNorm(dim_head, eps=1e-6)
-        else:
-            raise ValueError(f"Unimplemented qk_norm: {qk_norm}")
-
-        if self.context_dim is not None:
-            self.to_q_c = nn.Linear(context_dim, self.inner_dim)
-            self.to_k_c = nn.Linear(context_dim, self.inner_dim)
-            self.to_v_c = nn.Linear(context_dim, self.inner_dim)
-            if qk_norm is None:
-                self.c_q_norm = None
-                self.c_k_norm = None
-            elif qk_norm == "rms_norm":
-                self.c_q_norm = RMSNorm(dim_head, eps=1e-6)
-                self.c_k_norm = RMSNorm(dim_head, eps=1e-6)
-
-        self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(self.inner_dim, dim))
-        self.to_out.append(nn.Dropout(dropout))
-
-        if self.context_dim is not None and not self.context_pre_only:
-            self.to_out_c = nn.Linear(self.inner_dim, context_dim)
-
-    def forward(
-        self,
-        x: float["b n d"],  # noised input x
-        c: float["b n d"] = None,  # context c
-        mask: bool["b n"] | None = None,
-        rope=None,  # rotary position embedding for x
-        c_rope=None,  # rotary position embedding for c
-    ) -> torch.Tensor:
-        if c is not None:
-            return self.processor(self, x, c=c, mask=mask, rope=rope, c_rope=c_rope)
-        else:
-            return self.processor(self, x, mask=mask, rope=rope)
 
 
 
@@ -184,110 +76,7 @@ def is_package_available(package_name: str) -> bool:
     except Exception:
         return False
 
-# Attention processor
 
-
-
-class AttnProcessor:
-    def __init__(
-        self,
-        pe_attn_head: int | None = None,  # number of attention head to apply rope, None for all
-        attn_backend: str = "torch",  # "torch" or "flash_attn"
-        attn_mask_enabled: bool = True,
-    ):
-        if attn_backend == "flash_attn":
-            assert is_package_available("flash_attn"), "Please install flash-attn first."
-
-        self.pe_attn_head = pe_attn_head
-        self.attn_backend = attn_backend
-        self.attn_mask_enabled = attn_mask_enabled
-
-    def __call__(
-        self,
-        attn: Attention,
-        x: float["b n d"],  # noised input x
-        mask: bool["b n"] | None = None,
-        rope=None,  # rotary position embedding
-    ) -> torch.FloatTensor:
-        batch_size = x.shape[0]
-
-        # `sample` projections
-        query = attn.to_q(x)
-        key = attn.to_k(x)
-        value = attn.to_v(x)
-
-        # attention
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # qk norm
-        if attn.q_norm is not None:
-            query = attn.q_norm(query)
-        if attn.k_norm is not None:
-            key = attn.k_norm(key)
-
-        # apply rotary position embedding
-        if rope is not None:
-            freqs, xpos_scale = rope
-            q_xpos_scale, k_xpos_scale = (xpos_scale, xpos_scale**-1.0) if xpos_scale is not None else (1.0, 1.0)
-
-            if self.pe_attn_head is not None:
-                pn = self.pe_attn_head
-                query[:, :pn, :, :] = apply_rotary_pos_emb(query[:, :pn, :, :], freqs, q_xpos_scale)
-                key[:, :pn, :, :] = apply_rotary_pos_emb(key[:, :pn, :, :], freqs, k_xpos_scale)
-            else:
-                query = apply_rotary_pos_emb(query, freqs, q_xpos_scale)
-                key = apply_rotary_pos_emb(key, freqs, k_xpos_scale)
-
-        if self.attn_backend == "torch":
-            # mask. e.g. inference got a batch with different target durations, mask out the padding
-            if self.attn_mask_enabled and mask is not None:
-                attn_mask = mask
-                attn_mask = attn_mask.unsqueeze(1).unsqueeze(1)  # 'b n -> b 1 1 n'
-                attn_mask = attn_mask.expand(batch_size, attn.heads, query.shape[-2], key.shape[-2])
-            else:
-                attn_mask = None
-            x = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask, dropout_p=0.0, is_causal=False)
-            x = x.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-
-        # elif self.attn_backend == "flash_attn":
-        #     query = query.transpose(1, 2)  # [b, h, n, d] -> [b, n, h, d]
-        #     key = key.transpose(1, 2)
-        #     value = value.transpose(1, 2)
-        #     if self.attn_mask_enabled and mask is not None:
-        #         query, indices, q_cu_seqlens, q_max_seqlen_in_batch, _ = unpad_input(query, mask)
-        #         key, _, k_cu_seqlens, k_max_seqlen_in_batch, _ = unpad_input(key, mask)
-        #         value, _, _, _, _ = unpad_input(value, mask)
-        #         x = flash_attn_varlen_func(
-        #             query,
-        #             key,
-        #             value,
-        #             q_cu_seqlens,
-        #             k_cu_seqlens,
-        #             q_max_seqlen_in_batch,
-        #             k_max_seqlen_in_batch,
-        #         )
-        #         x = pad_input(x, indices, batch_size, q_max_seqlen_in_batch)
-        #         x = x.reshape(batch_size, -1, attn.heads * head_dim)
-        #     else:
-        #         x = flash_attn_func(query, key, value, dropout_p=0.0, causal=False)
-        #         x = x.reshape(batch_size, -1, attn.heads * head_dim)
-
-        x = x.to(query.dtype)
-
-        # linear proj
-        x = attn.to_out[0](x)
-        # dropout
-        x = attn.to_out[1](x)
-
-        if mask is not None:
-            mask = mask.unsqueeze(-1)
-            x = x.masked_fill(~mask, 0.0)
-
-        return x
 
 
 class DiTBlock(nn.Module):
@@ -307,12 +96,10 @@ class DiTBlock(nn.Module):
 
         self.attn_norm = AdaLayerNorm2(dim)
         self.attn = Attention(
-            processor=AttnProcessor(
+            processor=F5TTSAttnProcessor2_0(
                 pe_attn_head=pe_attn_head,
-                attn_backend=attn_backend,
-                attn_mask_enabled=attn_mask_enabled,
             ),
-            dim=dim,
+            query_dim=dim,
             heads=heads,
             dim_head=dim_head,
             dropout=dropout,
@@ -320,7 +107,7 @@ class DiTBlock(nn.Module):
         )
 
         self.ff_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
-        self.ff = FeedForward(dim=dim, mult=ff_mult, dropout=dropout, approximate="tanh")
+        self.ff = F5FeedForward(dim=dim, mult=ff_mult, dropout=dropout, approximate="tanh")
 
     def forward(self, x, t, mask=None, rope=None):  # x: noised input, t: time embedding
         # pre-norm & modulation for attention input
