@@ -1,4 +1,4 @@
-# Copyright 2024 The NVIDIA Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The NVIDIA Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -131,7 +131,7 @@ def retrieve_timesteps(
 
 class CosmosTextToWorldPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-video generation using [Cosmos](https://github.com/NVIDIA/Cosmos).
+    Pipeline for text-to-world generation using [Cosmos Predict1](https://github.com/nvidia-cosmos/cosmos-predict1).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -426,12 +426,12 @@ class CosmosTextToWorldPipeline(DiffusionPipeline):
                 The height in pixels of the generated image.
             width (`int`, defaults to `1280`):
                 The width in pixels of the generated image.
-            num_frames (`int`, defaults to `129`):
+            num_frames (`int`, defaults to `121`):
                 The number of frames in the generated video.
-            num_inference_steps (`int`, defaults to `50`):
+            num_inference_steps (`int`, defaults to `36`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, defaults to `6.0`):
+            guidance_scale (`float`, defaults to `7.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
@@ -457,9 +457,6 @@ class CosmosTextToWorldPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`CosmosPipelineOutput`] instead of a plain tuple.
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:

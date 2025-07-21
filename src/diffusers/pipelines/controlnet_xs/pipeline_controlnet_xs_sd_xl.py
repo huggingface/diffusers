@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -114,6 +114,7 @@ EXAMPLE_DOC_STRING = """
 
 
 class StableDiffusionXLControlNetXSPipeline(
+    DeprecatedPipelineMixin,
     DiffusionPipeline,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,
@@ -158,6 +159,7 @@ class StableDiffusionXLControlNetXSPipeline(
             watermarker is used.
     """
 
+    _last_supported_version = "0.33.1"
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
     _optional_components = [
         "tokenizer",

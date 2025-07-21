@@ -22,6 +22,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["pipeline_cosmos2_text2image"] = ["Cosmos2TextToImagePipeline"]
+    _import_structure["pipeline_cosmos2_video2world"] = ["Cosmos2VideoToWorldPipeline"]
     _import_structure["pipeline_cosmos_text2world"] = ["CosmosTextToWorldPipeline"]
     _import_structure["pipeline_cosmos_video2world"] = ["CosmosVideoToWorldPipeline"]
 
@@ -33,6 +35,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .pipeline_cosmos2_text2image import Cosmos2TextToImagePipeline
+        from .pipeline_cosmos2_video2world import Cosmos2VideoToWorldPipeline
         from .pipeline_cosmos_text2world import CosmosTextToWorldPipeline
         from .pipeline_cosmos_video2world import CosmosVideoToWorldPipeline
 

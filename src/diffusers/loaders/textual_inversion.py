@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -427,7 +427,8 @@ class TextualInversionLoaderMixin:
                         logger.info(
                             "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
                         )
-                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+                        if is_sequential_cpu_offload or is_model_cpu_offload:
+                            remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
         # 7.2 save expected device and dtype
         device = text_encoder.device

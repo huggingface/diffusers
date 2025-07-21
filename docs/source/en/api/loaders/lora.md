@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -26,6 +26,7 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`HunyuanVideoLoraLoaderMixin`] provides similar functions for [HunyuanVideo](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hunyuan_video).
 - [`Lumina2LoraLoaderMixin`] provides similar functions for [Lumina2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/lumina2).
 - [`WanLoraLoaderMixin`] provides similar functions for [Wan](https://huggingface.co/docs/diffusers/main/en/api/pipelines/wan).
+- [`SkyReelsV2LoraLoaderMixin`] provides similar functions for [SkyReels-V2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/skyreels_v2).
 - [`CogView4LoraLoaderMixin`] provides similar functions for [CogView4](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogview4).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
 - [`HiDreamImageLoraLoaderMixin`] provides similar functions for [HiDream Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hidream)
@@ -36,6 +37,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 To learn more about how to load LoRA weights, see the [LoRA](../../using-diffusers/loading_adapters#lora) loading guide.
 
 </Tip>
+
+## LoraBaseMixin
+
+[[autodoc]] loaders.lora_base.LoraBaseMixin
 
 ## StableDiffusionLoraLoaderMixin
 
@@ -87,6 +92,10 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 ## WanLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.WanLoraLoaderMixin
+
+## SkyReelsV2LoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.SkyReelsV2LoraLoaderMixin
 
 ## AmusedLoraLoaderMixin
 

@@ -7,7 +7,17 @@ from accelerate import init_empty_weights
 from huggingface_hub import snapshot_download
 from transformers import T5EncoderModel, T5TokenizerFast
 
-from diffusers import AutoencoderKLCosmos, CosmosTextToWorldPipeline, CosmosTransformer3DModel, EDMEulerScheduler
+from diffusers import (
+    AutoencoderKLCosmos,
+    AutoencoderKLWan,
+    Cosmos2TextToImagePipeline,
+    Cosmos2VideoToWorldPipeline,
+    CosmosTextToWorldPipeline,
+    CosmosTransformer3DModel,
+    CosmosVideoToWorldPipeline,
+    EDMEulerScheduler,
+    FlowMatchEulerDiscreteScheduler,
+)
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -29,7 +39,7 @@ def rename_transformer_blocks_(key: str, state_dict: Dict[str, Any]):
     state_dict[new_key] = state_dict.pop(key)
 
 
-TRANSFORMER_KEYS_RENAME_DICT = {
+TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0 = {
     "t_embedder.1": "time_embed.t_embedder",
     "affline_norm": "time_embed.norm",
     ".blocks.0.block.attn": ".attn1",
@@ -56,13 +66,51 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "final_layer.linear": "proj_out",
 }
 
-TRANSFORMER_SPECIAL_KEYS_REMAP = {
+TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_1_0 = {
     "blocks.block": rename_transformer_blocks_,
     "logvar.0.freqs": remove_keys_,
     "logvar.0.phases": remove_keys_,
     "logvar.1.weight": remove_keys_,
     "pos_embedder.seq": remove_keys_,
 }
+
+TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0 = {
+    "t_embedder.1": "time_embed.t_embedder",
+    "t_embedding_norm": "time_embed.norm",
+    "blocks": "transformer_blocks",
+    "adaln_modulation_self_attn.1": "norm1.linear_1",
+    "adaln_modulation_self_attn.2": "norm1.linear_2",
+    "adaln_modulation_cross_attn.1": "norm2.linear_1",
+    "adaln_modulation_cross_attn.2": "norm2.linear_2",
+    "adaln_modulation_mlp.1": "norm3.linear_1",
+    "adaln_modulation_mlp.2": "norm3.linear_2",
+    "self_attn": "attn1",
+    "cross_attn": "attn2",
+    "q_proj": "to_q",
+    "k_proj": "to_k",
+    "v_proj": "to_v",
+    "output_proj": "to_out.0",
+    "q_norm": "norm_q",
+    "k_norm": "norm_k",
+    "mlp.layer1": "ff.net.0.proj",
+    "mlp.layer2": "ff.net.2",
+    "x_embedder.proj.1": "patch_embed.proj",
+    "final_layer.adaln_modulation.1": "norm_out.linear_1",
+    "final_layer.adaln_modulation.2": "norm_out.linear_2",
+    "final_layer.linear": "proj_out",
+}
+
+TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0 = {
+    "accum_video_sample_counter": remove_keys_,
+    "accum_image_sample_counter": remove_keys_,
+    "accum_iteration": remove_keys_,
+    "accum_train_in_hours": remove_keys_,
+    "pos_embedder.seq": remove_keys_,
+    "pos_embedder.dim_spatial_range": remove_keys_,
+    "pos_embedder.dim_temporal_range": remove_keys_,
+    "_extra_state": remove_keys_,
+}
+
 
 TRANSFORMER_CONFIGS = {
     "Cosmos-1.0-Diffusion-7B-Text2World": {
@@ -124,6 +172,66 @@ TRANSFORMER_CONFIGS = {
         "rope_scale": (2.0, 2.0, 2.0),
         "concat_padding_mask": True,
         "extra_pos_embed_type": "learnable",
+    },
+    "Cosmos-2.0-Diffusion-2B-Text2Image": {
+        "in_channels": 16,
+        "out_channels": 16,
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "num_layers": 28,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (1.0, 4.0, 4.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": None,
+    },
+    "Cosmos-2.0-Diffusion-14B-Text2Image": {
+        "in_channels": 16,
+        "out_channels": 16,
+        "num_attention_heads": 40,
+        "attention_head_dim": 128,
+        "num_layers": 36,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (1.0, 4.0, 4.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": None,
+    },
+    "Cosmos-2.0-Diffusion-2B-Video2World": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "num_layers": 28,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (1.0, 3.0, 3.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": None,
+    },
+    "Cosmos-2.0-Diffusion-14B-Video2World": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 40,
+        "attention_head_dim": 128,
+        "num_layers": 36,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (20 / 24, 2.0, 2.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": None,
     },
 }
 
@@ -216,9 +324,18 @@ def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
     return state_dict
 
 
-def convert_transformer(transformer_type: str, ckpt_path: str):
+def convert_transformer(transformer_type: str, ckpt_path: str, weights_only: bool = True):
     PREFIX_KEY = "net."
-    original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", weights_only=True))
+    original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", weights_only=weights_only))
+
+    if "Cosmos-1.0" in transformer_type:
+        TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0
+        TRANSFORMER_SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_1_0
+    elif "Cosmos-2.0" in transformer_type:
+        TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0
+        TRANSFORMER_SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0
+    else:
+        assert False
 
     with init_empty_weights():
         config = TRANSFORMER_CONFIGS[transformer_type]
@@ -281,13 +398,61 @@ def convert_vae(vae_type: str):
     return vae
 
 
+def save_pipeline_cosmos_1_0(args, transformer, vae):
+    text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.bfloat16)
+    tokenizer = T5TokenizerFast.from_pretrained(args.tokenizer_path)
+    # The original code initializes EDM config with sigma_min=0.0002, but does not make use of it anywhere directly.
+    # So, the sigma_min values that is used is the default value of 0.002.
+    scheduler = EDMEulerScheduler(
+        sigma_min=0.002,
+        sigma_max=80,
+        sigma_data=0.5,
+        sigma_schedule="karras",
+        num_train_timesteps=1000,
+        prediction_type="epsilon",
+        rho=7.0,
+        final_sigmas_type="sigma_min",
+    )
+
+    pipe_cls = CosmosTextToWorldPipeline if "Text2World" in args.transformer_type else CosmosVideoToWorldPipeline
+    pipe = pipe_cls(
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        transformer=transformer,
+        vae=vae,
+        scheduler=scheduler,
+        safety_checker=lambda *args, **kwargs: None,
+    )
+    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+
+
+def save_pipeline_cosmos_2_0(args, transformer, vae):
+    text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.bfloat16)
+    tokenizer = T5TokenizerFast.from_pretrained(args.tokenizer_path)
+
+    scheduler = FlowMatchEulerDiscreteScheduler(use_karras_sigmas=True)
+
+    pipe_cls = Cosmos2TextToImagePipeline if "Text2Image" in args.transformer_type else Cosmos2VideoToWorldPipeline
+    pipe = pipe_cls(
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        transformer=transformer,
+        vae=vae,
+        scheduler=scheduler,
+        safety_checker=lambda *args, **kwargs: None,
+    )
+    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--transformer_type", type=str, default=None, choices=list(TRANSFORMER_CONFIGS.keys()))
     parser.add_argument(
         "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
-    parser.add_argument("--vae_type", type=str, default=None, choices=list(VAE_CONFIGS.keys()), help="Type of VAE")
+    parser.add_argument(
+        "--vae_type", type=str, default=None, choices=["none", *list(VAE_CONFIGS.keys())], help="Type of VAE"
+    )
     parser.add_argument("--text_encoder_path", type=str, default="google-t5/t5-11b")
     parser.add_argument("--tokenizer_path", type=str, default="google-t5/t5-11b")
     parser.add_argument("--save_pipeline", action="store_true")
@@ -316,37 +481,26 @@ if __name__ == "__main__":
         assert args.tokenizer_path is not None
 
     if args.transformer_ckpt_path is not None:
-        transformer = convert_transformer(args.transformer_type, args.transformer_ckpt_path)
+        weights_only = "Cosmos-1.0" in args.transformer_type
+        transformer = convert_transformer(args.transformer_type, args.transformer_ckpt_path, weights_only)
         transformer = transformer.to(dtype=dtype)
         if not args.save_pipeline:
             transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
     if args.vae_type is not None:
-        vae = convert_vae(args.vae_type)
+        if "Cosmos-1.0" in args.transformer_type:
+            vae = convert_vae(args.vae_type)
+        else:
+            vae = AutoencoderKLWan.from_pretrained(
+                "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+            )
         if not args.save_pipeline:
             vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
     if args.save_pipeline:
-        text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=dtype)
-        tokenizer = T5TokenizerFast.from_pretrained(args.tokenizer_path)
-        # The original code initializes EDM config with sigma_min=0.0002, but does not make use of it anywhere directly.
-        # So, the sigma_min values that is used is the default value of 0.002.
-        scheduler = EDMEulerScheduler(
-            sigma_min=0.002,
-            sigma_max=80,
-            sigma_data=0.5,
-            sigma_schedule="karras",
-            num_train_timesteps=1000,
-            prediction_type="epsilon",
-            rho=7.0,
-            final_sigmas_type="sigma_min",
-        )
-
-        pipe = CosmosTextToWorldPipeline(
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            transformer=transformer,
-            vae=vae,
-            scheduler=scheduler,
-        )
-        pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+        if "Cosmos-1.0" in args.transformer_type:
+            save_pipeline_cosmos_1_0(args, transformer, vae)
+        elif "Cosmos-2.0" in args.transformer_type:
+            save_pipeline_cosmos_2_0(args, transformer, vae)
+        else:
+            assert False

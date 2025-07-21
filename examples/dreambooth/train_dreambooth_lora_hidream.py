@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
@@ -58,6 +58,7 @@ from diffusers.training_utils import (
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
     free_memory,
+    offload_models,
 )
 from diffusers.utils import (
     check_min_version,
@@ -73,7 +74,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1181,13 +1182,15 @@ def main(args):
             transformer_lora_layers_to_save = None
 
             for model in models:
-                if isinstance(model, type(unwrap_model(transformer))):
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    model = unwrap_model(model)
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                if weights:
+                    weights.pop()
 
             HiDreamImagePipeline.save_lora_weights(
                 output_dir,
@@ -1197,13 +1200,20 @@ def main(args):
     def load_model_hook(models, input_dir):
         transformer_ = None
 
-        while len(models) > 0:
-            model = models.pop()
+        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
+            while len(models) > 0:
+                model = models.pop()
 
-            if isinstance(model, type(unwrap_model(transformer))):
-                transformer_ = model
-            else:
-                raise ValueError(f"unexpected save model: {model.__class__}")
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    model = unwrap_model(model)
+                    transformer_ = model
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
+        else:
+            transformer_ = HiDreamImageTransformer2DModel.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="transformer"
+            )
+            transformer_.add_adapter(transformer_lora_config)
 
         lora_state_dict = HiDreamImagePipeline.lora_state_dict(input_dir)
 
@@ -1355,43 +1365,34 @@ def main(args):
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
-        if args.offload:
-            text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
-        (
-            instance_prompt_hidden_states_t5,
-            instance_prompt_hidden_states_llama3,
-            instance_pooled_prompt_embeds,
-            _,
-            _,
-            _,
-        ) = compute_text_embeddings(args.instance_prompt, text_encoding_pipeline)
-        if args.offload:
-            text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            (
+                instance_prompt_hidden_states_t5,
+                instance_prompt_hidden_states_llama3,
+                instance_pooled_prompt_embeds,
+                _,
+                _,
+                _,
+            ) = compute_text_embeddings(args.instance_prompt, text_encoding_pipeline)
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        if args.offload:
-            text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
-        (class_prompt_hidden_states_t5, class_prompt_hidden_states_llama3, class_pooled_prompt_embeds, _, _, _) = (
-            compute_text_embeddings(args.class_prompt, text_encoding_pipeline)
-        )
-        if args.offload:
-            text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            (class_prompt_hidden_states_t5, class_prompt_hidden_states_llama3, class_pooled_prompt_embeds, _, _, _) = (
+                compute_text_embeddings(args.class_prompt, text_encoding_pipeline)
+            )
 
     validation_embeddings = {}
     if args.validation_prompt is not None:
-        if args.offload:
-            text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
-        (
-            validation_embeddings["prompt_embeds_t5"],
-            validation_embeddings["prompt_embeds_llama3"],
-            validation_embeddings["pooled_prompt_embeds"],
-            validation_embeddings["negative_prompt_embeds_t5"],
-            validation_embeddings["negative_prompt_embeds_llama3"],
-            validation_embeddings["negative_pooled_prompt_embeds"],
-        ) = compute_text_embeddings(args.validation_prompt, text_encoding_pipeline)
-        if args.offload:
-            text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            (
+                validation_embeddings["prompt_embeds_t5"],
+                validation_embeddings["prompt_embeds_llama3"],
+                validation_embeddings["pooled_prompt_embeds"],
+                validation_embeddings["negative_prompt_embeds_t5"],
+                validation_embeddings["negative_prompt_embeds_llama3"],
+                validation_embeddings["negative_pooled_prompt_embeds"],
+            ) = compute_text_embeddings(args.validation_prompt, text_encoding_pipeline)
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1572,12 +1573,10 @@ def main(args):
                 if args.cache_latents:
                     model_input = latents_cache[step].sample()
                 else:
-                    if args.offload:
-                        vae = vae.to(accelerator.device)
-                    pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+                    with offload_models(vae, device=accelerator.device, offload=args.offload):
+                        pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.sample()
-                    if args.offload:
-                        vae = vae.to("cpu")
+
                 model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
@@ -1655,7 +1654,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:

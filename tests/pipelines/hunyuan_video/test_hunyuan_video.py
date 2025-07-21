@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,13 +26,11 @@ from diffusers import (
     HunyuanVideoPipeline,
     HunyuanVideoTransformer3DModel,
 )
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
     to_np,
@@ -43,7 +41,11 @@ enable_full_determinism()
 
 
 class HunyuanVideoPipelineFastTests(
-    PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase
+    PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = HunyuanVideoPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
@@ -201,11 +203,18 @@ class HunyuanVideoPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames
         generated_video = video[0]
-
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.3946, 0.4649, 0.3196, 0.4569, 0.3312, 0.3687, 0.3216, 0.3972, 0.4469, 0.3888, 0.3929, 0.3802, 0.3479, 0.3888, 0.3825, 0.3542])
+        # fmt: on
+
+        generated_slice = generated_video.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        self.assertTrue(
+            torch.allclose(generated_slice, expected_slice, atol=1e-3),
+            "The generated video does not match the expected slice.",
+        )
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)

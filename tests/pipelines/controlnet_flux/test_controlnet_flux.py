@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc and The InstantX Team.
+# Copyright 2025 HuggingFace Inc and The InstantX Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
@@ -211,7 +210,6 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
 
 @nightly
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxControlNetPipeline
 

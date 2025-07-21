@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,6 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
-    require_torch_gpu,
     skip_mps,
     slow,
     torch_all_close,
@@ -355,9 +354,7 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
     return custom_diffusion_attn_procs
 
 
-class UNet2DConditionModelTests(
-    ModelTesterMixin, TorchCompileTesterMixin, LoraHotSwappingForModelTesterMixin, UNetTesterMixin, unittest.TestCase
-):
+class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
     # We override the items here because the unet under consideration is small.
@@ -980,13 +977,13 @@ class UNet2DConditionModelTests(
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
-    @require_torch_gpu
     @parameterized.expand(
         [
             ("hf-internal-testing/unet2d-sharded-dummy", None),
             ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
         ]
     )
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_from_hub(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained(repo_id, variant=variant)
@@ -996,13 +993,13 @@ class UNet2DConditionModelTests(
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
     @parameterized.expand(
         [
             ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
             ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
         ]
     )
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_from_hub_subfolder(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained(repo_id, subfolder="unet", variant=variant)
@@ -1145,6 +1142,20 @@ class UNet2DConditionModelTests(
 
         warning_message = str(warning.warnings[0].message)
         assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
+
+
+class UNet2DConditionModelCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
+
+
+class UNet2DConditionModelLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
 
 
 @slow
