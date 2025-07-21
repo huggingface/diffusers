@@ -185,6 +185,8 @@ class ComponentSpec:
         Unique identifier for this spec's pretrained load, composed of repo|subfolder|variant|revision (no empty
         segments).
         """
+        if self.default_creation_method == "from_config":
+            return "null"
         parts = [getattr(self, k) for k in self.loading_fields()]
         parts = ["null" if p is None else p for p in parts]
         return "|".join(p for p in parts if p)
