@@ -212,8 +212,8 @@ class PipelineState:
 
     def __getattr__(self, name):
         """
-        Allow attribute access to intermediate values.
-        If an attribute is not found in the object, look for it in the intermediates dict.
+        Allow attribute access to intermediate values. If an attribute is not found in the object, look for it in the
+        intermediates dict.
         """
         if name in self.intermediates:
             return self.intermediates[name]
