@@ -627,6 +627,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
 
+        logger.warning("Attention backends are an experimental feature and the API may be subject to change.")
+
         backend = backend.lower()
         available_backends = {x.value for x in AttentionBackendName.__members__.values()}
         if backend not in available_backends:
@@ -650,6 +652,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         from .attention import AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
+
+        logger.warning("Attention backends are an experimental feature and the API may be subject to change.")
 
         attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
         for module in self.modules():

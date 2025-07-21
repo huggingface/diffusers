@@ -38,18 +38,29 @@ from ..utils import (
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 
 
-logger = get_logger(__name__)  # pylint: disable=invalid-name
+_REQUIRED_FLASH_VERSION = "2.6.3"
+_REQUIRED_SAGE_VERSION = "2.1.1"
+_REQUIRED_FLEX_VERSION = "2.5.0"
+_REQUIRED_XLA_VERSION = "2.2"
+_REQUIRED_XFORMERS_VERSION = "0.0.29"
+
+_CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
+_CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
+_CAN_USE_SAGE_ATTN = is_sageattention_available() and is_sageattention_version(">=", _REQUIRED_SAGE_VERSION)
+_CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
+_CAN_USE_NPU_ATTN = is_torch_npu_available()
+_CAN_USE_XLA_ATTN = is_torch_xla_available() and is_torch_xla_version(">=", _REQUIRED_XLA_VERSION)
+_CAN_USE_XFORMERS_ATTN = is_xformers_available() and is_xformers_version(">=", _REQUIRED_XFORMERS_VERSION)
 
 
-if is_flash_attn_available() and is_flash_attn_version(">=", "2.6.3"):
+if _CAN_USE_FLASH_ATTN:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
 else:
-    logger.warning("`flash-attn` is not available or the version is too old. Please install `flash-attn>=2.6.3`.")
     flash_attn_func = None
     flash_attn_varlen_func = None
 
 
-if is_flash_attn_3_available():
+if _CAN_USE_FLASH_ATTN_3:
     from flash_attn_interface import flash_attn_func as flash_attn_3_func
     from flash_attn_interface import flash_attn_varlen_func as flash_attn_3_varlen_func
 else:
@@ -57,7 +68,7 @@ else:
     flash_attn_3_varlen_func = None
 
 
-if is_sageattention_available() and is_sageattention_version(">=", "2.1.1"):
+if _CAN_USE_SAGE_ATTN:
     from sageattention import (
         sageattn,
         sageattn_qk_int8_pv_fp8_cuda,
@@ -67,9 +78,6 @@ if is_sageattention_available() and is_sageattention_version(">=", "2.1.1"):
         sageattn_varlen,
     )
 else:
-    logger.warning(
-        "`sageattention` is not available or the version is too old. Please install `sageattention>=2.1.1`."
-    )
     sageattn = None
     sageattn_qk_int8_pv_fp16_cuda = None
     sageattn_qk_int8_pv_fp16_triton = None
@@ -78,38 +86,38 @@ else:
     sageattn_varlen = None
 
 
-if is_torch_version(">=", "2.5.0"):
+if _CAN_USE_FLEX_ATTN:
     # We cannot import the flex_attention function from the package directly because it is expected (from the
     # pytorch documentation) that the user may compile it. If we import directly, we will not have access to the
     # compiled function.
     import torch.nn.attention.flex_attention as flex_attention
 
 
-if is_torch_npu_available():
+if _CAN_USE_NPU_ATTN:
     from torch_npu import npu_fusion_attention
 else:
     npu_fusion_attention = None
 
 
-if is_torch_xla_available() and is_torch_xla_version(">", "2.2"):
+if _CAN_USE_XLA_ATTN:
     from torch_xla.experimental.custom_kernel import flash_attention as xla_flash_attention
 else:
     xla_flash_attention = None
 
 
-if is_xformers_available() and is_xformers_version(">=", "0.0.29"):
+if _CAN_USE_XFORMERS_ATTN:
     import xformers.ops as xops
 else:
-    logger.warning("`xformers` is not available or the version is too old. Please install `xformers>=0.0.29`.")
     xops = None
 
+
+logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 # TODO(aryan): Add support for the following:
 # - Sage Attention++
 # - block sparse, radial and other attention methods
 # - CP with sage attention, flex, xformers, other missing backends
 # - Add support for normal and CP training with backends that don't support it yet
-
 
 _SAGE_ATTENTION_PV_ACCUM_DTYPE = Literal["fp32", "fp32+fp32"]
 _SAGE_ATTENTION_QK_QUANT_GRAN = Literal["per_thread", "per_warp"]
@@ -171,6 +179,7 @@ class _AttentionBackendRegistry:
 
     @classmethod
     def get_active_backend(cls):
+        _check_backend_requirements(cls._active_backend)
         return cls._active_backend, cls._backends[cls._active_backend]
 
     @classmethod
@@ -226,9 +235,10 @@ def dispatch_attention_fn(
         "dropout_p": dropout_p,
         "is_causal": is_causal,
         "scale": scale,
-        "enable_gqa": enable_gqa,
         **attention_kwargs,
     }
+    if is_torch_version(">=", "2.5.0"):
+        kwargs["enable_gqa"] = enable_gqa
 
     if _AttentionBackendRegistry._checks_enabled:
         removed_kwargs = set(kwargs) - set(_AttentionBackendRegistry._supported_arg_names[backend_name])
@@ -303,6 +313,60 @@ def _check_shape(
 
 
 # ===== Helper functions =====
+
+
+# LRU cache is hack to avoid checking the backend requirements multiple times. Maybe not needed
+# because CPU is running much farther ahead of the accelerator and this will not be blocking anyway.
+@functools.lru_cache(maxsize=16)
+def _check_backend_requirements(backend: AttentionBackendName) -> None:
+    if backend in [AttentionBackendName.FLASH, AttentionBackendName.FLASH_VARLEN]:
+        if not _CAN_USE_FLASH_ATTN:
+            raise RuntimeError(
+                f"Flash Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `flash-attn>={_REQUIRED_FLASH_VERSION}`."
+            )
+
+    elif backend in [AttentionBackendName._FLASH_3, AttentionBackendName._FLASH_VARLEN_3]:
+        if not _CAN_USE_FLASH_ATTN_3:
+            raise RuntimeError(
+                f"Flash Attention 3 backend '{backend.value}' is not usable because of missing package or the version is too old. Please build FA3 beta release from source."
+            )
+
+    elif backend in [
+        AttentionBackendName.SAGE,
+        AttentionBackendName.SAGE_VARLEN,
+        AttentionBackendName._SAGE_QK_INT8_PV_FP8_CUDA,
+        AttentionBackendName._SAGE_QK_INT8_PV_FP8_CUDA_SM90,
+        AttentionBackendName._SAGE_QK_INT8_PV_FP16_CUDA,
+        AttentionBackendName._SAGE_QK_INT8_PV_FP16_TRITON,
+    ]:
+        if not _CAN_USE_SAGE_ATTN:
+            raise RuntimeError(
+                f"Sage Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `sageattention>={_REQUIRED_SAGE_VERSION}`."
+            )
+
+    elif backend == AttentionBackendName.FLEX:
+        if not _CAN_USE_FLEX_ATTN:
+            raise RuntimeError(
+                f"Flex Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `torch>=2.5.0`."
+            )
+
+    elif backend == AttentionBackendName._NATIVE_NPU:
+        if not _CAN_USE_NPU_ATTN:
+            raise RuntimeError(
+                f"NPU Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `torch_npu`."
+            )
+
+    elif backend == AttentionBackendName._NATIVE_XLA:
+        if not _CAN_USE_XLA_ATTN:
+            raise RuntimeError(
+                f"XLA Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `torch_xla>={_REQUIRED_XLA_VERSION}`."
+            )
+
+    elif backend == AttentionBackendName.XFORMERS:
+        if not _CAN_USE_XFORMERS_ATTN:
+            raise RuntimeError(
+                f"Xformers Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `xformers>={_REQUIRED_XFORMERS_VERSION}`."
+            )
 
 
 @functools.lru_cache(maxsize=128)
