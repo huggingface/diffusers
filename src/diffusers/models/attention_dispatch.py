@@ -179,7 +179,6 @@ class _AttentionBackendRegistry:
 
     @classmethod
     def get_active_backend(cls):
-        _check_backend_requirements(cls._active_backend)
         return cls._active_backend, cls._backends[cls._active_backend]
 
     @classmethod
@@ -226,6 +225,8 @@ def dispatch_attention_fn(
     else:
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
+
+    _check_backend_requirements(backend_name)
 
     kwargs = {
         "query": query,
