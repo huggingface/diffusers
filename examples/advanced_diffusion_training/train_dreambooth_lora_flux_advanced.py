@@ -1057,7 +1057,7 @@ class DreamBoothDataset(Dataset):
         if interpolation is None:
             raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
         train_resize = transforms.Resize(size, interpolation=interpolation)
-        train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
+        train_crop = transforms.CenterCrop(size) if args.center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
             [
@@ -1101,7 +1101,7 @@ class DreamBoothDataset(Dataset):
         self.image_transforms = transforms.Compose(
             [
                 transforms.Resize(size, interpolation=interpolation),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.CenterCrop(size) if args.center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
