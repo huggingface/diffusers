@@ -322,7 +322,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     </Tip>
     """
 
-    config_name = "config.json"
+    config_name = "modular_config.json"
     model_name = None
 
     @classmethod
