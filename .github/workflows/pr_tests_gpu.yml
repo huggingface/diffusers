@@ -13,6 +13,7 @@ on:
       - "src/diffusers/loaders/peft.py"
       - "tests/pipelines/test_pipelines_common.py"
       - "tests/models/test_modeling_common.py"
+      - "examples/**/*.py"
   workflow_dispatch:
 
 concurrency:

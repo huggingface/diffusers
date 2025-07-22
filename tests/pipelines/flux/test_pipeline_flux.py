@@ -28,8 +28,7 @@ from ..test_pipelines_common import (
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
+    check_qkv_fused_layers_exist,
 )
 
 
@@ -155,7 +154,7 @@ class FluxPipelineFastTests(
 
         # Outputs should be different here
         # For some reasons, they don't show large differences
-        assert max_diff > 1e-6
+        self.assertGreater(max_diff, 1e-6, "Outputs should be different for different prompts.")
 
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -171,12 +170,10 @@ class FluxPipelineFastTests(
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(pipe.transformer), (
-            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        self.assertTrue(
+            check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]),
+            ("Something wrong with the fused attention layers. Expected all the attention projections to be fused."),
         )
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
 
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
@@ -187,14 +184,17 @@ class FluxPipelineFastTests(
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        self.assertTrue(
+            np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3),
+            ("Fusion of QKV projections shouldn't affect the outputs."),
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        self.assertTrue(
+            np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3),
+            ("Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."),
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        self.assertTrue(
+            np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2),
+            ("Original outputs should match when fused QKV projections are disabled."),
         )
 
     def test_flux_image_output_shape(self):
@@ -209,7 +209,11 @@ class FluxPipelineFastTests(
             inputs.update({"height": height, "width": width})
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
-            assert (output_height, output_width) == (expected_height, expected_width)
+            self.assertEqual(
+                (output_height, output_width),
+                (expected_height, expected_width),
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}",
+            )
 
     def test_flux_true_cfg(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
@@ -220,7 +224,9 @@ class FluxPipelineFastTests(
         inputs["negative_prompt"] = "bad quality"
         inputs["true_cfg_scale"] = 2.0
         true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
-        assert not np.allclose(no_true_cfg_out, true_cfg_out)
+        self.assertFalse(
+            np.allclose(no_true_cfg_out, true_cfg_out), "Outputs should be different when true_cfg_scale is set."
+        )
 
 
 @nightly
@@ -269,45 +275,17 @@ class FluxPipelineSlowTests(unittest.TestCase):
 
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
+        # fmt: off
         expected_slice = np.array(
-            [
-                0.3242,
-                0.3203,
-                0.3164,
-                0.3164,
-                0.3125,
-                0.3125,
-                0.3281,
-                0.3242,
-                0.3203,
-                0.3301,
-                0.3262,
-                0.3242,
-                0.3281,
-                0.3242,
-                0.3203,
-                0.3262,
-                0.3262,
-                0.3164,
-                0.3262,
-                0.3281,
-                0.3184,
-                0.3281,
-                0.3281,
-                0.3203,
-                0.3281,
-                0.3281,
-                0.3164,
-                0.3320,
-                0.3320,
-                0.3203,
-            ],
+            [0.3242, 0.3203, 0.3164, 0.3164, 0.3125, 0.3125, 0.3281, 0.3242, 0.3203, 0.3301, 0.3262, 0.3242, 0.3281, 0.3242, 0.3203, 0.3262, 0.3262, 0.3164, 0.3262, 0.3281, 0.3184, 0.3281, 0.3281, 0.3203, 0.3281, 0.3281, 0.3164, 0.3320, 0.3320, 0.3203],
             dtype=np.float32,
         )
+        # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-
-        assert max_diff < 1e-4
+        self.assertLess(
+            max_diff, 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
+        )
 
 
 @slow
@@ -377,42 +355,14 @@ class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
 
+        # fmt: off
         expected_slice = np.array(
-            [
-                0.1855,
-                0.1680,
-                0.1406,
-                0.1953,
-                0.1699,
-                0.1465,
-                0.2012,
-                0.1738,
-                0.1484,
-                0.2051,
-                0.1797,
-                0.1523,
-                0.2012,
-                0.1719,
-                0.1445,
-                0.2070,
-                0.1777,
-                0.1465,
-                0.2090,
-                0.1836,
-                0.1484,
-                0.2129,
-                0.1875,
-                0.1523,
-                0.2090,
-                0.1816,
-                0.1484,
-                0.2110,
-                0.1836,
-                0.1543,
-            ],
+            [0.1855, 0.1680, 0.1406, 0.1953, 0.1699, 0.1465, 0.2012, 0.1738, 0.1484, 0.2051, 0.1797, 0.1523, 0.2012, 0.1719, 0.1445, 0.2070, 0.1777, 0.1465, 0.2090, 0.1836, 0.1484, 0.2129, 0.1875, 0.1523, 0.2090, 0.1816, 0.1484, 0.2110, 0.1836, 0.1543],
             dtype=np.float32,
         )
+        # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-
-        assert max_diff < 1e-4, f"{image_slice} != {expected_slice}"
+        self.assertLess(
+            max_diff, 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
+        )
