@@ -6,4 +6,8 @@
 
 ## ConfigSpec
 
-[[autodoc]] diffusers.modular_pipelines.modular_pipeline.ConfigSpec 
+[[autodoc]] diffusers.modular_pipelines.modular_pipeline.ConfigSpec
+
+## ComponentsManager
+
+[[autodoc]] diffusers.modular_pipelines.components_manager.ComponentsManager
