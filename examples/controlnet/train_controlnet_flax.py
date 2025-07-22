@@ -60,7 +60,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -305,7 +305,7 @@ def parse_args():
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://huggingface.co/papers/2303.09556.",
     )
     parser.add_argument(
         "--dataloader_num_workers",

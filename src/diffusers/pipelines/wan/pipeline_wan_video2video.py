@@ -419,12 +419,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         if latents is None:
-            if isinstance(generator, list):
-                init_latents = [
-                    retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
-                ]
-            else:
-                init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator) for vid in video]
+            init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), sample_mode="argmax") for vid in video]
 
             init_latents = torch.cat(init_latents, dim=0).to(dtype)
 
@@ -441,7 +436,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if hasattr(self.scheduler, "add_noise"):
                 latents = self.scheduler.add_noise(init_latents, noise, timestep)
             else:
-                latents = self.scheduelr.scale_noise(init_latents, timestep, noise)
+                latents = self.scheduler.scale_noise(init_latents, timestep, noise)
         else:
             latents = latents.to(device)
 
@@ -513,7 +508,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
                 instead.
             height (`int`, defaults to `480`):
                 The height in pixels of the generated image.
@@ -525,11 +520,13 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, defaults to `5.0`):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
+            strength (`float`, defaults to `0.8`):
+                Higher strength leads to more differences between original image and generated video.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -542,7 +539,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            output_type (`str`, *optional*, defaults to `"pil"`):
+            output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
@@ -559,8 +556,9 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            autocast_dtype (`torch.dtype`, *optional*, defaults to `torch.bfloat16`):
-                The dtype to use for the torch.amp.autocast.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
+                truncated. If the prompt is shorter, it will be padded to this length.
 
         Examples:
 

@@ -1,4 +1,4 @@
-# Copyright 2024 The RhymesAI and The HuggingFace Team.
+# Copyright 2025 The RhymesAI and The HuggingFace Team.
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -351,7 +351,7 @@ class AllegroPipeline(DiffusionPipeline):
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -514,7 +514,7 @@ class AllegroPipeline(DiffusionPipeline):
         # &amp
         caption = re.sub(r"&amp", "", caption)
 
-        # ip adresses:
+        # ip addresses:
         caption = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", " ", caption)
 
         # article ids:
@@ -738,11 +738,11 @@ class AllegroPipeline(DiffusionPipeline):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 7.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate videos that are closely linked to the text `prompt`,
-                usually at the expense of lower video quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate videos that are closely linked to
+                the text `prompt`, usually at the expense of lower video quality.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             num_frames: (`int`, *optional*, defaults to 88):
@@ -752,8 +752,8 @@ class AllegroPipeline(DiffusionPipeline):
             width (`int`, *optional*, defaults to self.unet.config.sample_size):
                 The width in pixels of the generated video.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
+                Corresponds to parameter eta (η) in the DDIM paper: https://huggingface.co/papers/2010.02502. Only
+                applies to [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
@@ -833,7 +833,7 @@ class AllegroPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 

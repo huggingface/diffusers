@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -115,8 +115,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) used to denoise.
                 None
             eta (`float`):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             noise (`torch.Tensor`):
                 A noise tensor of shape `(batch_size, 1, height, width)` or `None`.
             encoding (`torch.Tensor`):

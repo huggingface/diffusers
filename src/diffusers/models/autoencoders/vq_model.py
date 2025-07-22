@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ class VQModel(ModelMixin, ConfigMixin):
             model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
             diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
             / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
-            Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+            Synthesis with Latent Diffusion Models](https://huggingface.co/papers/2112.10752) paper.
         norm_type (`str`, *optional*, defaults to `"group"`):
             Type of normalization layer to use. Can be one of `"group"` or `"spatial"`.
     """

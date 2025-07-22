@@ -72,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -367,6 +367,9 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
@@ -576,7 +579,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            "The transformer block layers to apply LoRA training on. Please specify the layers in a comma seperated string."
+            "The transformer block layers to apply LoRA training on. Please specify the layers in a comma separated string."
             "For examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md"
         ),
     )
@@ -585,7 +588,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            "The transformer blocks to apply LoRA training on. Please specify the block numbers in a comma seperated manner."
+            "The transformer blocks to apply LoRA training on. Please specify the block numbers in a comma separated manner."
             'E.g. - "--lora_blocks 12,30" will result in lora training of transformer blocks 12 and 30. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md'
         ),
     )
@@ -1264,6 +1267,7 @@ def main(args):
     transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
+        lora_dropout=args.lora_dropout,
         init_lora_weights="gaussian",
         target_modules=target_modules,
     )
@@ -1273,6 +1277,7 @@ def main(args):
         text_lora_config = LoraConfig(
             r=args.rank,
             lora_alpha=args.rank,
+            lora_dropout=args.lora_dropout,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
@@ -1790,7 +1795,7 @@ def main(args):
                     return_dict=False,
                 )[0]
 
-                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                # Follow: Section 5 of https://huggingface.co/papers/2206.00364.
                 # Preconditioning of the model outputs.
                 if args.precondition_outputs:
                     model_pred = model_pred * (-sigmas) + noisy_model_input

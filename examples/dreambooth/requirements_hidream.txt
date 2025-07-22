@@ -1,0 +1,8 @@
+accelerate>=1.4.0
+torchvision
+transformers>=4.50.0
+ftfy
+tensorboard
+Jinja2
+peft>=0.14.0
+sentencepiece

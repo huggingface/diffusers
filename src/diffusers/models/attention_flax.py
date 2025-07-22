@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -75,7 +75,7 @@ def jax_memory_efficient_attention(
     query, key, value, precision=jax.lax.Precision.HIGHEST, query_chunk_size: int = 1024, key_chunk_size: int = 4096
 ):
     r"""
-    Flax Memory-efficient multi-head dot product attention. https://arxiv.org/abs/2112.05682v2
+    Flax Memory-efficient multi-head dot product attention. https://huggingface.co/papers/2112.05682v2
     https://github.com/AminRezaei0x443/memory-efficient-attention
 
     Args:
@@ -121,7 +121,7 @@ def jax_memory_efficient_attention(
 
 class FlaxAttention(nn.Module):
     r"""
-    A Flax multi-head attention module as described in: https://arxiv.org/abs/1706.03762
+    A Flax multi-head attention module as described in: https://huggingface.co/papers/1706.03762
 
     Parameters:
         query_dim (:obj:`int`):
@@ -133,7 +133,7 @@ class FlaxAttention(nn.Module):
         dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
-            enable memory efficient attention https://arxiv.org/abs/2112.05682
+            enable memory efficient attention https://huggingface.co/papers/2112.05682
         split_head_dim (`bool`, *optional*, defaults to `False`):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
@@ -244,7 +244,7 @@ class FlaxAttention(nn.Module):
 class FlaxBasicTransformerBlock(nn.Module):
     r"""
     A Flax transformer block layer with `GLU` (Gated Linear Unit) activation function as described in:
-    https://arxiv.org/abs/1706.03762
+    https://huggingface.co/papers/1706.03762
 
 
     Parameters:
@@ -261,7 +261,7 @@ class FlaxBasicTransformerBlock(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
-            enable memory efficient attention https://arxiv.org/abs/2112.05682
+            enable memory efficient attention https://huggingface.co/papers/2112.05682
         split_head_dim (`bool`, *optional*, defaults to `False`):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
@@ -328,7 +328,7 @@ class FlaxBasicTransformerBlock(nn.Module):
 class FlaxTransformer2DModel(nn.Module):
     r"""
     A Spatial Transformer layer with Gated Linear Unit (GLU) activation function as described in:
-    https://arxiv.org/pdf/1506.02025.pdf
+    https://huggingface.co/papers/1506.02025
 
 
     Parameters:
@@ -347,7 +347,7 @@ class FlaxTransformer2DModel(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
-            enable memory efficient attention https://arxiv.org/abs/2112.05682
+            enable memory efficient attention https://huggingface.co/papers/2112.05682
         split_head_dim (`bool`, *optional*, defaults to `False`):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
@@ -436,7 +436,7 @@ class FlaxFeedForward(nn.Module):
     Flax module that encapsulates two Linear layers separated by a non-linearity. It is the counterpart of PyTorch's
     [`FeedForward`] class, with the following simplifications:
     - The activation function is currently hardcoded to a gated linear unit from:
-    https://arxiv.org/abs/2002.05202
+    https://huggingface.co/papers/2002.05202
     - `dim_out` is equal to `dim`.
     - The number of hidden dimensions is hardcoded to `dim * 4` in [`FlaxGELU`].
 
@@ -468,7 +468,7 @@ class FlaxFeedForward(nn.Module):
 class FlaxGEGLU(nn.Module):
     r"""
     Flax implementation of a Linear layer followed by the variant of the gated linear unit activation function from
-    https://arxiv.org/abs/2002.05202.
+    https://huggingface.co/papers/2002.05202.
 
     Parameters:
         dim (:obj:`int`):

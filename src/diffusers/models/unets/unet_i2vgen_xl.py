@@ -1,4 +1,4 @@
-# Copyright 2024 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -154,7 +154,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # of that, we used `num_attention_heads` for arguments that actually denote attention head dimension. This
         # is why we ignore `num_attention_heads` and calculate it from `attention_head_dims` below.
         # This is still an incorrect way of calculating `num_attention_heads` but we need to stick to it
-        # without running proper depcrecation cycles for the {down,mid,up} blocks which are a
+        # without running proper deprecation cycles for the {down,mid,up} blocks which are a
         # part of the public API.
         num_attention_heads = attention_head_dim
 
@@ -434,7 +434,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1, s2, b1, b2):
-        r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
+        r"""Enables the FreeU mechanism from https://huggingface.co/papers/2309.11497.
 
         The suffixes after the scaling factors represent the stage blocks where they are being applied.
 

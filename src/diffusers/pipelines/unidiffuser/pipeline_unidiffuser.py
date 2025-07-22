@@ -28,7 +28,7 @@ from ...utils import (
 )
 from ...utils.outputs import BaseOutput
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from .modeling_text_decoder import UniDiffuserTextDecoder
 from .modeling_uvit import UniDiffuserModel
 
@@ -62,7 +62,7 @@ class ImageTextPipelineOutput(BaseOutput):
     text: Optional[Union[List[str], List[List[str]]]]
 
 
-class UniDiffuserPipeline(DiffusionPipeline):
+class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     r"""
     Pipeline for a bimodal image-text model which supports unconditional text and image generation, text-conditioned
     image generation, image-conditioned text generation, and joint image-text generation.
@@ -96,6 +96,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             original UniDiffuser paper uses the [`DPMSolverMultistepScheduler`] scheduler.
     """
 
+    _last_supported_version = "0.33.1"
     # TODO: support for moving submodules for components with enable_model_cpu_offload
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae->text_decoder"
 
@@ -153,7 +154,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -803,7 +804,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
     def _combine(self, img_vae, img_clip):
         r"""
-        Combines a latent iamge img_vae of shape (B, C, H, W) and a CLIP-embedded image img_clip of shape (B, 1,
+        Combines a latent image img_vae of shape (B, C, H, W) and a CLIP-embedded image img_clip of shape (B, 1,
         clip_img_dim) into a single tensor of shape (B, C * H * W + clip_img_dim).
         """
         img_vae = torch.reshape(img_vae, (img_vae.shape[0], -1))
@@ -1154,8 +1155,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 `text` mode. If the mode is joint and both `num_images_per_prompt` and `num_prompts_per_image` are
                 supplied, `min(num_images_per_prompt, num_prompts_per_image)` samples are generated.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -1243,7 +1244,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         reduce_text_emb_dim = self.text_intermediate_dim < self.text_encoder_hidden_size or self.mode != "text2img"
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         # Note that this differs from the formulation in the unidiffusers paper!
         do_classifier_free_guidance = guidance_scale > 1.0

@@ -1,5 +1,5 @@
-# Copyright 2024 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
-# Copyright 2024 The ModelScope Team.
+# Copyright 2025 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The ModelScope Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -470,7 +470,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1, s2, b1, b2):
-        r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
+        r"""Enables the FreeU mechanism from https://huggingface.co/papers/2309.11497.
 
         The suffixes after the scaling factors represent the stage blocks where they are being applied.
 

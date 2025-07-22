@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ def get_timestep_embedding(
     downscale_freq_shift: float = 1,
     scale: float = 1,
     max_period: int = 10000,
-):
+) -> torch.Tensor:
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
 
@@ -97,7 +97,7 @@ def get_3d_sincos_pos_embed(
             The spatial dimension of positional embeddings. If an integer is provided, the same size is applied to both
             spatial dimensions (height and width).
         temporal_size (`int`):
-            The temporal dimension of postional embeddings (number of frames).
+            The temporal dimension of positional embeddings (number of frames).
         spatial_interpolation_scale (`float`, defaults to 1.0):
             Scale factor for spatial grid interpolation.
         temporal_interpolation_scale (`float`, defaults to 1.0):
@@ -169,7 +169,7 @@ def _get_3d_sincos_pos_embed_np(
             The spatial dimension of positional embeddings. If an integer is provided, the same size is applied to both
             spatial dimensions (height and width).
         temporal_size (`int`):
-            The temporal dimension of postional embeddings (number of frames).
+            The temporal dimension of positional embeddings (number of frames).
         spatial_interpolation_scale (`float`, defaults to 1.0):
             Scale factor for spatial grid interpolation.
         temporal_interpolation_scale (`float`, defaults to 1.0):
@@ -319,7 +319,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid, output_type="np"):
     return emb
 
 
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
+def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np", flip_sin_to_cos=False):
     """
     This function generates 1D positional embeddings from a grid.
 
@@ -352,6 +352,11 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
     emb_cos = torch.cos(out)  # (M, D/2)
 
     emb = torch.concat([emb_sin, emb_cos], dim=1)  # (M, D)
+
+    # flip sine and cosine embeddings
+    if flip_sin_to_cos:
+        emb = torch.cat([emb[:, embed_dim // 2 :], emb[:, : embed_dim // 2]], dim=1)
+
     return emb
 
 
@@ -1149,9 +1154,7 @@ def get_1d_rotary_pos_embed(
 
     theta = theta * ntk_factor
     freqs = (
-        1.0
-        / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype, device=pos.device)[: (dim // 2)] / dim))
-        / linear_factor
+        1.0 / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype, device=pos.device) / dim)) / linear_factor
     )  # [D/2]
     freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
     is_npu = freqs.device.type == "npu"
@@ -1178,6 +1181,7 @@ def apply_rotary_emb(
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
     use_real: bool = True,
     use_real_unbind_dim: int = -1,
+    sequence_dim: int = 2,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
@@ -1195,17 +1199,24 @@ def apply_rotary_emb(
     """
     if use_real:
         cos, sin = freqs_cis  # [S, D]
-        cos = cos[None, None]
-        sin = sin[None, None]
+        if sequence_dim == 2:
+            cos = cos[None, None, :, :]
+            sin = sin[None, None, :, :]
+        elif sequence_dim == 1:
+            cos = cos[None, :, None, :]
+            sin = sin[None, :, None, :]
+        else:
+            raise ValueError(f"`sequence_dim={sequence_dim}` but should be 1 or 2.")
+
         cos, sin = cos.to(x.device), sin.to(x.device)
 
         if use_real_unbind_dim == -1:
             # Used for flux, cogvideox, hunyuan-dit
-            x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+            x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, H, S, D//2]
             x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
         elif use_real_unbind_dim == -2:
-            # Used for Stable Audio, OmniGen and CogView4
-            x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
+            # Used for Stable Audio, OmniGen, CogView4 and Cosmos
+            x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, H, S, D//2]
             x_rotated = torch.cat([-x_imag, x_real], dim=-1)
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
@@ -1238,37 +1249,6 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
     w = apply_1d_rope(w, positions[2], w_cos, w_sin)
     x = torch.cat([t, h, w], dim=-1)
     return x
-
-
-class FluxPosEmbed(nn.Module):
-    # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
-    def __init__(self, theta: int, axes_dim: List[int]):
-        super().__init__()
-        self.theta = theta
-        self.axes_dim = axes_dim
-
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
-        n_axes = ids.shape[-1]
-        cos_out = []
-        sin_out = []
-        pos = ids.float()
-        is_mps = ids.device.type == "mps"
-        is_npu = ids.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-        for i in range(n_axes):
-            cos, sin = get_1d_rotary_pos_embed(
-                self.axes_dim[i],
-                pos[:, i],
-                theta=self.theta,
-                repeat_interleave_real=True,
-                use_real=True,
-                freqs_dtype=freqs_dtype,
-            )
-            cos_out.append(cos)
-            sin_out.append(sin)
-        freqs_cos = torch.cat(cos_out, dim=-1).to(ids.device)
-        freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
-        return freqs_cos, freqs_sin
 
 
 class TimestepEmbedding(nn.Module):
@@ -1327,7 +1307,7 @@ class Timesteps(nn.Module):
         self.downscale_freq_shift = downscale_freq_shift
         self.scale = scale
 
-    def forward(self, timesteps):
+    def forward(self, timesteps: torch.Tensor) -> torch.Tensor:
         t_emb = get_timestep_embedding(
             timesteps,
             self.num_channels,
@@ -1401,7 +1381,7 @@ class ImagePositionalEmbeddings(nn.Module):
     Converts latent image classes into vector embeddings. Sums the vector embeddings with positional embeddings for the
     height and width of the latent space.
 
-    For more details, see figure 10 of the dall-e paper: https://arxiv.org/abs/2102.12092
+    For more details, see figure 10 of the dall-e paper: https://huggingface.co/papers/2102.12092
 
     For VQ-diffusion:
 
@@ -2621,3 +2601,13 @@ class MultiIPAdapterImageProjection(nn.Module):
             projected_image_embeds.append(image_embed)
 
         return projected_image_embeds
+
+
+class FluxPosEmbed(nn.Module):
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "Importing and using `FluxPosEmbed` from `diffusers.models.embeddings` is deprecated. Please import it from `diffusers.models.transformers.transformer_flux`."
+        deprecate("FluxPosEmbed", "1.0.0", deprecation_message)
+
+        from .transformers.transformer_flux import FluxPosEmbed
+
+        return FluxPosEmbed(*args, **kwargs)

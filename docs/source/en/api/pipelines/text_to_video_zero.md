@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -9,6 +9,9 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 -->
+
+> [!WARNING]
+> This pipeline is deprecated but it can still be used. However, we won't test the pipeline anymore and won't accept any changes to it. If you run into any issues, reinstall the last Diffusers version that supported this model.
 
 # Text2Video-Zero
 
@@ -34,7 +37,7 @@ Our key modifications include (i) enriching the latent codes of the generated fr
 Experiments show that this leads to low overhead, yet high-quality and remarkably consistent video generation. Moreover, our approach is not limited to text-to-video synthesis but is also applicable to other tasks such as conditional and content-specialized video generation, and Video Instruct-Pix2Pix, i.e., instruction-guided video editing.
 As experiments show, our method performs comparably or sometimes better than recent approaches, despite not being trained on additional video data.*
 
-You can find additional information about Text2Video-Zero on the [project page](https://text2video-zero.github.io/), [paper](https://arxiv.org/abs/2303.13439), and [original codebase](https://github.com/Picsart-AI-Research/Text2Video-Zero).
+You can find additional information about Text2Video-Zero on the [project page](https://text2video-zero.github.io/), [paper](https://huggingface.co/papers/2303.13439), and [original codebase](https://github.com/Picsart-AI-Research/Text2Video-Zero).
 
 ## Usage example
 
@@ -55,9 +58,9 @@ result = [(r * 255).astype("uint8") for r in result]
 imageio.mimsave("video.mp4", result, fps=4)
 ```
 You can change these parameters in the pipeline call:
-* Motion field strength (see the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1):
+* Motion field strength (see the [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1):
     * `motion_field_strength_x` and `motion_field_strength_y`. Default: `motion_field_strength_x=12`, `motion_field_strength_y=12`
-* `T` and `T'` (see the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1)
+* `T` and `T'` (see the [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1)
     * `t0` and `t1` in the range `{0, ..., num_inference_steps}`. Default: `t0=45`, `t1=48`
 * Video length:
     * `video_length`, the number of frames video_length to be generated. Default: `video_length=8`

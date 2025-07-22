@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,77 +12,170 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. -->
 
-# HunyuanVideo
-
-<div class="flex flex-wrap space-x-1">
-  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+<div style="float: right;">
+  <div class="flex flex-wrap space-x-1">
+    <a href="https://huggingface.co/docs/diffusers/main/en/tutorials/using_peft_for_inference" target="_blank" rel="noopener">
+      <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+    </a>
+  </div>
 </div>
 
-[HunyuanVideo](https://www.arxiv.org/abs/2412.03603) by Tencent.
+# HunyuanVideo
 
-*Recent advancements in video generation have significantly impacted daily life for both individuals and industries. However, the leading video generation models remain closed-source, resulting in a notable performance gap between industry capabilities and those available to the public. In this report, we introduce HunyuanVideo, an innovative open-source video foundation model that demonstrates performance in video generation comparable to, or even surpassing, that of leading closed-source models. HunyuanVideo encompasses a comprehensive framework that integrates several key elements, including data curation, advanced architectural design, progressive model scaling and training, and an efficient infrastructure tailored for large-scale model training and inference. As a result, we successfully trained a video generative model with over 13 billion parameters, making it the largest among all open-source models. We conducted extensive experiments and implemented a series of targeted designs to ensure high visual quality, motion dynamics, text-video alignment, and advanced filming techniques. According to evaluations by professionals, HunyuanVideo outperforms previous state-of-the-art models, including Runway Gen-3, Luma 1.6, and three top-performing Chinese video generative models. By releasing the code for the foundation model and its applications, we aim to bridge the gap between closed-source and open-source communities. This initiative will empower individuals within the community to experiment with their ideas, fostering a more dynamic and vibrant video generation ecosystem. The code is publicly available at [this https URL](https://github.com/tencent/HunyuanVideo).*
+[HunyuanVideo](https://huggingface.co/papers/2412.03603) is a 13B parameter diffusion transformer model designed to be competitive with closed-source video foundation models and enable wider community access. This model uses a "dual-stream to single-stream" architecture to separately process the video and text tokens first, before concatenating and feeding them to the transformer to fuse the multimodal information. A pretrained multimodal large language model (MLLM) is used as the encoder because it has better image-text alignment, better image detail description and reasoning, and it can be used as a zero-shot learner if system instructions are added to user prompts. Finally, HunyuanVideo uses a 3D causal variational autoencoder to more efficiently process video data at the original resolution and frame rate.
 
-<Tip>
+You can find all the original HunyuanVideo checkpoints under the [Tencent](https://huggingface.co/tencent) organization.
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> [!TIP]
+> Click on the HunyuanVideo models in the right sidebar for more examples of video generation tasks.
+>
+> The examples below use a checkpoint from [hunyuanvideo-community](https://huggingface.co/hunyuanvideo-community) because the weights are stored in a layout compatible with Diffusers.
 
-</Tip>
+The example below demonstrates how to generate a video optimized for memory or inference speed.
 
-Recommendations for inference:
-- Both text encoders should be in `torch.float16`.
-- Transformer should be in `torch.bfloat16`.
-- VAE should be in `torch.float16`.
-- `num_frames` should be of the form `4 * k + 1`, for example `49` or `129`.
-- For smaller resolution videos, try lower values of `shift` (between `2.0` to `5.0`) in the [Scheduler](https://huggingface.co/docs/diffusers/main/en/api/schedulers/flow_match_euler_discrete#diffusers.FlowMatchEulerDiscreteScheduler.shift). For larger resolution images, try higher values (between `7.0` and `12.0`). The default value is `7.0` for HunyuanVideo.
-- For more information about supported resolutions and other details, please refer to the original repository [here](https://github.com/Tencent/HunyuanVideo/).
+<hfoptions id="usage">
+<hfoption id="memory">
 
-## Available models
+Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
 
-The following models are available for the [`HunyuanVideoPipeline`](text-to-video) pipeline:
-
-| Model name | Description |
-|:---|:---|
-| [`hunyuanvideo-community/HunyuanVideo`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) | Official HunyuanVideo (guidance-distilled). Performs best at multiple resolutions and frames. Performs best with `guidance_scale=6.0`, `true_cfg_scale=1.0` and without a negative prompt. |
-| [`https://huggingface.co/Skywork/SkyReels-V1-Hunyuan-T2V`](https://huggingface.co/Skywork/SkyReels-V1-Hunyuan-T2V) | Skywork's custom finetune of HunyuanVideo (de-distilled). Performs best with `97x544x960` resolution, `guidance_scale=1.0`, `true_cfg_scale=6.0` and a negative prompt. |
-
-The following models are available for the image-to-video pipeline:
-
-| Model name | Description |
-|:---|:---|
-| [`Skywork/SkyReels-V1-Hunyuan-I2V`](https://huggingface.co/Skywork/SkyReels-V1-Hunyuan-I2V) | Skywork's custom finetune of HunyuanVideo (de-distilled). Performs best with `97x544x960` resolution. Performs best at `97x544x960` resolution, `guidance_scale=1.0`, `true_cfg_scale=6.0` and a negative prompt. |
-| [`hunyuanvideo-community/HunyuanVideo-I2V-33ch`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo-I2V) | Tecent's official HunyuanVideo 33-channel I2V model. Performs best at resolutions of 480, 720, 960, 1280. A higher `shift` value when initializing the scheduler is recommended (good values are between 7 and 20). |
-| [`hunyuanvideo-community/HunyuanVideo-I2V`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo-I2V) | Tecent's official HunyuanVideo 16-channel I2V model. Performs best at resolutions of 480, 720, 960, 1280. A higher `shift` value when initializing the scheduler is recommended (good values are between 7 and 20) |
-
-## Quantization
-
-Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
-
-Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`HunyuanVideoPipeline`] for inference with bitsandbytes.
+The quantized HunyuanVideo model below requires ~14GB of VRAM.
 
 ```py
 import torch
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, HunyuanVideoTransformer3DModel, HunyuanVideoPipeline
+from diffusers import AutoModel, HunyuanVideoPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
 
-quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
-transformer_8bit = HunyuanVideoTransformer3DModel.from_pretrained(
-    "hunyuanvideo-community/HunyuanVideo",
-    subfolder="transformer",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
+# quantize weights to int4 with bitsandbytes
+pipeline_quant_config = PipelineQuantizationConfig(
+    quant_backend="bitsandbytes_4bit",
+    quant_kwargs={
+      "load_in_4bit": True,
+      "bnb_4bit_quant_type": "nf4",
+      "bnb_4bit_compute_dtype": torch.bfloat16
+      },
+    components_to_quantize=["transformer"]
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
-    transformer=transformer_8bit,
-    torch_dtype=torch.float16,
-    device_map="balanced",
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
 )
 
-prompt = "A cat walks on the grass, realistic style."
+# model-offloading and tiling
+pipeline.enable_model_cpu_offload()
+pipeline.vae.enable_tiling()
+
+prompt = "A fluffy teddy bear sits on a bed of soft pillows surrounded by children's toys."
 video = pipeline(prompt=prompt, num_frames=61, num_inference_steps=30).frames[0]
-export_to_video(video, "cat.mp4", fps=15)
+export_to_video(video, "output.mp4", fps=15)
 ```
+
+</hfoption>
+<hfoption id="inference speed">
+
+[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
+
+```py
+import torch
+from diffusers import AutoModel, HunyuanVideoPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
+from diffusers.utils import export_to_video
+
+# quantize weights to int4 with bitsandbytes
+pipeline_quant_config = PipelineQuantizationConfig(
+    quant_backend="bitsandbytes_4bit",
+    quant_kwargs={
+      "load_in_4bit": True,
+      "bnb_4bit_quant_type": "nf4",
+      "bnb_4bit_compute_dtype": torch.bfloat16
+      },
+    components_to_quantize=["transformer"]
+)
+
+pipeline = HunyuanVideoPipeline.from_pretrained(
+    "hunyuanvideo-community/HunyuanVideo",
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
+)
+
+# model-offloading and tiling
+pipeline.enable_model_cpu_offload()
+pipeline.vae.enable_tiling()
+
+# torch.compile
+pipeline.transformer.to(memory_format=torch.channels_last)
+pipeline.transformer = torch.compile(
+    pipeline.transformer, mode="max-autotune", fullgraph=True
+)
+
+prompt = "A fluffy teddy bear sits on a bed of soft pillows surrounded by children's toys."
+video = pipeline(prompt=prompt, num_frames=61, num_inference_steps=30).frames[0]
+export_to_video(video, "output.mp4", fps=15)
+```
+
+</hfoption>
+</hfoptions>
+
+## Notes
+
+- HunyuanVideo supports LoRAs with [`~loaders.HunyuanVideoLoraLoaderMixin.load_lora_weights`].
+
+  <details>
+  <summary>Show example code</summary>
+
+  ```py
+  import torch
+  from diffusers import AutoModel, HunyuanVideoPipeline
+  from diffusers.quantizers import PipelineQuantizationConfig
+  from diffusers.utils import export_to_video
+
+  # quantize weights to int4 with bitsandbytes
+  pipeline_quant_config = PipelineQuantizationConfig(
+      quant_backend="bitsandbytes_4bit",
+      quant_kwargs={
+        "load_in_4bit": True,
+        "bnb_4bit_quant_type": "nf4",
+        "bnb_4bit_compute_dtype": torch.bfloat16
+        },
+      components_to_quantize=["transformer"]
+  )
+
+  pipeline = HunyuanVideoPipeline.from_pretrained(
+      "hunyuanvideo-community/HunyuanVideo",
+      quantization_config=pipeline_quant_config,
+      torch_dtype=torch.bfloat16,
+  )
+
+  # load LoRA weights
+  pipeline.load_lora_weights("https://huggingface.co/lucataco/hunyuan-steamboat-willie-10", adapter_name="steamboat-willie")
+  pipeline.set_adapters("steamboat-willie", 0.9)
+
+  # model-offloading and tiling
+  pipeline.enable_model_cpu_offload()
+  pipeline.vae.enable_tiling()
+
+  # use "In the style of SWR" to trigger the LoRA
+  prompt = """
+  In the style of SWR. A black and white animated scene featuring a fluffy teddy bear sits on a bed of soft pillows surrounded by children's toys.
+  """
+  video = pipeline(prompt=prompt, num_frames=61, num_inference_steps=30).frames[0]
+  export_to_video(video, "output.mp4", fps=15)
+  ```
+
+  </details>
+
+- Refer to the table below for recommended inference values.
+
+  | parameter | recommended value |
+  |---|---|
+  | text encoder dtype | `torch.float16` |
+  | transformer dtype | `torch.bfloat16` |
+  | vae dtype | `torch.float16` |
+  | `num_frames (k)` | 4 * `k` + 1 |
+
+- Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos and higher `shift` values (`7.0` to `12.0`) for higher resolution images.
 
 ## HunyuanVideoPipeline
 

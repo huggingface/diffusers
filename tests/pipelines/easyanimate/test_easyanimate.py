@@ -27,9 +27,10 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -256,19 +257,19 @@ class EasyAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class EasyAnimatePipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_EasyAnimate(self):
         generator = torch.Generator("cpu").manual_seed(0)

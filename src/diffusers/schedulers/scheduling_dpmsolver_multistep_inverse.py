@@ -1,4 +1,4 @@
-# Copyright 2024 TSAIL Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 TSAIL Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -257,7 +257,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped).item()
         self.noisiest_timestep = self.config.num_train_timesteps - 1 - clipped_idx
 
-        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
         if self.config.timestep_spacing == "linspace":
             timesteps = (
                 np.linspace(0, self.noisiest_timestep, num_inference_steps + 1).round()[:-1].copy().astype(np.int64)
@@ -338,7 +338,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         pixels from saturation at each step. We find that dynamic thresholding results in significantly better
         photorealism as well as better image-text alignment, especially when using very large guidance weights."
 
-        https://arxiv.org/abs/2205.11487
+        https://huggingface.co/papers/2205.11487
         """
         dtype = sample.dtype
         batch_size, channels, *remaining_dims = sample.shape
@@ -513,7 +513,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 1:
                 sample = args[1]
             else:
-                raise ValueError("missing `sample` as a required keyward argument")
+                raise ValueError("missing `sample` as a required keyword argument")
         if timestep is not None:
             deprecate(
                 "timesteps",
@@ -609,7 +609,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 2:
                 sample = args[2]
             else:
-                raise ValueError(" missing `sample` as a required keyward argument")
+                raise ValueError("missing `sample` as a required keyword argument")
         if timestep is not None:
             deprecate(
                 "timesteps",
@@ -679,7 +679,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 2:
                 sample = args[2]
             else:
-                raise ValueError(" missing `sample` as a required keyward argument")
+                raise ValueError("missing `sample` as a required keyword argument")
         if timestep_list is not None:
             deprecate(
                 "timestep_list",
@@ -714,7 +714,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         r0 = h_0 / h
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
         if self.config.algorithm_type == "dpmsolver++":
-            # See https://arxiv.org/abs/2211.01095 for detailed derivations
+            # See https://huggingface.co/papers/2211.01095 for detailed derivations
             if self.config.solver_type == "midpoint":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
@@ -728,7 +728,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                     + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
                 )
         elif self.config.algorithm_type == "dpmsolver":
-            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            # See https://huggingface.co/papers/2206.00927 for detailed derivations
             if self.config.solver_type == "midpoint":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
@@ -804,7 +804,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 2:
                 sample = args[2]
             else:
-                raise ValueError(" missing`sample` as a required keyward argument")
+                raise ValueError("missing `sample` as a required keyword argument")
         if timestep_list is not None:
             deprecate(
                 "timestep_list",
@@ -845,7 +845,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
         D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
         if self.config.algorithm_type == "dpmsolver++":
-            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            # See https://huggingface.co/papers/2206.00927 for detailed derivations
             x_t = (
                 (sigma_t / sigma_s0) * sample
                 - (alpha_t * (torch.exp(-h) - 1.0)) * D0
@@ -853,7 +853,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 - (alpha_t * ((torch.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
             )
         elif self.config.algorithm_type == "dpmsolver":
-            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            # See https://huggingface.co/papers/2206.00927 for detailed derivations
             x_t = (
                 (alpha_t / alpha_s0) * sample
                 - (sigma_t * (torch.exp(h) - 1.0)) * D0

@@ -65,7 +65,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -618,6 +618,15 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -737,7 +746,10 @@ class DreamBoothDataset(Dataset):
             self.instance_images.extend(itertools.repeat(img, repeats))
 
         self.pixel_values = []
-        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+        interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+        if interpolation is None:
+            raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
+        train_resize = transforms.Resize(size, interpolation=interpolation)
         train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
@@ -1622,7 +1634,7 @@ def main(args):
                 # Predict the noise residual
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
-                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
+                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transformer model (we should not keep it but I want to keep the inputs same for the model for testing)
                     timestep=timesteps / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,

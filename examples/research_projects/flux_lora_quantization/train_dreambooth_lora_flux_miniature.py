@@ -1088,7 +1088,7 @@ def main(args):
                 text_ids = batch["text_ids"].to(device=accelerator.device, dtype=weight_dtype)
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
-                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
+                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transformer model (we should not keep it but I want to keep the inputs same for the model for testing)
                     timestep=timesteps / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,

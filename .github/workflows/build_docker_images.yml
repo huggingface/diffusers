@@ -38,9 +38,16 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Changed Docker Images
+        env: 
+          CHANGED_FILES: ${{ steps.file_changes.outputs.all }}
         run: |
-          CHANGED_FILES="${{ steps.file_changes.outputs.all }}"
-          for FILE in $CHANGED_FILES; do
+          echo "$CHANGED_FILES"
+          for FILE in $CHANGED_FILES; do 
+            # skip anything that isn't still on disk
+            if [[ ! -f "$FILE" ]]; then
+              echo "Skipping removed file $FILE"
+              continue
+            fi           
             if [[ "$FILE" == docker/*Dockerfile ]]; then
               DOCKER_PATH="${FILE%/Dockerfile}"
               DOCKER_TAG=$(basename "$DOCKER_PATH")
@@ -65,13 +72,9 @@ jobs:
         image-name:
           - diffusers-pytorch-cpu
           - diffusers-pytorch-cuda
-          - diffusers-pytorch-compile-cuda
+          - diffusers-pytorch-cuda
           - diffusers-pytorch-xformers-cuda
           - diffusers-pytorch-minimum-cuda
-          - diffusers-flax-cpu
-          - diffusers-flax-tpu
-          - diffusers-onnxruntime-cpu
-          - diffusers-onnxruntime-cuda
           - diffusers-doc-builder
 
     steps:

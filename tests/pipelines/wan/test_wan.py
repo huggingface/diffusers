@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,9 +21,11 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanPipeline, WanTransformer3DModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
     slow,
+    torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -144,12 +146,12 @@ class WanPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @unittest.skip("TODO: test needs to be implemented")
     def test_Wanx(self):

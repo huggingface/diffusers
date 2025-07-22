@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,12 @@ import unittest
 import torch
 
 from diffusers import HunyuanVideoTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    torch_device,
+)
 
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
@@ -90,6 +93,13 @@ class HunyuanVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
+class HunyuanTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = HunyuanVideoTransformer3DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return HunyuanVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()
+
+
 class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
@@ -158,6 +168,13 @@ class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, unittest.T
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
+class HunyuanSkyreelsImageToVideoCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = HunyuanVideoTransformer3DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return HunyuanSkyreelsImageToVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()
+
+
 class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
@@ -222,6 +239,13 @@ class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.Test
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class HunyuanImageToVideoCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = HunyuanVideoTransformer3DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return HunyuanVideoImageToVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()
 
 
 class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
@@ -290,3 +314,10 @@ class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(ModelTesterMixin, u
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class HunyuanVideoTokenReplaceCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = HunyuanVideoTransformer3DModel
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return HunyuanVideoTokenReplaceImageToVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()

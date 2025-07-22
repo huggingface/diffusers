@@ -41,6 +41,8 @@ DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(HF_HOME, "modules"))
 DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
 DIFFUSERS_REQUEST_TIMEOUT = 60
+DIFFUSERS_ATTN_BACKEND = os.getenv("DIFFUSERS_ATTN_BACKEND", "native")
+DIFFUSERS_ATTN_CHECKS = os.getenv("DIFFUSERS_ATTN_CHECKS", "0") in ENV_VARS_TRUE_VALUES
 
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
 # PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are

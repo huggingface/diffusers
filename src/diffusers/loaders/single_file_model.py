@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,13 +24,17 @@ from typing_extensions import Self
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
+from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
     convert_auraflow_transformer_checkpoint_to_diffusers,
     convert_autoencoder_dc_checkpoint_to_diffusers,
+    convert_chroma_transformer_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
+    convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
+    convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
@@ -96,6 +100,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "ChromaTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_chroma_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "LTXVideoTransformer3DModel": {
         "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
@@ -129,9 +137,21 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "WanVACETransformer3DModel": {
+        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "AutoencoderKLWan": {
         "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
         "default_subfolder": "vae",
+    },
+    "HiDreamImageTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_hidream_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "CosmosTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
     },
 }
 
@@ -187,9 +207,8 @@ class FromOriginalModelMixin:
             original_config (`str`, *optional*):
                 Dict or path to a yaml file containing the configuration for the model in its original format.
                     If a dict is provided, it will be used to initialize the model configuration.
-            torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
-                dtype is automatically derived from the model's weights.
+            torch_dtype (`torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -412,6 +431,7 @@ class FromOriginalModelMixin:
                 keep_in_fp32_modules=keep_in_fp32_modules,
                 unexpected_keys=unexpected_keys,
             )
+            empty_device_cache()
         else:
             _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
 

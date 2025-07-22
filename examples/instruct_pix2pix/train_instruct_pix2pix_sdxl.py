@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 Harutatsu Akiyama and The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 Harutatsu Akiyama and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -351,7 +351,7 @@ def parse_args():
         "--conditioning_dropout_prob",
         type=float,
         default=None,
-        help="Conditioning dropout probability. Drops out the conditionings (image and edit prompt) used in training InstructPix2Pix. See section 3.2.1 in the paper: https://arxiv.org/abs/2211.09800.",
+        help="Conditioning dropout probability. Drops out the conditionings (image and edit prompt) used in training InstructPix2Pix. See section 3.2.1 in the paper: https://huggingface.co/papers/2211.09800.",
     )
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
@@ -1081,7 +1081,7 @@ def main():
                     original_image_embeds = original_image_embeds.to(weight_dtype)
 
                 # Conditioning dropout to support classifier-free guidance during inference. For more details
-                # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
+                # check out the section 3.2.1 of the original paper https://huggingface.co/papers/2211.09800.
                 if args.conditioning_dropout_prob is not None:
                     random_p = torch.rand(bsz, device=latents.device, generator=generator)
                     # Sample masks for the edit prompts.

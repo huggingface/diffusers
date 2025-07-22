@@ -61,7 +61,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.35.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -199,13 +199,13 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_v
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        free_memory()
+    del pipeline
+    free_memory()
 
-        if not is_final_validation:
-            controlnet.to(accelerator.device)
+    if not is_final_validation:
+        controlnet.to(accelerator.device)
 
-        return image_logs
+    return image_logs
 
 
 # Copied from dreambooth sd3 example
@@ -1330,7 +1330,7 @@ def main(args):
                 # controlnet(s) inference
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
                 controlnet_image = vae.encode(controlnet_image).latent_dist.sample()
-                controlnet_image = controlnet_image * vae.config.scaling_factor
+                controlnet_image = (controlnet_image - vae.config.shift_factor) * vae.config.scaling_factor
 
                 control_block_res_samples = controlnet(
                     hidden_states=noisy_model_input,
@@ -1352,7 +1352,7 @@ def main(args):
                     return_dict=False,
                 )[0]
 
-                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                # Follow: Section 5 of https://huggingface.co/papers/2206.00364.
                 # Preconditioning of the model outputs.
                 if args.precondition_outputs:
                     model_pred = model_pred * (-sigmas) + noisy_model_input

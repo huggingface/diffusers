@@ -4,7 +4,7 @@ From the project [page](https://zhendong-wang.github.io/prompt-diffusion.github.
 
 "With a prompt consisting of a task-specific example pair of images and text guidance, and a new query image, Prompt Diffusion can comprehend the desired task and generate the corresponding output image on both seen (trained) and unseen (new) task types."
 
-For any usage questions, please refer to the [paper](https://arxiv.org/abs/2305.01115).
+For any usage questions, please refer to the [paper](https://huggingface.co/papers/2305.01115).
 
 Prepare models by converting them from the [checkpoint](https://huggingface.co/zhendongw/prompt-diffusion)
 

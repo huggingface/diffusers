@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright 2025 Black Forest Labs, The HuggingFace Team and The InstantX Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...models.attention_processor import AttentionProcessor
-from ...models.modeling_utils import ModelMixin
 from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
+from ..attention_processor import AttentionProcessor
 from ..controlnets.controlnet import ControlNetConditioningEmbedding, zero_module
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
 from ..transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
 
 
@@ -343,25 +343,25 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
             block_samples = block_samples + (hidden_states,)
 
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-
         single_block_samples = ()
         for index_block, block in enumerate(self.single_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = self._gradient_checkpointing_func(
+                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
+                    encoder_hidden_states,
                     temb,
                     image_rotary_emb,
                 )
 
             else:
-                hidden_states = block(
+                encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
                 )
-            single_block_samples = single_block_samples + (hidden_states[:, encoder_hidden_states.shape[1] :],)
+            single_block_samples = single_block_samples + (hidden_states,)
 
         # controlnet block
         controlnet_block_samples = ()

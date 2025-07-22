@@ -1,4 +1,4 @@
-__version__ = "0.34.0.dev0"
+__version__ = "0.35.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -34,10 +34,13 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "guiders": [],
     "hooks": [],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
+    "modular_pipelines": [],
     "pipelines": [],
+    "quantizers.pipe_quant_config": ["PipelineQuantizationConfig"],
     "quantizers.quantization_config": [],
     "schedulers": [],
     "utils": [
@@ -130,12 +133,29 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
+    _import_structure["guiders"].extend(
+        [
+            "AdaptiveProjectedGuidance",
+            "AutoGuidance",
+            "ClassifierFreeGuidance",
+            "ClassifierFreeZeroStarGuidance",
+            "PerturbedAttentionGuidance",
+            "SkipLayerGuidance",
+            "SmoothedEnergyGuidance",
+            "TangentialClassifierFreeGuidance",
+        ]
+    )
     _import_structure["hooks"].extend(
         [
             "FasterCacheConfig",
+            "FirstBlockCacheConfig",
             "HookRegistry",
+            "LayerSkipConfig",
             "PyramidAttentionBroadcastConfig",
+            "SmoothedEnergyGuidanceConfig",
             "apply_faster_cache",
+            "apply_first_block_cache",
+            "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -143,11 +163,13 @@ else:
         [
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
+            "AttentionBackendName",
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
             "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
+            "AutoencoderKLCosmos",
             "AutoencoderKLHunyuanVideo",
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMagvit",
@@ -158,6 +180,7 @@ else:
             "AutoencoderTiny",
             "AutoModel",
             "CacheMixin",
+            "ChromaTransformer2DModel",
             "CogVideoXTransformer3DModel",
             "CogView3PlusTransformer2DModel",
             "CogView4Transformer2DModel",
@@ -166,6 +189,7 @@ else:
             "ControlNetModel",
             "ControlNetUnionModel",
             "ControlNetXSAdapter",
+            "CosmosTransformer3DModel",
             "DiTTransformer2DModel",
             "EasyAnimateTransformer3DModel",
             "FluxControlNetModel",
@@ -175,6 +199,7 @@ else:
             "HunyuanDiT2DControlNetModel",
             "HunyuanDiT2DModel",
             "HunyuanDiT2DMultiControlNetModel",
+            "HunyuanVideoFramepackTransformer3DModel",
             "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
             "Kandinsky3UNet",
@@ -195,6 +220,7 @@ else:
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
+            "SkyReelsV2Transformer3DModel",
             "SparseControlNetModel",
             "StableAudioDiTModel",
             "StableCascadeUNet",
@@ -212,6 +238,16 @@ else:
             "UVit2DModel",
             "VQModel",
             "WanTransformer3DModel",
+            "WanVACETransformer3DModel",
+            "attention_backend",
+        ]
+    )
+    _import_structure["modular_pipelines"].extend(
+        [
+            "ComponentsManager",
+            "ComponentSpec",
+            "ModularPipeline",
+            "ModularPipelineBlocks",
         ]
     )
     _import_structure["optimization"] = [
@@ -326,6 +362,12 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
+    _import_structure["modular_pipelines"].extend(
+        [
+            "StableDiffusionXLAutoBlocks",
+            "StableDiffusionXLModularPipeline",
+        ]
+    )
     _import_structure["pipelines"].extend(
         [
             "AllegroPipeline",
@@ -348,6 +390,8 @@ else:
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
+            "ChromaImg2ImgPipeline",
+            "ChromaPipeline",
             "CLIPImageProjection",
             "CogVideoXFunControlPipeline",
             "CogVideoXImageToVideoPipeline",
@@ -356,6 +400,11 @@ else:
             "CogView3PlusPipeline",
             "CogView4ControlPipeline",
             "CogView4Pipeline",
+            "ConsisIDPipeline",
+            "Cosmos2TextToImagePipeline",
+            "Cosmos2VideoToWorldPipeline",
+            "CosmosTextToWorldPipeline",
+            "CosmosVideoToWorldPipeline",
             "CycleDiffusionPipeline",
             "EasyAnimateControlPipeline",
             "EasyAnimateInpaintPipeline",
@@ -369,6 +418,8 @@ else:
             "FluxFillPipeline",
             "FluxImg2ImgPipeline",
             "FluxInpaintPipeline",
+            "FluxKontextInpaintPipeline",
+            "FluxKontextPipeline",
             "FluxPipeline",
             "FluxPriorReduxPipeline",
             "HiDreamImagePipeline",
@@ -376,6 +427,7 @@ else:
             "HunyuanDiTPAGPipeline",
             "HunyuanDiTPipeline",
             "HunyuanSkyreelsImageToVideoPipeline",
+            "HunyuanVideoFramepackPipeline",
             "HunyuanVideoImageToVideoPipeline",
             "HunyuanVideoPipeline",
             "I2VGenXLPipeline",
@@ -413,6 +465,7 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
             "LTXConditionPipeline",
             "LTXImageToVideoPipeline",
+            "LTXLatentUpsamplePipeline",
             "LTXPipeline",
             "Lumina2Pipeline",
             "Lumina2Text2ImgPipeline",
@@ -433,10 +486,16 @@ else:
             "SanaControlNetPipeline",
             "SanaPAGPipeline",
             "SanaPipeline",
+            "SanaSprintImg2ImgPipeline",
             "SanaSprintPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
+            "SkyReelsV2DiffusionForcingImageToVideoPipeline",
+            "SkyReelsV2DiffusionForcingPipeline",
+            "SkyReelsV2DiffusionForcingVideoToVideoPipeline",
+            "SkyReelsV2ImageToVideoPipeline",
+            "SkyReelsV2Pipeline",
             "StableAudioPipeline",
             "StableAudioProjectionModel",
             "StableCascadeCombinedPipeline",
@@ -513,15 +572,19 @@ else:
             "VersatileDiffusionPipeline",
             "VersatileDiffusionTextToImagePipeline",
             "VideoToVideoSDPipeline",
+            "VisualClozeGenerationPipeline",
+            "VisualClozePipeline",
             "VQDiffusionPipeline",
             "WanImageToVideoPipeline",
             "WanPipeline",
+            "WanVACEPipeline",
             "WanVideoToVideoPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
         ]
     )
+
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
@@ -681,6 +744,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
+    from .quantizers import PipelineQuantizationConfig
 
     try:
         if not is_bitsandbytes_available():
@@ -728,21 +792,38 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .guiders import (
+            AdaptiveProjectedGuidance,
+            AutoGuidance,
+            ClassifierFreeGuidance,
+            ClassifierFreeZeroStarGuidance,
+            PerturbedAttentionGuidance,
+            SkipLayerGuidance,
+            SmoothedEnergyGuidance,
+            TangentialClassifierFreeGuidance,
+        )
         from .hooks import (
             FasterCacheConfig,
+            FirstBlockCacheConfig,
             HookRegistry,
+            LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
+            SmoothedEnergyGuidanceConfig,
             apply_faster_cache,
+            apply_first_block_cache,
+            apply_layer_skip,
             apply_pyramid_attention_broadcast,
         )
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
+            AttentionBackendName,
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
+            AutoencoderKLCosmos,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
@@ -753,6 +834,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             AutoModel,
             CacheMixin,
+            ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
             CogView4Transformer2DModel,
@@ -761,6 +843,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ControlNetModel,
             ControlNetUnionModel,
             ControlNetXSAdapter,
+            CosmosTransformer3DModel,
             DiTTransformer2DModel,
             EasyAnimateTransformer3DModel,
             FluxControlNetModel,
@@ -770,6 +853,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DModel,
             HunyuanDiT2DMultiControlNetModel,
+            HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
@@ -790,6 +874,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
+            SkyReelsV2Transformer3DModel,
             SparseControlNetModel,
             StableAudioDiTModel,
             T2IAdapter,
@@ -806,6 +891,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UVit2DModel,
             VQModel,
             WanTransformer3DModel,
+            WanVACETransformer3DModel,
+            attention_backend,
+        )
+        from .modular_pipelines import (
+            ComponentsManager,
+            ComponentSpec,
+            ModularPipeline,
+            ModularPipelineBlocks,
         )
         from .optimization import (
             get_constant_schedule,
@@ -903,6 +996,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
+        from .modular_pipelines import (
+            StableDiffusionXLAutoBlocks,
+            StableDiffusionXLModularPipeline,
+        )
         from .pipelines import (
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
@@ -922,6 +1019,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
+            ChromaImg2ImgPipeline,
+            ChromaPipeline,
             CLIPImageProjection,
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
@@ -930,6 +1029,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView3PlusPipeline,
             CogView4ControlPipeline,
             CogView4Pipeline,
+            ConsisIDPipeline,
+            Cosmos2TextToImagePipeline,
+            Cosmos2VideoToWorldPipeline,
+            CosmosTextToWorldPipeline,
+            CosmosVideoToWorldPipeline,
             CycleDiffusionPipeline,
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
@@ -943,6 +1047,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxFillPipeline,
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
+            FluxKontextInpaintPipeline,
+            FluxKontextPipeline,
             FluxPipeline,
             FluxPriorReduxPipeline,
             HiDreamImagePipeline,
@@ -950,6 +1056,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiTPAGPipeline,
             HunyuanDiTPipeline,
             HunyuanSkyreelsImageToVideoPipeline,
+            HunyuanVideoFramepackPipeline,
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
             I2VGenXLPipeline,
@@ -987,6 +1094,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
             LTXConditionPipeline,
             LTXImageToVideoPipeline,
+            LTXLatentUpsamplePipeline,
             LTXPipeline,
             Lumina2Pipeline,
             Lumina2Text2ImgPipeline,
@@ -1007,10 +1115,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaControlNetPipeline,
             SanaPAGPipeline,
             SanaPipeline,
+            SanaSprintImg2ImgPipeline,
             SanaSprintPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
+            SkyReelsV2DiffusionForcingImageToVideoPipeline,
+            SkyReelsV2DiffusionForcingPipeline,
+            SkyReelsV2DiffusionForcingVideoToVideoPipeline,
+            SkyReelsV2ImageToVideoPipeline,
+            SkyReelsV2Pipeline,
             StableAudioPipeline,
             StableAudioProjectionModel,
             StableCascadeCombinedPipeline,
@@ -1086,9 +1200,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionPipeline,
             VersatileDiffusionTextToImagePipeline,
             VideoToVideoSDPipeline,
+            VisualClozeGenerationPipeline,
+            VisualClozePipeline,
             VQDiffusionPipeline,
             WanImageToVideoPipeline,
             WanPipeline,
+            WanVACEPipeline,
             WanVideoToVideoPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,

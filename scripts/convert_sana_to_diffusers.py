@@ -394,7 +394,7 @@ if __name__ == "__main__":
         help="Scheduler type to use. Use 'scm' for Sana Sprint models.",
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
-    parser.add_argument("--save_full_pipeline", action="store_true", help="save all the pipelien elemets in one.")
+    parser.add_argument("--save_full_pipeline", action="store_true", help="save all the pipeline elements in one.")
     parser.add_argument("--dtype", default="fp32", type=str, choices=["fp32", "fp16", "bf16"], help="Weight dtype.")
 
     args = parser.parse_args()

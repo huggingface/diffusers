@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 import torch
 
+from ..models.attention import AttentionModuleMixin
 from ..models.attention_processor import Attention, MochiAttention
 from ..models.modeling_outputs import Transformer2DModelOutput
 from ..utils import logging
@@ -146,7 +147,7 @@ class FasterCacheConfig:
     alpha_low_frequency: float = 1.1
     alpha_high_frequency: float = 1.1
 
-    # n as described in CFG-Cache explanation in the paper - dependant on the model
+    # n as described in CFG-Cache explanation in the paper - dependent on the model
     unconditional_batch_skip_range: int = 5
     unconditional_batch_timestep_skip_range: Tuple[int, int] = (-1, 641)
 
@@ -567,7 +568,7 @@ def apply_faster_cache(module: torch.nn.Module, config: FasterCacheConfig) -> No
     _apply_faster_cache_on_denoiser(module, config)
 
     for name, submodule in module.named_modules():
-        if not isinstance(submodule, _ATTENTION_CLASSES):
+        if not isinstance(submodule, (*_ATTENTION_CLASSES, AttentionModuleMixin)):
             continue
         if any(re.search(identifier, name) is not None for identifier in _TRANSFORMER_BLOCK_IDENTIFIERS):
             _apply_faster_cache_on_attention_class(name, submodule, config)
