@@ -19,7 +19,7 @@ import torch
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...models import WanTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import UniPCMultistepScheduler
 from ...utils import logging
 from ..modular_pipeline import (
     BlockState,
@@ -40,7 +40,7 @@ class WanLoopBeforeDenoiser(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
 
     @property
@@ -165,7 +165,7 @@ class WanLoopAfterDenoiser(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
 
     @property
@@ -227,7 +227,7 @@ class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 config=FrozenDict({"guidance_scale": 5.0}),
                 default_creation_method="from_config",
             ),
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
             ComponentSpec("transformer", WanTransformer3DModel),
         ]
 

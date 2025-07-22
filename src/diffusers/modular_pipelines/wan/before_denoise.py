@@ -17,7 +17,7 @@ from typing import List, Optional, Union
 
 import torch
 
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import UniPCMultistepScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import PipelineBlock, PipelineState
@@ -200,7 +200,7 @@ class WanSetTimestepsStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
 
     @property

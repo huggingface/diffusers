@@ -107,6 +107,7 @@ class WanTextEncoderStep(PipelineBlock):
         ):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
 
+    @staticmethod
     def _get_t5_prompt_embeds(
         components,
         prompt: Union[str, List[str]],
