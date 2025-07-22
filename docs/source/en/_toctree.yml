@@ -276,15 +276,6 @@
   sections:
   - title: Main Classes
     sections:
-    - local: api/modular_diffusers/pipeline_blocks
-      title: Pipeline blocks
-    - local: api/modular_diffusers/pipeline_states
-      title: Pipeline states
-    - local: api/modular_diffusers/pipeline_components
-      title: Components and configs
-    title: Modular Diffusers
-  - isExpanded: false
-    sections:
     - local: api/configuration
       title: Configuration
     - local: api/logging
@@ -293,6 +284,16 @@
       title: Outputs
     - local: api/quantization
       title: Quantization
+  - title: Modular
+    sections:
+    - local: api/modular_diffusers/pipeline
+      title: Pipeline
+    - local: api/modular_diffusers/pipeline_blocks
+      title: Blocks
+    - local: api/modular_diffusers/pipeline_states
+      title: States
+    - local: api/modular_diffusers/pipeline_components
+      title: Components and configs
   - title: Loaders
     sections:
     - local: api/loaders/ip_adapter
