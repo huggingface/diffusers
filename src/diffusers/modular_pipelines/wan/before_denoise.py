@@ -17,7 +17,6 @@ from typing import List, Optional, Union
 
 import torch
 
-from ...models import AutoencoderKLWan
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -230,7 +229,6 @@ class WanSetTimestepsStep(PipelineBlock):
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-
         block_state.device = components._execution_device
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
@@ -250,10 +248,7 @@ class WanPrepareLatentsStep(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
-            ComponentSpec("vae", AutoencoderKLWan),
-        ]
+        return []
 
     @property
     def description(self) -> str:
@@ -262,11 +257,11 @@ class WanPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("height"),
-            InputParam("width"),
-            InputParam("num_frames"),
-            InputParam("latents"),
-            InputParam("num_videos_per_prompt", default=1),
+            InputParam("height", type_hint=int),
+            InputParam("width", type_hint=int),
+            InputParam("num_frames", type_hint=int),
+            InputParam("latents", type_hint=Optional[torch.Tensor]),
+            InputParam("num_videos_per_prompt", type_hint=int, default=1),
         ]
 
     @property
@@ -277,7 +272,7 @@ class WanPrepareLatentsStep(PipelineBlock):
                 "batch_size",
                 required=True,
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_videos_per_prompt. Can be generated in input step.",
+                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_videos_per_prompt`. Can be generated in input step.",
             ),
             InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
         ]
@@ -343,17 +338,15 @@ class WanPrepareLatentsStep(PipelineBlock):
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        if block_state.dtype is None:
-            block_state.dtype = components.vae.dtype
-
-        block_state.device = components._execution_device
-
-        self.check_inputs(components, block_state)
-
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
         block_state.num_frames = block_state.num_frames or components.default_num_frames
+        block_state.device = components._execution_device
+        block_state.dtype = torch.float32  # Wan latents should be torch.float32 for best quality
         block_state.num_channels_latents = components.num_channels_latents
+
+        self.check_inputs(components, block_state)
+
         block_state.latents = self.prepare_latents(
             components,
             block_state.batch_size * block_state.num_videos_per_prompt,

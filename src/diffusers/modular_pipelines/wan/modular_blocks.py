@@ -20,6 +20,8 @@ from .before_denoise import (
     WanPrepareLatentsStep,
     WanSetTimestepsStep,
 )
+from .decoders import WanDecodeStep
+from .denoise import WanDenoiseStep
 from .encoders import WanTextEncoderStep
 
 
@@ -46,25 +48,6 @@ class WanBeforeDenoiseStep(SequentialPipelineBlocks):
         )
 
 
-# text2vid
-class WanAutoBlocks(SequentialPipelineBlocks):
-    block_classes = [
-        WanTextEncoderStep,
-        WanBeforeDenoiseStep,
-    ]
-    block_names = [
-        "text_encoder",
-        "before_denoise",
-    ]
-
-    @property
-    def description(self):
-        return (
-            "Auto Modular pipeline for text-to-video using Wan.\n"
-            + "- for text-to-video generation, all you need to provide is `prompt`"
-        )
-
-
 # before_denoise: all task (text2vid,)
 class WanAutoBeforeDenoiseStep(AutoPipelineBlocks):
     block_classes = [
@@ -82,12 +65,65 @@ class WanAutoBeforeDenoiseStep(AutoPipelineBlocks):
         )
 
 
+# denoise: text2vid
+class WanAutoDenoiseStep(AutoPipelineBlocks):
+    block_classes = [
+        WanDenoiseStep,
+    ]
+    block_names = ["denoise"]
+    block_trigger_inputs = [None]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. "
+            "This is a auto pipeline block that works for text2vid tasks.."
+            " - `WanDenoiseStep` (denoise) for text2vid tasks."
+        )
+
+
+# decode: all task (text2img, img2img, inpainting)
+class WanAutoDecodeStep(AutoPipelineBlocks):
+    block_classes = [WanDecodeStep]
+    block_names = ["non-inpaint"]
+    block_trigger_inputs = [None]
+
+    @property
+    def description(self):
+        return "Decode step that decode the denoised latents into videos outputs.\n - `WanDecodeStep`"
+
+
+# text2vid
+class WanAutoBlocks(SequentialPipelineBlocks):
+    block_classes = [
+        WanTextEncoderStep,
+        WanAutoBeforeDenoiseStep,
+        WanAutoDenoiseStep,
+        WanAutoDecodeStep,
+    ]
+    block_names = [
+        "text_encoder",
+        "before_denoise",
+        "denoise",
+        "decoder",
+    ]
+
+    @property
+    def description(self):
+        return (
+            "Auto Modular pipeline for text-to-video using Wan.\n"
+            + "- for text-to-video generation, all you need to provide is `prompt`"
+        )
+
+
 TEXT2VIDEO_BLOCKS = InsertableDict(
     [
         ("text_encoder", WanTextEncoderStep),
         ("input", WanInputStep),
         ("set_timesteps", WanSetTimestepsStep),
         ("prepare_latents", WanPrepareLatentsStep),
+        ("denoise", WanDenoiseStep),
+        ("decode", WanDecodeStep),
     ]
 )
 
@@ -96,6 +132,8 @@ AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", WanTextEncoderStep),
         ("before_denoise", WanAutoBeforeDenoiseStep),
+        ("denoise", WanAutoDenoiseStep),
+        ("decode", WanAutoDecodeStep),
     ]
 )
 
