@@ -25,6 +25,7 @@ from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, Pe
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.import_utils import is_torch_npu_available
 from ...utils.torch_utils import maybe_allow_in_graph
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -569,6 +570,15 @@ class FluxTransformer2DModel(
     _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
+    _cp_plan = {
+        "": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+            "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(
