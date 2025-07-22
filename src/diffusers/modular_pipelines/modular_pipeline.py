@@ -2520,9 +2520,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             ):
                 logger.warning(
                     f"ModularPipeline.update_components: {name} has no valid _diffusers_load_id. "
-                    f"Updating the component but skipping spec update, use ComponentSpec.load() for proper specs"
+                    f"This will result in empty loading spec, use ComponentSpec.load() for proper specs"
                 )
-                new_component_spec = current_component_spec
+                new_component_spec = ComponentSpec(name=name, type_hint=type(component))
             else:
                 new_component_spec = ComponentSpec.from_component(name, component)
 
