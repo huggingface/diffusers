@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
 
 
-def project(v0: torch.Tensor, v1: torch.Tensor):
+def project(v0: torch.Tensor, v1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Project vector v0 onto vector v1, returning the parallel and orthogonal components of v0. Implementation from
     paper (Algorithm 2).
@@ -41,7 +41,7 @@ def project(v0: torch.Tensor, v1: torch.Tensor):
     return v0_parallel.to(dtype), v0_orthogonal.to(dtype)
 
 
-def build_image_from_pyramid(pyramid):
+def build_image_from_pyramid(pyramid: List[torch.Tensor]) -> torch.Tensor:
     """
     Recovers the data space latents from the Laplacian pyramid frequency space. Implementation from the paper
     (Algorihtm 2).
@@ -56,20 +56,26 @@ class FrequencyDecoupledGuidance(BaseGuidance):
     """
     Frequency-Decoupled Guidance (FDG): https://huggingface.co/papers/2506.19713
 
-    CFG is a technique used to improve generation quality and condition-following in diffusion models. It works by
-    jointly training a model on both conditional and unconditional data, and using a weighted sum of the two during
-    inference. This allows the model to tradeoff between generation quality and sample diversity. The original paper
-    proposes scaling and shifting the conditional distribution based on the difference between conditional and
-    unconditional predictions. [x_pred = x_cond + scale * (x_cond - x_uncond)]
+    FDG is a technique similar to (and based on) classifier-free guidance (CFG) which is used to improve generation
+    quality and condition-following in diffusion models. Like CFG, during training we jointly train the model on both
+    conditional and unconditional data, and use a combination of the two during inference. (If you want more details
+    on how CFG works, you can check out the CFG guider.)
 
-    Diffusers implemented the scaling and shifting on the unconditional prediction instead based on the [Imagen
-    paper](https://huggingface.co/papers/2205.11487), which is equivalent to what the original paper proposed in
+    FDG differs from CFG in that the normal CFG prediction is instead decoupled into low- and high-frequency
+    components using a frequency transform (such as a Laplacian pyramid). The CFG update is then performed in
+    frequency space separately for the low- and high-frequency components with different guidance scales. Finally, the
+    inverse frequency transform is used to map the CFG frequency predictions back to data space (e.g. pixel space for
+    images) to form the final FDG prediction.
+
+    For images, the FDG authors found that using low guidance scales for the low-frequency components retains sample
+    diversity and realistic color composition, while using high guidance scales for high-frequency components enhances
+    sample quality (such as better visual details). Therefore, they recommend using low guidance scales (low w_low)
+    for the low-frequency components and high guidance scales (high w_high) for the high-frequency components. As an
+    example, they suggest w_low = 5.0 and w_high = 10.0 for Stable Diffusion XL (see Table 8 in the paper).
+
+    As with CFG, Diffusers implements the scaling and shifting on the unconditional prediction based on the [Imagen
+    paper](https://huggingface.co/papers/2205.11487), which is equivalent to what the original CFG paper proposed in
     theory. [x_pred = x_uncond + scale * (x_cond - x_uncond)]
-
-    The intution behind the original formulation can be thought of as moving the conditional distribution estimates
-    further away from the unconditional distribution estimates, while the diffusers-native implementation can be
-    thought of as moving the unconditional distribution towards the conditional distribution estimates to get rid of
-    the unconditional predictions (usually negative features like "bad quality, bad anotomy, watermarks", etc.)
 
     The `use_original_formulation` argument can be set to `True` to use the original CFG formulation mentioned in the
     paper. By default, we use the diffusers-native implementation that has been in the codebase for a long time.
@@ -154,11 +160,11 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         if not self._is_fdg_enabled():
             pred = pred_cond
         else:
-            # Apply the frequency transform (e.g. Laplacian pyramid) to the conditional and unconditional components.
+            # Apply the frequency transform (e.g. Laplacian pyramid) to the conditional and unconditional predictions.
             pred_cond_pyramid = kornia.geometry.transform.build_laplacian_pyramid(pred_cond, self.levels)
             pred_uncond_pyramid = kornia.geometry.transform.build_laplacian_pyramid(pred_uncond, self.levels)
 
-            # From high freq to low, following the paper implementation
+            # From high frequencies to low frequencies, following the paper implementation
             pred_guided_pyramid = []
             guidance_scales = [self.guidance_scale_high, self.guidance_scale_low]
             parallel_weights = [self.parallel_weights_high, self.parallel_weights_low]
