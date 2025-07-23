@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # LoopSequentialPipelineBlocks
 
-[`~modular_pipelines.LoopSequentialPipelineBlocks`] are a multi-block type that composes other [`~modular_pipelines.PipelineBlocks`] together in a loop. Data flows circularly, using `intermediate_inputs` and `intermediate_outputs`, and each block is run iteratively. This is typically used to create a denoising loop which is iterative by default.
+[`~modular_pipelines.LoopSequentialPipelineBlocks`] are a multi-block type that composes other [`~modular_pipelines.PipelineBlock`] together in a loop. Data flows circularly, using `intermediate_inputs` and `intermediate_outputs`, and each block is run iteratively. This is typically used to create a denoising loop which is iterative by default.
 
 This guide shows you how to create [`~modular_pipelines.LoopSequentialPipelineBlocks`].
 
@@ -80,13 +80,13 @@ class LoopBlock(PipelineBlock):
 
 ## LoopSequentialPipelineBlocks
 
-Use the [~modular_pipelines.LoopSequentialPipelineBlocks.from_blocks_dict`] method to add the loop block to the loop wrapper to create [~modular_pipelines.LoopSequentialPipelineBlocks`].
+Use the [`~modular_pipelines.LoopSequentialPipelineBlocks.from_blocks_dict`] method to add the loop block to the loop wrapper to create [`~modular_pipelines.LoopSequentialPipelineBlocks`].
 
 ```py
 loop = LoopWrapper.from_blocks_dict({"block1": LoopBlock})
 ```
 
-Add more loop blocks to run within each iteration with [~modular_pipelines.LoopSequentialPipelineBlocks.from_blocks_dict`]. This allows you to modify the blocks without changing the loop logic itself.
+Add more loop blocks to run within each iteration with [`~modular_pipelines.LoopSequentialPipelineBlocks.from_blocks_dict`]. This allows you to modify the blocks without changing the loop logic itself.
 
 ```py
 loop = LoopWrapper.from_blocks_dict({"block1": LoopBlock(), "block2": LoopBlock})

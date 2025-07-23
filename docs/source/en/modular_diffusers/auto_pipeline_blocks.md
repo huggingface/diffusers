@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 This guide shows how to create [`~modular_pipelines.AutoPipelineBlocks`].
 
-Create three [``~modular_pipelines.PipelineBlocks`] for text-to-image, image-to-image, and inpainting. These represent the different workflows available in the pipeline.
+Create three [`~modular_pipelines.PipelineBlock`] for text-to-image, image-to-image, and inpainting. These represent the different workflows available in the pipeline.
 
 <hfoptions id="auto">
 <hfoption id="text-to-image">
@@ -155,14 +155,14 @@ class AutoImageBlocks(AutoPipelineBlocks):
 
 It is **very** important to include a `description` to avoid any confusion over how to run a block and what inputs are required. While [`~modular_pipelines.AutoPipelineBlocks`] are convenient, it's conditional logic may be difficult to figure out if it isn't properly explained.
 
-Create an instance of `AutoImageBlocks` and use [`~modular_pipelines.ModularPipeline.init_pipeline`] to convert it to a pipeline.
+Create an instance of `AutoImageBlocks` and use [`~modular_pipelines.ModularPipelineBlocks.init_pipeline`] to convert it to a pipeline.
 
 ```py
 auto_blocks = AutoImageBlocks()
 auto_pipeline = auto_blocks.init_pipeline()
 ```
 
-For more complex compositions, nested [`~modular_pipelines.AutoPipelineBlocks`] blocks when they're used as sub-blocks in larger pipelines, use the [`~modular_pipelines.PipelineBlocks.get_execution_blocks`] method to extract the a block that is actually run based on your input.
+For more complex compositions, nested [`~modular_pipelines.AutoPipelineBlocks`] blocks when they're used as sub-blocks in larger pipelines, use the [`~modular_pipelines.SequentialPipelineBlocks.get_execution_blocks`] method to extract the a block that is actually run based on your input.
 
 ```py
 auto_blocks.get_execution_blocks("mask")

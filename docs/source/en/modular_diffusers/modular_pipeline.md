@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # ModularPipeline
 
-[`ModularPipeline`] converts [`PipelineBlock`]'s into an executable pipeline that loads models and performs the computation steps defined in a block. It is the main interface for users to run a pipeline and it is very similar to the [`DiffusionPipeline`] API.
+[`ModularPipeline`] converts [`~modular_pipelines.PipelineBlock`]'s into an executable pipeline that loads models and performs the computation steps defined in a block. It is the main interface for users to run a pipeline and it is very similar to the [`DiffusionPipeline`] API.
 
 The main difference is to include an expected `output` argument in the pipeline.
 
@@ -92,6 +92,37 @@ image.save("moduar_inpaint_out.png")
 
 This guide will show you how to create a [`ModularPipeline`] and manage the components in it.
 
+## Adding blocks
+
+Blocks are [`InsertableDict`] objects that can be inserted at specific positions, providing a flexible way to mix-and-match blocks.
+
+Use [`~modular_pipelines.modular_pipeline_utils.InsertableDict.insert`] on either the block class or `sub_blocks` attribute to add a block.
+
+```py
+# BLOCKS is dict of block classes, you need to add class to it
+BLOCKS.insert("block_name", BlockClass, index)
+# sub_blocks attribute contains instance, add a block instance to the  attribute
+t2i_blocks.sub_blocks.insert("block_name", block_instance, index)
+```
+
+Use [`~modular_pipelines.modular_pipeline_utils.InsertableDict.pop`] on either the block class or `sub_blocks` attribute to remove a block.
+
+```py
+# remove a block class from preset
+BLOCKS.pop("text_encoder")
+# split out a block instance on its own
+text_encoder_block = t2i_blocks.sub_blocks.pop("text_encoder")
+```
+
+Swap blocks by setting the existing block to the new block.
+
+```py
+# Replace block class in preset
+BLOCKS["prepare_latents"] = CustomPrepareLatents
+# Replace in sub_blocks attribute using an block instance
+t2i_blocks.sub_blocks["prepare_latents"] = CustomPrepareLatents()
+```
+
 ## Creating a pipeline
 
 There are two ways to create a [`ModularPipeline`]. Assemble and create a pipeline from [`PipelineBlocks`] or load an existing pipeline with [`~ModularPipeline.from_pretrained`].
@@ -104,7 +135,7 @@ You should also initialize a [`ComponentsManager`] to handle device placement an
 <hfoptions id="create">
 <hfoption id="PipelineBlocks">
 
-Use the [`ModularPipelineBlocks.init_pipeline`] method to create a [`ModularPipeline`] from the component and configuration specifications. This method loads the *specifications* from a `modular_model_index.json` file, but it doesn't load the *models* yet.
+Use the [`~ModularPipelineBlocks.init_pipeline`] method to create a [`ModularPipeline`] from the component and configuration specifications. This method loads the *specifications* from a `modular_model_index.json` file, but it doesn't load the *models* yet.
 
 ```py
 from diffusers import ComponentsManager
