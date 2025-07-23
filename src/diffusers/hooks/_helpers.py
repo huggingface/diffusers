@@ -107,6 +107,7 @@ class TransformerBlockRegistry:
 def _register_attention_processors_metadata():
     from ..models.attention_processor import AttnProcessor2_0
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
+    from ..models.transformers.transformer_wan import WanAttnProcessor2_0
 
     # AttnProcessor2_0
     AttentionProcessorRegistry.register(
@@ -121,6 +122,14 @@ def _register_attention_processors_metadata():
         model_class=CogView4AttnProcessor,
         metadata=AttentionProcessorMetadata(
             skip_processor_output_fn=_skip_proc_output_fn_Attention_CogView4AttnProcessor,
+        ),
+    )
+
+    # WanAttnProcessor2_0
+    AttentionProcessorRegistry.register(
+        model_class=WanAttnProcessor2_0,
+        metadata=AttentionProcessorMetadata(
+            skip_processor_output_fn=_skip_proc_output_fn_Attention_WanAttnProcessor2_0,
         ),
     )
 
@@ -261,4 +270,5 @@ def _skip_attention___ret___hidden_states___encoder_hidden_states(self, *args, *
 
 _skip_proc_output_fn_Attention_AttnProcessor2_0 = _skip_attention___ret___hidden_states
 _skip_proc_output_fn_Attention_CogView4AttnProcessor = _skip_attention___ret___hidden_states___encoder_hidden_states
+_skip_proc_output_fn_Attention_WanAttnProcessor2_0 = _skip_attention___ret___hidden_states
 # fmt: on
