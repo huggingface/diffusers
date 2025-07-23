@@ -130,6 +130,8 @@
     title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: Components Manager
+  - local: modular_diffusers/guiders
+    title: Guiders
 
 - title: Training
   isExpanded: false
@@ -294,6 +296,8 @@
       title: States
     - local: api/modular_diffusers/pipeline_components
       title: Components and configs
+    - local: api/modular_diffusers/guiders
+      title: Guiders
   - title: Loaders
     sections:
     - local: api/loaders/ip_adapter
