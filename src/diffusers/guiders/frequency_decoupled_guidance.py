@@ -31,12 +31,14 @@ def project(v0: torch.Tensor, v1: torch.Tensor) -> Tuple[torch.Tensor, torch.Ten
     Project vector v0 onto vector v1, returning the parallel and orthogonal components of v0. Implementation from
     paper (Algorithm 2).
     """
-    # v0 shape: [B, C, H, W]
-    # v1 shape: [B, C, H, W]
+    # v0 shape: [B, ...]
+    # v1 shape: [B, ...]
     dtype = v0.dtype
+    # Assume first dim is a batch dim and all other dims are channel or "spatial" dims
+    all_dims_but_first = list(range(1, len(v0.shape)))
     v0, v1 = v0.double(), v1.double()
-    v1 = torch.nn.functional.normalize(v1, dim=[-1, -2, -3])
-    v0_parallel = (v0 * v1).sum(dim=[-1, -2, -3], keepdim=True) * v1
+    v1 = torch.nn.functional.normalize(v1, dim=all_dims_but_first)
+    v0_parallel = (v0 * v1).sum(dim=all_dims_but_first, keepdim=True) * v1
     v0_orthogonal = v0 - v0_parallel
     return v0_parallel.to(dtype), v0_orthogonal.to(dtype)
 
