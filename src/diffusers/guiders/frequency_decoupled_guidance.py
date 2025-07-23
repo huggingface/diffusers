@@ -83,36 +83,33 @@ class FrequencyDecoupledGuidance(BaseGuidance):
     paper. By default, we use the diffusers-native implementation that has been in the codebase for a long time.
 
     Args:
-        guidance_scale_low (`float`, defaults to `5.0`):
-            The scale parameter for frequency-decoupled guidance for low-frequency components. Higher values result in
-            stronger conditioning on the text prompt, while lower values allow for more freedom in generation. Higher
-            values may lead to saturation and deterioration of image quality. The FDG authors recommend
-            `guidance_scale_low < guidance_scale_high`.
-        guidance_scale_high (`float`, defaults to `10.0`):
-            The scale parameter for frequency-decoupled guidance for high-frequency components. Higher values result in
-            stronger conditioning on the text prompt, while lower values allow for more freedom in generation. Higher
-            values may lead to saturation and deterioration of image quality. The FDG authors recommend
-            `guidance_scale_low < guidance_scale_high`.
-        guidance_rescale (`float`, defaults to `0.0`):
+        guidance_scales (`List[float]`, defaults to `[10.0, 5.0]`):
+            The scale parameter for frequency-decoupled guidance for each frequency component, listed from highest
+            frequency level to lowest. Higher values result in stronger conditioning on the text prompt, while lower
+            values allow for more freedom in generation. Higher values may lead to saturation and deterioration of
+            image quality. The FDG authors recommend using higher guidance scales for higher frequency components and
+            lower guidance scales for lower frequency components (so `guidance_scales` should typically be sorted in
+            descending order).
+        guidance_rescale (`float` or `List[float]`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-            Flawed](https://huggingface.co/papers/2305.08891).
-        parallel_weights_low (`float`, defaults to `1.0`):
-            Optional weight for the parallel component of the low-frequency component of the projected CFG shift.
-            The default value of `1.0` corresponds to using the normal CFG shift (that is, equal weights for the
-            parallel and orthogonal components).
-        parallel_weights_high (`float`, defaults to `1.0`):
-            Optional weight for the parallel component of the high-frequency component of the projected CFG shift.
-            The default value of `1.0` corresponds to using the normal CFG shift (that is, equal weights for the
-            parallel and orthogonal components).
+            Flawed](https://huggingface.co/papers/2305.08891). If a list is supplied, it should be the same length as
+            `guidance_scales`.
+        parallel_weights (`float` or `List[float]`, *optional*):
+            Optional weights for the parallel component of each frequency component of the projected CFG shift. If not
+            set, the weights will default to `1.0` for all components, which corresponds to using the normal CFG shift
+            (that is, equal weights for the parallel and orthogonal components). If a list is supplied, it should be
+            the same length as `guidance_scales`.
         use_original_formulation (`bool`, defaults to `False`):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
             we use the diffusers-native implementation that has been in the codebase for a long time. See
             [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
-        start (`float`, defaults to `0.0`):
-            The fraction of the total number of denoising steps after which guidance starts.
-        stop (`float`, defaults to `1.0`):
-            The fraction of the total number of denoising steps after which guidance stops.
+        start (`float` or `List[float]`, defaults to `0.0`):
+            The fraction of the total number of denoising steps after which guidance starts. If a list is supplied, it
+            should be the same length as `guidance_scales`.
+        stop (`float` or `List[float]`, defaults to `1.0`):
+            The fraction of the total number of denoising steps after which guidance stops. If a list is supplied, it
+            should be the same length as `guidance_scales`.
     """
 
     _input_predictions = ["pred_cond", "pred_uncond"]
@@ -120,28 +117,64 @@ class FrequencyDecoupledGuidance(BaseGuidance):
     @register_to_config
     def __init__(
         self,
-        guidance_scale_low: float = 5.0,
-        guidance_scale_high: float = 10.0,
-        guidance_rescale: float = 0.0,
-        parallel_weights_low: float = 1.0,
-        parallel_weights_high: float = 1.0,
+        guidance_scales: Union[List[float], Tuple[float]] = [10.0, 5.0],
+        guidance_rescale: Union[float, List[float], Tuple[float]] = 0.0,
+        parallel_weights: Optional[Union[float, List[float], Tuple[float]]] = None,
         use_original_formulation: bool = False,
-        start: float = 0.0,
-        stop: float = 1.0,
+        start: Union[float, List[float], Tuple[float]] = 0.0,
+        stop: Union[float, List[float], Tuple[float]] = 1.0,
     ):
-        super().__init__(start, stop)
+        # Set start to earliest start for any freq component and stop to latest stop for any freq component
+        min_start = start if isinstance(start, float) else min(start)
+        max_stop = stop if isinstance(stop, float) else max(stop)
+        super().__init__(min_start, max_stop)
 
-        self.guidance_scale_low = guidance_scale_low
-        self.guidance_scale_high = guidance_scale_high
-        self.guidance_rescale = guidance_rescale
-        # Split the frequency components into 2 levels: low-frequency and high-frequency
-        # For now, hardcoded
-        self.levels = 2
+        self.guidance_scales = guidance_scales
+        self.levels = len(guidance_scales)
 
-        self.parallel_weights_low = parallel_weights_low
-        self.parallel_weights_high = parallel_weights_high
+        if isinstance(guidance_rescale, float):
+            self.guidance_rescale = [guidance_rescale] * self.levels
+        elif len(guidance_rescale) == self.levels:
+            self.guidance_rescale = guidance_rescale
+        else:
+            raise ValueError(
+                f"`guidance_rescale` has length {len(guidance_rescale)} but should have the same length as "
+                f"`guidance_scales` ({len(self.guidance_scales)})"
+            )
+
+        if parallel_weights is None:
+            # Use normal CFG shift (equal weights for parallel and orthogonal components)
+            self.parallel_weights = [1.0] * self.levels
+        elif isinstance(parallel_weights, float):
+            self.parallel_weights = [parallel_weights] * self.levels
+        elif len(parallel_weights) == self.levels:
+            self.parallel_weights = parallel_weights
+        else:
+            raise ValueError(
+                f"`parallel_weights` has length {len(parallel_weights)} but should have the same length as "
+                f"`guidance_scales` ({len(self.guidance_scales)})"
+            )
 
         self.use_original_formulation = use_original_formulation
+
+        if isinstance(start, float):
+            self.guidance_start = [start] * self.levels
+        elif len(start) == self.levels:
+            self.guidance_start = start
+        else:
+            raise ValueError(
+                f"`start` has length {len(start)} but should have the same length as `guidance_scales` "
+                f"({len(self.guidance_scales)})"
+            )
+        if isinstance(stop, float):
+            self.guidance_stop = [stop] * self.levels
+        elif len(stop) == self.levels:
+            self.guidance_stop = stop
+        else:
+            raise ValueError(
+                f"`stop` has length {len(stop)} but should have the same length as `guidance_scales` "
+                f"({len(self.guidance_scales)})"
+            )
 
     def prepare_inputs(
         self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
@@ -168,25 +201,28 @@ class FrequencyDecoupledGuidance(BaseGuidance):
 
             # From high frequencies to low frequencies, following the paper implementation
             pred_guided_pyramid = []
-            guidance_scales = [self.guidance_scale_high, self.guidance_scale_low]
-            parallel_weights = [self.parallel_weights_high, self.parallel_weights_low]
-            parameters = zip(guidance_scales, parallel_weights)
-            for level, (guidance_scale, parallel_weight) in enumerate(parameters):
-                shift = pred_cond_pyramid[level] - pred_uncond_pyramid[level]
+            parameters = zip(self.guidance_scales, self.parallel_weights, self.guidance_rescale)
+            for level, (guidance_scale, parallel_weight, guidance_rescale) in enumerate(parameters):
+                if self._is_fdg_enabled_for_level(level):
+                    shift = pred_cond_pyramid[level] - pred_uncond_pyramid[level]
 
-                # Apply parallel weights, if used (1.0 corresponds to using the normal CFG shift)
-                shift_parallel, shift_orthogonal = project(shift, pred_cond)
-                shift = parallel_weight * shift_parallel + shift_orthogonal
+                    # Apply parallel weights, if used (1.0 corresponds to using the normal CFG shift)
+                    if not math.isclose(parallel_weight, 1.0):
+                        shift_parallel, shift_orthogonal = project(shift, pred_cond)
+                        shift = parallel_weight * shift_parallel + shift_orthogonal
 
-                # Apply CFG for the current frequency level
-                pred = pred_cond if self.use_original_formulation else pred_uncond
-                pred = pred + guidance_scale * shift
+                    # Apply CFG update for the current frequency level
+                    pred = pred_cond if self.use_original_formulation else pred_uncond
+                    pred = pred + guidance_scale * shift
 
-                if self.guidance_rescale > 0.0:
-                    pred = rescale_noise_cfg(pred, pred_cond_pyramid[level], self.guidance_rescale)
+                    if guidance_rescale > 0.0:
+                        pred = rescale_noise_cfg(pred, pred_cond_pyramid[level], guidance_rescale)
 
-                # Add the current FDG guided level to the guided pyramid
-                pred_guided_pyramid.append(pred)
+                    # Add the current FDG guided level to the FDG prediction pyramid
+                    pred_guided_pyramid.append(pred)
+                else:
+                    # Add the current pred_cond_pyramid level as the "non-FDG" prediction
+                    pred_guided_pyramid.append(pred_cond_pyramid[level])
 
             # Convert from frequency space back to data (e.g. pixel) space by applying inverse freq transform
             pred = build_image_from_pyramid(pred_guided_pyramid)
@@ -216,8 +252,26 @@ class FrequencyDecoupledGuidance(BaseGuidance):
 
         is_close = False
         if self.use_original_formulation:
-            is_close = math.isclose(self.guidance_scale_low, 0.0) and math.isclose(self.guidance_scale_high, 0.0)
+            is_close = all(math.isclose(guidance_scale, 0.0) for guidance_scale in self.guidance_scales)
         else:
-            is_close = math.isclose(self.guidance_scale_low, 1.0) and math.isclose(self.guidance_scale_high, 1.0)
+            is_close = all(math.isclose(guidance_scale, 1.0) for guidance_scale in self.guidance_scales)
+
+        return is_within_range and not is_close
+
+    def _is_fdg_enabled_for_level(self, level: int) -> bool:
+        if not self._enabled:
+            return False
+
+        is_within_range = True
+        if self._num_inference_steps is not None:
+            skip_start_step = int(self.guidance_start[level] * self._num_inference_steps)
+            skip_stop_step = int(self.guidance_stop[level] * self._num_inference_steps)
+            is_within_range = skip_start_step <= self._step < skip_stop_step
+
+        is_close = False
+        if self.use_original_formulation:
+            is_close = math.isclose(self.guidance_scales[level], 0.0)
+        else:
+            is_close = math.isclose(self.guidance_scales[level], 1.0)
 
         return is_within_range and not is_close
