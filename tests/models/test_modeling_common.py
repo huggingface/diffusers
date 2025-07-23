@@ -75,7 +75,6 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_accelerator,
     require_torch_accelerator_with_training,
-    require_torch_gpu,
     require_torch_multi_accelerator,
     require_torch_version_greater,
     run_test_in_subprocess,
@@ -1829,8 +1828,8 @@ class ModelTesterMixin:
 
         assert msg_substring in str(err_ctx.exception)
 
-    @parameterized.expand([0, "cuda", torch.device("cuda")])
-    @require_torch_gpu
+    @parameterized.expand([0, torch_device, torch.device(torch_device)])
+    @require_torch_accelerator
     def test_passing_non_dict_device_map_works(self, device_map):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).eval()
@@ -1839,8 +1838,8 @@ class ModelTesterMixin:
             loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
             _ = loaded_model(**inputs_dict)
 
-    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
-    @require_torch_gpu
+    @parameterized.expand([("", torch_device), ("", torch.device(torch_device))])
+    @require_torch_accelerator
     def test_passing_dict_device_map_works(self, name, device):
         # There are other valid dict-based `device_map` values too. It's best to refer to
         # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
@@ -1945,10 +1944,11 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
 
-@require_torch_gpu
+@require_torch_accelerator
 @require_torch_2
 @is_torch_compile
 @slow
+@require_torch_version_greater("2.7.1")
 class TorchCompileTesterMixin:
     different_shapes_for_compilation = None
 
@@ -2013,7 +2013,7 @@ class TorchCompileTesterMixin:
         model.eval()
         # TODO: Can test for other group offloading kwargs later if needed.
         group_offload_kwargs = {
-            "onload_device": "cuda",
+            "onload_device": torch_device,
             "offload_device": "cpu",
             "offload_type": "block_level",
             "num_blocks_per_group": 1,
@@ -2047,6 +2047,7 @@ class TorchCompileTesterMixin:
 @require_torch_accelerator
 @require_peft_backend
 @require_peft_version_greater("0.14.0")
+@require_torch_version_greater("2.7.1")
 @is_torch_compile
 class LoraHotSwappingForModelTesterMixin:
     """Test that hotswapping does not result in recompilation on the model directly.
