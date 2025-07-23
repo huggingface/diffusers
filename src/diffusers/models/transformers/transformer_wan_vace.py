@@ -110,12 +110,12 @@ class WanVACETransformerBlock(nn.Module):
         norm_hidden_states = (self.norm1(control_hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(
             control_hidden_states
         )
-        attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
         control_hidden_states = (control_hidden_states.float() + attn_output * gate_msa).type_as(control_hidden_states)
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(control_hidden_states.float()).type_as(control_hidden_states)
-        attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
+        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
         control_hidden_states = control_hidden_states + attn_output
 
         # 3. Feed-forward
