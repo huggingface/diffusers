@@ -129,7 +129,7 @@
   - local: modular_diffusers/modular_pipeline
     title: ModularPipeline
   - local: modular_diffusers/components_manager
-    title: Components Manager
+    title: ComponentsManager
   - local: modular_diffusers/guiders
     title: Guiders
 

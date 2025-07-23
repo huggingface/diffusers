@@ -72,7 +72,7 @@ def __call__(self, components, state):
 
 ## State interaction
 
-[`~modular_pipelines.PipelineState`] and [`BlockState`] interaction is defined by a block's `inputs`, `intermediate_inputs`, and `intermediate_outputs`.
+[`~modular_pipelines.PipelineState`] and [`~modular_pipelines.BlockState`] interaction is defined by a block's `inputs`, `intermediate_inputs`, and `intermediate_outputs`.
 
 - `inputs`, a block can modify an input - like `block_state.image` - but the change is local to the [`~modular_pipelines.BlockState`] and won't affect the original image in [`~modular_pipelines.PipelineState`].
 - `intermediate_inputs`, is often values created from a previous block. When a block modifies `intermediate_inputs` - like `batch_size` - this change is reflected in both the [`~modular_pipelines.BlockState`] and [`~modular_pipelines.PipelineState`]. Any subsequent blocks are also affected.

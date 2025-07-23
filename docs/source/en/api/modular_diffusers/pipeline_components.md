@@ -11,3 +11,7 @@
 ## ComponentsManager
 
 [[autodoc]] diffusers.modular_pipelines.components_manager.ComponentsManager
+
+## InsertableDict
+
+[[autodoc]] diffusers.modular_pipelines.modular_pipeline_utils.InsertableDict
