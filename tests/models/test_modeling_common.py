@@ -1948,6 +1948,7 @@ class ModelPushToHubTester(unittest.TestCase):
 @require_torch_2
 @is_torch_compile
 @slow
+@require_torch_version_greater("2.7.1")
 class TorchCompileTesterMixin:
     different_shapes_for_compilation = None
 
@@ -2046,6 +2047,7 @@ class TorchCompileTesterMixin:
 @require_torch_accelerator
 @require_peft_backend
 @require_peft_version_greater("0.14.0")
+@require_torch_version_greater("2.7.1")
 @is_torch_compile
 class LoraHotSwappingForModelTesterMixin:
     """Test that hotswapping does not result in recompilation on the model directly.
