@@ -34,39 +34,6 @@ from .modular_pipeline import WanModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanLoopBeforeDenoiser(PipelineBlock):
-    model_name = "wan"
-
-    @property
-    def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("scheduler", UniPCMultistepScheduler),
-        ]
-
-    @property
-    def description(self) -> str:
-        return (
-            "step within the denoising loop that prepare the latent input for the denoiser. "
-            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
-            "object (e.g. `WanDenoiseLoopWrapper`)"
-        )
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
-            InputParam(
-                "latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: int):
-        return components, block_state
-
-
 class WanLoopDenoiser(PipelineBlock):
     model_name = "wan"
 
@@ -99,6 +66,12 @@ class WanLoopDenoiser(PipelineBlock):
     @property
     def intermediate_inputs(self) -> List[str]:
         return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
+            ),
             InputParam(
                 "num_inference_steps",
                 required=True,
@@ -271,7 +244,6 @@ class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
 class WanDenoiseStep(WanDenoiseLoopWrapper):
     block_classes = [
-        WanLoopBeforeDenoiser,
         WanLoopDenoiser,
         WanLoopAfterDenoiser,
     ]
@@ -283,7 +255,6 @@ class WanDenoiseStep(WanDenoiseLoopWrapper):
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
-            " - `WanLoopBeforeDenoiser`\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
             "This block supports both text2vid tasks."

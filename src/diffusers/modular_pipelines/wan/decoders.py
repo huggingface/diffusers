@@ -30,7 +30,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class WanDecodeStep(PipelineBlock):
-    model_name = "stable-diffusion-xl"
+    model_name = "wan"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
