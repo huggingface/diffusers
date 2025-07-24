@@ -12,8 +12,8 @@
 # # See the License for the specific language governing permissions and
 # # limitations under the License.
 
-
 import inspect
+import os
 from contextlib import nullcontext
 
 import gguf
@@ -29,7 +29,11 @@ if is_accelerate_available():
     from accelerate.hooks import add_hook_to_module, remove_hook_from_module
 
 
-can_use_cuda_kernels = torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 7
+can_use_cuda_kernels = (
+    os.getenv("DIFFUSERS_GGUF_CUDA_KERNELS", "true").lower() in ["1", "true", "yes"]
+    and torch.cuda.is_available()
+    and torch.cuda.get_device_capability()[0] >= 7
+)
 if can_use_cuda_kernels and is_kernels_available():
     from kernels import get_kernel
 
