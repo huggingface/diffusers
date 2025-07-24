@@ -367,7 +367,8 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
     def initialize_hook(self, module):
         def make_execution_order_update_callback(current_name, current_submodule):
             def callback():
-                logger.debug(f"Adding {current_name} to the execution order")
+                if not torch.compiler.is_compiling():
+                    logger.debug(f"Adding {current_name} to the execution order")
                 self.execution_order.append((current_name, current_submodule))
 
             return callback
