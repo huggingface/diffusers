@@ -320,11 +320,40 @@ class ModularPipelineTesterMixin:
                 assert images.shape[0] == batch_size * num_images_per_prompt
 
     @require_accelerator
-    def test_components_auto_cpu_offload(self):
+    def test_components_auto_cpu_offload_inference_consistent(self):
         base_pipe = self.get_pipeline().to(torch_device)
-        for component in base_pipe.components:
-            assert component.device == torch_device
 
         cm = ComponentsManager()
         cm.enable_auto_cpu_offload(device=torch_device)
         offload_pipe = self.get_pipeline(components_manager=cm)
+
+        image_slices = []
+        for pipe in [base_pipe, offload_pipe]:
+            inputs = self.get_dummy_inputs(torch_device)
+            image = pipe(**inputs, output="images")
+
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
+
+        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+    def test_save_from_pretrained(self):
+        pipes = []
+        base_pipe = self.get_pipeline().to(torch_device)
+        pipes.append(base_pipe)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            base_pipe.save_pretrained(tmpdirname)
+            pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
+            pipe.load_default_components(torch_dtype=torch.float32)
+            pipe.to(torch_device)
+
+        pipes.append(pipe)
+
+        image_slices = []
+        for pipe in pipes:
+            inputs = self.get_dummy_inputs(torch_device)
+            image = pipe(**inputs, output="images")
+
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
+
+        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
