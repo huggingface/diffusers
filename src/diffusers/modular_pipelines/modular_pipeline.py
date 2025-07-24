@@ -61,6 +61,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
         ("wan", "WanModularPipeline"),
+        ("flux", "FluxModularPipeline"),
     ]
 )
 
@@ -68,6 +69,7 @@ MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
     [
         ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
         ("WanModularPipeline", "WanAutoBlocks"),
+        ("FluxModularPipeline", "FluxAutoBlocks"),
     ]
 )
 
