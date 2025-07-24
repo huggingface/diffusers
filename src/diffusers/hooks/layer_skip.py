@@ -91,10 +91,19 @@ class AttentionScoreSkipFunctionMode(torch.overrides.TorchFunctionMode):
         if kwargs is None:
             kwargs = {}
         if func is torch.nn.functional.scaled_dot_product_attention:
+            query = kwargs.get("query", None)
+            key = kwargs.get("key", None)
             value = kwargs.get("value", None)
-            if value is None:
-                value = args[2]
-            return value
+            query = query if query is not None else args[0]
+            key = key if key is not None else args[1]
+            value = value if value is not None else args[2]
+            # If the Q sequence length does not match KV sequence length, methods like
+            # Perturbed Attention Guidance cannot be used (because the caller expects
+            # the same sequence length as Q, but if we return V here, it will not match).
+            # When Q.shape[2] != V.shape[2], PAG will essentially not be applied and
+            # the overall effect would that be of normal CFG with a scale of (guidance_scale + perturbed_guidance_scale).
+            if query.shape[2] == value.shape[2]:
+                return value
         return func(*args, **kwargs)
 
 
