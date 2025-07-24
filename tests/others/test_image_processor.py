@@ -308,3 +308,16 @@ class ImageProcessorTest(unittest.TestCase):
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_vae_image_processor_resize_list_pt(self):
+        image_processor = VaeImageProcessor(do_resize=True, vae_scale_factor=1)
+        input_pt = self.dummy_sample
+        b, c, h, w = input_pt.shape
+        scale = 2
+        input_pt_list = [input_pt]
+        out_pt_list = image_processor.resize(image=input_pt_list, height=h // scale, width=w // scale)
+        exp_pt_shape = (b, c, h // scale, w // scale)
+        for out_pt in out_pt_list:
+            assert out_pt.shape == exp_pt_shape, (
+                f"resized image output shape '{out_pt.shape}' didn't match expected shape '{exp_pt_shape}'."
+            )
