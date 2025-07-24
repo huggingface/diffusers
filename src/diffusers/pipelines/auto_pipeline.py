@@ -50,6 +50,7 @@ from .flux import (
     FluxImg2ImgPipeline,
     FluxInpaintPipeline,
     FluxPipeline,
+    FluxKontextPipeline,
 )
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
@@ -142,6 +143,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux", FluxPipeline),
         ("flux-control", FluxControlPipeline),
         ("flux-controlnet", FluxControlNetPipeline),
+        ("flux-kontext", FluxKontextPipeline),
         ("lumina", LuminaPipeline),
         ("lumina2", Lumina2Pipeline),
         ("chroma", ChromaPipeline),
