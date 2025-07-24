@@ -15,15 +15,26 @@
 import math
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-import kornia
 import torch
 
 from ..configuration_utils import register_to_config
+from ..utils import is_kornia_available
 from .guider_utils import BaseGuidance, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
+
+
+_CAN_USE_KORNIA = is_kornia_available()
+
+
+if _CAN_USE_KORNIA:
+    from kornia.geometry import pyrup as upsample_and_blur_func
+    from kornia.geometry.transform import build_laplacian_pyramid as build_laplacian_pyramid_func
+else:
+    upsample_and_blur_func = None
+    build_laplacian_pyramid_func = None
 
 
 def project(v0: torch.Tensor, v1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -51,7 +62,7 @@ def build_image_from_pyramid(pyramid: List[torch.Tensor]) -> torch.Tensor:
     # pyramid shapes: [[B, C, H, W], [B, C, H/2, W/2], ...]
     img = pyramid[-1]
     for i in range(len(pyramid) - 2, -1, -1):
-        img = kornia.geometry.pyrup(img) + pyramid[i]
+        img = upsample_and_blur_func(img) + pyramid[i]
     return img
 
 
@@ -125,6 +136,12 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         start: Union[float, List[float], Tuple[float]] = 0.0,
         stop: Union[float, List[float], Tuple[float]] = 1.0,
     ):
+        if not _CAN_USE_KORNIA:
+            raise ImportError(
+                "The `FrequencyDecoupledGuidance` guider cannot be instantiated because the `kornia` library on which"
+                "it depends is not available in the current environment."
+            )
+
         # Set start to earliest start for any freq component and stop to latest stop for any freq component
         min_start = start if isinstance(start, float) else min(start)
         max_stop = stop if isinstance(stop, float) else max(stop)
@@ -197,8 +214,8 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             pred = pred_cond
         else:
             # Apply the frequency transform (e.g. Laplacian pyramid) to the conditional and unconditional predictions.
-            pred_cond_pyramid = kornia.geometry.transform.build_laplacian_pyramid(pred_cond, self.levels)
-            pred_uncond_pyramid = kornia.geometry.transform.build_laplacian_pyramid(pred_uncond, self.levels)
+            pred_cond_pyramid = build_laplacian_pyramid_func(pred_cond, self.levels)
+            pred_uncond_pyramid = build_laplacian_pyramid_func(pred_uncond, self.levels)
 
             # From high frequencies to low frequencies, following the paper implementation
             pred_guided_pyramid = []
