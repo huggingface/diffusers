@@ -367,6 +367,8 @@ else:
         [
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
+            "WanAutoBlocks",
+            "WanModularPipeline",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -1001,6 +1003,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
+            WanAutoBlocks,
+            WanModularPipeline,
         )
         from .pipelines import (
             AllegroPipeline,
