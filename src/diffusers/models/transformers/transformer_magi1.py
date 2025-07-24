@@ -161,6 +161,23 @@ class Magi1ImageEmbedding(torch.nn.Module):
         return hidden_states
 
 
+class Magi1TextProjection(nn.Module):
+    """
+    Projects caption embeddings.
+    """
+    def __init__(self, in_features, hidden_size):
+        super().__init__()
+        self.y_proj_xattn = nn.Sequential(
+            nn.Linear(in_features, hidden_size, bias=True), nn.SiLU()
+        )
+        self.y_proj_adaln = nn.Linear(in_features, hidden_size, bias=True)
+
+    def forward(self, caption):
+        caption_xattn = self.y_proj_xattn(caption)
+        caption_adaln = self.y_proj_adaln(caption)
+        return caption_xattn, caption_adaln
+
+
 class Magi1TimeTextImageEmbedding(nn.Module):
     """
     Combined time, text, and image embedding module for the MAGI-1 model.
@@ -190,7 +207,7 @@ class Magi1TimeTextImageEmbedding(nn.Module):
 
         self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
-        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
+        self.text_embedder = Magi1TextProjection(text_embed_dim, dim)
 
         self.image_embedder = None
         if image_embed_dim is not None:
@@ -209,11 +226,11 @@ class Magi1TimeTextImageEmbedding(nn.Module):
             timestep = timestep.to(time_embedder_dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
 
-        encoder_hidden_states = self.text_embedder(encoder_hidden_states)
+        y_xattn, y_adaln = self.text_embedder(encoder_hidden_states)
         if encoder_hidden_states_image is not None:
             encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
 
-        return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
+        return temb, y_xattn, y_adaln, encoder_hidden_states_image
 
 
 class Magi1RotaryPosEmbed(nn.Module):
@@ -514,10 +531,12 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
-        temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
-            timestep, encoder_hidden_states, encoder_hidden_states_image
+        timestep_shape = timestep.shape
+        temb, y_xattn, y_adaln, encoder_hidden_states_image = self.condition_embedder(
+            timestep.flatten(), encoder_hidden_states, encoder_hidden_states_image
         )
-        timestep_proj = timestep_proj.unflatten(1, (6, -1))
+
+        temb = temb.reshape(*timestep_shape, -1) + y_adaln
 
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
@@ -526,11 +545,11 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.blocks:
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
+                    block, hidden_states, encoder_hidden_states, temb, rotary_emb
                 )
         else:
             for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+                hidden_states = block(hidden_states, encoder_hidden_states, temb, rotary_emb)
 
         hidden_states = self.norm_out(hidden_states, temb=temb)
         hidden_states = self.proj_out(hidden_states)
