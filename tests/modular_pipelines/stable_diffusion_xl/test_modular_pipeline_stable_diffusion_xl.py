@@ -24,7 +24,6 @@ from PIL import Image
 
 from diffusers import (
     ClassifierFreeGuidance,
-    ComponentsManager,
     ModularPipeline,
     StableDiffusionXLAutoBlocks,
     StableDiffusionXLModularPipeline,
@@ -33,7 +32,6 @@ from diffusers.loaders import ModularIPAdapterMixin
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    require_torch_accelerator,
     torch_device,
 )
 
@@ -99,9 +97,9 @@ class SDXLModularTests:
 
         assert image.shape == expected_image_shape
 
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < expected_max_diff
-        ), "Image Slice does not match expected slice"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < expected_max_diff, (
+            "Image Slice does not match expected slice"
+        )
 
 
 class SDXLModularIPAdapterTests:
@@ -114,20 +112,20 @@ class SDXLModularIPAdapterTests:
         parameters = blocks.input_names
 
         assert issubclass(self.pipeline_class, ModularIPAdapterMixin)
-        assert (
-            "ip_adapter_image" in parameters
-        ), "`ip_adapter_image` argument must be supported by the `__call__` method"
+        assert "ip_adapter_image" in parameters, (
+            "`ip_adapter_image` argument must be supported by the `__call__` method"
+        )
         assert "ip_adapter" in blocks.sub_blocks, "pipeline must contain an IPAdapter block"
 
         _ = blocks.sub_blocks.pop("ip_adapter")
         parameters = blocks.input_names
         intermediate_parameters = blocks.intermediate_input_names
-        assert (
-            "ip_adapter_image" not in parameters
-        ), "`ip_adapter_image` argument must be removed from the `__call__` method"
-        assert (
-            "ip_adapter_image_embeds" not in intermediate_parameters
-        ), "`ip_adapter_image_embeds` argument must be supported by the `__call__` method"
+        assert "ip_adapter_image" not in parameters, (
+            "`ip_adapter_image` argument must be removed from the `__call__` method"
+        )
+        assert "ip_adapter_image_embeds" not in intermediate_parameters, (
+            "`ip_adapter_image_embeds` argument must be supported by the `__call__` method"
+        )
 
     def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
         return torch.randn((1, 1, cross_attention_dim), device=torch_device)
@@ -203,9 +201,9 @@ class SDXLModularIPAdapterTests:
         max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
         max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
 
-        assert (
-            max_diff_without_adapter_scale < expected_max_diff
-        ), "Output without ip-adapter must be same as normal inference"
+        assert max_diff_without_adapter_scale < expected_max_diff, (
+            "Output without ip-adapter must be same as normal inference"
+        )
         assert max_diff_with_adapter_scale > 1e-2, "Output with ip-adapter must be different from normal inference"
 
         # 2. Multi IP-Adapter test cases
@@ -235,12 +233,12 @@ class SDXLModularIPAdapterTests:
             output_without_multi_adapter_scale - output_without_adapter
         ).max()
         max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
-        assert (
-            max_diff_without_multi_adapter_scale < expected_max_diff
-        ), "Output without multi-ip-adapter must be same as normal inference"
-        assert (
-            max_diff_with_multi_adapter_scale > 1e-2
-        ), "Output with multi-ip-adapter scale must be different from normal inference"
+        assert max_diff_without_multi_adapter_scale < expected_max_diff, (
+            "Output without multi-ip-adapter must be same as normal inference"
+        )
+        assert max_diff_with_multi_adapter_scale > 1e-2, (
+            "Output with multi-ip-adapter scale must be different from normal inference"
+        )
 
 
 class SDXLModularControlNetTests:
@@ -253,9 +251,9 @@ class SDXLModularControlNetTests:
         parameters = blocks.input_names
 
         assert "control_image" in parameters, "`control_image` argument must be supported by the `__call__` method"
-        assert (
-            "controlnet_conditioning_scale" in parameters
-        ), "`controlnet_conditioning_scale` argument must be supported by the `__call__` method"
+        assert "controlnet_conditioning_scale" in parameters, (
+            "`controlnet_conditioning_scale` argument must be supported by the `__call__` method"
+        )
 
     def _modify_inputs_for_controlnet_test(self, inputs: Dict[str, Any]):
         controlnet_embedder_scale_factor = 2
@@ -301,9 +299,9 @@ class SDXLModularControlNetTests:
         max_diff_without_controlnet_scale = np.abs(output_without_controlnet_scale - output_without_controlnet).max()
         max_diff_with_controlnet_scale = np.abs(output_with_controlnet_scale - output_without_controlnet).max()
 
-        assert (
-            max_diff_without_controlnet_scale < expected_max_diff
-        ), "Output without controlnet must be same as normal inference"
+        assert max_diff_without_controlnet_scale < expected_max_diff, (
+            "Output without controlnet must be same as normal inference"
+        )
         assert max_diff_with_controlnet_scale > 1e-2, "Output with controlnet must be different from normal inference"
 
     def test_controlnet_cfg(self):
