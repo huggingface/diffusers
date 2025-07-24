@@ -395,8 +395,6 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             Type of query/key normalization to use.
         eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
-        use_linear_projection (`bool`, defaults to `True`):
-            Whether to use linear projection for patch embedding.
         upcast_attention (`bool`, defaults to `False`):
             Whether to upcast attention computation to float32.
         image_embed_dim (`Optional[int]`, defaults to `None`):
@@ -429,7 +427,6 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         cross_attn_norm: bool = True,
         qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
-        use_linear_projection: bool = True,
         upcast_attention: bool = False,
         image_embed_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
@@ -443,12 +440,9 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         # 1. Patch & position embedding
         self.rope = Magi1RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
 
-        if use_linear_projection:
-            self.patch_embedding = nn.Linear(in_channels * math.prod(patch_size), inner_dim)
-        else:
-            self.patch_embedding = nn.Conv3d(
-                in_channels, inner_dim, kernel_size=patch_size, stride=patch_size, bias=False
-            )
+        self.patch_embedding = nn.Conv3d(
+            in_channels, inner_dim, kernel_size=patch_size, stride=patch_size, bias=False
+        )
 
         # 2. Condition embeddings
         self.condition_embedder = Magi1TimeTextImageEmbedding(
@@ -516,25 +510,9 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
 
         rotary_emb = self.rope(hidden_states)
 
-        # Patch embedding - handle both conv3d and linear projection
-        if self.config.use_linear_projection:
-            # For linear projection, we need to patchify first
-            batch_size, num_channels, num_frames, height, width = hidden_states.shape
-            p_t, p_h, p_w = self.config.patch_size
-
-            # Patchify: (B, C, T, H, W) -> (B, T//p_t, H//p_h, W//p_w, C*p_t*p_h*p_w)
-            hidden_states = hidden_states.unfold(2, p_t, p_t).unfold(3, p_h, p_h).unfold(4, p_w, p_w)
-            hidden_states = hidden_states.contiguous().view(
-                batch_size, num_frames // p_t, height // p_h, width // p_w, num_channels * p_t * p_h * p_w
-            )
-            # Reshape to sequence: (B, T*H*W, C*p_t*p_h*p_w)
-            hidden_states = hidden_states.flatten(1, 3)
-            # Apply linear projection: (B, T*H*W, inner_dim)
-            hidden_states = self.patch_embedding(hidden_states)
-        else:
-            # For conv3d projection
-            hidden_states = self.patch_embedding(hidden_states)
-            hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        # Patch embedding
+        hidden_states = self.patch_embedding(hidden_states)
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
             timestep, encoder_hidden_states, encoder_hidden_states_image
