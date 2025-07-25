@@ -279,7 +279,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         <Tip>
 
         To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`.
+        `hf auth login`.
 
         </Tip>
 
