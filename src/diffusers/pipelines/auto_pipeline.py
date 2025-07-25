@@ -173,6 +173,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux", FluxImg2ImgPipeline),
         ("flux-controlnet", FluxControlNetImg2ImgPipeline),
         ("flux-control", FluxControlImg2ImgPipeline),
+        ("flux-kontext", FluxKontextPipeline),
     ]
 )
 
