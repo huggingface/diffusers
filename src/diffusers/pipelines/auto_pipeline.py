@@ -49,6 +49,7 @@ from .flux import (
     FluxControlPipeline,
     FluxImg2ImgPipeline,
     FluxInpaintPipeline,
+    FluxKontextPipeline,
     FluxPipeline,
 )
 from .hunyuandit import HunyuanDiTPipeline
@@ -142,6 +143,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux", FluxPipeline),
         ("flux-control", FluxControlPipeline),
         ("flux-controlnet", FluxControlNetPipeline),
+        ("flux-kontext", FluxKontextPipeline),
         ("lumina", LuminaPipeline),
         ("lumina2", Lumina2Pipeline),
         ("chroma", ChromaPipeline),
