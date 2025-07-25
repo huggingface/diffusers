@@ -209,7 +209,7 @@ class ComponentSpec:
 
         # Get all loading fields in order
         loading_fields = cls.loading_fields()
-        result = {f: None for f in loading_fields}
+        result = dict.fromkeys(loading_fields)
 
         if load_id == "null":
             return result

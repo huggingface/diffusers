@@ -406,7 +406,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
         return EDMEulerSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.Tensor,
@@ -415,23 +414,30 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     ) -> torch.Tensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
-        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
-            # mps does not support float64
-            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
-            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
-        else:
-            schedule_timesteps = self.timesteps.to(original_samples.device)
-            timesteps = timesteps.to(original_samples.device)
+        timesteps = timesteps.to(original_samples.device)
 
-        # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
-        if self.begin_index is None:
-            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
-        elif self.step_index is not None:
-            # add_noise is called after first denoising step (for inpainting)
-            step_indices = [self.step_index] * timesteps.shape[0]
+        # Handle integer timesteps (training case)
+        if timesteps.dtype in (torch.int32, torch.int64):
+            # Training: reverse mapping since EDM sigmas are in descending order
+            # timestep 0 -> sigma_min, timestep 999 -> sigma_max
+            step_indices = self.config.num_train_timesteps - 1 - timesteps.long()
         else:
-            # add noise is called before first denoising step to create initial latent(img2img)
-            step_indices = [self.begin_index] * timesteps.shape[0]
+            if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
+                # mps does not support float64
+                schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+                timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
+            else:
+                schedule_timesteps = self.timesteps.to(original_samples.device)
+
+            # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
+            if self.begin_index is None:
+                step_indices = torch.tensor([self.index_for_timestep(t, schedule_timesteps) for t in timesteps])
+            elif self.step_index is not None:
+                # add_noise is called after first denoising step (for inpainting)
+                step_indices = torch.tensor([self.step_index] * timesteps.shape[0])
+            else:
+                # add noise is called before first denoising step to create initial latent(img2img)
+                step_indices = torch.tensor([self.begin_index] * timesteps.shape[0])
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
