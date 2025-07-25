@@ -122,6 +122,11 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         stop (`float` or `List[float]`, defaults to `1.0`):
             The fraction of the total number of denoising steps after which guidance stops. If a list is supplied, it
             should be the same length as `guidance_scales`.
+        guidance_rescale_space (`str`, defaults to `"data"`):
+            Whether to performance guidance rescaling in `"data"` space (after the full FDG update in data space) or in
+            `"freq"` space (right after the CFG update, for each freq level). Note that frequency space rescaling is
+            speculative and may not produce expected results. If `"data"` is set, the first `guidance_rescale` value
+            will be used; otherwise, per-frequency-level guidance rescale values will be used if available.
     """
 
     _input_predictions = ["pred_cond", "pred_uncond"]
@@ -135,6 +140,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         use_original_formulation: bool = False,
         start: Union[float, List[float], Tuple[float]] = 0.0,
         stop: Union[float, List[float], Tuple[float]] = 1.0,
+        guidance_rescale_space: str = "data",
     ):
         if not _CAN_USE_KORNIA:
             raise ImportError(
@@ -159,6 +165,13 @@ class FrequencyDecoupledGuidance(BaseGuidance):
                 f"`guidance_rescale` has length {len(guidance_rescale)} but should have the same length as "
                 f"`guidance_scales` ({len(self.guidance_scales)})"
             )
+        # Whether to perform guidance rescaling in frequency space (right after the CFG update) or data space (after
+        # transforming from frequency space back to data space)
+        if guidance_rescale_space not in ["data", "freq"]:
+            raise ValueError(
+                f"Guidance rescale space is {guidance_rescale_space} but must be one of `data` or `freq`."
+            )
+        self.guidance_rescale_space = guidance_rescale_space
 
         if parallel_weights is None:
             # Use normal CFG shift (equal weights for parallel and orthogonal components)
@@ -237,7 +250,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
                     pred = pred_cond_freq if self.use_original_formulation else pred_uncond_freq
                     pred = pred + guidance_scale * shift
 
-                    if guidance_rescale > 0.0:
+                    if self.guidance_rescale_space == "freq" and guidance_rescale > 0.0:
                         pred = rescale_noise_cfg(pred, pred_cond_freq, guidance_rescale)
 
                     # Add the current FDG guided level to the FDG prediction pyramid
@@ -248,6 +261,11 @@ class FrequencyDecoupledGuidance(BaseGuidance):
 
             # Convert from frequency space back to data (e.g. pixel) space by applying inverse freq transform
             pred = build_image_from_pyramid(pred_guided_pyramid)
+
+            # If rescaling in data space, use the first elem of self.guidance_rescale as the "global" rescale value
+            # across all freq levels
+            if self.guidance_rescale_space == "data" and self.guidance_rescale[0] > 0.0:
+                pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale[0])
 
         return pred, {}
 
