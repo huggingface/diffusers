@@ -222,25 +222,29 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             parameters = zip(self.guidance_scales, self.parallel_weights, self.guidance_rescale)
             for level, (guidance_scale, parallel_weight, guidance_rescale) in enumerate(parameters):
                 if self._is_fdg_enabled_for_level(level):
-                    shift = pred_cond_pyramid[level] - pred_uncond_pyramid[level]
+                    # Get the cond/uncond preds (in freq space) at the current frequency level
+                    pred_cond_freq = pred_cond_pyramid[level]
+                    pred_uncond_freq = pred_uncond_pyramid[level]
+
+                    shift = pred_cond_freq - pred_uncond_freq
 
                     # Apply parallel weights, if used (1.0 corresponds to using the normal CFG shift)
                     if not math.isclose(parallel_weight, 1.0):
-                        shift_parallel, shift_orthogonal = project(shift, pred_cond)
+                        shift_parallel, shift_orthogonal = project(shift, pred_cond_freq)
                         shift = parallel_weight * shift_parallel + shift_orthogonal
 
                     # Apply CFG update for the current frequency level
-                    pred = pred_cond if self.use_original_formulation else pred_uncond
+                    pred = pred_cond_freq if self.use_original_formulation else pred_uncond_freq
                     pred = pred + guidance_scale * shift
 
                     if guidance_rescale > 0.0:
-                        pred = rescale_noise_cfg(pred, pred_cond_pyramid[level], guidance_rescale)
+                        pred = rescale_noise_cfg(pred, pred_cond_freq, guidance_rescale)
 
                     # Add the current FDG guided level to the FDG prediction pyramid
                     pred_guided_pyramid.append(pred)
                 else:
                     # Add the current pred_cond_pyramid level as the "non-FDG" prediction
-                    pred_guided_pyramid.append(pred_cond_pyramid[level])
+                    pred_guided_pyramid.append(pred_cond_freq)
 
             # Convert from frequency space back to data (e.g. pixel) space by applying inverse freq transform
             pred = build_image_from_pyramid(pred_guided_pyramid)
