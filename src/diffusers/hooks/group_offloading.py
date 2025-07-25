@@ -159,27 +159,27 @@ class ModuleGroup:
         finally:
             pinned_dict = None
 
-    def _transfer_tensor_to_device(self, tensor, source_tensor, current_stream=None):
+    def _transfer_tensor_to_device(self, tensor, source_tensor):
         tensor.data = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
-        if self.record_stream and current_stream is not None:
-            tensor.data.record_stream(current_stream)
+        if self.record_stream:
+            tensor.data.record_stream(self._torch_accelerator_module.current_stream())
 
-    def _process_tensors_from_modules(self, pinned_memory=None, current_stream=None):
+    def _process_tensors_from_modules(self, pinned_memory=None):
         for group_module in self.modules:
             for param in group_module.parameters():
                 source = pinned_memory[param] if pinned_memory else param.data
-                self._transfer_tensor_to_device(param, source, current_stream)
+                self._transfer_tensor_to_device(param, source)
             for buffer in group_module.buffers():
                 source = pinned_memory[buffer] if pinned_memory else buffer.data
-                self._transfer_tensor_to_device(buffer, source, current_stream)
+                self._transfer_tensor_to_device(buffer, source)
 
         for param in self.parameters:
             source = pinned_memory[param] if pinned_memory else param.data
-            self._transfer_tensor_to_device(param, source, current_stream)
+            self._transfer_tensor_to_device(param, source)
 
         for buffer in self.buffers:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
-            self._transfer_tensor_to_device(buffer, source, current_stream)
+            self._transfer_tensor_to_device(buffer, source)
 
     def _onload_from_disk(self):
         if self.stream is not None:
@@ -214,14 +214,12 @@ class ModuleGroup:
             self.stream.synchronize()
 
         context = nullcontext() if self.stream is None else self._torch_accelerator_module.stream(self.stream)
-        current_stream = self._torch_accelerator_module.current_stream() if self.record_stream else None
-
         with context:
             if self.stream is not None:
                 with self._pinned_memory_tensors() as pinned_memory:
-                    self._process_tensors_from_modules(pinned_memory, current_stream)
+                    self._process_tensors_from_modules(pinned_memory)
             else:
-                self._process_tensors_from_modules(None, current_stream)
+                self._process_tensors_from_modules(None)
 
     def _offload_to_disk(self):
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
