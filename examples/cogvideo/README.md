@@ -125,7 +125,7 @@ When running `accelerate config`, if we specify torch compile mode to True there
 If you would like to push your model to the HF Hub after training is completed with a neat model card, make sure you're logged in:
 
 ```
-huggingface-cli login
+hf auth login
 
 # Alternatively, you could upload your model manually using:
 # huggingface-cli upload my-cool-account-name/my-cool-lora-name /path/to/awesome/lora
