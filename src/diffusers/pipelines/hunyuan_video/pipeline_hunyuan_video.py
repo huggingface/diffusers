@@ -529,15 +529,14 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             true_cfg_scale (`float`, *optional*, defaults to 1.0):
-                When > 1.0 and a provided `negative_prompt`, enables true classifier-free guidance.
+                True classifier-free guidance (guidance scale) is enabled when `true_cfg_scale` > 1 and
+                `negative_prompt` is provided.
             guidance_scale (`float`, defaults to `6.0`):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
-                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality. Note that the only available
-                HunyuanVideo model is CFG-distilled, which means that traditional guidance between unconditional and
-                conditional latent is not applied.
+                Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
+                a model to generate images more aligned with `prompt` at the expense of lower image quality.
+
+                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
+                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
