@@ -505,7 +505,7 @@ def get_class_from_dynamic_module(
 
     <Tip>
 
-    You may pass a token in `token` if you are not logged in (`hf auth loginant to use private or
+    You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
     [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
