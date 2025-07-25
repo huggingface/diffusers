@@ -75,7 +75,7 @@ dataset = load_dataset(
 [push_to_hub(https://huggingface.co/docs/datasets/v2.13.1/en/package_reference/main_classes#datasets.Dataset.push_to_hub) 을 사용해서 Hub에 데이터셋을 업로드 합니다:
 
 ```python
-# 터미널에서 huggingface-cli login 커맨드를 이미 실행했다고 가정합니다
+# 터미널에서 hf auth login 커맨드를 이미 실행했다고 가정합니다
 dataset.push_to_hub("name_of_your_dataset")
 
 # 개인 repo로 push 하고 싶다면, `private=True` 을 추가하세요:

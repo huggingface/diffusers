@@ -101,7 +101,7 @@ accelerate launch train_dreambooth_lora_lumina2.py \
 For using `push_to_hub`, make you're logged into your Hugging Face account:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 To better track our training experiments, we're using the following flags in the command above:

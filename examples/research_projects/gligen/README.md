@@ -47,11 +47,11 @@ pip install git+https://github.com/xinyu1205/recognize-anything.git --no-deps
 Download the pre-trained model:
 
 ```bash
-huggingface-cli download --resume-download xinyu1205/recognize_anything_model ram_swin_large_14m.pth
-huggingface-cli download --resume-download IDEA-Research/grounding-dino-base
-huggingface-cli download --resume-download Salesforce/blip2-flan-t5-xxl
-huggingface-cli download --resume-download clip-vit-large-patch14
-huggingface-cli download --resume-download masterful/gligen-1-4-generation-text-box
+hf download --resume-download xinyu1205/recognize_anything_model ram_swin_large_14m.pth
+hf download --resume-download IDEA-Research/grounding-dino-base
+hf download --resume-download Salesforce/blip2-flan-t5-xxl
+hf download --resume-download clip-vit-large-patch14
+hf download --resume-download masterful/gligen-1-4-generation-text-box
 ```
 
 Make the training data on 8 GPUs:
@@ -66,7 +66,7 @@ torchrun --master_port 17673 --nproc_per_node=8 make_datasets.py \
 You can download the COCO training data from
 
 ```bash
-huggingface-cli download --resume-download Hzzone/GLIGEN_COCO coco_train2017.pth
+hf download --resume-download Hzzone/GLIGEN_COCO coco_train2017.pth
 ```
 
 It's in the format of
@@ -125,7 +125,7 @@ Note that although the pre-trained GLIGEN model has been loaded, the parameters 
 The trained model can be downloaded from
 
 ```bash
-huggingface-cli download --resume-download Hzzone/GLIGEN_COCO config.json diffusion_pytorch_model.safetensors
+hf download --resume-download Hzzone/GLIGEN_COCO config.json diffusion_pytorch_model.safetensors
 ```
 
 You can run `demo.ipynb` to visualize the generated images.

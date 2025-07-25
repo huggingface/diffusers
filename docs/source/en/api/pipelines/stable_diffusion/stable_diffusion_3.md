@@ -31,7 +31,7 @@ _As the model is gated, before using it with diffusers you first need to go to t
 Use the command below to log in:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 <Tip>

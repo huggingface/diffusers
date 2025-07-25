@@ -86,7 +86,7 @@ logic including pre-processing, an unrolled diffusion loop, and post-processing 
 ### Text-to-Image generation with Stable Diffusion
 
 ```python
-# make sure you're logged in with `huggingface-cli login`
+# make sure you're logged in with `hf auth login`
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
 pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")

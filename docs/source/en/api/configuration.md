@@ -16,7 +16,7 @@ Schedulers from [`~schedulers.scheduling_utils.SchedulerMixin`] and models from 
 
 <Tip>
 
-To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `huggingface-cli login`.
+To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf auth login`.
 
 </Tip>
 

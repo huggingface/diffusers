@@ -717,7 +717,7 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Sta
         from diffusers import CycleDiffusionPipeline, DDIMScheduler
 
         # load the pipeline
-        # make sure you're logged in with `huggingface-cli login`
+        # make sure you're logged in with `hf auth login`
         model_id_or_path = "CompVis/stable-diffusion-v1-4"
         scheduler = DDIMScheduler.from_pretrained(model_id_or_path, subfolder="scheduler")
         pipe = CycleDiffusionPipeline.from_pretrained(model_id_or_path, scheduler=scheduler).to("cuda")

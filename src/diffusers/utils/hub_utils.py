@@ -304,8 +304,7 @@ def _get_model_file(
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                 "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                "token having permission to this repo with `token` or log in with `huggingface-cli "
-                "login`."
+                "token having permission to this repo with `token` or log in with `hf auth login`."
             ) from e
         except RevisionNotFoundError as e:
             raise EnvironmentError(
@@ -515,8 +514,8 @@ class PushToHubMixin:
                 Whether to make the repo private. If `None` (default), the repo will be public unless the
                 organization's default is private. This value is ignored if the repo already exists.
             token (`str`, *optional*):
-                The token to use as HTTP bearer authorization for remote files. The token generated when running
-                `huggingface-cli login` (stored in `~/.huggingface`).
+                The token to use as HTTP bearer authorization for remote files. The token generated when running `hf
+                auth login` (stored in `~/.huggingface`).
             create_pr (`bool`, *optional*, defaults to `False`):
                 Whether or not to create a PR with the uploaded files or directly commit.
             safe_serialization (`bool`, *optional*, defaults to `True`):

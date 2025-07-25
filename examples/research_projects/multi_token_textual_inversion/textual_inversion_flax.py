@@ -153,7 +153,7 @@ def parse_args():
         "--use_auth_token",
         action="store_true",
         help=(
-            "Will use the token generated when running `huggingface-cli login` (necessary to use this script with"
+            "Will use the token generated when running `hf auth login` (necessary to use this script with"
             " private models)."
         ),
     )

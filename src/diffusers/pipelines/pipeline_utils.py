@@ -710,8 +710,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
+        auth login`.
 
         </Tip>
 
@@ -1430,8 +1430,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`.
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
+        auth login
 
         </Tip>
 

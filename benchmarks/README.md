@@ -31,7 +31,7 @@ pip install -r requirements.txt
 We need to be authenticated to access some of the checkpoints used during benchmarking:
 
 ```sh
-huggingface-cli login
+hf auth login
 ```
 
 We use an L40 GPU with 128GB RAM to run the benchmark CI. As such, the benchmarks are configured to run on NVIDIA GPUs. So, make sure you have access to a similar machine (or modify the benchmarking scripts accordingly).

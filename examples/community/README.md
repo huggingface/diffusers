@@ -3129,7 +3129,7 @@ from io import BytesIO
 from diffusers import DiffusionPipeline
 
 # load the pipeline
-# make sure you're logged in with `huggingface-cli login`
+# make sure you're logged in with `hf auth login`
 model_id_or_path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 # can also be used with dreamlike-art/dreamlike-photoreal-2.0
 pipe = DiffusionPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16, custom_pipeline="pipeline_fabric").to("cuda")
