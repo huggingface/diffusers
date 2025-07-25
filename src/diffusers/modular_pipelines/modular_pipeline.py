@@ -60,12 +60,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
+        ("wan", "WanModularPipeline"),
     ]
 )
 
 MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
     [
         ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
+        ("WanModularPipeline", "WanAutoBlocks"),
     ]
 )
 
