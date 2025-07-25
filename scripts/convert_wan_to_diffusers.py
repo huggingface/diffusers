@@ -278,15 +278,61 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = VACE_TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = VACE_TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "Wan2.2-I2V-14B-720p":
+        config = {
+            "model_id": "Wan-AI/Wan2.2-I2V-A14B",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 36,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "Wan2.2-T2V-A14B":
+        config = {
+            "model_id": "Wan-AI/Wan2.2-T2V-A14B",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+    return config, RENAME_DICT, SPECIAL_KEYS_REMAP
     return config, RENAME_DICT, SPECIAL_KEYS_REMAP
 
 
-def convert_transformer(model_type: str):
+def convert_transformer(model_type: str, stage: str=None):
     config, RENAME_DICT, SPECIAL_KEYS_REMAP = get_transformer_config(model_type)
 
     diffusers_config = config["diffusers_config"]
     model_id = config["model_id"]
     model_dir = pathlib.Path(snapshot_download(model_id, repo_type="model"))
+
+    if stage is not None:
+        model_dir = model_dir / stage
 
     original_state_dict = load_sharded_safetensors(model_dir)
 
@@ -533,7 +579,13 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    transformer = convert_transformer(args.model_type)
+    if "Wan2.2" in args.model_type:
+        transformer = convert_transformer(args.model_type, stage="high_noise_model")
+        transformer_2 = convert_transformer(args.model_type, stage="low_noise_model")
+    else:
+        transformer = convert_transformer(args.model_type)
+        transformer_2 = None
+
     vae = convert_vae()
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=torch.bfloat16)
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
@@ -547,7 +599,17 @@ if __name__ == "__main__":
         dtype = DTYPE_MAPPING[args.dtype]
         transformer.to(dtype)
 
-    if "I2V" in args.model_type or "FLF2V" in args.model_type:
+    if "Wan2.2" and "I2V" in args.model_type:
+        pipe = WanImageToVideoPipeline(
+            transformer=transformer,
+            transformer_2=transformer_2,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+            boundary_ratio=0.9,
+        )
+    elif "I2V" in args.model_type or "FLF2V" in args.model_type:
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
             "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
         )
