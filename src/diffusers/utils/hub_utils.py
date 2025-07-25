@@ -514,8 +514,8 @@ class PushToHubMixin:
                 Whether to make the repo private. If `None` (default), the repo will be public unless the
                 organization's default is private. This value is ignored if the repo already exists.
             token (`str`, *optional*):
-                The token to use as HTTP bearer authorization for remote files. The token generated when running
-                `hf auth login` (stored in `~/.huggingface`).
+                The token to use as HTTP bearer authorization for remote files. The token generated when running `hf
+                auth login` (stored in `~/.huggingface`).
             create_pr (`bool`, *optional*, defaults to `False`):
                 Whether or not to create a PR with the uploaded files or directly commit.
             safe_serialization (`bool`, *optional*, defaults to `True`):
