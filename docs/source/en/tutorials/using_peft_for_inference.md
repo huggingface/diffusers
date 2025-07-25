@@ -674,3 +674,5 @@ Browse the [LoRA Studio](https://lorastudio.co/models) for different LoRAs to us
 ></iframe>
 
 You can find additional LoRAs in the [FLUX LoRA the Explorer](https://huggingface.co/spaces/multimodalart/flux-lora-the-explorer) and [LoRA the Explorer](https://huggingface.co/spaces/multimodalart/LoraTheExplorer) Spaces.
+
+Check out our [post](https://huggingface.co/blog/lora-fast) on how to optimize LoRA inference for Flux family of models.
