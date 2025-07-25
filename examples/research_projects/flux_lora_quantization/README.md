@@ -39,7 +39,7 @@ python compute_embeddings.py
 It should create a file named `embeddings.parquet`. We're then ready to launch training. First, authenticate so that you can access the Flux.1 Dev model: 
 
 ```bash
-huggingface-cli
+hf auth login
 ```
 
 Then launch:
