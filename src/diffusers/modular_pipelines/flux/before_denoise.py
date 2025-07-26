@@ -180,8 +180,14 @@ class FluxInputStep(PipelineBlock):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                # kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
                 description="text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                # kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                description="pooled text embeddings used to guide the image generation",
             ),
             # TODO: support negative embeddings?
         ]
