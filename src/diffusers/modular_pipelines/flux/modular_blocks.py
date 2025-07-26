@@ -28,10 +28,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         FluxInputStep,
-        FluxSetTimestepsStep,
         FluxPrepareLatentsStep,
+        FluxSetTimestepsStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents"]
+    block_names = ["input", "prepare_latents", "set_timesteps"]
 
     @property
     def description(self):
@@ -39,15 +39,15 @@ class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
             "Before denoise step that prepare the inputs for the denoise step.\n"
             + "This is a sequential pipeline blocks:\n"
             + " - `FluxInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `FluxSetTimestepsStep` is used to set the timesteps\n"
             + " - `FluxPrepareLatentsStep` is used to prepare the latents\n"
+            + " - `FluxSetTimestepsStep` is used to set the timesteps\n"
         )
 
 
 # before_denoise: all task (text2vid,)
 class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
     block_classes = [
-        FluxBeforeDenoiseStep,
+        FluxBeforeDenoiseStep
     ]
     block_names = ["text2image"]
     block_trigger_inputs = [None]
@@ -114,8 +114,10 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", FluxTextEncoderStep),
         ("input", FluxInputStep),
-        ("set_timesteps", FluxSetTimestepsStep),
         ("prepare_latents", FluxPrepareLatentsStep),
+        # Setting it after preparation of latents because we rely on `latents`
+        # to calculate `img_seq_len` for `shift`.
+        ("set_timesteps", FluxSetTimestepsStep),
         ("denoise", FluxDenoiseStep),
         ("decode", FluxDecodeStep),
     ]

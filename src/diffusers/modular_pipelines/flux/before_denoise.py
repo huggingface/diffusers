@@ -233,7 +233,24 @@ class FluxSetTimestepsStep(PipelineBlock):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [InputParam("num_inference_steps", default=50), InputParam("timesteps"), InputParam("sigmas")]
+        return [
+            InputParam("num_inference_steps", default=50),
+            InputParam("timesteps"), 
+            InputParam("sigmas"),
+            InputParam("guidance_scale", default=3.5),
+            InputParam("latents", type_hint=torch.Tensor)
+        ]
+
+    @property
+    def intermediate_inputs(self) -> List[str]:
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
+            )
+        ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
@@ -244,6 +261,7 @@ class FluxSetTimestepsStep(PipelineBlock):
                 type_hint=int,
                 description="The number of denoising steps to perform at inference time",
             ),
+            OutputParam("guidance", type_hint=torch.Tensor, description="Optional guidance to be used.")
         ]
 
     @torch.no_grad()
@@ -271,6 +289,12 @@ class FluxSetTimestepsStep(PipelineBlock):
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
             scheduler, block_state.num_inference_steps, block_state.device, sigmas=block_state.sigmas, mu=mu
         )
+        if components.transformer.config.guidance_embeds:
+            guidance = torch.full([1], block_state.guidance_scale, device=block_state.device, dtype=torch.float32)
+            guidance = guidance.expand(latents.shape[0])
+        else:
+            guidance = None
+        block_state.guidance = guidance
 
         self.set_block_state(state, block_state)
         return components, state
@@ -314,8 +338,12 @@ class FluxPrepareLatentsStep(PipelineBlock):
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
+            ),
+            OutputParam(
+                "latent_image_ids", type_hint=torch.Tensor, description="IDs computed from the image sequence needed for RoPE"
             )
         ]
+        
 
     @staticmethod
     def check_inputs(components, block_state):
@@ -378,7 +406,7 @@ class FluxPrepareLatentsStep(PipelineBlock):
 
         self.check_inputs(components, block_state)
 
-        block_state.latents = self.prepare_latents(
+        block_state.latents, block_state.latent_image_ids = self.prepare_latents(
             components,
             block_state.batch_size * block_state.num_images_per_prompt,
             block_state.num_channels_latents,
@@ -389,7 +417,7 @@ class FluxPrepareLatentsStep(PipelineBlock):
             block_state.generator,
             block_state.latents,
         )
-
+        
         self.set_block_state(state, block_state)
 
         return components, state

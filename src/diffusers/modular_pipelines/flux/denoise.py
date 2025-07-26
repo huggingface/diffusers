@@ -19,6 +19,8 @@ import torch
 from ...models import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
+from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
 from ..modular_pipeline import (
     BlockState,
     LoopSequentialPipelineBlocks,
@@ -37,7 +39,9 @@ class FluxLoopDenoiser(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [ComponentSpec("transformer", FluxTransformer2DModel)]
+        return [
+            ComponentSpec("transformer", FluxTransformer2DModel)
+        ]
 
     @property
     def description(self) -> str:
@@ -49,9 +53,7 @@ class FluxLoopDenoiser(PipelineBlock):
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            InputParam("attention_kwargs"),
-        ]
+        return [InputParam("joint_attention_kwargs")]
 
     @property
     def intermediate_inputs(self) -> List[str]:
@@ -63,10 +65,34 @@ class FluxLoopDenoiser(PipelineBlock):
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
             InputParam(
-                "num_inference_steps",
+                "guidance",
                 required=True,
-                type_hint=int,
-                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
+                type_hint=torch.Tensor,
+                description="Guidance scale as a tensor",
+            ),
+            InputParam(
+                "prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Prompt embeddings",
+            ),
+            InputParam(
+                "pooled_prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Pooled prompt embeddings",
+            ),
+            InputParam(
+                "text_ids",
+                required=True,
+                type_hint=torch.Tensor,
+                description="IDs computed from text sequence needed for RoPE",
+            ),
+            InputParam(
+                "latent_image_ids",
+                required=True,
+                type_hint=torch.Tensor,
+                description="IDs computed from image sequence needed for RoPE",
             ),
             # TODO: guidance
         ]
@@ -78,9 +104,10 @@ class FluxLoopDenoiser(PipelineBlock):
         noise_pred = components.transformer(
             hidden_states=block_state.latents,
             timestep=t.flatten() / 1000,
+            guidance=block_state.guidance,
             encoder_hidden_states=block_state.prompt_embeds,
             pooled_projections=block_state.pooled_prompt_embeds,
-            attention_kwargs=block_state.attention_kwargs,
+            joint_attention_kwargs=block_state.joint_attention_kwargs,
             txt_ids=block_state.text_ids,
             img_ids=block_state.latent_image_ids,
             return_dict=False,
@@ -96,7 +123,7 @@ class FluxLoopAfterDenoiser(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)
         ]
 
     @property
@@ -113,9 +140,7 @@ class FluxLoopAfterDenoiser(PipelineBlock):
 
     @property
     def intermediate_inputs(self) -> List[str]:
-        return [
-            InputParam("generator"),
-        ]
+        return [InputParam("generator")]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
@@ -129,7 +154,6 @@ class FluxLoopAfterDenoiser(PipelineBlock):
             block_state.noise_pred,
             t,
             block_state.latents,
-            **block_state.scheduler_step_kwargs,
             return_dict=False,
         )[0]
 
@@ -199,9 +223,9 @@ class FluxDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 class FluxDenoiseStep(FluxDenoiseLoopWrapper):
     block_classes = [
         FluxLoopDenoiser,
-        FluxLoopAfterDenoiser,
+        FluxLoopAfterDenoiser
     ]
-    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+    block_names = ["denoiser", "after_denoiser"]
 
     @property
     def description(self) -> str:

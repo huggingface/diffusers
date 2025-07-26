@@ -294,6 +294,7 @@ class FluxTextEncoderStep(PipelineBlock):
             else None
         )
         (block_state.prompt_embeds, block_state.pooled_prompt_embeds, block_state.text_ids) = self.encode_prompt(
+            components,
             prompt=block_state.prompt,
             prompt_2=None,
             prompt_embeds=None,
