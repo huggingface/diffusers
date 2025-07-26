@@ -103,28 +103,28 @@ def calculate_shift(
     return mu
 
 
-# Copied from diffusers.pipelines.flux.pipeline_flux._pack_latents
+# Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
 def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-    latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
-    latents = latents.permute(0, 2, 4, 1, 3, 5)
-    latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
+        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
+        latents = latents.permute(0, 2, 4, 1, 3, 5)
+        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
 
-    return latents
+        return latents
 
 
-# Copied from diffusers.pipelines.flux.pipeline_flux._prepare_latent_image_ids
+# Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
 def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
-    latent_image_ids = torch.zeros(height, width, 3)
-    latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
-    latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
+        latent_image_ids = torch.zeros(height, width, 3)
+        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
+        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
 
-    latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
+        latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
 
-    latent_image_ids = latent_image_ids.reshape(
-        latent_image_id_height * latent_image_id_width, latent_image_id_channels
-    )
+        latent_image_ids = latent_image_ids.reshape(
+            latent_image_id_height * latent_image_id_width, latent_image_id_channels
+        )
 
-    return latent_image_ids.to(device=device, dtype=dtype)
+        return latent_image_ids.to(device=device, dtype=dtype)
 
 
 class FluxInputStep(PipelineBlock):
