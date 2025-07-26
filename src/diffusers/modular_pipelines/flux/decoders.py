@@ -29,7 +29,6 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
 def _unpack_latents(latents, height, width, vae_scale_factor):
     batch_size, num_patches, channels = latents.shape
 
