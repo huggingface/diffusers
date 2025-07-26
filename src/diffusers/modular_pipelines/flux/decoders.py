@@ -31,19 +31,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
 def _unpack_latents(latents, height, width, vae_scale_factor):
-        batch_size, num_patches, channels = latents.shape
+    batch_size, num_patches, channels = latents.shape
 
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (vae_scale_factor * 2))
-        width = 2 * (int(width) // (vae_scale_factor * 2))
+    # VAE applies 8x compression on images but we must also account for packing which requires
+    # latent height and width to be divisible by 2.
+    height = 2 * (int(height) // (vae_scale_factor * 2))
+    width = 2 * (int(width) // (vae_scale_factor * 2))
 
-        latents = latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
-        latents = latents.permute(0, 3, 1, 4, 2, 5)
+    latents = latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
+    latents = latents.permute(0, 3, 1, 4, 2, 5)
 
-        latents = latents.reshape(batch_size, channels // (2 * 2), height, width)
+    latents = latents.reshape(batch_size, channels // (2 * 2), height, width)
 
-        return latents
+    return latents
 
 
 class FluxDecodeStep(PipelineBlock):

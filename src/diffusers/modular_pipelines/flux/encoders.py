@@ -84,19 +84,16 @@ class FluxTextEncoderStep(PipelineBlock):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                # kwargs_type="guider_input_fields",
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "pooled_prompt_embeds",
                 type_hint=torch.Tensor,
-                # kwargs_type="guider_input_fields",
                 description="pooled text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "text_ids",
                 type_hint=torch.Tensor,
-                # kwargs_type="guider_input_fields",
                 description="ids from the text sequence for RoPE",
             ),
         ]

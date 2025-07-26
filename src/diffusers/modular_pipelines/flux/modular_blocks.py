@@ -46,9 +46,7 @@ class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
 
 # before_denoise: all task (text2vid,)
 class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
-    block_classes = [
-        FluxBeforeDenoiseStep
-    ]
+    block_classes = [FluxBeforeDenoiseStep]
     block_names = ["text2image"]
     block_trigger_inputs = [None]
 

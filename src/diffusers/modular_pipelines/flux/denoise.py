@@ -19,8 +19,6 @@ import torch
 from ...models import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
-from ...configuration_utils import FrozenDict
-from ...guiders import ClassifierFreeGuidance
 from ..modular_pipeline import (
     BlockState,
     LoopSequentialPipelineBlocks,
@@ -39,9 +37,7 @@ class FluxLoopDenoiser(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("transformer", FluxTransformer2DModel)
-        ]
+        return [ComponentSpec("transformer", FluxTransformer2DModel)]
 
     @property
     def description(self) -> str:
@@ -122,9 +118,7 @@ class FluxLoopAfterDenoiser(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)
-        ]
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
 
     @property
     def description(self) -> str:
@@ -221,10 +215,7 @@ class FluxDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
 
 class FluxDenoiseStep(FluxDenoiseLoopWrapper):
-    block_classes = [
-        FluxLoopDenoiser,
-        FluxLoopAfterDenoiser
-    ]
+    block_classes = [FluxLoopDenoiser, FluxLoopAfterDenoiser]
     block_names = ["denoiser", "after_denoiser"]
 
     @property
