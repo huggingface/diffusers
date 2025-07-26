@@ -1394,9 +1394,9 @@ else:
     DevicePropertiesUserDict = UserDict
 
 if is_torch_available():
+    from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
     from diffusers.hooks.group_offloading import (
         _GROUP_ID_LAZY_LEAF,
-        _SUPPORTED_PYTORCH_LAYERS,
         _compute_group_hash,
         _find_parent_module_in_module_dict,
         _gather_buffers_with_no_group_offloading_parent,
@@ -1440,13 +1440,13 @@ if is_torch_available():
         elif offload_type == "leaf_level":
             # Handle leaf-level module groups
             for name, submodule in module.named_modules():
-                if isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
+                if isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     # These groups will always have parameters, so a file is expected
                     expected_files.add(get_hashed_filename(name))
 
             # Handle groups for non-leaf parameters/buffers
             modules_with_group_offloading = {
-                name for name, sm in module.named_modules() if isinstance(sm, _SUPPORTED_PYTORCH_LAYERS)
+                name for name, sm in module.named_modules() if isinstance(sm, _GO_LC_SUPPORTED_PYTORCH_LAYERS)
             }
             parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
             buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)

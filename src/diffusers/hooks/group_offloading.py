@@ -23,6 +23,7 @@ import safetensors.torch
 import torch
 
 from ..utils import get_logger, is_accelerate_available
+from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
 
@@ -39,13 +40,6 @@ _GROUP_OFFLOADING = "group_offloading"
 _LAYER_EXECUTION_TRACKER = "layer_execution_tracker"
 _LAZY_PREFETCH_GROUP_OFFLOADING = "lazy_prefetch_group_offloading"
 _GROUP_ID_LAZY_LEAF = "lazy_leafs"
-_SUPPORTED_PYTORCH_LAYERS = (
-    torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
-    torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
-    torch.nn.Linear,
-    # TODO(aryan): look into torch.nn.LayerNorm, torch.nn.GroupNorm later, seems to be causing some issues with CogVideoX
-    # because of double invocation of the same norm layer in CogVideoXLayerNorm
-)
 # fmt: on
 
 
@@ -683,7 +677,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
     # Create module groups for leaf modules and apply group offloading hooks
     modules_with_group_offloading = set()
     for name, submodule in module.named_modules():
-        if not isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
+        if not isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
             continue
         group = ModuleGroup(
             modules=[submodule],

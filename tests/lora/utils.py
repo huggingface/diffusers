@@ -2109,14 +2109,15 @@ class PeftLoraLoaderMixinTests:
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
     def test_layerwise_casting_inference_denoiser(self):
-        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
 
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
             if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
                 patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
             for name, submodule in module.named_modules():
-                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                if not isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     continue
                 dtype_to_check = storage_dtype
                 if "lora" in name or any(re.search(pattern, name) for pattern in patterns_to_check):
@@ -2167,10 +2168,10 @@ class PeftLoraLoaderMixinTests:
         See the docstring of [`hooks.layerwise_casting.PeftInputAutocastDisableHook`] for more details.
         """
 
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
         from diffusers.hooks.layerwise_casting import (
             _PEFT_AUTOCAST_DISABLE_HOOK,
             DEFAULT_SKIP_MODULES_PATTERN,
-            SUPPORTED_PYTORCH_LAYERS,
             apply_layerwise_casting,
         )
 
@@ -2180,7 +2181,7 @@ class PeftLoraLoaderMixinTests:
         def check_module(denoiser):
             # This will also check if the peft layers are in torch.float8_e4m3fn dtype (unlike test_layerwise_casting_inference_denoiser)
             for name, module in denoiser.named_modules():
-                if not isinstance(module, SUPPORTED_PYTORCH_LAYERS):
+                if not isinstance(module, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     continue
                 dtype_to_check = storage_dtype
                 if any(re.search(pattern, name) for pattern in patterns_to_check):
