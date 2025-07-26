@@ -319,6 +319,17 @@ If you expect to varied resolutions during inference with this feature, then mak
 
 There are still scenarios where recompulation is unavoidable, such as when the hotswapped LoRA targets more layers than the initial adapter. Try to load the LoRA that targets the most layers *first*. For more details about this limitation, refer to the PEFT [hotswapping](https://huggingface.co/docs/peft/main/en/package_reference/hotswap#peft.utils.hotswap.hotswap_adapter) docs.
 
+<details>
+<summary>Technical details of hotswapping</summary>
+
+To enable hotswapping without triggering recompilation, two hurdles have to be overcome. First, the LoRA scaling factor has to be converted into torch tensors from floats, which is achieved fairly easily. Second, the shape of the LoRA weights needs to padded to the largest required shape. That way, the data in the weights can be replaced without the need to reassign the whole attribute. This is why the `max_rank` argument discussed above is crucial. As we pad the values with zeros, the results remain unchanged, although the computation is slowed down a bit depending on how large the padding is.
+
+Since no new LoRA attributes are added, this also requires that each LoRA after the first one can only target the same layers, or a subset of layers, that the first one targets. Thus, choose the order of loading wisely. If LoRAs target disjoint layers, there is the possibility to create a dummy LoRA that targets the union of all target layers.
+
+To see the nitty-gritty of this implementation, visit the [`hotswap.py` file in PEFT](https://github.com/huggingface/peft/blob/92d65cafa51c829484ad3d95cf71d09de57ff066/src/peft/utils/hotswap.py).
+
+</details>
+
 ## Merge
 
 The weights from each LoRA can be merged together to produce a blend of multiple existing styles. There are several methods for merging LoRAs, each of which differ in *how* the weights are merged (may affect generation quality).
