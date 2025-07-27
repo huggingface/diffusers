@@ -367,7 +367,8 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
     def initialize_hook(self, module):
         def make_execution_order_update_callback(current_name, current_submodule):
             def callback():
-                logger.debug(f"Adding {current_name} to the execution order")
+                if not torch.compiler.is_compiling():
+                    logger.debug(f"Adding {current_name} to the execution order")
                 self.execution_order.append((current_name, current_submodule))
 
             return callback
@@ -404,12 +405,13 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         # if the missing layers end up being executed in the future.
         if execution_order_module_names != self._layer_execution_tracker_module_names:
             unexecuted_layers = list(self._layer_execution_tracker_module_names - execution_order_module_names)
-            logger.warning(
-                "It seems like some layers were not executed during the forward pass. This may lead to problems when "
-                "applying lazy prefetching with automatic tracing and lead to device-mismatch related errors. Please "
-                "make sure that all layers are executed during the forward pass. The following layers were not executed:\n"
-                f"{unexecuted_layers=}"
-            )
+            if not torch.compiler.is_compiling():
+                logger.warning(
+                    "It seems like some layers were not executed during the forward pass. This may lead to problems when "
+                    "applying lazy prefetching with automatic tracing and lead to device-mismatch related errors. Please "
+                    "make sure that all layers are executed during the forward pass. The following layers were not executed:\n"
+                    f"{unexecuted_layers=}"
+                )
 
         # Remove the layer execution tracker hooks from the submodules
         base_module_registry = module._diffusers_hook
@@ -437,7 +439,8 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         for i in range(num_executed - 1):
             name1, _ = self.execution_order[i]
             name2, _ = self.execution_order[i + 1]
-            logger.debug(f"Applying lazy prefetch group offloading from {name1} to {name2}")
+            if not torch.compiler.is_compiling():
+                logger.debug(f"Applying lazy prefetch group offloading from {name1} to {name2}")
             group_offloading_hooks[i].next_group = group_offloading_hooks[i + 1].group
             group_offloading_hooks[i].next_group.onload_self = False
 
