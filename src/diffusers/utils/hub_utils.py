@@ -45,6 +45,7 @@ from huggingface_hub.utils import (
 )
 from packaging import version
 from requests import HTTPError
+from requests.exceptions import ConnectionError
 
 from .. import __version__
 from .constants import (
@@ -407,13 +408,18 @@ def _get_checkpoint_shard_files(
     local = False
     try:
         model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
-    except HTTPError:
+    except ConnectionError as e:
         if local_files_only:
             temp_dir = snapshot_download(
                 repo_id=pretrained_model_name_or_path, cache_dir=cache_dir, local_files_only=local_files_only
             )
             model_files_info = _get_filepaths_for_folder(temp_dir)
             local = True
+        else:
+            raise EnvironmentError(
+                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+                " again after checking your internet connection."
+            ) from e
     for shard_file in original_shard_filenames:
         if local:
             shard_file_present = any(shard_file in k for k in model_files_info)
