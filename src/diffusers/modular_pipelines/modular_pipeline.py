@@ -345,11 +345,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         return []
 
     @property
-    def intermediate_inputs(self) -> List[OutputParam]:
-        """List of intermediate output parameters. Must be implemented by subclasses."""
-        return []
-
-    @property
     def intermediate_outputs(self) -> List[OutputParam]:
         """List of intermediate output parameters. Must be implemented by subclasses."""
         return []
@@ -1459,11 +1454,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return []
 
     @property
-    def loop_intermediate_inputs(self) -> List[InputParam]:
-        """List of intermediate input parameters. Must be implemented by subclasses."""
-        return []
-
-    @property
     def loop_intermediate_outputs(self) -> List[OutputParam]:
         """List of intermediate output parameters. Must be implemented by subclasses."""
         return []
@@ -1472,14 +1462,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     def loop_required_inputs(self) -> List[str]:
         input_names = []
         for input_param in self.loop_inputs:
-            if input_param.required:
-                input_names.append(input_param.name)
-        return input_names
-
-    @property
-    def loop_required_intermediate_inputs(self) -> List[str]:
-        input_names = []
-        for input_param in self.loop_intermediate_inputs:
             if input_param.required:
                 input_names.append(input_param.name)
         return input_names

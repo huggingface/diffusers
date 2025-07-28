@@ -27,7 +27,7 @@ from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import (
-    PipelineBlock,
+    ModularPipelineBlocks,
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
@@ -195,7 +195,7 @@ def prepare_latents_img2img(
     return latents
 
 
-class StableDiffusionXLInputStep(PipelineBlock):
+class StableDiffusionXLInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -394,7 +394,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
+class StableDiffusionXLImg2ImgSetTimestepsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -543,7 +543,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLSetTimestepsStep(PipelineBlock):
+class StableDiffusionXLSetTimestepsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -611,7 +611,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
+class StableDiffusionXLInpaintPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -900,7 +900,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
+class StableDiffusionXLImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -981,7 +981,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
+class StableDiffusionXLPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1092,7 +1092,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
+class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1316,7 +1316,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
+class StableDiffusionXLPrepareAdditionalConditioningStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1499,7 +1499,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLControlNetInputStep(PipelineBlock):
+class StableDiffusionXLControlNetInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1718,7 +1718,7 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
+class StableDiffusionXLControlNetUnionInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property

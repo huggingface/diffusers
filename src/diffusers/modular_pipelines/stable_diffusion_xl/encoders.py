@@ -35,7 +35,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusionXLModularPipeline
 
@@ -57,7 +57,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class StableDiffusionXLIPAdapterStep(PipelineBlock):
+class StableDiffusionXLIPAdapterStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -215,7 +215,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLTextEncoderStep(PipelineBlock):
+class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -576,7 +576,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLVaeEncoderStep(PipelineBlock):
+class StableDiffusionXLVaeEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -691,7 +691,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
+class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property

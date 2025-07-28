@@ -23,17 +23,14 @@ from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from ...utils import logging
-from ..modular_pipeline import (
-    PipelineBlock,
-    PipelineState,
-)
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class StableDiffusionXLDecodeStep(PipelineBlock):
+class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -157,7 +154,7 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
+class StableDiffusionXLInpaintOverlayMaskStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
