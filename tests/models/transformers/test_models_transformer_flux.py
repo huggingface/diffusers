@@ -195,6 +195,7 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
         inject_adapter_in_model(config, model, adapter_name=adapter_name, state_dict=lora_state_dict)
         set_peft_model_state_dict(model, lora_state_dict, adapter_name)
         retrieved_lora_state_dict = get_peft_model_state_dict(model, adapter_name=adapter_name)
+        assert len(retrieved_lora_state_dict) == len(lora_state_dict)
         assert (retrieved_lora_state_dict["single_transformer_blocks.0.proj_out.lora_A.weight"] == 22).all()
         assert (retrieved_lora_state_dict["single_transformer_blocks.0.proj_out.lora_B.weight"] == 33).all()
 
