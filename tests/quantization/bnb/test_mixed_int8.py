@@ -847,6 +847,10 @@ class Bnb8BitCompileTests(QuantCompileTests, unittest.TestCase):
             components_to_quantize=["transformer", "text_encoder_2"],
         )
 
+    @pytest.mark.xfail(
+        reason="Test fails because of an offloading problem from Accelerate with confusion in hooks."
+        " Test passes without recompilation context manager."
+    )
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
         super()._test_torch_compile(torch_dtype=torch.float16)
