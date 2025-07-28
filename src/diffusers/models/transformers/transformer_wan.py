@@ -325,7 +325,7 @@ class WanTransformerBlock(nn.Module):
             c_scale_msa = c_scale_msa.squeeze(2)
             c_gate_msa = c_gate_msa.squeeze(2)
         else:
-            # temb: batch_size, 6, inner_dim
+            # temb: batch_size, 6, inner_dim (wan2.1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
                 self.scale_shift_table + temb.float()
             ).chunk(6, dim=1)
