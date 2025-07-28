@@ -137,6 +137,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         scheduler: FlowMatchEulerDiscreteScheduler,
         transformer_2: Optional[WanTransformer3DModel] = None,
         boundary_ratio: Optional[float] = None,
+        expand_timesteps: bool = False, # Wan2.2 ti2v
     ):
         super().__init__()
 
@@ -149,8 +150,9 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             transformer_2=transformer_2,
         )
         self.register_to_config(boundary_ratio=boundary_ratio)
-        self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
-        self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
+        self.register_to_config(expand_timesteps=expand_timesteps)
+        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     def _get_t5_prompt_embeds(
@@ -547,6 +549,9 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents,
         )
 
+
+        mask = torch.ones(latents.shape, dtype=torch.float32, device=device)
+
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -573,26 +578,32 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     current_guidance_scale = guidance_scale_2
 
                 latent_model_input = latents.to(transformer_dtype)
-                timestep = t.expand(latents.shape[0])
+                if self.config.expand_timesteps:
+                    # seq_len: num_latent_frames * latent_height//2 * latent_width//2
+                    temp_ts = (mask[0][0][:, ::2, ::2] * t).flatten()
+                    # batch_size, seq_len
+                    timestep = temp_ts.unsqueeze(0).expand(latents.shape[0], -1)
+                else:
+                    timestep = t.expand(latents.shape[0])
 
-                #with current_model.cache_context("cond"):
-                noise_pred = current_model(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
-
-                if self.do_classifier_free_guidance:
-                    #with current_model.cache_context("uncond"):
-                    noise_uncond = current_model(
+                with current_model.cache_context("cond"):
+                    noise_pred = current_model(
                         hidden_states=latent_model_input,
                         timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
+
+                if self.do_classifier_free_guidance:
+                    with current_model.cache_context("uncond"):
+                        noise_uncond = current_model(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0]
                     noise_pred = noise_uncond + current_guidance_scale * (noise_pred - noise_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1

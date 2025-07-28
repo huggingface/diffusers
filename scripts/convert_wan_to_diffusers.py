@@ -320,7 +320,27 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
-    return config, RENAME_DICT, SPECIAL_KEYS_REMAP
+    elif model_type == "Wan2.2-TI2V-5B":
+        config = {
+            "model_id": "Wan-AI/Wan2.2-TI2V-5B",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 14336,
+                "freq_dim": 256,
+                "in_channels": 48,
+                "num_attention_heads": 24,
+                "num_layers": 30,
+                "out_channels": 48,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, RENAME_DICT, SPECIAL_KEYS_REMAP
 
 
@@ -567,106 +587,110 @@ vae22_diffusers_config = {
   "in_channels": 12,
   "out_channels": 12,
   "decoder_base_dim": 256,
+  "scale_factor_temporal": 4,
+  "scale_factor_spatial": 16,
+  "patch_size": 2,
   "latents_mean":[
-    -0.2289, 
-    -0.0052, 
-    -0.1323, 
-    -0.2339, 
+    -0.2289,
+    -0.0052,
+    -0.1323,
+    -0.2339,
     -0.2799,
-    -0.0174,
-    -0.1838,
-    -0.1557,
+    0.0174,
+    0.1838,
+    0.1557,
     -0.1382,
-    -0.0542,
-    -0.2813,
-    -0.0891,
-    -0.1570,
+    0.0542,
+    0.2813,
+    0.0891,
+    0.1570,
     -0.0098,
-    -0.0375,
+    0.0375,
     -0.1825,
     -0.2246,
     -0.1207,
     -0.0698,
-    -0.5109,
-    -0.2665,
+    0.5109,
+    0.2665,
     -0.2108,
     -0.2158,
-    -0.2502,
+    0.2502,
     -0.2055,
     -0.0322,
-    -0.1109,
-    -0.1567,
+    0.1109,
+    0.1567,
     -0.0729,
-    -0.0899,
+    0.0899,
     -0.2799,
     -0.1230,
     -0.0313,
     -0.1649,
-    -0.0117,
-    -0.0723,
+    0.0117,
+    0.0723,
     -0.2839,
     -0.2083,
     -0.0520,
-    -0.3748,
-    -0.0152,
-    -0.1957,
-    -0.1433,
+    0.3748,
+    0.0152,
+    0.1957,
+    0.1433,
     -0.2944,
-    -0.3573,
+    0.3573,
     -0.0548,
     -0.1681,
     -0.0667,
     ],
-    "latents_std":[
-    -0.4765,
-    -1.0364,
-    -0.4514,
-    -1.1677,
-    -0.5313,
-    -0.4990,
-    -0.4818,
-    -0.5013,
-    -0.8158,
-    -1.0344,
-    -0.5894,
-    -1.0901,
-    -0.6885,
-    -0.6165,
-    -0.8454,
-    -0.4978,
-    -0.5759,
-    -0.3523,
-    -0.7135,
-    -0.6804,
-    -0.5833,
-    -1.4146,
-    -0.8986,
-    -0.5659,
-    -0.7069,
-    -0.5338,
-    -0.4889,
-    -0.4917,
-    -0.4069,
-    -0.4999,
-    -0.6866,
-    -0.4093,
-    -0.5709,
-    -0.6065,
-    -0.6415,
-    -0.4944,
-    -0.5726,
-    -1.2042,
-    -0.5458,
-    -1.6887,
-    -0.3971,
-    -1.0600,
-    -0.3943,
-    -0.5537,
-    -0.5444,
-    -0.4089,
-    -0.7468,
-    -0.7744,
+   "latents_std": [
+    0.4765,
+    1.0364,
+    0.4514,
+    1.1677,
+    0.5313,
+    0.4990,
+    0.4818,
+    0.5013,
+    0.8158,
+    1.0344,
+    0.5894,
+    1.0901,
+    0.6885,
+    0.6165,
+    0.8454,
+    0.4978,
+    0.5759,
+    0.3523,
+    0.7135,
+    0.6804,
+    0.5833,
+    1.4146,
+    0.8986,
+    0.5659,
+    0.7069,
+    0.5338,
+    0.4889,
+    0.4917,
+    0.4069,
+    0.4999,
+    0.6866,
+    0.4093,
+    0.5709,
+    0.6065,
+    0.6415,
+    0.4944,
+    0.5726,
+    1.2042,
+    0.5458,
+    1.6887,
+    0.3971,
+    1.0600,
+    0.3943,
+    0.5537,
+    0.5444,
+    0.4089,
+    0.7468,
+    0.7744,
     ],
+    "clip_output": False,
 }
 
 
@@ -855,7 +879,7 @@ def convert_vae_22():
             new_state_dict[key] = value
 
     with init_empty_weights():
-        vae = AutoencoderKLWan(**vae22_config)
+        vae = AutoencoderKLWan(**vae22_diffusers_config)
     vae.load_state_dict(new_state_dict, strict=True, assign=True)
     return vae
 
@@ -878,7 +902,7 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    if "Wan2.2" in args.model_type:
+    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type:
         transformer = convert_transformer(args.model_type, stage="high_noise_model")
         transformer_2 = convert_transformer(args.model_type, stage="low_noise_model")
     else:
@@ -892,7 +916,12 @@ if __name__ == "__main__":
 
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=torch.bfloat16)
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
-    flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
+    if "FLF2V" in args.model_type:
+        flow_shift = 16.0
+    elif "TI2V" in args.model_type:
+        flow_shift = 5.0
+    else:
+        flow_shift = 3.0
     scheduler = UniPCMultistepScheduler(
         prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift
     )
@@ -902,7 +931,7 @@ if __name__ == "__main__":
         dtype = DTYPE_MAPPING[args.dtype]
         transformer.to(dtype)
 
-    if "Wan2.2" and "I2V" in args.model_type:
+    if "Wan2.2" and "I2V" in args.model_type and "TI2V" not in args.model_type:
         pipe = WanImageToVideoPipeline(
             transformer=transformer,
             transformer_2=transformer_2,
@@ -921,6 +950,15 @@ if __name__ == "__main__":
             vae=vae,
             scheduler=scheduler,
             boundary_ratio=0.875,
+        )
+    elif "Wan2.2" and "TI2V" in args.model_type:
+        pipe = WanPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+            expand_timesteps=True,
         )
     elif "I2V" in args.model_type or "FLF2V" in args.model_type:
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(

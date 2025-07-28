@@ -1012,6 +1012,9 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         in_channels: int = 3,
         out_channels: int = 3,
         patch_size: Optional[int] = None,
+        scale_factor_temporal: Optional[int] = 4,
+        scale_factor_spatial: Optional[int] = 8,
+        clip_output: bool = True,
     ) -> None:
         super().__init__()
 
@@ -1193,7 +1196,8 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 out_ = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
                 out = torch.cat([out, out_], 2)
 
-        out = torch.clamp(out, min=-1.0, max=1.0)
+        if self.config.clip_output:
+            out = torch.clamp(out, min=-1.0, max=1.0)
         if self.config.patch_size is not None:
             out = unpatchify(out, patch_size=self.config.patch_size)
         self.clear_cache()
