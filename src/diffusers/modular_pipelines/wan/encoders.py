@@ -314,7 +314,7 @@ class WanImageEncoderStep(PipelineBlock):
     @staticmethod
     def encode_image(
         components,
-        image: PipelineImageInput,
+        image: Union[PipelineImageInput, List[PipelineImageInput]],
         device: torch.device,
     ):
         image = components.image_processor(images=image, return_tensors="pt").to(device)
