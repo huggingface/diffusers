@@ -282,7 +282,10 @@ class WanPrepareLatentsStep(PipelineBlock):
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
-            )
+            ),
+            OutputParam("height", type_hint=int),
+            OutputParam("width", type_hint=int),
+            OutputParam("num_frames", type_hint=int),
         ]
 
     @staticmethod

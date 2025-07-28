@@ -259,7 +259,7 @@ class WanTextEncoderStep(PipelineBlock):
         return components, state
 
 
-class WanImageEncodeStep(PipelineBlock):
+class WanImageEncoderStep(PipelineBlock):
     model_name = "wan"
 
     @property
@@ -368,15 +368,15 @@ class WanVaeEncoderStep(PipelineBlock):
         return [
             InputParam("image", required=True),
             InputParam("last_image", required=False),
-            InputParam("height", type_hint=int),
-            InputParam("width", type_hint=int),
-            InputParam("num_frames", type_hint=int),
         ]
 
     @property
     def intermediate_inputs(self) -> List[InputParam]:
         return [
-            InputParam("num_channels_latents", type_hint=int),
+            InputParam("height", type_hint=int),
+            InputParam("width", type_hint=int),
+            InputParam("num_frames", type_hint=int),
+            InputParam("batch_size", type_hint=int),
             InputParam("generator"),
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
         ]
@@ -388,11 +388,12 @@ class WanVaeEncoderStep(PipelineBlock):
                 "latent_condition",
                 type_hint=torch.Tensor,
                 description="The latents representing the reference first-frame/last-frame for conditioned video generation.",
-            )
+            ),
+            OutputParam("num_channels_latents", type_hint=int),
         ]
 
+    @staticmethod
     def _encode_vae_image(
-        self,
         components: WanModularPipeline,
         batch_size: int,
         height: int,
@@ -404,11 +405,13 @@ class WanVaeEncoderStep(PipelineBlock):
         last_image: Optional[torch.Tensor] = None,
         generator: Optional[torch.Generator] = None,
     ):
-        latent_height = height // self.vae_scale_factor_spatial
-        latent_width = width // self.vae_scale_factor_spatial
+        latent_height = height // components.vae_scale_factor_spatial
+        latent_width = width // components.vae_scale_factor_spatial
 
         latents_mean = (
-            torch.tensor(components.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).to(device, dtype)
+            torch.tensor(components.vae.config.latents_mean)
+            .view(1, components.vae.config.z_dim, 1, 1, 1)
+            .to(device, dtype)
         )
         latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
             1, components.vae.config.z_dim, 1, 1, 1
@@ -429,11 +432,11 @@ class WanVaeEncoderStep(PipelineBlock):
 
         if isinstance(generator, list):
             latent_condition = [
-                retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
+                retrieve_latents(components.vae.encode(video_condition), sample_mode="argmax") for _ in generator
             ]
             latent_condition = torch.cat(latent_condition)
         else:
-            latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
+            latent_condition = retrieve_latents(components.vae.encode(video_condition), sample_mode="argmax")
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
 
         latent_condition = latent_condition.to(dtype)
@@ -445,9 +448,13 @@ class WanVaeEncoderStep(PipelineBlock):
         else:
             mask_lat_size[:, :, list(range(1, num_frames - 1))] = 0
         first_frame_mask = mask_lat_size[:, :, 0:1]
-        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
+        first_frame_mask = torch.repeat_interleave(
+            first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal
+        )
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(batch_size, -1, self.vae_scale_factor_temporal, latent_height, latent_width)
+        mask_lat_size = mask_lat_size.view(
+            batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width
+        )
         mask_lat_size = mask_lat_size.transpose(1, 2)
         mask_lat_size = mask_lat_size.to(latent_condition.device)
         latent_condition = torch.concat([mask_lat_size, latent_condition], dim=1)
@@ -458,32 +465,30 @@ class WanVaeEncoderStep(PipelineBlock):
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
-        block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
-        block_state.num_channels_latents = self.vae.config.z_dim
-        block_state.batch_size = (
-            block_state.batch_size if block_state.batch_size is not None else block_state.image.shape[0]
-        )
+        block_state.num_channels_latents = components.vae.config.z_dim
 
-        block_state.image = self.video_processor.preprocess(
+        block_state.image = components.video_processor.preprocess(
             block_state.image, height=block_state.height, width=block_state.width
         ).to(block_state.device, dtype=torch.float32)
+
         if block_state.last_image is not None:
-            block_state.last_image = self.video_processor.preprocess(
+            block_state.last_image = components.video_processor.preprocess(
                 block_state.last_image, height=block_state.height, width=block_state.width
             ).to(block_state.device, dtype=torch.float32)
 
         block_state.latent_condition = self._encode_vae_image(
             components,
-            batch_size=block_state.batch_size,
-            height=block_state.height,
-            width=block_state.width,
-            num_frames=block_state.num_frames,
-            image=block_state.image,
-            device=block_state.device,
-            dtype=block_state.dtype,
-            last_image=block_state.last_image,
-            generator=block_state.generator,
+            block_state.batch_size,
+            block_state.height,
+            block_state.width,
+            block_state.num_frames,
+            block_state.image,
+            block_state.device,
+            block_state.dtype,
+            block_state.last_image,
+            block_state.generator,
         )
 
         self.set_block_state(state, block_state)
+
         return components, state

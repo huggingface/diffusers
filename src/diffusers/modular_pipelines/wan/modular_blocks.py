@@ -21,8 +21,8 @@ from .before_denoise import (
     WanSetTimestepsStep,
 )
 from .decoders import WanDecodeStep
-from .denoise import WanDenoiseStep
-from .encoders import WanTextEncoderStep, WanVaeEncoderStep
+from .denoise import WanDenoiseStep, WanI2VDenoiseStep
+from .encoders import WanImageEncoderStep, WanTextEncoderStep, WanVaeEncoderStep
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -63,44 +63,72 @@ class WanBeforeDenoiseStep(SequentialPipelineBlocks):
         )
 
 
-# before_denoise: all task (text2vid,)
+# before_denoise: img2vid
+class WanI2VBeforeDenoiseStep(SequentialPipelineBlocks):
+    block_classes = [
+        WanInputStep,
+        WanSetTimestepsStep,
+        WanPrepareLatentsStep,
+        WanImageEncoderStep,
+        WanVaeEncoderStep,
+    ]
+    block_names = ["input", "set_timesteps", "prepare_latents", "image_encoder", "vae_encoder"]
+
+    @property
+    def description(self):
+        return (
+            "Before denoise step that prepare the inputs for the denoise step for image-to-video and first-last-frame-to-video tasks.\n"
+            + "This is a sequential pipeline blocks:\n"
+            + " - `WanInputStep` is used to adjust the batch size of the model inputs\n"
+            + " - `WanSetTimestepsStep` is used to set the timesteps\n"
+            + " - `WanPrepareLatentsStep` is used to prepare the latents\n"
+            + " - `WanImageEncoderStep` is used to encode the image inputs into a conditioning embedding\n"
+            + " - `WanVaeEncoderStep` is used to encode the image/last-image inputs into their latent representations\n"
+        )
+
+
+# before_denoise: all task (text2vid, img2vid)
 class WanAutoBeforeDenoiseStep(AutoPipelineBlocks):
     block_classes = [
         WanBeforeDenoiseStep,
+        WanI2VBeforeDenoiseStep,
     ]
-    block_names = ["text2vid"]
-    block_trigger_inputs = [None]
+    block_names = ["text2vid", "img2vid"]
+    block_trigger_inputs = [None, "image"]
 
     @property
     def description(self):
         return (
             "Before denoise step that prepare the inputs for the denoise step.\n"
-            + "This is an auto pipeline block that works for text2vid.\n"
+            + "This is an auto pipeline block that works for text2vid, img2vid, first-last-frame2vid.\n"
             + " - `WanBeforeDenoiseStep` (text2vid) is used.\n"
+            + " - `WanI2VBeforeDenoiseStep` (img2vid) is used when `image` is provided.\n"
         )
 
 
-# denoise: text2vid
+# denoise: text2vid, img2vid
 class WanAutoDenoiseStep(AutoPipelineBlocks):
     block_classes = [
         WanDenoiseStep,
+        WanI2VDenoiseStep,
     ]
-    block_names = ["denoise"]
-    block_trigger_inputs = [None]
+    block_names = ["denoise", "denoise_i2v"]
+    block_trigger_inputs = [None, "image"]
 
     @property
     def description(self) -> str:
         return (
             "Denoise step that iteratively denoise the latents. "
-            "This is a auto pipeline block that works for text2vid tasks.."
-            " - `WanDenoiseStep` (denoise) for text2vid tasks."
+            "This is a auto pipeline block that works for text2vid and img2vid tasks..."
+            " - `WanDenoiseStep` (denoise) for text2vid task."
+            " - `WanI2VDenoiseStep` (denoise_i2v) for img2vid task, which is used when `image` is provided.\n"
         )
 
 
 # decode: all task (text2img, img2img, inpainting)
 class WanAutoDecodeStep(AutoPipelineBlocks):
     block_classes = [WanDecodeStep]
-    block_names = ["non-inpaint"]
+    block_names = ["decode"]
     block_trigger_inputs = [None]
 
     @property
@@ -112,7 +140,6 @@ class WanAutoDecodeStep(AutoPipelineBlocks):
 class WanAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         WanTextEncoderStep,
-        WanAutoVaeEncoderStep,
         WanAutoBeforeDenoiseStep,
         WanAutoDenoiseStep,
         WanAutoDecodeStep,
@@ -132,6 +159,33 @@ class WanAutoBlocks(SequentialPipelineBlocks):
         )
 
 
+# img2vid and first-last-frame2vid
+class WanI2VAutoBlocks(SequentialPipelineBlocks):
+    block_classes = [
+        WanTextEncoderStep,
+        WanAutoBeforeDenoiseStep,
+        WanImageEncoderStep,
+        WanAutoVaeEncoderStep,
+        WanAutoDenoiseStep,
+        WanAutoDecodeStep,
+    ]
+    block_names = [
+        "text_encoder",
+        "before_denoise",
+        "image_encoder",
+        "vae_encoder",
+        "denoise",
+        "decoder",
+    ]
+
+    @property
+    def description(self):
+        return (
+            "Auto Modular pipeline for text-to-video using Wan.\n"
+            + "- for image-to-video and first-last-frame-to-video generation, you need to provide is `image`, and possibly `last_image`"
+        )
+
+
 TEXT2VIDEO_BLOCKS = InsertableDict(
     [
         ("text_encoder", WanTextEncoderStep),
@@ -148,10 +202,11 @@ IMAGE2VIDEO_BLOCKS = InsertableDict(
     [
         ("text_encoder", WanTextEncoderStep),
         ("input", WanInputStep),
-        ("image_encoder", WanVaeEncoderStep),
         ("set_timesteps", WanSetTimestepsStep),
         ("prepare_latents", WanPrepareLatentsStep),
-        ("denoise", WanDenoiseStep),
+        ("image_encoder", WanImageEncoderStep),
+        ("vae_encoder", WanVaeEncoderStep),
+        ("denoise", WanI2VDenoiseStep),
         ("decode", WanDecodeStep),
     ]
 )
@@ -160,7 +215,9 @@ IMAGE2VIDEO_BLOCKS = InsertableDict(
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", WanTextEncoderStep),
-        ("image_encoder", WanAutoVaeEncoderStep)("before_denoise", WanAutoBeforeDenoiseStep),
+        ("image_encoder", WanImageEncoderStep),
+        ("vae_encoder", WanAutoVaeEncoderStep),
+        ("before_denoise", WanAutoBeforeDenoiseStep),
         ("denoise", WanAutoDenoiseStep),
         ("decode", WanAutoDecodeStep),
     ]
@@ -169,5 +226,6 @@ AUTO_BLOCKS = InsertableDict(
 
 ALL_BLOCKS = {
     "text2video": TEXT2VIDEO_BLOCKS,
+    "image2video": IMAGE2VIDEO_BLOCKS,
     "auto": AUTO_BLOCKS,
 }

@@ -25,12 +25,14 @@ else:
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
         "AUTO_BLOCKS",
+        "IMAGE2VIDEO_BLOCKS",
         "TEXT2VIDEO_BLOCKS",
         "WanAutoBeforeDenoiseStep",
         "WanAutoBlocks",
         "WanAutoBlocks",
         "WanAutoDecodeStep",
         "WanAutoDenoiseStep",
+        "WanAutoVaeEncoderStep",
     ]
     _import_structure["modular_pipeline"] = ["WanModularPipeline"]
 
@@ -45,11 +47,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_blocks import (
             ALL_BLOCKS,
             AUTO_BLOCKS,
+            IMAGE2VIDEO_BLOCKS,
             TEXT2VIDEO_BLOCKS,
             WanAutoBeforeDenoiseStep,
             WanAutoBlocks,
             WanAutoDecodeStep,
             WanAutoDenoiseStep,
+            WanAutoVaeEncoderStep,
         )
         from .modular_pipeline import WanModularPipeline
 else:
