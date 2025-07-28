@@ -23,7 +23,7 @@ deps = {
     "librosa": "librosa",
     "numpy": "numpy",
     "parameterized": "parameterized",
-    "peft": "peft>=0.16.1",
+    "peft": "peft>=0.15.0",
     "protobuf": "protobuf>=3.20.3,<4",
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
