@@ -197,8 +197,8 @@ def apply_first_block_cache(module: torch.nn.Module, config: FirstBlockCacheConf
     Cache](https://github.com/chengzeyi/ParaAttention/blob/4de137c5b96416489f06e43e19f2c14a772e28fd/README.md#first-block-cache-our-dynamic-caching)
     to a given module.
 
-    First Block Cache builds on the ideas of [TeaCache](https://huggingface.co/papers/2411.19108). It is much simpler to implement generically for a wide range
-    of models and has been integrated first for experimental purposes.
+    First Block Cache builds on the ideas of [TeaCache](https://huggingface.co/papers/2411.19108). It is much simpler
+    to implement generically for a wide range of models and has been integrated first for experimental purposes.
 
     Args:
         module (`torch.nn.Module`):
