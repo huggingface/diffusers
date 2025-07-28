@@ -318,7 +318,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
-        
+
         if self.config.boundary_ratio is None and guidance_scale_2 is not None:
             raise ValueError("`guidance_scale_2` is only supported when the pipeline's `boundary_ratio` is not None.")
 

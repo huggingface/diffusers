@@ -171,7 +171,7 @@ class WanTimeTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         timestep_seq_len: Optional[int] = None,
-    ):  
+    ):
         timestep = self.timesteps_proj(timestep)
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (1, timestep_seq_len))
@@ -518,7 +518,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
 
         # 5. Output norm, projection & unpatchify
-        if temb.ndim ==3: 
+        if temb.ndim ==3:
             # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
             shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
             shift = shift.squeeze(2)

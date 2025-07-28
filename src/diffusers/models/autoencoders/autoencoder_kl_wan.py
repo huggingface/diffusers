@@ -236,7 +236,7 @@ class WanResample(nn.Module):
         super().__init__()
         self.dim = dim
         self.mode = mode
-        
+
         # default to dim //2
         if upsample_out_dim is None:
             upsample_out_dim = dim // 2
@@ -524,7 +524,7 @@ class WanEncoder3d(nn.Module):
 
     def __init__(
         self,
-        in_channels: int = 3,   
+        in_channels: int = 3,
         dim=128,
         z_dim=4,
         dim_mult=[1, 2, 4, 4],
@@ -558,10 +558,10 @@ class WanEncoder3d(nn.Module):
             if is_residual:
                 self.down_blocks.append(
                     WanResidualDownBlock(
-                        in_dim, 
-                        out_dim, 
-                        dropout, 
-                        num_res_blocks, 
+                        in_dim,
+                        out_dim,
+                        dropout,
+                        num_res_blocks,
                         temperal_downsample=temperal_downsample[i] if i != len(dim_mult) - 1 else False,
                         down_flag=i != len(dim_mult) - 1,
                         )
@@ -708,10 +708,10 @@ class WanResidualUpBlock(nn.Module):
                 x = self.upsampler(x, feat_cache, feat_idx)
             else:
                 x = self.upsampler(x)
-        
+
         if self.avg_shortcut is not None:
             x = x + self.avg_shortcut(x_copy, first_chunk=first_chunk)
-        
+
         return x
 
 class WanUpBlock(nn.Module):
@@ -912,10 +912,9 @@ class WanDecoder3d(nn.Module):
         return x
 
 
-# YiYi TODO: refactor this
-from einops import rearrange
-
 def patchify(x, patch_size):
+    # YiYi TODO: refactor this
+    from einops import rearrange
     if patch_size == 1:
         return x
     if x.dim() == 4:
@@ -935,6 +934,8 @@ def patchify(x, patch_size):
 
 
 def unpatchify(x, patch_size):
+    # YiYi TODO: refactor this
+    from einops import rearrange
     if patch_size == 1:
         return x
 
