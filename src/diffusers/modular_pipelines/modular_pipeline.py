@@ -327,6 +327,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     config_name = "modular_config.json"
     model_name = None
 
+    def __init__(self):
+        self.sub_blocks = InsertableDict()
+
     @classmethod
     def _get_signature_keys(cls, obj):
         parameters = inspect.signature(obj.__init__).parameters
