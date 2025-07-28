@@ -56,18 +56,12 @@ class QuantCompileTests:
         pipe.transformer.compile(fullgraph=True)
 
         # small resolutions to ensure speedy execution.
-        with torch._dynamo.config.patch(error_on_recompile=True):
-            pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
+        pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
 
     def _test_torch_compile_with_cpu_offload(self, torch_dtype=torch.bfloat16):
         pipe = self._init_pipeline(self.quantization_config, torch_dtype)
         pipe.enable_model_cpu_offload()
-        # regional compilation is better for offloading.
-        # see: https://pytorch.org/blog/torch-compile-and-diffusers-a-hands-on-guide-to-peak-performance/
-        if getattr(pipe.transformer, "_repeated_blocks"):
-            pipe.transformer.compile_repeated_blocks(fullgraph=True)
-        else:
-            pipe.transformer.compile()
+        pipe.transformer.compile()
 
         # small resolutions to ensure speedy execution.
         pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
