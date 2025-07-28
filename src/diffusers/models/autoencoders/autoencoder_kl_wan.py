@@ -35,7 +35,6 @@ CACHE_T = 2
 
 
 class AvgDown3D(nn.Module):
-
     def __init__(
         self,
         in_channels,
@@ -89,7 +88,6 @@ class AvgDown3D(nn.Module):
 
 
 class DupUp3D(nn.Module):
-
     def __init__(
         self,
         in_channels: int,
@@ -129,8 +127,9 @@ class DupUp3D(nn.Module):
             x.size(6) * self.factor_s,
         )
         if first_chunk:
-            x = x[:, :, self.factor_t - 1:, :, :]
+            x = x[:, :, self.factor_t - 1 :, :, :]
         return x
+
 
 class WanCausalConv3d(nn.Conv3d):
     r"""
@@ -244,11 +243,13 @@ class WanResample(nn.Module):
         # layers
         if mode == "upsample2d":
             self.resample = nn.Sequential(
-                WanUpsample(scale_factor=(2.0, 2.0), mode="nearest-exact"), nn.Conv2d(dim, upsample_out_dim, 3, padding=1)
+                WanUpsample(scale_factor=(2.0, 2.0), mode="nearest-exact"),
+                nn.Conv2d(dim, upsample_out_dim, 3, padding=1),
             )
         elif mode == "upsample3d":
             self.resample = nn.Sequential(
-                WanUpsample(scale_factor=(2.0, 2.0), mode="nearest-exact"), nn.Conv2d(dim, upsample_out_dim, 3, padding=1)
+                WanUpsample(scale_factor=(2.0, 2.0), mode="nearest-exact"),
+                nn.Conv2d(dim, upsample_out_dim, 3, padding=1),
             )
             self.time_conv = WanCausalConv3d(dim, dim * 2, (3, 1, 1), padding=(1, 0, 0))
 
@@ -466,14 +467,7 @@ class WanMidBlock(nn.Module):
 
 
 class WanResidualDownBlock(nn.Module):
-
-    def __init__(self,
-                 in_dim,
-                 out_dim,
-                 dropout,
-                 num_res_blocks,
-                 temperal_downsample=False,
-                 down_flag=False):
+    def __init__(self, in_dim, out_dim, dropout, num_res_blocks, temperal_downsample=False, down_flag=False):
         super().__init__()
 
         # Shortcut path with downsample
@@ -507,6 +501,7 @@ class WanResidualDownBlock(nn.Module):
 
         return x + self.avg_shortcut(x_copy)
 
+
 class WanEncoder3d(nn.Module):
     r"""
     A 3D encoder module.
@@ -533,7 +528,7 @@ class WanEncoder3d(nn.Module):
         temperal_downsample=[True, True, False],
         dropout=0.0,
         non_linearity: str = "silu",
-        is_residual: bool = False, # wan 2.2 vae use a residual downblock
+        is_residual: bool = False,  # wan 2.2 vae use a residual downblock
     ):
         super().__init__()
         self.dim = dim
@@ -564,8 +559,8 @@ class WanEncoder3d(nn.Module):
                         num_res_blocks,
                         temperal_downsample=temperal_downsample[i] if i != len(dim_mult) - 1 else False,
                         down_flag=i != len(dim_mult) - 1,
-                        )
-                        )
+                    )
+                )
             else:
                 for _ in range(num_res_blocks):
                     self.down_blocks.append(WanResidualBlock(in_dim, out_dim, dropout))
@@ -626,6 +621,7 @@ class WanEncoder3d(nn.Module):
         else:
             x = self.conv_out(x)
         return x
+
 
 class WanResidualUpBlock(nn.Module):
     """
@@ -713,6 +709,7 @@ class WanResidualUpBlock(nn.Module):
             x = x + self.avg_shortcut(x_copy, first_chunk=first_chunk)
 
         return x
+
 
 class WanUpBlock(nn.Module):
     """
@@ -854,7 +851,7 @@ class WanDecoder3d(nn.Module):
                     num_res_blocks=num_res_blocks,
                     dropout=dropout,
                     temperal_upsample=temperal_upsample[i] if up_flag else False,
-                    up_flag= up_flag,
+                    up_flag=up_flag,
                     non_linearity=non_linearity,
                 )
             else:
@@ -893,7 +890,7 @@ class WanDecoder3d(nn.Module):
 
         ## upsamples
         for up_block in self.up_blocks:
-            x = up_block(x, feat_cache, feat_idx, first_chunk = first_chunk)
+            x = up_block(x, feat_cache, feat_idx, first_chunk=first_chunk)
 
         ## head
         x = self.norm_out(x)
@@ -913,20 +910,39 @@ class WanDecoder3d(nn.Module):
 
 
 def patchify(x, patch_size):
-    # YiYi TODO: refactor this
-    from einops import rearrange
     if patch_size == 1:
         return x
+
     if x.dim() == 4:
-        x = rearrange(
-            x, "b c (h q) (w r) -> b (c r q) h w", q=patch_size, r=patch_size)
+        # x shape: [batch_size, channels, height, width]
+        batch_size, channels, height, width = x.shape
+
+        # Ensure height and width are divisible by patch_size
+        if height % patch_size != 0 or width % patch_size != 0:
+            raise ValueError(f"Height ({height}) and width ({width}) must be divisible by patch_size ({patch_size})")
+
+        # Reshape to [batch_size, channels, height//patch_size, patch_size, width//patch_size, patch_size]
+        x = x.view(batch_size, channels, height // patch_size, patch_size, width // patch_size, patch_size)
+
+        # Rearrange to [batch_size, channels * patch_size * patch_size, height//patch_size, width//patch_size]
+        x = x.permute(0, 1, 3, 5, 2, 4).contiguous()
+        x = x.view(batch_size, channels * patch_size * patch_size, height // patch_size, width // patch_size)
+
     elif x.dim() == 5:
-        x = rearrange(
-            x,
-            "b c f (h q) (w r) -> b (c r q) f h w",
-            q=patch_size,
-            r=patch_size,
-        )
+        # x shape: [batch_size, channels, frames, height, width]
+        batch_size, channels, frames, height, width = x.shape
+
+        # Ensure height and width are divisible by patch_size
+        if height % patch_size != 0 or width % patch_size != 0:
+            raise ValueError(f"Height ({height}) and width ({width}) must be divisible by patch_size ({patch_size})")
+
+        # Reshape to [batch_size, channels, frames, height//patch_size, patch_size, width//patch_size, patch_size]
+        x = x.view(batch_size, channels, frames, height // patch_size, patch_size, width // patch_size, patch_size)
+
+        # Rearrange to [batch_size, channels * patch_size * patch_size, frames, height//patch_size, width//patch_size]
+        x = x.permute(0, 1, 4, 6, 2, 3, 5).contiguous()
+        x = x.view(batch_size, channels * patch_size * patch_size, frames, height // patch_size, width // patch_size)
+
     else:
         raise ValueError(f"Invalid input shape: {x.shape}")
 
@@ -934,22 +950,35 @@ def patchify(x, patch_size):
 
 
 def unpatchify(x, patch_size):
-    # YiYi TODO: refactor this
-    from einops import rearrange
     if patch_size == 1:
         return x
 
     if x.dim() == 4:
-        x = rearrange(
-            x, "b (c r q) h w -> b c (h q) (w r)", q=patch_size, r=patch_size)
+        # x shape: [b, (c * patch_size * patch_size), h, w]
+        batch_size, c_patches, height, width = x.shape
+        channels = c_patches // (patch_size * patch_size)
+
+        # Reshape to [b, c, patch_size, patch_size, h, w]
+        x = x.view(batch_size, channels, patch_size, patch_size, height, width)
+
+        # Rearrange to [b, c, h * patch_size, w * patch_size]
+        x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
+        x = x.view(batch_size, channels, height * patch_size, width * patch_size)
+
     elif x.dim() == 5:
-        x = rearrange(
-            x,
-            "b (c r q) f h w -> b c f (h q) (w r)",
-            q=patch_size,
-            r=patch_size,
-        )
+        # x shape: [batch_size, (channels * patch_size * patch_size), frame, height, width]
+        batch_size, c_patches, frames, height, width = x.shape
+        channels = c_patches // (patch_size * patch_size)
+
+        # Reshape to [b, c, patch_size, patch_size, f, h, w]
+        x = x.view(batch_size, channels, patch_size, patch_size, frames, height, width)
+
+        # Rearrange to [b, c, f, h * patch_size, w * patch_size]
+        x = x.permute(0, 1, 4, 5, 2, 6, 3).contiguous()
+        x = x.view(batch_size, channels, frames, height * patch_size, width * patch_size)
+
     return x
+
 
 class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
@@ -1027,13 +1056,29 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             decoder_base_dim = base_dim
 
         self.encoder = WanEncoder3d(
-            in_channels=in_channels, dim=base_dim, z_dim=z_dim * 2, dim_mult=dim_mult, num_res_blocks=num_res_blocks, attn_scales=attn_scales, temperal_downsample=temperal_downsample, dropout=dropout, is_residual=is_residual
+            in_channels=in_channels,
+            dim=base_dim,
+            z_dim=z_dim * 2,
+            dim_mult=dim_mult,
+            num_res_blocks=num_res_blocks,
+            attn_scales=attn_scales,
+            temperal_downsample=temperal_downsample,
+            dropout=dropout,
+            is_residual=is_residual,
         )
         self.quant_conv = WanCausalConv3d(z_dim * 2, z_dim * 2, 1)
         self.post_quant_conv = WanCausalConv3d(z_dim, z_dim, 1)
 
         self.decoder = WanDecoder3d(
-            dim=decoder_base_dim, z_dim=z_dim, dim_mult=dim_mult, num_res_blocks=num_res_blocks, attn_scales=attn_scales, temperal_upsample=self.temperal_upsample, dropout=dropout, out_channels=out_channels, is_residual=is_residual
+            dim=decoder_base_dim,
+            z_dim=z_dim,
+            dim_mult=dim_mult,
+            num_res_blocks=num_res_blocks,
+            attn_scales=attn_scales,
+            temperal_upsample=self.temperal_upsample,
+            dropout=dropout,
+            out_channels=out_channels,
+            is_residual=is_residual,
         )
 
         self.spatial_compression_ratio = 2 ** len(self.temperal_downsample)
@@ -1192,7 +1237,9 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for i in range(num_frame):
             self._conv_idx = [0]
             if i == 0:
-                out = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx, first_chunk=True)
+                out = self.decoder(
+                    x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx, first_chunk=True
+                )
             else:
                 out_ = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
                 out = torch.cat([out, out_], 2)

@@ -113,20 +113,19 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         transformer_2 ([`WanTransformer3DModel`], *optional*):
-            Conditional Transformer to denoise the input latents during the low-noise stage.
-            If provided, enables two-stage denoising where `transformer` handles high-noise stages
-            and `transformer_2` handles low-noise stages. If not provided, only `transformer` is used.
+            Conditional Transformer to denoise the input latents during the low-noise stage. If provided, enables
+            two-stage denoising where `transformer` handles high-noise stages and `transformer_2` handles low-noise
+            stages. If not provided, only `transformer` is used.
         boundary_ratio (`float`, *optional*, defaults to `None`):
             Ratio of total timesteps to use as the boundary for switching between transformers in two-stage denoising.
-            The actual boundary timestep is calculated as `boundary_ratio * num_train_timesteps`.
-            When provided, `transformer` handles timesteps >= boundary_timestep and `transformer_2` handles timesteps < boundary_timestep.
-            If `None`, only `transformer` is used for the entire denoising process.
+            The actual boundary timestep is calculated as `boundary_ratio * num_train_timesteps`. When provided,
+            `transformer` handles timesteps >= boundary_timestep and `transformer_2` handles timesteps <
+            boundary_timestep. If `None`, only `transformer` is used for the entire denoising process.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->transformer_2->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
     _optional_components = ["transformer_2"]
-
 
     def __init__(
         self,
@@ -137,7 +136,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         scheduler: FlowMatchEulerDiscreteScheduler,
         transformer_2: Optional[WanTransformer3DModel] = None,
         boundary_ratio: Optional[float] = None,
-        expand_timesteps: bool = False, # Wan2.2 ti2v
+        expand_timesteps: bool = False,  # Wan2.2 ti2v
     ):
         super().__init__()
 
@@ -429,8 +428,9 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
             guidance_scale_2 (`float`, *optional*, defaults to `None`):
-                Guidance scale for the low-noise stage transformer (`transformer_2`). If `None` and the pipeline's `boundary_ratio` is not None,
-                uses the same value as `guidance_scale`. Only used when `transformer_2` and the pipeline's `boundary_ratio` are not None.
+                Guidance scale for the low-noise stage transformer (`transformer_2`). If `None` and the pipeline's
+                `boundary_ratio` is not None, uses the same value as `guidance_scale`. Only used when `transformer_2`
+                and the pipeline's `boundary_ratio` are not None.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -548,7 +548,6 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             generator,
             latents,
         )
-
 
         mask = torch.ones(latents.shape, dtype=torch.float32, device=device)
 

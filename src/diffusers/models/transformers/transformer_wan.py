@@ -312,7 +312,6 @@ class WanTransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
-
         if temb.ndim == 4:
             # temb: batch_size, seq_len, 6, inner_dim (wan2.2 ti2v)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
@@ -490,7 +489,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         # timestep shape: batch_size, or batch_size, seq_len (wan 2.2 ti2v)
         if timestep.ndim == 2:
             ts_seq_len = timestep.shape[1]
-            timestep = timestep.flatten() # batch_size * seq_len
+            timestep = timestep.flatten()  # batch_size * seq_len
         else:
             ts_seq_len = None
 
@@ -518,7 +517,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
 
         # 5. Output norm, projection & unpatchify
-        if temb.ndim ==3:
+        if temb.ndim == 3:
             # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
             shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
             shift = shift.squeeze(2)

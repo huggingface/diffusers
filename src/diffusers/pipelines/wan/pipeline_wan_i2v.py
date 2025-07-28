@@ -150,14 +150,14 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         transformer_2 ([`WanTransformer3DModel`], *optional*):
-            Conditional Transformer to denoise the input latents during the low-noise stage.
-            In two-stage denoising, `transformer` handles high-noise stages
-            and `transformer_2` handles low-noise stages. If not provided, only `transformer` is used.
+            Conditional Transformer to denoise the input latents during the low-noise stage. In two-stage denoising,
+            `transformer` handles high-noise stages and `transformer_2` handles low-noise stages. If not provided, only
+            `transformer` is used.
         boundary_ratio (`float`, *optional*, defaults to `None`):
             Ratio of total timesteps to use as the boundary for switching between transformers in two-stage denoising.
-            The actual boundary timestep is calculated as `boundary_ratio * num_train_timesteps`.
-            When provided, `transformer` handles timesteps >= boundary_timestep and `transformer_2` handles timesteps < boundary_timestep.
-            If `None`, only `transformer` is used for the entire denoising process.
+            The actual boundary timestep is calculated as `boundary_ratio * num_train_timesteps`. When provided,
+            `transformer` handles timesteps >= boundary_timestep and `transformer_2` handles timesteps <
+            boundary_timestep. If `None`, only `transformer` is used for the entire denoising process.
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->transformer->transformer_2->vae"
@@ -171,9 +171,9 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        image_processor: CLIPImageProcessor=None,
-        image_encoder: CLIPVisionModel=None,
-        transformer_2: WanTransformer3DModel=None,
+        image_processor: CLIPImageProcessor = None,
+        image_encoder: CLIPVisionModel = None,
+        transformer_2: WanTransformer3DModel = None,
         boundary_ratio: Optional[float] = None,
     ):
         super().__init__()
@@ -550,8 +550,9 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
             guidance_scale_2 (`float`, *optional*, defaults to `None`):
-                Guidance scale for the low-noise stage transformer (`transformer_2`). If `None` and the pipeline's `boundary_ratio` is not None,
-                uses the same value as `guidance_scale`. Only used when `transformer_2` and the pipeline's `boundary_ratio` are not None.
+                Guidance scale for the low-noise stage transformer (`transformer_2`). If `None` and the pipeline's
+                `boundary_ratio` is not None, uses the same value as `guidance_scale`. Only used when `transformer_2`
+                and the pipeline's `boundary_ratio` are not None.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -624,7 +625,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
 
-
         if self.config.boundary_ratio is not None and guidance_scale_2 is None:
             guidance_scale_2 = guidance_scale
 
@@ -661,7 +661,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
-
 
         if self.config.boundary_ratio is None:
             if image_embeds is None:
@@ -706,7 +705,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             boundary_timestep = None
 
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -722,7 +720,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     # low-noise stage in wan2.2
                     current_model = self.transformer_2
                     current_guidance_scale = guidance_scale_2
-
 
                 latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
