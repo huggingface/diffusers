@@ -18,10 +18,10 @@ import inspect
 import torch
 
 from diffusers import DiffusionPipeline
-from diffusers.utils.testing_utils import backend_empty_cache, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import backend_empty_cache, require_torch_accelerator, slow, torch_device
 
 
-@require_torch_gpu
+@require_torch_accelerator
 @slow
 class QuantCompileTests:
     @property
@@ -51,7 +51,7 @@ class QuantCompileTests:
         return pipe
 
     def _test_torch_compile(self, torch_dtype=torch.bfloat16):
-        pipe = self._init_pipeline(self.quantization_config, torch_dtype).to("cuda")
+        pipe = self._init_pipeline(self.quantization_config, torch_dtype).to(torch_device)
         # `fullgraph=True` ensures no graph breaks
         pipe.transformer.compile(fullgraph=True)
 
@@ -71,7 +71,7 @@ class QuantCompileTests:
 
         pipe = self._init_pipeline(self.quantization_config, torch_dtype)
         group_offload_kwargs = {
-            "onload_device": torch.device("cuda"),
+            "onload_device": torch.device(torch_device),
             "offload_device": torch.device("cpu"),
             "offload_type": "leaf_level",
             "use_stream": use_stream,
@@ -81,7 +81,7 @@ class QuantCompileTests:
         for name, component in pipe.components.items():
             if name != "transformer" and isinstance(component, torch.nn.Module):
                 if torch.device(component.device).type == "cpu":
-                    component.to("cuda")
+                    component.to(torch_device)
 
         # small resolutions to ensure speedy execution.
         pipe("a dog", num_inference_steps=2, max_sequence_length=16, height=256, width=256)
