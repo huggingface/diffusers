@@ -182,7 +182,9 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skip("TODO: refactor this test: one component can be optional for certain checkpoints but not for others")
+    @unittest.skip(
+        "TODO: refactor this test: one component can be optional for certain checkpoints but not for others"
+    )
     def test_save_load_optional_components(self):
         pass
 
@@ -339,6 +341,8 @@ class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skip("TODO: refactor this test: one component can be optional for certain checkpoints but not for others")
+    @unittest.skip(
+        "TODO: refactor this test: one component can be optional for certain checkpoints but not for others"
+    )
     def test_save_load_optional_components(self):
         pass
