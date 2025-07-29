@@ -395,8 +395,8 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         <Tip>
 
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
+        auth login`.
 
         </Tip>
 
@@ -690,8 +690,8 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         <Tip>
 
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
+        auth login`.
 
         </Tip>
 
@@ -1000,8 +1000,8 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         <Tip>
 
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
+        auth login`.
 
         </Tip>
 

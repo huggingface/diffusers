@@ -41,7 +41,7 @@ accelerate config
 First, let's login so that we can upload the checkpoint to the Hub during training:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Now let's get our dataset. For this example we will use some cat images: https://huggingface.co/datasets/diffusers/cat_toy_example .

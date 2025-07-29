@@ -67,7 +67,7 @@ Note also that we use PEFT library as backend for LoRA training, make sure to ha
 
 Lastly, we recommend logging into your HF account so that your trained LoRA is automatically uploaded to the hub:
 ```bash
-huggingface-cli login
+hf auth login
 ```
 This command will prompt you for a token. Copy-paste yours from your [settings/tokens](https://huggingface.co/settings/tokens),and press Enter.
 
