@@ -43,7 +43,7 @@ You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need 
 Run the following command to authenticate your token
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 If you have already cloned the repo, then you won't need to go through these steps.
@@ -215,7 +215,7 @@ For this example we want to directly store the trained LoRA embeddings on the Hu
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Now we can start training!

@@ -85,12 +85,29 @@ class WanPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             rope_max_seq_len=32,
         )
 
+        torch.manual_seed(0)
+        transformer_2 = WanTransformer3DModel(
+            patch_size=(1, 2, 2),
+            num_attention_heads=2,
+            attention_head_dim=12,
+            in_channels=16,
+            out_channels=16,
+            text_dim=32,
+            freq_dim=256,
+            ffn_dim=32,
+            num_layers=2,
+            cross_attn_norm=True,
+            qk_norm="rms_norm_across_heads",
+            rope_max_seq_len=32,
+        )
+
         components = {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "transformer_2": transformer_2,
         }
         return components
 
