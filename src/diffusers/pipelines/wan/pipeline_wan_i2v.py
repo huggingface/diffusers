@@ -695,7 +695,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 device, dtype=torch.float32
             )
 
-        prepared_latents = self.prepare_latents(
+        latents_outputs = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -709,9 +709,9 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             last_image,
         )
         if self.config.expand_timesteps:
-            latents, condition, first_frame_mask = prepared_latents
+            latents, condition, first_frame_mask = latents_outputs
         else:
-            latents, condition = prepared_latents
+            latents, condition = latents_outputs
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
