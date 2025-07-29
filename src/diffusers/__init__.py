@@ -206,6 +206,7 @@ else:
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
+            "StochasticRFOvershotDiscreteScheduler",
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
@@ -283,9 +284,11 @@ else:
             "FluxControlNetPipeline",
             "FluxControlPipeline",
             "FluxFillPipeline",
+            "FluxFillPipelineAMO",
             "FluxImg2ImgPipeline",
             "FluxInpaintPipeline",
             "FluxPipeline",
+            "FluxPipelineAMO",
             "FluxPriorReduxPipeline",
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
@@ -714,6 +717,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UnCLIPScheduler,
             UniPCMultistepScheduler,
             VQDiffusionScheduler,
+            StochasticRFOvershotDiscreteScheduler,
         )
         from .training_utils import EMAModel
 
@@ -772,9 +776,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxControlNetPipeline,
             FluxControlPipeline,
             FluxFillPipeline,
+            FluxFillPipelineAMO,
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
             FluxPipeline,
+            FluxPipelineAMO,
             FluxPriorReduxPipeline,
             HunyuanDiTControlNetPipeline,
             HunyuanDiTPAGPipeline,

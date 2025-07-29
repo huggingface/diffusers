@@ -168,6 +168,8 @@ class FluxTransformerBlock(nn.Module):
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         image_rotary_emb=None,
+        return_attn_map: bool = False, 
+        txt_loc: tuple = None, 
         joint_attention_kwargs=None,
     ):
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
@@ -177,17 +179,20 @@ class FluxTransformerBlock(nn.Module):
         )
         joint_attention_kwargs = joint_attention_kwargs or {}
         # Attention.
+
         attention_outputs = self.attn(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            return_attn_map=return_attn_map if return_attn_map else None,
+            txt_loc=txt_loc if return_attn_map else None,
             **joint_attention_kwargs,
         )
 
-        if len(attention_outputs) == 2:
+        if return_attn_map:
+            attn_output, context_attn_output,attn_map = attention_outputs
+        else: 
             attn_output, context_attn_output = attention_outputs
-        elif len(attention_outputs) == 3:
-            attn_output, context_attn_output, ip_attn_output = attention_outputs
 
         # Process attention outputs for the `hidden_states`.
         attn_output = gate_msa.unsqueeze(1) * attn_output
@@ -200,8 +205,6 @@ class FluxTransformerBlock(nn.Module):
         ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = hidden_states + ff_output
-        if len(attention_outputs) == 3:
-            hidden_states = hidden_states + ip_attn_output
 
         # Process attention outputs for the `encoder_hidden_states`.
 
@@ -216,7 +219,10 @@ class FluxTransformerBlock(nn.Module):
         if encoder_hidden_states.dtype == torch.float16:
             encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
 
-        return encoder_hidden_states, hidden_states
+        if return_attn_map:
+            return encoder_hidden_states, hidden_states, attn_map
+        else:
+            return encoder_hidden_states, hidden_states
 
 
 class FluxTransformer2DModel(
@@ -418,6 +424,8 @@ class FluxTransformer2DModel(
         controlnet_single_block_samples=None,
         return_dict: bool = True,
         controlnet_blocks_repeat: bool = False,
+        return_attn_map: bool = False,
+        txt_loc: tuple = None,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
         The [`FluxTransformer2DModel`] forward method.
@@ -440,6 +448,9 @@ class FluxTransformer2DModel(
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+            return_attn_map (`bool`, *optional*, defaults to `False`):
+                Whether or not to return the attention maps.
+            txt_loc (`tuple`, *optional*): The location of the text to render in the prompt.
 
         Returns:
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
@@ -496,6 +507,8 @@ class FluxTransformer2DModel(
             ip_hidden_states = self.encoder_hid_proj(ip_adapter_image_embeds)
             joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
+        attn_map_list = []
+        
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
 
@@ -517,15 +530,25 @@ class FluxTransformer2DModel(
                     image_rotary_emb,
                     **ckpt_kwargs,
                 )
-
             else:
-                encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    temb=temb,
-                    image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=joint_attention_kwargs,
-                )
+                if return_attn_map:
+                    encoder_hidden_states, hidden_states, attn_map = block(
+                        hidden_states=hidden_states,
+                        encoder_hidden_states=encoder_hidden_states,
+                        temb=temb,
+                        image_rotary_emb=image_rotary_emb,
+                        return_attn_map=True,
+                        txt_loc=txt_loc,
+                    )
+                    attn_map_list.append(attn_map)
+                else:
+                    encoder_hidden_states, hidden_states = block(
+                        hidden_states=hidden_states,
+                        encoder_hidden_states=encoder_hidden_states,
+                        temb=temb,
+                        image_rotary_emb=image_rotary_emb,
+                        joint_attention_kwargs=joint_attention_kwargs,
+                    )
 
             # controlnet residual
             if controlnet_block_samples is not None:
@@ -588,6 +611,12 @@ class FluxTransformer2DModel(
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            return (output,)
+            if return_attn_map:
+                return (output, attn_map_list)
+            else: 
+                return (output,)
 
-        return Transformer2DModelOutput(sample=output)
+        if return_attn_map:
+            return Transformer2DModelOutput(sample=output, attn_map=attn_map_list)
+        else: 
+            return Transformer2DModelOutput(sample=output)

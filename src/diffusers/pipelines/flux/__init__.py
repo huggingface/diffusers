@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modeling_flux"] = ["ReduxImageEncoder"]
     _import_structure["pipeline_flux"] = ["FluxPipeline"]
+    _import_structure["pipeline_flux_amo"] = ["FluxPipelineAMO"]
     _import_structure["pipeline_flux_control"] = ["FluxControlPipeline"]
     _import_structure["pipeline_flux_control_img2img"] = ["FluxControlImg2ImgPipeline"]
     _import_structure["pipeline_flux_control_inpaint"] = ["FluxControlInpaintPipeline"]
@@ -31,6 +32,7 @@ else:
     _import_structure["pipeline_flux_controlnet_image_to_image"] = ["FluxControlNetImg2ImgPipeline"]
     _import_structure["pipeline_flux_controlnet_inpainting"] = ["FluxControlNetInpaintPipeline"]
     _import_structure["pipeline_flux_fill"] = ["FluxFillPipeline"]
+    _import_structure["pipeline_flux_fill_amo"] = ["FluxFillPipelineAMO"]
     _import_structure["pipeline_flux_img2img"] = ["FluxImg2ImgPipeline"]
     _import_structure["pipeline_flux_inpaint"] = ["FluxInpaintPipeline"]
     _import_structure["pipeline_flux_prior_redux"] = ["FluxPriorReduxPipeline"]
@@ -43,6 +45,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modeling_flux import ReduxImageEncoder
         from .pipeline_flux import FluxPipeline
+        from .pipeline_flux_amo import FluxPipelineAMO
         from .pipeline_flux_control import FluxControlPipeline
         from .pipeline_flux_control_img2img import FluxControlImg2ImgPipeline
         from .pipeline_flux_control_inpaint import FluxControlInpaintPipeline
@@ -50,6 +53,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_flux_controlnet_image_to_image import FluxControlNetImg2ImgPipeline
         from .pipeline_flux_controlnet_inpainting import FluxControlNetInpaintPipeline
         from .pipeline_flux_fill import FluxFillPipeline
+        from .pipeline_flux_fill_amo import FluxFillPipelineAMO
         from .pipeline_flux_img2img import FluxImg2ImgPipeline
         from .pipeline_flux_inpaint import FluxInpaintPipeline
         from .pipeline_flux_prior_redux import FluxPriorReduxPipeline

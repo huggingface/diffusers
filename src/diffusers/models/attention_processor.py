@@ -1409,6 +1409,8 @@ class JointAttnProcessor2_0:
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        return_attn_map: Optional[bool] = False,
+        txt_loc: Optional[tuple] = None,
         *args,
         **kwargs,
     ) -> torch.FloatTensor:
@@ -1457,8 +1459,50 @@ class JointAttnProcessor2_0:
             query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
             key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
             value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
+        if return_attn_map:
+            def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, txt_loc=txt_loc) -> torch.Tensor:
+                L, S = query.size(-2), key.size(-2)
+                scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+                attn_bias = torch.zeros(L, S, dtype=query.dtype).to(query.device)
+                if is_causal:
+                    assert attn_mask is None
+                    temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+                    attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+                    attn_bias.to(query.dtype)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+                if attn_mask is not None:
+                    if attn_mask.dtype == torch.bool:
+                        attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+                    else:
+                        attn_bias += attn_mask
+                attn_weight = query @ key.transpose(-2, -1) * scale_factor
+                
+                start_1, end_1, start_2, end_2 = txt_loc
+                
+                attn_weight[:, :, :, start_1:end_1] = attn_weight[:, :, :, start_1:end_1]
+                attn_weight[:, :, :, start_2:end_2] = attn_weight[:, :, :, start_2:end_2]
+
+                attn_weight += attn_bias
+                attn_weight = torch.softmax(attn_weight, dim=-1)
+                attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+                return attn_weight, attn_weight @ value
+            
+            num_text_tokens = encoder_hidden_states.shape[1]
+            num_image_tokens = query.shape[2] - num_text_tokens
+            
+            start_1 = num_image_tokens + txt_loc[0]
+            end_1 = num_image_tokens + txt_loc[1]
+            start_2 = num_image_tokens + txt_loc[2]
+            end_2 = num_image_tokens + txt_loc[3]
+            
+            attn_weight, hidden_states = scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False, txt_loc=(start_1, end_1, start_2, end_2))
+            
+            text2img_attn_weight_1 = attn_weight[:, :, start_1:end_1, :num_image_tokens]
+            text2img_attn_weight_2 = attn_weight[:, :, start_2:end_2, :num_image_tokens]
+            attn_weight = text2img_attn_weight_1.sum(dim=-2) + text2img_attn_weight_2.sum(dim=-2)
+            
+        else:
+            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -1477,9 +1521,16 @@ class JointAttnProcessor2_0:
         hidden_states = attn.to_out[1](hidden_states)
 
         if encoder_hidden_states is not None:
-            return hidden_states, encoder_hidden_states
+            if return_attn_map:
+                return hidden_states, encoder_hidden_states, attn_weight
+            
+            else:
+                return hidden_states, encoder_hidden_states
         else:
-            return hidden_states
+            if return_attn_map:
+                return hidden_states, attn_weight
+            else:
+                return hidden_states
 
 
 class PAGJointAttnProcessor2_0:
@@ -2075,6 +2126,8 @@ class AuraFlowAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
+        return_attn_map: Optional[bool] = False,
+        txt_loc: Optional[tuple] = None,
         *args,
         **kwargs,
     ) -> torch.FloatTensor:
@@ -2126,11 +2179,54 @@ class AuraFlowAttnProcessor2_0:
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
+        if return_attn_map:
+            def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, txt_loc=txt_loc) -> torch.Tensor:
+                L, S = query.size(-2), key.size(-2)
+                scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+                attn_bias = torch.zeros(L, S, dtype=query.dtype).to(query.device)
+                if is_causal:
+                    assert attn_mask is None
+                    temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+                    attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+                    attn_bias.to(query.dtype)
 
-        # Attention.
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, dropout_p=0.0, scale=attn.scale, is_causal=False
-        )
+                if attn_mask is not None:
+                    if attn_mask.dtype == torch.bool:
+                        attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+                    else:
+                        attn_bias += attn_mask
+                attn_weight = query @ key.transpose(-2, -1) * scale_factor
+                
+                start_1, end_1= txt_loc
+                
+                attn_weight[:, :, :, start_1:end_1] = attn_weight[:, :, :, start_1:end_1]
+
+                attn_weight += attn_bias
+                attn_weight = torch.softmax(attn_weight, dim=-1)
+                attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+                return attn_weight, attn_weight @ value
+            
+            if encoder_hidden_states is not None:
+                num_text_tokens = encoder_hidden_states.shape[1]
+            
+            else: 
+                num_text_tokens = 264
+
+            start_1 = txt_loc[0]
+            end_1 = txt_loc[1]
+            
+            attn_weight, hidden_states = scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False, txt_loc=(start_1, end_1))
+            
+            text2img_attn_weight_1 = attn_weight[:, :, start_1:end_1, num_text_tokens:]
+            
+            attn_weight = text2img_attn_weight_1.sum(dim=-2)
+            
+
+        else:
+            # Attention.
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, dropout_p=0.0, scale=attn.scale, is_causal=False
+            )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2149,9 +2245,15 @@ class AuraFlowAttnProcessor2_0:
             encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
         if encoder_hidden_states is not None:
-            return hidden_states, encoder_hidden_states
+            if return_attn_map:
+                return hidden_states, encoder_hidden_states, attn_weight
+            else: 
+                return hidden_states, encoder_hidden_states
         else:
-            return hidden_states
+            if return_attn_map:
+                return hidden_states, attn_weight
+            else:
+                return hidden_states
 
 
 class FusedAuraFlowAttnProcessor2_0:
@@ -2265,6 +2367,8 @@ class FluxAttnProcessor2_0:
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
+        return_attn_map: Optional[bool] = False,
+        txt_loc: Optional[tuple] = None,
     ) -> torch.FloatTensor:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
 
@@ -2317,10 +2421,46 @@ class FluxAttnProcessor2_0:
 
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
+        if return_attn_map:
+            def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, txt_loc=txt_loc) -> torch.Tensor:
+                L, S = query.size(-2), key.size(-2)
+                scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+                attn_bias = torch.zeros(L, S, dtype=query.dtype).to(query.device)
+                if is_causal:
+                    assert attn_mask is None
+                    temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+                    attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+                    attn_bias.to(query.dtype)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+                if attn_mask is not None:
+                    if attn_mask.dtype == torch.bool:
+                        attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+                    else:
+                        attn_bias += attn_mask
+                attn_weight = query @ key.transpose(-2, -1) * scale_factor
+                
+                start_1, end_1 = txt_loc
+                
+                attn_weight[:, :, :, start_1:end_1] = attn_weight[:, :, :, start_1:end_1]
+
+                attn_weight += attn_bias
+                attn_weight = torch.softmax(attn_weight, dim=-1)
+                attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+                return attn_weight, attn_weight @ value
+            
+            num_text_tokens = encoder_hidden_states.shape[1]
+            
+            start_1 = txt_loc[0]
+            end_1 = txt_loc[1]
+            
+            attn_weight, hidden_states = scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False, txt_loc=(start_1, end_1))
+            
+            text2img_attn_weight_1 = attn_weight[:, :, start_1:end_1, num_text_tokens:]
+            attn_weight = text2img_attn_weight_1.sum(dim=-2)
+        else:
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2337,9 +2477,15 @@ class FluxAttnProcessor2_0:
 
             encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
-            return hidden_states, encoder_hidden_states
+            if return_attn_map:
+                return hidden_states, encoder_hidden_states, attn_weight
+            else:
+                return hidden_states, encoder_hidden_states
         else:
-            return hidden_states
+            if return_attn_map:
+                return hidden_states, attn_weight
+            else:
+                return hidden_states
 
 
 class FluxAttnProcessor2_0_NPU:

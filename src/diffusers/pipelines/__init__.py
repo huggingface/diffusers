@@ -136,7 +136,9 @@ else:
         "FluxImg2ImgPipeline",
         "FluxInpaintPipeline",
         "FluxPipeline",
+        "FluxPipelineAMO",
         "FluxFillPipeline",
+        "FluxFillPipelineAMO",
         "FluxPriorReduxPipeline",
         "ReduxImageEncoder",
     ]
@@ -546,9 +548,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxControlNetPipeline,
             FluxControlPipeline,
             FluxFillPipeline,
+            FluxFillPipelineAMO,
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
             FluxPipeline,
+            FluxPipelineAMO,
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )

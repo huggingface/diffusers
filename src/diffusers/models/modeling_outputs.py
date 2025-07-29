@@ -29,3 +29,4 @@ class Transformer2DModelOutput(BaseOutput):
     """
 
     sample: "torch.Tensor"  # noqa: F821
+    attn_map: "List[torch.Tensor]"  # noqa: F821
