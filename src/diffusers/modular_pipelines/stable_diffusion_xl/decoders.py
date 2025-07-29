@@ -61,7 +61,7 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
                 required=True,
                 type_hint=torch.Tensor,
                 description="The denoised latents from the denoising step",
-            )
+            ),
         ]
 
     @property
