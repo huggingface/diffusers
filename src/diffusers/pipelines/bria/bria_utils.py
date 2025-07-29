@@ -114,42 +114,43 @@ def get_t5_prompt_embeds(
 
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
-
-    text_inputs = tokenizer(
-        prompt,
-        # padding="max_length",
-        max_length=max_sequence_length,
-        truncation=True,
-        add_special_tokens=True,
-        return_tensors="pt",
-    )
-    text_input_ids = text_inputs.input_ids
-    untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-    if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-        removed_text = tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
-        logger.warning(
-            "The following part of your input was truncated because `max_sequence_length` is set to "
-            f" {max_sequence_length} tokens: {removed_text}"
+    prompt_embeds_list = []
+    for p in prompt:
+        text_inputs = tokenizer(
+            p,
+            # padding="max_length",
+            max_length=max_sequence_length,
+            truncation=True,
+            add_special_tokens=True,
+            return_tensors="pt",
         )
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-    prompt_embeds = text_encoder(text_input_ids.to(device))[0]
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because `max_sequence_length` is set to "
+                f" {max_sequence_length} tokens: {removed_text}"
+            )
 
-    # Concat zeros to max_sequence
-    b, seq_len, dim = prompt_embeds.shape
-    if seq_len < max_sequence_length:
-        padding = torch.zeros(
-            (b, max_sequence_length - seq_len, dim), dtype=prompt_embeds.dtype, device=prompt_embeds.device
-        )
-        prompt_embeds = torch.concat([prompt_embeds, padding], dim=1)
+        prompt_embeds = text_encoder(text_input_ids.to(device))[0]
 
+        # Concat zeros to max_sequence
+        b, seq_len, dim = prompt_embeds.shape
+        if seq_len < max_sequence_length:
+            padding = torch.zeros(
+                (b, max_sequence_length - seq_len, dim), dtype=prompt_embeds.dtype, device=prompt_embeds.device
+            )
+            prompt_embeds = torch.concat([prompt_embeds, padding], dim=1)
+        prompt_embeds_list.append(prompt_embeds)
+
+    prompt_embeds = torch.concat(prompt_embeds_list, dim=0)
     prompt_embeds = prompt_embeds.to(device=device)
-
-    _, seq_len, _ = prompt_embeds.shape
 
     # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
     prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-    prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+    prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, max_sequence_length, -1)
 
     return prompt_embeds
 

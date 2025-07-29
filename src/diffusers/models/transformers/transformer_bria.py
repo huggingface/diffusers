@@ -13,6 +13,9 @@ from diffusers.models.normalization import AdaLayerNormContinuous
 from diffusers.models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
 from diffusers.pipelines.bria.bria_utils import FluxPosEmbed as EmbedND
 from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from diffusers import __version__ as diffusers_version
+from packaging import version
+
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -240,10 +243,10 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
         self.gradient_checkpointing = False
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
+    # def _set_gradient_checkpointing(self, module, enable=False):
+    #     if hasattr(module, "gradient_checkpointing"):
+    #         module.gradient_checkpointing = enable
+    
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -321,11 +324,15 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             temb += self.guidance_embed(guidance, dtype=hidden_states.dtype)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+        
+        if len(txt_ids.shape) == 3:
+            txt_ids = txt_ids[0]
 
-        if len(txt_ids.shape) == 2:
-            ids = torch.cat((txt_ids, img_ids), dim=0)
-        else:
-            ids = torch.cat((txt_ids, img_ids), dim=1)
+        if len(img_ids.shape) == 3:
+            img_ids = img_ids[0]
+
+
+        ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
 
         for index_block, block in enumerate(self.transformer_blocks):
@@ -364,7 +371,8 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 interval_control = int(np.ceil(interval_control))
                 hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
 
-        # hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+        if version.parse(diffusers_version) < version.parse("0.35.0.dev0"):
+            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         for index_block, block in enumerate(self.single_transformer_blocks):
             if self.training and self.gradient_checkpointing:
@@ -379,21 +387,38 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    temb,
-                    image_rotary_emb,
-                    **ckpt_kwargs,
-                )
+                if version.parse(diffusers_version) < version.parse("0.35.0.dev0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block),
+                        hidden_states,
+                        temb,
+                        image_rotary_emb,
+                        **ckpt_kwargs,
+                    )
+                else:
+                    encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block),
+                        hidden_states,
+                        encoder_hidden_states,
+                        temb,
+                        image_rotary_emb,
+                        **ckpt_kwargs,
+                    )
 
             else:
-                encoder_hidden_states, hidden_states = block(
+                if version.parse(diffusers_version) < version.parse("0.35.0.dev0"):
+                    hidden_states = block(
                     hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                )
+                    )
+                else:
+                    encoder_hidden_states, hidden_states = block(
+                        hidden_states=hidden_states,
+                        encoder_hidden_states=encoder_hidden_states,
+                        temb=temb,
+                        image_rotary_emb=image_rotary_emb,
+                    )
 
             # controlnet residual
             if controlnet_single_block_samples is not None:
@@ -403,6 +428,8 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                     hidden_states[:, encoder_hidden_states.shape[1] :, ...]
                     + controlnet_single_block_samples[index_block // interval_control]
                 )
+        if version.parse(diffusers_version) < version.parse("0.35.0.dev0"):
+            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         hidden_states = self.norm_out(hidden_states, temb)
         output = self.proj_out(hidden_states)

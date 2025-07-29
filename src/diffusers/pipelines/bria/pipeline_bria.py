@@ -3,6 +3,8 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import torch
 from transformers import (
+    CLIPImageProcessor,
+    CLIPVisionModelWithProjection,
     T5EncoderModel,
     T5TokenizerFast,
 )
@@ -81,6 +83,9 @@ class BriaPipeline(FluxPipeline):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
     """
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->transformer->vae"
+    _optional_components = ["image_encoder", "feature_extractor"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
         self,
@@ -89,6 +94,8 @@ class BriaPipeline(FluxPipeline):
         vae: AutoencoderKL,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
+        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: CLIPImageProcessor = None,
     ):
         self.register_modules(
             vae=vae,
@@ -96,6 +103,8 @@ class BriaPipeline(FluxPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
             scheduler=scheduler,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
         )
 
         # TODO - why different than offical flux (-1)
@@ -541,9 +550,12 @@ class BriaPipeline(FluxPipeline):
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
+        # if height % 8 != 0 or width % 8 != 0:
+        #     raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
+            logger.warning(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
+            )
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
