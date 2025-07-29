@@ -120,7 +120,6 @@ class BriaTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            
             "patch_size": 1,
             "in_channels": 4,
             "num_layers": 1,
@@ -130,7 +129,6 @@ class BriaTransformerTests(ModelTesterMixin, unittest.TestCase):
             "joint_attention_dim": 32,
             "pooled_projection_dim": None,
             "axes_dims_rope": [0, 4, 4],
-        
         }
 
         inputs_dict = self.dummy_input
@@ -163,8 +161,7 @@ class BriaTransformerTests(ModelTesterMixin, unittest.TestCase):
             torch.allclose(output_1, output_2, atol=1e-5),
             msg="output with deprecated inputs (img_ids and txt_ids as 3d torch tensors) are not equal as them as 2d inputs",
         )
-        
-        
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"BriaTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

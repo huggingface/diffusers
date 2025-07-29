@@ -3,7 +3,9 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 import torch.nn as nn
+from packaging import version
 
+from diffusers import __version__ as diffusers_version
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.loaders import FromOriginalModelMixin, PeftAdapterMixin
 from diffusers.models.embeddings import TimestepEmbedding, get_timestep_embedding
@@ -13,9 +15,6 @@ from diffusers.models.normalization import AdaLayerNormContinuous
 from diffusers.models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
 from diffusers.pipelines.bria.bria_utils import FluxPosEmbed as EmbedND
 from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from diffusers import __version__ as diffusers_version
-from packaging import version
-
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -246,7 +245,7 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
     # def _set_gradient_checkpointing(self, module, enable=False):
     #     if hasattr(module, "gradient_checkpointing"):
     #         module.gradient_checkpointing = enable
-    
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -324,13 +323,12 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             temb += self.guidance_embed(guidance, dtype=hidden_states.dtype)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
-        
+
         if len(txt_ids.shape) == 3:
             txt_ids = txt_ids[0]
 
         if len(img_ids.shape) == 3:
             img_ids = img_ids[0]
-
 
         ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
@@ -408,9 +406,9 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             else:
                 if version.parse(diffusers_version) < version.parse("0.35.0.dev0"):
                     hidden_states = block(
-                    hidden_states=hidden_states,
-                    temb=temb,
-                    image_rotary_emb=image_rotary_emb,
+                        hidden_states=hidden_states,
+                        temb=temb,
+                        image_rotary_emb=image_rotary_emb,
                     )
                 else:
                     encoder_hidden_states, hidden_states = block(

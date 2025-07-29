@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import gc
-import unittest
 import tempfile
+import unittest
 
 import numpy as np
 import torch
@@ -32,18 +32,17 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     nightly,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
     require_accelerator,
+    require_torch_gpu,
     slow,
     torch_device,
 )
 
-
 # from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
-from tests.pipelines.test_pipelines_common import PipelineTesterMixin,to_np
+from tests.pipelines.test_pipelines_common import PipelineTesterMixin, to_np
+
 
 enable_full_determinism()
-
 
 
 class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -56,7 +55,7 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
-    
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = BriaTransformer2DModel(
@@ -123,8 +122,10 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "output_type": "np",
         }
         return inputs
+
     def test_encode_prompt_works_in_isolation(self):
         pass
+
     def test_bria_different_prompts(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
@@ -135,9 +136,6 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(output_same_prompt - output_different_prompts).max()
         assert max_diff > 1e-6
 
-    
-
-    
     def test_image_output_shape(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
@@ -194,11 +192,7 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertLess(
             max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
         )
-        
-        
 
-
-    
     def test_bria_image_output_shape(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
@@ -217,9 +211,9 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
-    
+
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
-        self.assertTrue([dtype == torch.float32 for dtype in model_dtypes] == [False,True,True])
+        self.assertTrue([dtype == torch.float32 for dtype in model_dtypes] == [False, True, True])
 
     def test_torch_dtype_dict(self):
         components = self.get_dummy_components()
@@ -243,8 +237,6 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             self.assertEqual(loaded_pipe.text_encoder.dtype, torch.float16)
             self.assertEqual(loaded_pipe.vae.dtype, torch.float16)
 
-    
-
 
 @slow
 @require_torch_gpu
@@ -265,9 +257,7 @@ class BriaPipelineSlowTests(unittest.TestCase):
     def get_inputs(self, device, seed=0):
         generator = torch.Generator(device="cpu").manual_seed(seed)
         prompt_embeds = torch.load(
-            hf_hub_download(
-                repo_id="diffusers/test-slices", repo_type="dataset", filename="bria_prompt_embeds.pt"
-            )
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="bria_prompt_embeds.pt")
         ).to(device)
         return {
             "prompt_embeds": prompt_embeds,
@@ -324,7 +314,7 @@ class BriaPipelineSlowTests(unittest.TestCase):
         )
         max_diff = numpy_cosine_similarity_distance(expected_slice, image_slice)
         self.assertLess(max_diff, 1e-4, f"Image slice is different from expected slice: {max_diff:.4f}")
-    
+
     def test_to_dtype(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -396,4 +386,3 @@ class BriaPipelineNightlyTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, image_slice)
         self.assertLess(max_diff, 1e-4, f"Image slice is different from expected slice: {max_diff:.4f}")
-

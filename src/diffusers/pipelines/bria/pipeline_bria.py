@@ -9,7 +9,6 @@ from transformers import (
     T5TokenizerFast,
 )
 
-import diffusers
 from diffusers import AutoencoderKL, DDIMScheduler, EulerAncestralDiscreteScheduler
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxLoraLoaderMixin
@@ -83,6 +82,7 @@ class BriaPipeline(FluxPipeline):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
     """
+
     model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->transformer->vae"
     _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
@@ -455,8 +455,6 @@ class BriaPipeline(FluxPipeline):
             latent_image_ids = latent_image_ids[0]
         if len(text_ids.shape) == 3:
             text_ids = text_ids[0]
-            
-
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
