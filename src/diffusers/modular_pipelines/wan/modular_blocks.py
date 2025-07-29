@@ -28,6 +28,21 @@ from .encoders import WanImageEncoderStep, WanTextEncoderStep, WanVaeEncoderStep
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class WanAutoImageEncoderStep(AutoPipelineBlocks):
+    block_classes = [WanImageEncoderStep]
+    block_names = ["image_encoder"]
+    block_trigger_inputs = ["image"]
+
+    @property
+    def description(self):
+        return (
+            "Image encoder step that encodes the image inputs into a conditioning embedding.\n"
+            + "This is an auto pipeline block that works for both first-frame and first-last-frame conditioning tasks.\n"
+            + " - `WanImageEncoderStep` (image_encoder) is used when `image`, and possibly `last_image` is provided."
+            + " - if `image` is not provided, this step will be skipped."
+        )
+
+
 class WanAutoVaeEncoderStep(AutoPipelineBlocks):
     block_classes = [WanVaeEncoderStep]
     block_names = ["img2vid"]
@@ -39,7 +54,7 @@ class WanAutoVaeEncoderStep(AutoPipelineBlocks):
             "Vae encoder step that encode the image inputs into their latent representations.\n"
             + "This is an auto pipeline block that works for both first-frame and first-last-frame conditioning tasks.\n"
             + " - `WanVaeEncoderStep` (img2vid) is used when `image`, and possibly `last_image` is provided."
-            + " - if `image` is provided, this step will be skipped."
+            + " - if `image` is not provided, this step will be skipped."
         )
 
 
@@ -215,7 +230,7 @@ IMAGE2VIDEO_BLOCKS = InsertableDict(
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", WanTextEncoderStep),
-        ("image_encoder", WanImageEncoderStep),
+        ("image_encoder", WanAutoImageEncoderStep),
         ("vae_encoder", WanAutoVaeEncoderStep),
         ("before_denoise", WanAutoBeforeDenoiseStep),
         ("denoise", WanAutoDenoiseStep),
