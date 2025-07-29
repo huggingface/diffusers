@@ -379,9 +379,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                 # if kwargs_type is provided, get all inputs with matching kwargs_type
                 if input_param.kwargs_type not in data:
                     data[input_param.kwargs_type] = {}
-                inputs_kwargs = state.get_by_kwargs(input_param.kwargs_type) or state.get_kwargs(
-                    input_param.kwargs_type
-                )
+                inputs_kwargs = state.get_by_kwargs(input_param.kwargs_type)
                 if inputs_kwargs:
                     for k, v in inputs_kwargs.items():
                         if v is not None:
@@ -405,6 +403,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                 if current_value is not param:  # Using identity comparison to check if object was modified
                     state.set(input_param.name, param, input_param.kwargs_type)
             elif input_param.kwargs_type:
+                import ipdb; ipdb.set_trace()
                 # if it is a kwargs type, e.g. "guider_input_fields", it is likely to be a list of parameters
                 # we need to first find out which inputs are and loop through them.
                 intermediate_kwargs = state.get_by_kwargs(input_param.kwargs_type)
