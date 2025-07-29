@@ -316,7 +316,6 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanImageToVideoPipeline.check_inputs
     def check_inputs(
         self,
         prompt,

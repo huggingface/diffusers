@@ -42,7 +42,7 @@ We encourage you to share your model with the community, and in order to do that
 Or login in from the terminal:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Since the model checkpoints are quite large, install [Git-LFS](https://git-lfs.com/) to version these large files:
