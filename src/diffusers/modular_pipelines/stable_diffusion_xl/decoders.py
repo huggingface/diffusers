@@ -24,7 +24,7 @@ from ...models import AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from ...utils import logging
 from ..modular_pipeline import (
-    PipelineBlock,
+    ModularPipelineBlocks,
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -33,7 +33,7 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class StableDiffusionXLDecodeStep(PipelineBlock):
+class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -56,11 +56,6 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("output_type", default="pil"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "latents",
                 required=True,
@@ -157,7 +152,7 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
+class StableDiffusionXLInpaintOverlayMaskStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
