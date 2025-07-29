@@ -322,11 +322,13 @@ There are still scenarios where recompulation is unavoidable, such as when the h
 <details>
 <summary>Technical details of hotswapping</summary>
 
-To enable hotswapping without triggering recompilation, two hurdles have to be overcome. First, the LoRA scaling factor has to be converted into torch tensors from floats, which is achieved fairly easily. Second, the shape of the LoRA weights needs to padded to the largest required shape. That way, the data in the weights can be replaced without the need to reassign the whole attribute. This is why the `max_rank` argument discussed above is crucial. As we pad the values with zeros, the results remain unchanged, although the computation is slowed down a bit depending on how large the padding is.
+The [`~loaders.lora_base.LoraBaseMixin.enable_lora_hotswap`] method converts the LoRA scaling factor from floats to torch.tensors and pads the shape of the weights to the largest required shape to avoid reassigning the whole attribute when the data in the weights are replaced.
 
-Since no new LoRA attributes are added, this also requires that each LoRA after the first one can only target the same layers, or a subset of layers, that the first one targets. Thus, choose the order of loading wisely. If LoRAs target disjoint layers, there is the possibility to create a dummy LoRA that targets the union of all target layers.
+This is why the `max_rank` argument is important. The results are unchanged even when the values are padded with zeros. Computation may be slower though depending on the padding size.
 
-To see the nitty-gritty of this implementation, visit the [`hotswap.py` file in PEFT](https://github.com/huggingface/peft/blob/92d65cafa51c829484ad3d95cf71d09de57ff066/src/peft/utils/hotswap.py).
+Since no new LoRA attributes are added, each subsequent LoRA is only allowed to target the same layers, or subset of layers, the first LoRA targets. Choosing the LoRA loading order is important because if the LoRAs target disjoint layers, you may end up creating a dummy LoRA that targets the union of all target layers.
+
+For more implementation details, take a look at the [`hotswap.py`](https://github.com/huggingface/peft/blob/92d65cafa51c829484ad3d95cf71d09de57ff066/src/peft/utils/hotswap.py) file.
 
 </details>
 
@@ -686,4 +688,4 @@ Browse the [LoRA Studio](https://lorastudio.co/models) for different LoRAs to us
 
 You can find additional LoRAs in the [FLUX LoRA the Explorer](https://huggingface.co/spaces/multimodalart/flux-lora-the-explorer) and [LoRA the Explorer](https://huggingface.co/spaces/multimodalart/LoraTheExplorer) Spaces.
 
-Check out our [post](https://huggingface.co/blog/lora-fast) on how to optimize LoRA inference for Flux family of models.
+Check out the [Fast LoRA inference for Flux with Diffusers and PEFT](https://huggingface.co/blog/lora-fast) blog post to learn how to optimize LoRA inference with methods like FlashAttention-3 and fp8 quantization.
