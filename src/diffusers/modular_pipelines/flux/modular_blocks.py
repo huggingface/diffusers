@@ -87,18 +87,8 @@ class FluxAutoDecodeStep(AutoPipelineBlocks):
 
 # text2image
 class FluxAutoBlocks(SequentialPipelineBlocks):
-    block_classes = [
-        FluxTextEncoderStep,
-        FluxAutoBeforeDenoiseStep,
-        FluxAutoDenoiseStep,
-        FluxAutoDecodeStep,
-    ]
-    block_names = [
-        "text_encoder",
-        "before_denoise",
-        "denoise",
-        "decoder",
-    ]
+    block_classes = [FluxTextEncoderStep, FluxAutoBeforeDenoiseStep, FluxAutoDenoiseStep, FluxAutoDecodeStep]
+    block_names = ["text_encoder", "before_denoise", "denoise", "decoder"]
 
     @property
     def description(self):
@@ -132,7 +122,4 @@ AUTO_BLOCKS = InsertableDict(
 )
 
 
-ALL_BLOCKS = {
-    "text2image": TEXT2IMAGE_BLOCKS,
-    "auto": AUTO_BLOCKS,
-}
+ALL_BLOCKS = {"text2image": TEXT2IMAGE_BLOCKS, "auto": AUTO_BLOCKS}
