@@ -23,9 +23,8 @@ from ..models._modeling_parallel import (
     ContextParallelInput,
     ContextParallelModelPlan,
     ContextParallelOutput,
-    ParallelConfig,
+    _InternalParallelConfig,
 )
-from ..models.attention_dispatch import _parallel_context
 from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
 from .hooks import HookRegistry, ModelHook
@@ -33,7 +32,6 @@ from .hooks import HookRegistry, ModelHook
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
-_CONTEXT_PARALLEL_MODEL_HOOK = "context_parallel_model_hook"
 _CONTEXT_PARALLEL_INPUT_HOOK_TEMPLATE = "cp_input---{}"
 _CONTEXT_PARALLEL_OUTPUT_HOOK_TEMPLATE = "cp_output---{}"
 
@@ -76,7 +74,7 @@ class ModuleForwardMetadata:
 
 def apply_context_parallel(
     module: torch.nn.Module,
-    parallel_config: ParallelConfig,
+    parallel_config: _InternalParallelConfig,
     plan: Dict[str, ContextParallelModelPlan],
 ) -> None:
     """Apply context parallel on a model."""
@@ -105,45 +103,26 @@ def apply_context_parallel(
             registry = HookRegistry.check_if_exists_or_initialize(m)
             registry.register_hook(hook, hook_name)
 
-    # HACK: we cannot use context managers or setattr or similar solutions in an overwritten forward
-    # diffusers hook method because Dynamo fails to trace it. Instead, we make use of module hooks
-    # available in pytorch to set the parallel context before/after the forward/backward pass.
-    # It is dirty, but fullgraph=True tracing works because of this and I haven't found a better solution yet.
-    # The previous/older implementation simply did this:
-    #     def new_forward(self, ...):
-    #         with _parallel_context(parallel_config):
-    #             return self.fn_ref.original_forward(*args, **kwargs)
-    # TODO: ask help from Pytorch team on how to improve this
-    @torch.compiler.disable
-    def forward_pre_hook(module, args):
-        module._diffusers_parallel_config_setter_context = _parallel_context(parallel_config)
-        module._diffusers_parallel_config_setter_context.__enter__()
 
-    @torch.compiler.disable
-    def forward_hook(module, args, output):
-        if module._diffusers_parallel_config_setter_context is not None:
-            module._diffusers_parallel_config_setter_context.__exit__(None, None, None)
-        module._diffusers_parallel_config_setter_context = None
+def remove_context_parallel(module: torch.nn.Module, plan: Dict[str, ContextParallelModelPlan]) -> None:
+    for module_id, cp_model_plan in plan.items():
+        submodule = _get_submodule_by_name(module, module_id)
+        if not isinstance(submodule, list):
+            submodule = [submodule]
 
-    @torch.compiler.disable
-    def backward_pre_hook(module, grad_output):
-        module._diffusers_parallel_config_setter_context = _parallel_context(parallel_config)
-        module._diffusers_parallel_config_setter_context.__enter__()
-
-    @torch.compiler.disable
-    def backward_hook(module, grad_output, grad_input):
-        if module._diffusers_parallel_config_setter_context is not None:
-            module._diffusers_parallel_config_setter_context.__exit__(None, None, None)
-        module._diffusers_parallel_config_setter_context = None
-
-    module.register_forward_pre_hook(forward_pre_hook)
-    module.register_forward_hook(forward_hook)
-    module.register_full_backward_pre_hook(backward_pre_hook)
-    module.register_full_backward_hook(backward_hook)
+        for m in submodule:
+            registry = HookRegistry.check_if_exists_or_initialize(m)
+            if isinstance(cp_model_plan, dict):
+                hook_name = _CONTEXT_PARALLEL_INPUT_HOOK_TEMPLATE.format(module_id)
+            elif isinstance(cp_model_plan, (ContextParallelOutput, list, tuple)):
+                hook_name = _CONTEXT_PARALLEL_OUTPUT_HOOK_TEMPLATE.format(module_id)
+            else:
+                raise ValueError(f"Unsupported context parallel model plan type: {type(cp_model_plan)}")
+            registry.remove_hook(hook_name)
 
 
 class ContextParallelSplitHook(ModelHook):
-    def __init__(self, metadata: ContextParallelModelPlan, parallel_config: ParallelConfig) -> None:
+    def __init__(self, metadata: ContextParallelModelPlan, parallel_config: _InternalParallelConfig) -> None:
         super().__init__()
         self.metadata = metadata
         self.parallel_config = parallel_config
@@ -228,7 +207,7 @@ class ContextParallelSplitHook(ModelHook):
 
 
 class ContextParallelGatherHook(ModelHook):
-    def __init__(self, metadata: ContextParallelModelPlan, parallel_config: ParallelConfig) -> None:
+    def __init__(self, metadata: ContextParallelModelPlan, parallel_config: _InternalParallelConfig) -> None:
         super().__init__()
         self.metadata = metadata
         self.parallel_config = parallel_config

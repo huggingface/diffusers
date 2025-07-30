@@ -63,6 +63,7 @@ from ..utils.hub_utils import (
     populate_model_card,
 )
 from ..utils.torch_utils import empty_device_cache
+from ._modeling_parallel import ContextParallelModelPlan, ParallelConfig, _InternalParallelConfig
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,
@@ -1501,19 +1502,20 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
             )
 
-    def parallelize(self, *, ring_degree: int = 1, ulysses_degree: int = 1, cp_plan=None):
-        from ..hooks.context_parallel import ParallelConfig, apply_context_parallel
+    @contextmanager
+    def parallelize(self, *, config: ParallelConfig, cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None):
+        from ..hooks.context_parallel import apply_context_parallel, remove_context_parallel
+        from .attention_dispatch import _AttentionBackendRegistry
 
-        # TODO(aryan): add cp_plan type hint
         logger.warning(
             "`parallelize` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
         )
 
         if not torch.distributed.is_initialized():
             raise RuntimeError("torch.distributed must be initialized before calling `parallelize`.")
-        if ring_degree < 1 or ulysses_degree < 1:
+        if config.ring_degree < 1 or config.ulysses_degree < 1:
             raise ValueError("`ring_degree` and `ulysses_degree` must be greater than or equal to 1.")
-        if ring_degree > 1 and ulysses_degree > 1:
+        if config.ring_degree > 1 and config.ulysses_degree > 1:
             raise ValueError(
                 "Unified Ulysses-Ring attention is not yet supported. Please set either `ring_degree` or `ulysses_degree` to 1."
             )
@@ -1521,9 +1523,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
 
-        if ring_degree * ulysses_degree > world_size:
+        if config.ring_degree * config.ulysses_degree > world_size:
             raise ValueError(
-                f"The product of `ring_degree` ({ring_degree}) and `ulysses_degree` ({ulysses_degree}) must not exceed the world size ({world_size})."
+                f"The product of `ring_degree` ({config.ring_degree}) and `ulysses_degree` ({config.ulysses_degree}) must not exceed the world size ({world_size})."
             )
 
         device_type = torch._C._get_accelerator().type
@@ -1532,14 +1534,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         cp_mesh = torch.distributed.device_mesh.init_device_mesh(
             device_type=device_type,
-            mesh_shape=(ring_degree, ulysses_degree),
+            mesh_shape=(config.ring_degree, config.ulysses_degree),
             mesh_dim_names=("ring", "ulysses"),
         )
-        parallel_config = ParallelConfig(
+        parallel_config = _InternalParallelConfig(
             rank=rank,
             world_size=world_size,
-            ring_degree=ring_degree,
-            ulysses_degree=ulysses_degree,
+            ring_degree=config.ring_degree,
+            ulysses_degree=config.ulysses_degree,
             device=device,
             cp_mesh=cp_mesh,
         )
@@ -1550,6 +1552,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         cp_plan = cp_plan if cp_plan is not None else self._cp_plan
 
         apply_context_parallel(self, parallel_config, cp_plan)
+        _AttentionBackendRegistry._parallel_config = parallel_config
+
+        yield
+
+        remove_context_parallel(self, cp_plan)
 
     @classmethod
     def _load_pretrained_model(

@@ -35,6 +35,18 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class ParallelConfig:
+    ring_degree: Optional[int] = None
+    ulysses_degree: Optional[int] = None
+
+    def __post_init__(self):
+        if self.ring_degree is None:
+            self.ring_degree = 1
+        if self.ulysses_degree is None:
+            self.ulysses_degree = 1
+
+
+@dataclass
+class _InternalParallelConfig:
     rank: int
     world_size: int
     ring_degree: int
