@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # ModularPipeline
 
-[`ModularPipeline`] converts [`~modular_pipelines.PipelineBlock`]'s into an executable pipeline that loads models and performs the computation steps defined in a block. It is the main interface for users to run a pipeline and it is very similar to the [`DiffusionPipeline`] API.
+[`ModularPipeline`] converts [`~modular_pipelines.PipelineBlock`]'s into an executable pipeline that loads models and performs the computation steps defined in the block. It is the main interface for running a pipeline and it is very similar to the [`DiffusionPipeline`] API.
 
 The main difference is to include an expected `output` argument in the pipeline.
 
@@ -130,7 +130,7 @@ There are two ways to create a [`ModularPipeline`]. Assemble and create a pipeli
 You should also initialize a [`ComponentsManager`] to handle device placement and memory and component management.
 
 > [!TIP]
-> Refer to the [ComponentsManager](./components_manager) for more details about how it can help manage components across different workflows.
+> Refer to the [ComponentsManager](./components_manager) doc for more details about how it can help manage components across different workflows.
 
 <hfoptions id="create">
 <hfoption id="PipelineBlocks">
@@ -176,7 +176,7 @@ diffdiff_pipeline = ModularPipeline.from_pretrained(modular_repo_id, trust_remot
 
 ## Loading components
 
-A [`ModularPipeline`] doesn't automatically instantiated with components. It only loads the configuration and component specifications. You can load all components with [`~ModularPipeline.load_default_components`] or only load specific components with [`~ModularPipeline.load_components`].
+A [`ModularPipeline`] doesn't automatically instantiate with components. It only loads the configuration and component specifications. You can load all components with [`~ModularPipeline.load_default_components`] or only load specific components with [`~ModularPipeline.load_components`].
 
 <hfoptions id="load">
 <hfoption id="load_default_components">
@@ -208,9 +208,9 @@ Print the pipeline to inspect the loaded pretrained components.
 t2i_pipeline
 ```
 
-This should match the `modular_model_index.json` file from the modular repository a pipeline is initialized from. It shows the loading specifications that match the pipeline's component requirements. If a pipeline doesn't need a component, that component won't be included even if it exists in the modular repository.
+This should match the `modular_model_index.json` file from the modular repository a pipeline is initialized from. If a pipeline doesn't need a component, it won't be included even if it exists in the modular repository.
 
-To modify where components are loaded, edit the `modular_model_index.json` file in the repository and change it to your desired loading path. The example below loads the UNet from a different repository.
+To modify where components are loaded from, edit the `modular_model_index.json` file in the repository and change it to your desired loading path. The example below loads a UNet from a different repository.
 
 ```json
 # original
@@ -259,7 +259,7 @@ t2i_pipeline.pretrained_component_names
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler', 'unet', 'vae']
 ```
 
-Use `config_component_names` to return components that are created with the default config (not loaded from a modular repository). Components from a config aren't included because they already initialized during pipeline creation. This is why they aren't listed in `null_component_names`.
+Use `config_component_names` to return components that are created with the default config (not loaded from a modular repository). Components from a config aren't included because they are already initialized during pipeline creation. This is why they aren't listed in `null_component_names`.
 
 ```py
 t2i_pipeline.config_component_names
@@ -273,9 +273,11 @@ Components may be updated depending on whether it is a *pretrained component* or
 > [!WARNING]
 > A component may change from pretrained to config when updating a component. The component type is initially defined in a block's `expected_components` field.
 
-A pretrained component requires updating with [`ComponentSpec`] whereas a config component can be updated by eihter passing the object directly or with [`ComponentSpec`]. The [`ComponentSpec`] shows `default_creation_method="from_pretrained"` for a pretrained component.
+A pretrained component is updated with [`ComponentSpec`] whereas a config component is updated by eihter passing the object directly or with [`ComponentSpec`].
 
-To update a pretrained component, create a [`ComponentSpec`] with the name of the component and where to load it from. Use the [`~ComponentSpec.load`] method to load the component. The [`ComponentSpec`] shows `default_creation_method="from_config` for a config component.
+The [`ComponentSpec`] shows `default_creation_method="from_pretrained"` for a pretrained component shows `default_creation_method="from_config` for a config component.
+
+To update a pretrained component, create a [`ComponentSpec`] with the name of the component and where to load it from. Use the [`~ComponentSpec.load`] method to load the component.
 
 ```py
 from diffusers import ComponentSpec, UNet2DConditionModel
@@ -294,7 +296,7 @@ When a component is updated, the loading specifications are also updated in the 
 
 ### Component extraction and modification
 
-When you use [`ComponentSpec.load`], the new component maintains its loading specifications. This makes it possible to extract the specification and recreate the component.
+When you use [`~ComponentSpec.load`], the new component maintains its loading specifications. This makes it possible to extract the specification and recreate the component.
 
 ```py
 spec = ComponentSpec.from_component("unet", unet2)

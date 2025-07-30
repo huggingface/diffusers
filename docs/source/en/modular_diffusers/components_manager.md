@@ -51,7 +51,7 @@ t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id, components_manager=comp
 </hfoption>
 </hfoptions>
 
-Components are only loaded and registered when using [`~ModularPipeline.load_components`] or [`~ModularPipeline.load_default_components`]. The example below uses [`~ModularPipeline.load_default_components`] to create a second pipeline that reuses all the components from the first one, and assign it to a different collection
+Components are only loaded and registered when using [`~ModularPipeline.load_components`] or [`~ModularPipeline.load_default_components`]. The example below uses [`~ModularPipeline.load_default_components`] to create a second pipeline that reuses all the components from the first one, and assigns it to a different collection
 
 ```py
 pipe.load_default_components()
@@ -68,7 +68,7 @@ comp_dict = comp.get_components_by_names(names=pipe2.null_component_names)
 pipe2.update_components(**comp_dict)
 ```
 
-To add individual components, use the [`~ComponentsManager.add`] method. This registers a component with a unique identifier.
+To add individual components, use the [`~ComponentsManager.add`] method. This registers a component with a unique id.
 
 ```py
 from diffusers import AutoModel
@@ -107,7 +107,7 @@ comp.get_one(name="unet", collection="sdxl")
 
 ### get_components_by_names
 
-The [`~ComponentsManager.get_components_by_names`] method accepts a list of names and returns a dictionary mapping names to components. This is especially useful with a [`ModularPipeline`] since they provide lists of required component names and the returned dictionary can be passed directly to [`~ModularPipeline.update_components`].
+The [`~ComponentsManager.get_components_by_names`] method accepts a list of names and returns a dictionary mapping names to components. This is especially useful with [`ModularPipeline`] since they provide lists of required component names and the returned dictionary can be passed directly to [`~ModularPipeline.update_components`].
 
 ```py
 component_dict = comp.get_components_by_names(names=["text_encoder", "unet", "vae"])
@@ -153,7 +153,7 @@ comp.add("text_encoder", text_encoder_2)
 
 ## Collections
 
-Collections are labels you can assign to components for better organization and management. Add a component to a collection with the `collection` argument in [`~ComponentsManager.add`].
+Collections are labels assigned to components for better organization and management. Add a component to a collection with the `collection` argument in [`~ComponentsManager.add`].
 
 Only one component per name is allowed in each collection. Adding a second component with the same name automatically removes the first component.
 
@@ -173,7 +173,7 @@ comp.add("unet", spec2.load(), collection="sdxl")
 
 This makes it convenient to work with node-based systems because you can:
 
-- Mark all models loaded from one node with the `collection` label.
+- Mark all models as loaded from one node with the `collection` label.
 - Automatically replace models when new checkpoints are loaded under the same name.
 - Batch delete all models in a collection when a node is removed.
 

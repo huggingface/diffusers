@@ -114,10 +114,8 @@
     title: Overview
   - local: modular_diffusers/quickstart
     title: Quickstart
-  - local: modular_diffusers/end_to_end_guide
-    title: End-to-end example
   - local: modular_diffusers/modular_diffusers_states
-    title: Block states
+    title: States
   - local: modular_diffusers/pipeline_block
     title: PipelineBlock
   - local: modular_diffusers/sequential_pipeline_blocks

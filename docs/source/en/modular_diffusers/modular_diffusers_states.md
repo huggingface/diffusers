@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Block states
+# States
 
 Blocks rely on the [`~modular_pipelines.PipelineState`] and [`~modular_pipelines.BlockState`] data structures for communicating and sharing data.
 
@@ -23,7 +23,7 @@ This guide explains how states work and how they connect blocks.
 
 ## PipelineState
 
-The [`~modular_pipelines.PipelineState`] is a global state container for all pipeline blocks. It maintains the complete runtime state of the pipeline and provides a structured way for blocks to read from and write to shared data.
+The [`~modular_pipelines.PipelineState`] is a global state container for all blocks. It maintains the complete runtime state of the pipeline and provides a structured way for blocks to read from and write to shared data.
 
 There are two dict's in [`~modular_pipelines.PipelineState`] for structuring data.
 
@@ -46,9 +46,9 @@ PipelineState(
 
 ## BlockState
 
-The [`~modular_pipelines.BlockState`] is a local view of the relevant variables, `inputs` and `intermediate_inputs`, that an individual pipeline block needs from [`~modular_pipelines.PipelineState`] for performing it's computations.
+The [`~modular_pipelines.BlockState`] is a local view of the relevant variables, `inputs` and `intermediate_inputs`, an individual block needs from [`~modular_pipelines.PipelineState`] for performing it's computations.
 
-You can access these variables directly as attributes like `block_state.image`.
+Access these variables directly as attributes like `block_state.image`.
 
 ```py
 BlockState(
@@ -74,7 +74,7 @@ def __call__(self, components, state):
 
 [`~modular_pipelines.PipelineState`] and [`~modular_pipelines.BlockState`] interaction is defined by a block's `inputs`, `intermediate_inputs`, and `intermediate_outputs`.
 
-- `inputs`, a block can modify an input - like `block_state.image` - but the change is local to the [`~modular_pipelines.BlockState`] and won't affect the original image in [`~modular_pipelines.PipelineState`].
+- `inputs`, a block can modify an input - like `block_state.image` - but the change is local to the [`~modular_pipelines.BlockState`] and won't affect the original input in [`~modular_pipelines.PipelineState`].
 - `intermediate_inputs`, is often values created from a previous block. When a block modifies `intermediate_inputs` - like `batch_size` - this change is reflected in both the [`~modular_pipelines.BlockState`] and [`~modular_pipelines.PipelineState`]. Any subsequent blocks are also affected.
 
   If a previous block doesn't provide an `intermediate_inputs`, then the pipeline makes it available as a user input. However, the value is still a mutable intermediate state.

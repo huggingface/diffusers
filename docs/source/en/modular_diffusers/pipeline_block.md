@@ -14,18 +14,18 @@ specific language governing permissions and limitations under the License.
 
 [`~modular_pipelines.PipelineBlock`] is the basic block for building a [`ModularPipeline`]. It defines what components, inputs/outputs, and computation a block should perform for a specific step in a pipeline. A [`~modular_pipelines.PipelineBlock`] connects with other blocks, using [state](./modular_diffusers_states), to enable the modular construction of workflows.
 
-A [`~modular_pipelines.PipelineBlock`] on it's own can't be run to generate anything. It is a blueprint for what a step should do in a pipeline. To actually run and execute a pipeline, the [`~modular_pipelines.PipelineBlock`] needs to be converted into a [`ModularPipeline`].
+A [`~modular_pipelines.PipelineBlock`] on it's own can't be executed. It is a blueprint for what a step should do in a pipeline. To actually run and execute a pipeline, the [`~modular_pipelines.PipelineBlock`] needs to be converted into a [`ModularPipeline`].
 
 This guide will show you how to create a [`~modular_pipelines.PipelineBlock`].
 
 ## Inputs and outputs
 
 > [!TIP]
-> Refer to the [Block states](./modular_diffusers_states) guide if you aren't familiar with how state works in Modular Diffusers.
+> Refer to the [States](./modular_diffusers_states) guide if you aren't familiar with how state works in Modular Diffusers.
 
 A [`~modular_pipelines.PipelineBlock`] requires `inputs`, `intermediate_inputs`, and `intermediate_outputs`.
 
-- `inputs` are values provided by a user and they are retrieved from the [`~modular_pipelines.PipelineState`], which means `inputs` can't be modified. This is useful because some workflows resize an image, but the original image is still required. The [`~modular_pipelines.PipelineState`] maintains the original image.
+- `inputs` are values provided by a user and retrieved from the [`~modular_pipelines.PipelineState`], which means `inputs` can't be modified. This is useful because some workflows resize an image, but the original image is still required. The [`~modular_pipelines.PipelineState`] maintains the original image.
 
     Use `InputParam` to define `inputs`.
 
@@ -37,7 +37,7 @@ A [`~modular_pipelines.PipelineBlock`] requires `inputs`, `intermediate_inputs`,
     ]
     ```
 
-- `intermediate_inputs` are values are typically created from a previous block but it can also be directly provided if no preceding block generates them. Unlike `inputs`, `intermediate_inputs` can be modified.
+- `intermediate_inputs` are values typically created from a previous block but it can also be directly provided if no preceding block generates them. Unlike `inputs`, `intermediate_inputs` can be modified.
 
     Use `InputParam` to define `intermediate_inputs`.
 
@@ -59,13 +59,13 @@ A [`~modular_pipelines.PipelineBlock`] requires `inputs`, `intermediate_inputs`,
     ]
     ```
 
-The intermediate inputs and outputs work together to connect blocks by sharing data between them. They are accessible at any point, allowing you to track the workflow's progress.
+The intermediate inputs and outputs share data to connect blocks. They are accessible at any point, allowing you to track the workflow's progress.
 
 ## Computation logic
 
-The computation a block performs is defined in the `__call__` method which follows a specific structure.
+The computation a block performs is defined in the `__call__` method and it follows a specific structure.
 
-1. Retrieve the [`~modular_pipelines.BlockState`] to get a local view of the `inputs` and `intermediate_inputs` it needs from [`~modular_pipelines.PipelineState`].
+1. Retrieve the [`~modular_pipelines.BlockState`] to get a local view of the `inputs` and `intermediate_inputs`.
 2. Implement the computation logic on the `inputs` and `intermediate_inputs`.
 3. Update [`~modular_pipelines.PipelineState`] to push changes from the local [`~modular_pipelines.BlockState`] back to the global [`~modular_pipelines.PipelineState`].
 4. Return the components and state which becomes available to the next block.
@@ -84,7 +84,7 @@ def __call__(self, components, state):
     return components, state
 ```
 
-### Components and Configs
+### Components and configs
 
 The components and pipeline-level configs a block needs are specified in [`ComponentSpec`] and [`~modular_pipelines.ConfigSpec`].
 

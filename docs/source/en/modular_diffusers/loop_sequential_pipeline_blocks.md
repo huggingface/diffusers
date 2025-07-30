@@ -18,7 +18,7 @@ This guide shows you how to create [`~modular_pipelines.LoopSequentialPipelineBl
 
 ## Loop wrapper
 
-[`~modular_pipelines.LoopSequentialPipelineBlocks`], is also known as the *loop wrapper* because defines the loop structure, iteration variables, and configuration. Within the loop wrapper, define the following variables.
+[`~modular_pipelines.LoopSequentialPipelineBlocks`], is also known as the *loop wrapper* because it defines the loop structure, iteration variables, and configuration. Within the loop wrapper, you need the following variables.
 
 - `loop_inputs` are user provided values and equivalent to [`~modular_pipelines.PipelineBlock.inputs`].
 - `loop_intermediate_inputs` are intermediate variables from the [`~modular_pipelines.PipelineState`] and equivalent to [`~modular_pipelines.PipelineBlock.intermediate_inputs`].
@@ -54,9 +54,9 @@ The loop wrapper can pass additional arguments, like current iteration index, to
 
 A loop block is a [`~modular_pipelines.PipelineBlock`], but the `__call__` method behaves differently.
 
-- The `__call__` method recieves the iteration variable from the loop wrapper.
-- The `__call__` method works directly with the [`~modular_pipelines.BlockState`] instead of the [`~modular_pipelines.PipelineState`].
-- The `__call__` method doesn't require retrieving or updating the [`~modular_pipelines.BlockState`].
+- It recieves the iteration variable from the loop wrapper.
+- It works directly with the [`~modular_pipelines.BlockState`] instead of the [`~modular_pipelines.PipelineState`].
+- It doesn't require retrieving or updating the [`~modular_pipelines.BlockState`].
 
 Loop blocks share the same [`~modular_pipelines.BlockState`] to allow values to accumulate and change for each iteration in the loop.
 

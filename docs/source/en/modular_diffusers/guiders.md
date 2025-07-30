@@ -30,7 +30,7 @@ ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.classifier_free
 Switch to a different guider by passing the new guider to [`~ModularPipeline.update_components`].
 
 > [!TIP]
-> Changing guiders will return some text letting you know you're changing the guider type.
+> Changing guiders will return text letting you know you're changing the guider type.
 > ```bash
 > ModularPipeline.update_components: adding guider with new type: PerturbedAttentionGuidance, previous type: ClassifierFreeGuidance
 > ```
@@ -148,10 +148,10 @@ Edit the `modular_model_index.json` file and add a loading specification for the
 </hfoption>
 <hfoption id="update_components">
 
-Change the [`~ComponentSpec.default_creation_method`] to `"from_pretrained"` and use [`~ModularPipeline.update_components`] to update the guider and component specifications as well as the pipeline config.
+Change the [`~ComponentSpec.default_creation_method`] to `from_pretrained` and use [`~ModularPipeline.update_components`] to update the guider and component specifications as well as the pipeline config.
 
 > [!TIP]
-> Changing the creation method will return some text letting you know you're changing the creation type to `from_pretrained`.
+> Changing the creation method will return text letting you know you're changing the creation type to `from_pretrained`.
 > ```bash
 > ModularPipeline.update_components: changing the default_creation_method of guider from from_config to from_pretrained.
 > ```
@@ -165,7 +165,7 @@ pag_guider = guider_spec.load()
 t2i_pipeline.update_components(guider=pag_guider)
 ```
 
-To make it the default guider for a pipeline, call [`~utils.PushToHubMixin.push_to_hub`]. This is an optional step and not necessary if you only want to experiment locally.
+To make it the default guider for a pipeline, call [`~utils.PushToHubMixin.push_to_hub`]. This is an optional step and not necessary if you are only experimenting locally.
 
 ```py
 t2i_pipeline.push_to_hub("YiYiXu/modular-doc-guider")
