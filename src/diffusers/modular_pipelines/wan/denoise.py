@@ -23,8 +23,8 @@ from ...schedulers import UniPCMultistepScheduler
 from ...utils import logging
 from ..modular_pipeline import (
     BlockState,
-    LoopSequentialPipelineBlocks,
-    PipelineBlock,
+    LoopSequentialModularPipelineBlockss,
+    ModularPipelineBlocks,
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -34,7 +34,7 @@ from .modular_pipeline import WanModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanLoopDenoiser(PipelineBlock):
+class WanLoopDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -53,7 +53,7 @@ class WanLoopDenoiser(PipelineBlock):
     def description(self) -> str:
         return (
             "Step within the denoising loop that denoise the latents with guidance. "
-            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialModularPipelineBlockss` "
             "object (e.g. `WanDenoiseLoopWrapper`)"
         )
 
@@ -132,7 +132,7 @@ class WanLoopDenoiser(PipelineBlock):
         return components, block_state
 
 
-class WanLoopAfterDenoiser(PipelineBlock):
+class WanLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -145,7 +145,7 @@ class WanLoopAfterDenoiser(PipelineBlock):
     def description(self) -> str:
         return (
             "step within the denoising loop that update the latents. "
-            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialModularPipelineBlockss` "
             "object (e.g. `WanDenoiseLoopWrapper`)"
         )
 
@@ -181,7 +181,7 @@ class WanLoopAfterDenoiser(PipelineBlock):
         return components, block_state
 
 
-class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+class WanDenoiseLoopWrapper(LoopSequentialModularPipelineBlockss):
     model_name = "wan"
 
     @property
