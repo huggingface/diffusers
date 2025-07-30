@@ -615,9 +615,6 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
             if input_name is not None and state.get(input_name) is not None:
                 block = self.trigger_to_block_map[input_name]
                 break
-            elif input_name is not None and state.get(input_name) is not None:
-                block = self.trigger_to_block_map[input_name]
-                break
 
         if block is None:
             logger.warning(f"skipping auto block: {self.__class__.__name__}")
