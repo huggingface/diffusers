@@ -41,7 +41,7 @@ class LTXVideoAttentionProcessor2_0:
         deprecation_message = "`LTXVideoAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `LTXVideoAttnProcessor`"
         deprecate("LTXVideoAttentionProcessor2_0", "1.0.0", deprecation_message)
 
-        return LTXAttnProcessor(*args, **kwargs)
+        return LTXVideoAttnProcessor(*args, **kwargs)
 
 
 class LTXVideoAttnProcessor:
@@ -110,8 +110,8 @@ class LTXVideoAttnProcessor:
 
 
 class LTXAttention(torch.nn.Module, AttentionModuleMixin):
-    _default_processor_cls = LTXAttnProcessor
-    _available_processors = [LTXAttnProcessor]
+    _default_processor_cls = LTXVideoAttnProcessor
+    _available_processors = [LTXVideoAttnProcessor]
 
     def __init__(
         self,
@@ -128,7 +128,7 @@ class LTXAttention(torch.nn.Module, AttentionModuleMixin):
     ):
         super().__init__()
         if qk_norm != "rms_norm_across_heads":
-            raise NotImplementedError
+            raise NotImplementedError("Only 'rms_norm_across_heads' is supported as a valid value for `qk_norm`.")
 
         self.head_dim = dim_head
         self.inner_dim = dim_head * heads
@@ -140,7 +140,8 @@ class LTXAttention(torch.nn.Module, AttentionModuleMixin):
         self.out_dim = query_dim
         self.heads = heads
 
-        norm_eps, norm_elementwise_affine = 1e-5, True
+        norm_eps = 1e-5
+        norm_elementwise_affine = True
         self.norm_q = torch.nn.RMSNorm(dim_head * heads, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.norm_k = torch.nn.RMSNorm(dim_head * kv_heads, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
@@ -166,7 +167,7 @@ class LTXAttention(torch.nn.Module, AttentionModuleMixin):
         unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
         if len(unused_kwargs) > 0:
             logger.warning(
-                f"joint_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
+                f"attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
             )
         kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb, **kwargs)
