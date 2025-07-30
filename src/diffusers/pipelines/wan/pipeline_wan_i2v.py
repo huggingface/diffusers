@@ -760,7 +760,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         return_dict=False,
                     )[0]
 
-
                 if self.do_classifier_free_guidance:
                     with current_model.cache_context("uncond"):
                         noise_uncond = current_model(
