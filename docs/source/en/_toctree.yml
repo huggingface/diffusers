@@ -179,7 +179,7 @@
   isExpanded: false
   sections:
   - local: quantization/overview
-    title: Getting Started
+    title: Getting started
   - local: quantization/bitsandbytes
     title: bitsandbytes
   - local: quantization/gguf

@@ -61,6 +61,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
         ("wan", "WanModularPipeline"),
+        ("flux", "FluxModularPipeline"),
     ]
 )
 
@@ -68,6 +69,7 @@ MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
     [
         ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
         ("WanModularPipeline", "WanAutoBlocks"),
+        ("FluxModularPipeline", "FluxAutoBlocks"),
     ]
 )
 
@@ -1663,7 +1665,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
             if input_param.name:
                 value = state.get_intermediate(input_param.name)
                 if input_param.required and value is None:
-                    raise ValueError(f"Required intermediate input '{input_param.name}' is missing")
+                    raise ValueError(f"Required intermediate input '{input_param.name}' is missing.")
                 elif value is not None or (value is None and input_param.name not in data):
                     data[input_param.name] = value
             elif input_param.kwargs_type:
