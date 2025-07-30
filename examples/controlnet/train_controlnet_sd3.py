@@ -928,7 +928,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
@@ -1330,7 +1330,7 @@ def main(args):
                 # controlnet(s) inference
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
                 controlnet_image = vae.encode(controlnet_image).latent_dist.sample()
-                controlnet_image = controlnet_image * vae.config.scaling_factor
+                controlnet_image = (controlnet_image - vae.config.shift_factor) * vae.config.scaling_factor
 
                 control_block_res_samples = controlnet(
                     hidden_states=noisy_model_input,

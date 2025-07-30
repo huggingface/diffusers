@@ -407,7 +407,7 @@ class ConfigMixin:
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
                     " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
-                    " token having permission to this repo with `token` or log in with `huggingface-cli login`."
+                    " token having permission to this repo with `token` or log in with `hf auth login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
@@ -763,4 +763,7 @@ class LegacyConfigMixin(ConfigMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_config(config, return_unused_kwargs, **kwargs)
+        if remapped_class is cls:
+            return super(LegacyConfigMixin, remapped_class).from_config(config, return_unused_kwargs, **kwargs)
+        else:
+            return remapped_class.from_config(config, return_unused_kwargs, **kwargs)

@@ -42,7 +42,7 @@ Stable Diffusion 모델들은 학습 및 저장된 프레임워크와 다운로�
 시작하기 전에 스크립트를 실행할 🤗 Diffusers의 로컬 클론(clone)이 있는지 확인하고 Hugging Face 계정에 로그인하여 pull request를 열고 변환된 모델을 허브에 푸시할 수 있도록 하세요.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 스크립트를 사용하려면:

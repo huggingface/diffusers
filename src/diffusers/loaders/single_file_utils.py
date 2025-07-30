@@ -46,6 +46,7 @@ from ..utils import (
 )
 from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..utils.hub_utils import _get_model_file
+from ..utils.torch_utils import empty_device_cache
 
 
 if is_transformers_available():
@@ -1689,6 +1690,7 @@ def create_diffusers_clip_model_from_ldm(
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        empty_device_cache()
     else:
         model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
@@ -2148,6 +2150,7 @@ def create_diffusers_t5_model_from_checkpoint(
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        empty_device_cache()
     else:
         model.load_state_dict(diffusers_format_checkpoint)
 
