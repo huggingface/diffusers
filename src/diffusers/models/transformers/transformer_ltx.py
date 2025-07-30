@@ -38,13 +38,13 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class LTXVideoAttentionProcessor2_0:
     def __new__(cls, *args, **kwargs):
-        deprecation_message = "`LTXVideoAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `LTXVideoAttentionProcessor2_0`"
+        deprecation_message = "`LTXVideoAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `LTXVideoAttnProcessor`"
         deprecate("LTXVideoAttentionProcessor2_0", "1.0.0", deprecation_message)
 
         return LTXAttnProcessor(*args, **kwargs)
 
 
-class LTXAttnProcessor:
+class LTXVideoAttnProcessor:
     r"""
     Processor for implementing attention (SDPA is used by default if you're using PyTorch 2.0). This is used in the LTX
     model. It applies a normalization layer and rotary embedding on the query and key vector.
