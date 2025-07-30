@@ -125,7 +125,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     model_cpu_offload_seq = "text_encoder->transformer->transformer_2->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-    _optional_components = ["transformer_2"]
+    _optional_components = ["transformer", "transformer_2"]
 
     def __init__(
         self,
@@ -536,7 +536,11 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels if self.transformer is not None else self.transformer_2.config.in_channels
+        num_channels_latents = (
+            self.transformer.config.in_channels
+            if self.transformer is not None
+            else self.transformer_2.config.in_channels
+        )
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
