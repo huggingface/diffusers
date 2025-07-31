@@ -114,8 +114,8 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         parallel_weights (`float` or `List[float]`, *optional*):
             Optional weights for the parallel component of each frequency component of the projected CFG shift. If not
             set, the weights will default to `1.0` for all components, which corresponds to using the normal CFG shift
-            (that is, equal weights for the parallel and orthogonal components). If a list is supplied, it should be
-            the same length as `guidance_scales`.
+            (that is, equal weights for the parallel and orthogonal components). If set, a value in `[0, 1]` is
+            recommended. If a list is supplied, it should be the same length as `guidance_scales`.
         use_original_formulation (`bool`, defaults to `False`):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
             we use the diffusers-native implementation that has been in the codebase for a long time. See
