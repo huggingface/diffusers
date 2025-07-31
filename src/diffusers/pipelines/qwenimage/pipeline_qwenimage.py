@@ -23,7 +23,6 @@ from transformers import (
 )
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKLQwenImage, QwenImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -138,8 +137,6 @@ def retrieve_timesteps(
 
 class QwenImagePipeline(
     DiffusionPipeline,
-    FromSingleFileMixin,
-    TextualInversionLoaderMixin,
 ):
     r"""
     The QwenImage pipeline for text-to-image generation.
@@ -157,9 +154,6 @@ class QwenImagePipeline(
         tokenizer (`QwenTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
-        tokenizer_2 (`T5TokenizerFast`):
-            Second Tokenizer of class
-            [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -300,53 +294,6 @@ class QwenImagePipeline(
         text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
         return prompt_embeds, prompt_embeds_mask, text_ids
-
-    def encode_image(self, image, device, num_images_per_prompt):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
-
-        image = image.to(device=device, dtype=dtype)
-        image_embeds = self.image_encoder(image).image_embeds
-        image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-        return image_embeds
-
-    def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
-    ):
-        image_embeds = []
-        if ip_adapter_image_embeds is None:
-            if not isinstance(ip_adapter_image, list):
-                ip_adapter_image = [ip_adapter_image]
-
-            if len(ip_adapter_image) != self.transformer.encoder_hid_proj.num_ip_adapters:
-                raise ValueError(
-                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
-                )
-
-            for single_ip_adapter_image in ip_adapter_image:
-                single_image_embeds = self.encode_image(single_ip_adapter_image, device, 1)
-                image_embeds.append(single_image_embeds[None, :])
-        else:
-            if not isinstance(ip_adapter_image_embeds, list):
-                ip_adapter_image_embeds = [ip_adapter_image_embeds]
-
-            if len(ip_adapter_image_embeds) != self.transformer.encoder_hid_proj.num_ip_adapters:
-                raise ValueError(
-                    f"`ip_adapter_image_embeds` must have same length as the number of IP Adapters. Got {len(ip_adapter_image_embeds)} image embeds and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
-                )
-
-            for single_image_embeds in ip_adapter_image_embeds:
-                image_embeds.append(single_image_embeds)
-
-        ip_adapter_image_embeds = []
-        for single_image_embeds in image_embeds:
-            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
-            single_image_embeds = single_image_embeds.to(device=device)
-            ip_adapter_image_embeds.append(single_image_embeds)
-
-        return ip_adapter_image_embeds
 
     def check_inputs(
         self,
