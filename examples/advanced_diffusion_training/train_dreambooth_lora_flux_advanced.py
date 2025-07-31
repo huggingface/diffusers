@@ -1,3 +1,21 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "torch",
+#   "torchvision",
+#   "diffusers",
+#   "transformers",
+#   "accelerate",
+#   "peft",
+#   "safetensors",
+#   "huggingface_hub",
+#   "datasets",
+#   "Pillow",
+#   "tqdm",
+#   "bitsandbytes"
+# ]
+# ///
+
 #!/usr/bin/env python
 # coding=utf-8
 # Copyright 2025 The HuggingFace Inc. team. All rights reserved.
