@@ -45,6 +45,7 @@ from ..utils import (
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
+    ENV_VARS_TRUE_VALUES,
     WEIGHTS_NAME,
     _add_variant,
     _get_checkpoint_shard_files,
@@ -959,8 +960,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
-        # TODO: enable TRUE ENV VARs
-        is_parallel_loading_enabled = bool(os.environ.get("HF_ENABLE_PARALLEL_LOADING", 0))
+        is_parallel_loading_enabled = os.environ.get("HF_ENABLE_PARALLEL_LOADING", "").upper() in ENV_VARS_TRUE_VALUES
 
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
             raise NotImplementedError("Parallel loading is not supported when not using `low_cpu_mem_usage`.")
