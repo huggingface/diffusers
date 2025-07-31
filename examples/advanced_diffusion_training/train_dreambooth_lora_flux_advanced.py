@@ -3,7 +3,7 @@
 # dependencies = [
 #   "torch",
 #   "torchvision",
-#   "git+https://github.com/huggingface/diffusers.git",
+#   "diffusers @ git+https://github.com/huggingface/diffusers.git@main",
 #   "transformers",
 #   "accelerate",
 #   "peft",
