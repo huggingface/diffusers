@@ -163,6 +163,7 @@ else:
         [
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
+            "AttentionBackendName",
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
@@ -219,6 +220,7 @@ else:
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
+            "SkyReelsV2Transformer3DModel",
             "SparseControlNetModel",
             "StableAudioDiTModel",
             "StableCascadeUNet",
@@ -237,6 +239,7 @@ else:
             "VQModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
+            "attention_backend",
         ]
     )
     _import_structure["modular_pipelines"].extend(
@@ -361,8 +364,12 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "FluxAutoBlocks",
+            "FluxModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
+            "WanAutoBlocks",
+            "WanModularPipeline",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -488,6 +495,11 @@ else:
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
+            "SkyReelsV2DiffusionForcingImageToVideoPipeline",
+            "SkyReelsV2DiffusionForcingPipeline",
+            "SkyReelsV2DiffusionForcingVideoToVideoPipeline",
+            "SkyReelsV2ImageToVideoPipeline",
+            "SkyReelsV2Pipeline",
             "StableAudioPipeline",
             "StableAudioProjectionModel",
             "StableCascadeCombinedPipeline",
@@ -809,6 +821,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
+            AttentionBackendName,
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
@@ -865,6 +878,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
+            SkyReelsV2Transformer3DModel,
             SparseControlNetModel,
             StableAudioDiTModel,
             T2IAdapter,
@@ -882,6 +896,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            attention_backend,
         )
         from .modular_pipelines import (
             ComponentsManager,
@@ -986,8 +1001,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            FluxAutoBlocks,
+            FluxModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
+            WanAutoBlocks,
+            WanModularPipeline,
         )
         from .pipelines import (
             AllegroPipeline,
@@ -1109,6 +1128,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
+            SkyReelsV2DiffusionForcingImageToVideoPipeline,
+            SkyReelsV2DiffusionForcingPipeline,
+            SkyReelsV2DiffusionForcingVideoToVideoPipeline,
+            SkyReelsV2ImageToVideoPipeline,
+            SkyReelsV2Pipeline,
             StableAudioPipeline,
             StableAudioProjectionModel,
             StableCascadeCombinedPipeline,

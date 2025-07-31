@@ -175,6 +175,8 @@ def get_device():
         return "npu"
     elif hasattr(torch, "xpu") and torch.xpu.is_available():
         return "xpu"
+    elif torch.backends.mps.is_available():
+        return "mps"
     else:
         return "cpu"
 
@@ -182,5 +184,14 @@ def get_device():
 def empty_device_cache(device_type: Optional[str] = None):
     if device_type is None:
         device_type = get_device()
+    if device_type in ["cpu"]:
+        return
     device_mod = getattr(torch, device_type, torch.cuda)
     device_mod.empty_cache()
+
+
+def device_synchronize(device_type: Optional[str] = None):
+    if device_type is None:
+        device_type = get_device()
+    device_mod = getattr(torch, device_type, torch.cuda)
+    device_mod.synchronize()

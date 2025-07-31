@@ -24,6 +24,7 @@ from typing_extensions import Self
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
+from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
@@ -430,6 +431,7 @@ class FromOriginalModelMixin:
                 keep_in_fp32_modules=keep_in_fp32_modules,
                 unexpected_keys=unexpected_keys,
             )
+            empty_device_cache()
         else:
             _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
 

@@ -2109,14 +2109,15 @@ class PeftLoraLoaderMixinTests:
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
     def test_layerwise_casting_inference_denoiser(self):
-        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
 
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
             if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
                 patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
             for name, submodule in module.named_modules():
-                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                if not isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     continue
                 dtype_to_check = storage_dtype
                 if "lora" in name or any(re.search(pattern, name) for pattern in patterns_to_check):
@@ -2167,10 +2168,10 @@ class PeftLoraLoaderMixinTests:
         See the docstring of [`hooks.layerwise_casting.PeftInputAutocastDisableHook`] for more details.
         """
 
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
         from diffusers.hooks.layerwise_casting import (
             _PEFT_AUTOCAST_DISABLE_HOOK,
             DEFAULT_SKIP_MODULES_PATTERN,
-            SUPPORTED_PYTORCH_LAYERS,
             apply_layerwise_casting,
         )
 
@@ -2180,7 +2181,7 @@ class PeftLoraLoaderMixinTests:
         def check_module(denoiser):
             # This will also check if the peft layers are in torch.float8_e4m3fn dtype (unlike test_layerwise_casting_inference_denoiser)
             for name, module in denoiser.named_modules():
-                if not isinstance(module, SUPPORTED_PYTORCH_LAYERS):
+                if not isinstance(module, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     continue
                 dtype_to_check = storage_dtype
                 if any(re.search(pattern, name) for pattern in patterns_to_check):
@@ -2510,3 +2511,34 @@ class PeftLoraLoaderMixinTests:
                 # materializes the test methods on invocation which cannot be overridden.
                 return
         self._test_group_offloading_inference_denoiser(offload_type, use_stream)
+
+    @require_torch_accelerator
+    def test_lora_loading_model_cpu_offload(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            self.pipeline_class.save_lora_weights(
+                save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
+            )
+            # reinitialize the pipeline to mimic the inference workflow.
+            components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+            pipe = self.pipeline_class(**components)
+            pipe.enable_model_cpu_offload(device=torch_device)
+            pipe.load_lora_weights(tmpdirname)
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        output_lora_loaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(np.allclose(output_lora, output_lora_loaded, atol=1e-3, rtol=1e-3))

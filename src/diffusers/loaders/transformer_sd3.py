@@ -19,6 +19,7 @@ from ..models.embeddings import IPAdapterTimeImageProjection
 from ..models.model_loading_utils import load_model_dict_into_meta
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..utils import is_accelerate_available, is_torch_version, logging
+from ..utils.torch_utils import empty_device_cache
 
 
 logger = logging.get_logger(__name__)
@@ -80,6 +81,8 @@ class SD3Transformer2DLoadersMixin:
                 load_model_dict_into_meta(
                     attn_procs[name], layer_state_dict[idx], device_map=device_map, dtype=self.dtype
                 )
+
+        empty_device_cache()
 
         return attn_procs
 
@@ -148,6 +151,7 @@ class SD3Transformer2DLoadersMixin:
         else:
             device_map = {"": self.device}
             load_model_dict_into_meta(image_proj, updated_state_dict, device_map=device_map, dtype=self.dtype)
+            empty_device_cache()
 
         return image_proj
 
