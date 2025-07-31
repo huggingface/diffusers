@@ -523,7 +523,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         if not lora_layers:
             raise ValueError("You must pass at least one of `unet_lora_layers` or `text_encoder_lora_layers`.")
 
-        # Delegate to the base helper method
         cls._save_lora_weights(
             save_directory=save_directory,
             lora_layers=lora_layers,
@@ -2420,7 +2419,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if not lora_layers:
             raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        # Delegate to the base helper method
         cls._save_lora_weights(
             save_directory=save_directory,
             lora_layers=lora_layers,
