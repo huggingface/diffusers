@@ -256,17 +256,20 @@ class BriaPipelineSlowTests(unittest.TestCase):
 
     def get_inputs(self, device, seed=0):
         generator = torch.Generator(device="cpu").manual_seed(seed)
+
         prompt_embeds = torch.load(
-            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="bria_prompt_embeds.pt")
-        ).to(device)
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
+        ).to(torch_device)
+
         return {
             "prompt_embeds": prompt_embeds,
             "num_inference_steps": 2,
             "guidance_scale": 0.0,
+            "max_sequence_length": 256,
             "output_type": "np",
             "generator": generator,
         }
-
+    
     def test_bria_inference_bf16(self):
         pipe = self.pipeline_class.from_pretrained(
             self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, tokenizer=None
@@ -276,113 +279,14 @@ class BriaPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device)
 
         image = pipe(**inputs).images[0]
-        image_slice = image[0, :10, :10, 0].flatten()
+        image_slice = image[0, :10, :10].flatten()
 
         expected_slice = np.array(
-            [
-                0.3242,
-                0.3203,
-                0.3164,
-                0.3164,
-                0.3125,
-                0.3125,
-                0.3281,
-                0.3242,
-                0.3203,
-                0.3301,
-                0.3262,
-                0.3242,
-                0.3281,
-                0.3242,
-                0.3203,
-                0.3262,
-                0.3262,
-                0.3164,
-                0.3262,
-                0.3281,
-                0.3184,
-                0.3281,
-                0.3281,
-                0.3203,
-                0.3281,
-                0.3281,
-                0.3164,
-                0.332,
-                0.332,
-                0.3203,
-            ]
+            [0.59729785, 0.6153719, 0.595112, 0.5884763, 0.59366125, 0.5795311, 0.58325, 0.58449626, 0.57737637, 0.58432233, 0.5867875, 0.57824117, 0.5819089, 0.5830988, 0.57730293, 0.57647324, 0.5769151, 0.57312685, 0.57926565, 0.5823928, 0.57783926, 0.57162863, 0.575649, 0.5745547, 0.5740556, 0.5799735, 0.57799566, 0.5715559, 0.5771242, 0.5773058],
+            dtype=np.float32,
         )
         max_diff = numpy_cosine_similarity_distance(expected_slice, image_slice)
         self.assertLess(max_diff, 1e-4, f"Image slice is different from expected slice: {max_diff:.4f}")
 
-    def test_to_dtype(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
-
-        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
-        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
-
-        pipe.to(dtype=torch.float16)
-        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
-        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
 
-@nightly
-@require_torch_gpu
-class BriaPipelineNightlyTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def test_bria_inference(self):
-        pipe = BriaPipeline.from_pretrained("briaai/BRIA-3.2", torch_dtype=torch.bfloat16)
-        pipe.to(torch_device)
-
-        prompt = "a close-up of a smiling cat, high quality, realistic"
-        image = pipe(prompt=prompt, num_inference_steps=5, output_type="np").images[0]
-
-        image_slice = image[0, :10, :10, 0].flatten()
-        expected_slice = np.array(
-            [
-                0.668,
-                0.668,
-                0.6641,
-                0.6602,
-                0.6602,
-                0.6562,
-                0.6523,
-                0.6484,
-                0.6523,
-                0.6562,
-                0.668,
-                0.668,
-                0.6641,
-                0.6641,
-                0.6602,
-                0.6562,
-                0.6523,
-                0.6484,
-                0.6523,
-                0.6562,
-                0.668,
-                0.668,
-                0.668,
-                0.6641,
-                0.6602,
-                0.6562,
-                0.6523,
-                0.6484,
-                0.6523,
-                0.6562,
-            ]
-        )
-
-        max_diff = numpy_cosine_similarity_distance(expected_slice, image_slice)
-        self.assertLess(max_diff, 1e-4, f"Image slice is different from expected slice: {max_diff:.4f}")

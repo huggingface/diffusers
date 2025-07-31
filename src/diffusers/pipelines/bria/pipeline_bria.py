@@ -186,9 +186,10 @@ class BriaPipeline(FluxPipeline):
         self.default_sample_size = 64  # due to patchify=> 128,128 => res of 1k,1k
 
         # T5 is senstive to precision so we use the precision used for precompute and cast as needed
-        self.text_encoder = self.text_encoder.to(dtype=T5_PRECISION)
-        for block in self.text_encoder.encoder.block:
-            block.layer[-1].DenseReluDense.wo.to(dtype=torch.float32)
+        if self.text_encoder is not None:
+            self.text_encoder = self.text_encoder.to(dtype=T5_PRECISION)
+            for block in self.text_encoder.encoder.block:
+                block.layer[-1].DenseReluDense.wo.to(dtype=torch.float32)
 
         if self.vae.config.shift_factor is None:
             self.vae.config.shift_factor = 0
@@ -664,9 +665,10 @@ class BriaPipeline(FluxPipeline):
     def to(self, *args, **kwargs):
         DiffusionPipeline.to(self, *args, **kwargs)
         # T5 is senstive to precision so we use the precision used for precompute and cast as needed
-        self.text_encoder = self.text_encoder.to(dtype=T5_PRECISION)
-        for block in self.text_encoder.encoder.block:
-            block.layer[-1].DenseReluDense.wo.to(dtype=torch.float32)
+        if self.text_encoder is not None:
+            self.text_encoder = self.text_encoder.to(dtype=T5_PRECISION)
+            for block in self.text_encoder.encoder.block:
+                block.layer[-1].DenseReluDense.wo.to(dtype=torch.float32)
 
         if self.vae.config.shift_factor == 0 and self.vae.dtype != torch.float32:
             self.vae.to(dtype=torch.float32)
