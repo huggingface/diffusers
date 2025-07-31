@@ -127,6 +127,11 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["flex"] = [
+        "Flex2Pipeline",
+        "Flex2PipelineOutput",
+    ]
+
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -608,6 +613,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
         )
+        from .flex import Flex2Pipeline, Flex2PipelineOutput
         from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
