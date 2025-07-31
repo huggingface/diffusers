@@ -19,7 +19,7 @@ The `train_dreambooth_flux.py` script shows how to implement the training proced
 > As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 This will also allow us to push the trained model parameters to the Hugging Face Hub platform.
