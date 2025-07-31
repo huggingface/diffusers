@@ -12,7 +12,10 @@
 #   "datasets",
 #   "Pillow",
 #   "tqdm",
-#   "bitsandbytes"
+#   "bitsandbytes",
+#   "sentencepiece",
+#   "protobuf",
+#   "prodigyopt",
 # ]
 # ///
 
