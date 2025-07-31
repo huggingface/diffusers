@@ -41,11 +41,11 @@ from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
+    ENV_VARS_TRUE_VALUES,
     FLAX_WEIGHTS_NAME,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
-    ENV_VARS_TRUE_VALUES,
     WEIGHTS_NAME,
     _add_variant,
     _get_checkpoint_shard_files,
@@ -1547,7 +1547,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             # load_state_dict will manage the case where we pass a dict instead of a file
             # if state dict is not None, it means that we don't need to read the files from resolved_model_file also
             resolved_model_file = [state_dict]
-        is_file = resolved_model_file and state_dict is None
 
         # prepare the arguments.
         args_list = [
@@ -1572,7 +1571,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             for shard_file in resolved_model_file
         ]
 
-        if is_parallel_loading_enabled and is_file:
+        if is_parallel_loading_enabled:
             offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_shard_files_with_threadpool(
                 args_list
             )
