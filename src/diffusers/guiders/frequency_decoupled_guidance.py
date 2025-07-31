@@ -37,21 +37,25 @@ else:
     build_laplacian_pyramid_func = None
 
 
-def project(v0: torch.Tensor, v1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def project(v0: torch.Tensor, v1: torch.Tensor, upcast_to_double: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Project vector v0 onto vector v1, returning the parallel and orthogonal components of v0. Implementation from
     paper (Algorithm 2).
     """
     # v0 shape: [B, ...]
     # v1 shape: [B, ...]
-    dtype = v0.dtype
     # Assume first dim is a batch dim and all other dims are channel or "spatial" dims
     all_dims_but_first = list(range(1, len(v0.shape)))
-    v0, v1 = v0.double(), v1.double()
+    if upcast_to_double:
+        dtype = v0.dtype
+        v0, v1 = v0.double(), v1.double()
     v1 = torch.nn.functional.normalize(v1, dim=all_dims_but_first)
     v0_parallel = (v0 * v1).sum(dim=all_dims_but_first, keepdim=True) * v1
     v0_orthogonal = v0 - v0_parallel
-    return v0_parallel.to(dtype), v0_orthogonal.to(dtype)
+    if upcast_to_double:
+        v0_parallel = v0_parallel.to(dtype)
+        v0_orthogonal = v0_orthogonal.to(dtype)
+    return v0_parallel, v0_orthogonal
 
 
 def build_image_from_pyramid(pyramid: List[torch.Tensor]) -> torch.Tensor:
@@ -127,6 +131,9 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             `"freq"` space (right after the CFG update, for each freq level). Note that frequency space rescaling is
             speculative and may not produce expected results. If `"data"` is set, the first `guidance_rescale` value
             will be used; otherwise, per-frequency-level guidance rescale values will be used if available.
+        upcast_to_double (`bool`, defaults to `True`):
+            Whether to upcast certain operations, such as the projection operation when using `parallel_weights`, to
+            float64 when performing guidance. This may result in better performance at the cost of increased runtime.
     """
 
     _input_predictions = ["pred_cond", "pred_uncond"]
@@ -141,6 +148,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         start: Union[float, List[float], Tuple[float]] = 0.0,
         stop: Union[float, List[float], Tuple[float]] = 1.0,
         guidance_rescale_space: str = "data",
+        upcast_to_double: bool = True,
     ):
         if not _CAN_USE_KORNIA:
             raise ImportError(
@@ -188,6 +196,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             )
 
         self.use_original_formulation = use_original_formulation
+        self.upcast_to_double = upcast_to_double
 
         if isinstance(start, float):
             self.guidance_start = [start] * self.levels
@@ -244,7 +253,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
 
                     # Apply parallel weights, if used (1.0 corresponds to using the normal CFG shift)
                     if not math.isclose(parallel_weight, 1.0):
-                        shift_parallel, shift_orthogonal = project(shift, pred_cond_freq)
+                        shift_parallel, shift_orthogonal = project(shift, pred_cond_freq, self.upcast_to_double)
                         shift = parallel_weight * shift_parallel + shift_orthogonal
 
                     # Apply CFG update for the current frequency level
