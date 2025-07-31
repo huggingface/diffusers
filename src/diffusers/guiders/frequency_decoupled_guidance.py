@@ -144,8 +144,9 @@ class FrequencyDecoupledGuidance(BaseGuidance):
     ):
         if not _CAN_USE_KORNIA:
             raise ImportError(
-                "The `FrequencyDecoupledGuidance` guider cannot be instantiated because the `kornia` library on which"
-                "it depends is not available in the current environment."
+                "The `FrequencyDecoupledGuidance` guider cannot be instantiated because the `kornia` library on which "
+                "it depends is not available in the current environment. You can install `kornia` with `pip install "
+                "kornia`."
             )
 
         # Set start to earliest start for any freq component and stop to latest stop for any freq component
