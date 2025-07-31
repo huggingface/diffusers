@@ -1078,16 +1078,13 @@ class LoraBaseMixin:
         state_dict = {}
         final_lora_adapter_metadata = {}
 
-        # Pack the weights for each component (e.g., 'unet', 'text_encoder')
         for prefix, layers in lora_layers.items():
             state_dict.update(cls.pack_weights(layers, prefix))
 
-        # Pack the metadata for each component
         for prefix, metadata in lora_metadata.items():
             if metadata:
                 final_lora_adapter_metadata.update(_pack_dict_with_prefix(metadata, prefix))
 
-        # Call the existing writer function
         cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
