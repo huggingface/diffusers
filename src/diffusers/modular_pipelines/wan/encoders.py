@@ -296,7 +296,7 @@ class WanImageEncoderStep(PipelineBlock):
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
-                "encoder_hidden_states_image",
+                "image_embeds",
                 type_hint=torch.Tensor,
                 description="image embeddings used to guide the image generation",
             ),
@@ -335,7 +335,7 @@ class WanImageEncoderStep(PipelineBlock):
         if block_state.last_image is not None:
             image = [block_state.image, block_state.last_image]
 
-        block_state.encoder_hidden_states_image = self.encode_image(components, image, block_state.device)
+        block_state.image_embeds = self.encode_image(components, image, block_state.device)
 
         # Add outputs
         self.set_block_state(state, block_state)
