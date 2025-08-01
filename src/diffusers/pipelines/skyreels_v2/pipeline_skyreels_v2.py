@@ -275,7 +275,6 @@ class SkyReelsV2Pipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixin):
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
