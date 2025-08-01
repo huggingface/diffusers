@@ -13,6 +13,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
+# /// script
+# dependencies = [
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
+#     "torch>=2.0.0",
+#     "accelerate>=1.0.0",
+#     "transformers>=4.47.0",
+#     "ftfy",
+#     "tensorboard",
+#     "Jinja2",
+#     "peft>=0.14.0",
+#     "sentencepiece",
+# ]
+# ///
+
 import argparse
 import copy
 import itertools
