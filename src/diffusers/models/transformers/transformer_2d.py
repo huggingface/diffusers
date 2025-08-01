@@ -96,6 +96,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         caption_channels: int = None,
         interpolation_scale: float = None,
         use_additional_conditions: Optional[bool] = None,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
 

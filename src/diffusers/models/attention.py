@@ -899,6 +899,7 @@ class BasicTransformerBlock(nn.Module):
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
                 out_bias=attention_out_bias,
+                qk_norm=qk_norm,
             )  # is self-attn if encoder_hidden_states is none
         else:
             if norm_type == "ada_norm_single":  # For Latte

@@ -66,6 +66,7 @@ def get_down_block(
     attention_head_dim: Optional[int] = None,
     downsample_type: Optional[str] = None,
     dropout: float = 0.0,
+    qk_norm: Optional[str] = None,
 ):
     # If attn head dim is not defined, we default it to the number of heads
     if attention_head_dim is None:
@@ -122,6 +123,7 @@ def get_down_block(
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             downsample_type=downsample_type,
+            qk_norm=qk_norm,
         )
     elif down_block_type == "CrossAttnDownBlock2D":
         if cross_attention_dim is None:
@@ -146,6 +148,7 @@ def get_down_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             attention_type=attention_type,
+            qk_norm=qk_norm,
         )
     elif down_block_type == "SimpleCrossAttnDownBlock2D":
         if cross_attention_dim is None:
@@ -167,6 +170,7 @@ def get_down_block(
             output_scale_factor=resnet_out_scale_factor,
             only_cross_attention=only_cross_attention,
             cross_attention_norm=cross_attention_norm,
+            qk_norm=qk_norm,
         )
     elif down_block_type == "SkipDownBlock2D":
         return SkipDownBlock2D(
@@ -193,6 +197,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            qk_norm=qk_norm,
         )
     elif down_block_type == "DownEncoderBlock2D":
         return DownEncoderBlock2D(
@@ -220,6 +225,7 @@ def get_down_block(
             downsample_padding=downsample_padding,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            qk_norm=qk_norm,
         )
     elif down_block_type == "KDownBlock2D":
         return KDownBlock2D(
@@ -245,6 +251,7 @@ def get_down_block(
             cross_attention_dim=cross_attention_dim,
             attention_head_dim=attention_head_dim,
             add_self_attention=True if not add_downsample else False,
+            qk_norm=qk_norm,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -270,6 +277,7 @@ def get_mid_block(
     cross_attention_norm: Optional[str] = None,
     attention_head_dim: Optional[int] = 1,
     dropout: float = 0.0,
+    qk_norm: Optional[str] = None,
 ):
     if mid_block_type == "UNetMidBlock2DCrossAttn":
         return UNetMidBlock2DCrossAttn(
@@ -288,6 +296,7 @@ def get_mid_block(
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
             attention_type=attention_type,
+            qk_norm=qk_norm,
         )
     elif mid_block_type == "UNetMidBlock2DSimpleCrossAttn":
         return UNetMidBlock2DSimpleCrossAttn(
@@ -304,6 +313,7 @@ def get_mid_block(
             skip_time_act=resnet_skip_time_act,
             only_cross_attention=mid_block_only_cross_attention,
             cross_attention_norm=cross_attention_norm,
+            qk_norm=qk_norm,
         )
     elif mid_block_type == "UNetMidBlock2D":
         return UNetMidBlock2D(
@@ -351,6 +361,7 @@ def get_up_block(
     attention_head_dim: Optional[int] = None,
     upsample_type: Optional[str] = None,
     dropout: float = 0.0,
+    qk_norm: Optional[str] = None,
 ) -> nn.Module:
     # If attn head dim is not defined, we default it to the number of heads
     if attention_head_dim is None:
@@ -416,6 +427,7 @@ def get_up_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             attention_type=attention_type,
+            qk_norm=qk_norm,
         )
     elif up_block_type == "SimpleCrossAttnUpBlock2D":
         if cross_attention_dim is None:
@@ -439,6 +451,7 @@ def get_up_block(
             output_scale_factor=resnet_out_scale_factor,
             only_cross_attention=only_cross_attention,
             cross_attention_norm=cross_attention_norm,
+            qk_norm=qk_norm,
         )
     elif up_block_type == "AttnUpBlock2D":
         if add_upsample is False:
@@ -460,6 +473,7 @@ def get_up_block(
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             upsample_type=upsample_type,
+            qk_norm=qk_norm,
         )
     elif up_block_type == "SkipUpBlock2D":
         return SkipUpBlock2D(
@@ -489,6 +503,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            qk_norm=qk_norm,
         )
     elif up_block_type == "UpDecoderBlock2D":
         return UpDecoderBlock2D(
@@ -518,6 +533,7 @@ def get_up_block(
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             temb_channels=temb_channels,
+            qk_norm=qk_norm,
         )
     elif up_block_type == "KUpBlock2D":
         return KUpBlock2D(
@@ -544,6 +560,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
             attention_head_dim=attention_head_dim,
+            qk_norm=qk_norm,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -632,6 +649,7 @@ class UNetMidBlock2D(nn.Module):
         add_attention: bool = True,
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -693,6 +711,7 @@ class UNetMidBlock2D(nn.Module):
                         bias=True,
                         upcast_softmax=True,
                         _from_deprecated_attn_block=True,
+                        qk_norm=qk_norm,
                     )
                 )
             else:
@@ -770,6 +789,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
         attention_type: str = "default",
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
 
@@ -908,6 +928,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         skip_time_act: bool = False,
         only_cross_attention: bool = False,
         cross_attention_norm: Optional[str] = None,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
 
@@ -954,6 +975,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                     only_cross_attention=only_cross_attention,
                     cross_attention_norm=cross_attention_norm,
                     processor=processor,
+                    qk_norm=qk_norm,
                 )
             )
             resnets.append(
@@ -1032,6 +1054,7 @@ class AttnDownBlock2D(nn.Module):
         output_scale_factor: float = 1.0,
         downsample_padding: int = 1,
         downsample_type: str = "conv",
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -1072,6 +1095,7 @@ class AttnDownBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     _from_deprecated_attn_block=True,
+                    qk_norm=qk_norm,
                 )
             )
 
@@ -1168,6 +1192,7 @@ class CrossAttnDownBlock2D(nn.Module):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         attention_type: str = "default",
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -1207,6 +1232,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
+                        qk_norm=qk_norm,
                     )
                 )
             else:
@@ -1218,6 +1244,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        qk_norm=qk_norm,
                     )
                 )
         self.attentions = nn.ModuleList(attentions)
@@ -1464,6 +1491,7 @@ class AttnDownEncoderBlock2D(nn.Module):
         output_scale_factor: float = 1.0,
         add_downsample: bool = True,
         downsample_padding: int = 1,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -1518,6 +1546,7 @@ class AttnDownEncoderBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     _from_deprecated_attn_block=True,
+                    qk_norm=qk_norm,
                 )
             )
 
@@ -1566,6 +1595,7 @@ class AttnSkipDownBlock2D(nn.Module):
         attention_head_dim: int = 1,
         output_scale_factor: float = np.sqrt(2.0),
         add_downsample: bool = True,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         self.attentions = nn.ModuleList([])
@@ -1606,6 +1636,7 @@ class AttnSkipDownBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     _from_deprecated_attn_block=True,
+                    qk_norm=qk_norm,
                 )
             )
 
@@ -1863,6 +1894,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         skip_time_act: bool = False,
         only_cross_attention: bool = False,
         cross_attention_norm: Optional[str] = None,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
 
@@ -1909,6 +1941,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     only_cross_attention=only_cross_attention,
                     cross_attention_norm=cross_attention_norm,
                     processor=processor,
+                    qk_norm=qk_norm,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -2079,6 +2112,7 @@ class KCrossAttnDownBlock2D(nn.Module):
         add_self_attention: bool = False,
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -2116,6 +2150,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     add_self_attention=add_self_attention,
                     cross_attention_norm="layer_norm",
                     group_size=resnet_group_size,
+                    qk_norm=qk_norm,
                 )
             )
 
@@ -2200,6 +2235,7 @@ class AttnUpBlock2D(nn.Module):
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         upsample_type: str = "conv",
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -2243,6 +2279,7 @@ class AttnUpBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     _from_deprecated_attn_block=True,
+                    qk_norm=qk_norm,
                 )
             )
 
@@ -2336,6 +2373,7 @@ class CrossAttnUpBlock2D(nn.Module):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         attention_type: str = "default",
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -2378,6 +2416,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
+                        qk_norm=qk_norm,
                     )
                 )
             else:
@@ -2389,6 +2428,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        qk_norm=qk_norm,
                     )
                 )
         self.attentions = nn.ModuleList(attentions)
@@ -2662,6 +2702,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
         temb_channels: Optional[int] = None,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -2719,6 +2760,7 @@ class AttnUpDecoderBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     _from_deprecated_attn_block=True,
+                    qk_norm=qk_norm,
                 )
             )
 
@@ -2761,6 +2803,7 @@ class AttnSkipUpBlock2D(nn.Module):
         attention_head_dim: int = 1,
         output_scale_factor: float = np.sqrt(2.0),
         add_upsample: bool = True,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         self.attentions = nn.ModuleList([])
@@ -2804,6 +2847,7 @@ class AttnSkipUpBlock2D(nn.Module):
                 bias=True,
                 upcast_softmax=True,
                 _from_deprecated_attn_block=True,
+                qk_norm=qk_norm,
             )
         )
 
@@ -3110,6 +3154,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         skip_time_act: bool = False,
         only_cross_attention: bool = False,
         cross_attention_norm: Optional[str] = None,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -3157,6 +3202,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     only_cross_attention=only_cross_attention,
                     cross_attention_norm=cross_attention_norm,
                     processor=processor,
+                    qk_norm=qk_norm,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -3341,6 +3387,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         cross_attention_dim: int = 768,
         add_upsample: bool = True,
         upcast_attention: bool = False,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         resnets = []
@@ -3397,6 +3444,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     add_self_attention=add_self_attention,
                     cross_attention_norm="layer_norm",
                     upcast_attention=upcast_attention,
+                    qk_norm=qk_norm,
                 )
             )
 
@@ -3497,6 +3545,7 @@ class KAttentionBlock(nn.Module):
         add_self_attention: bool = False,
         cross_attention_norm: Optional[str] = None,
         group_size: int = 32,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         self.add_self_attention = add_self_attention
@@ -3512,6 +3561,7 @@ class KAttentionBlock(nn.Module):
                 bias=attention_bias,
                 cross_attention_dim=None,
                 cross_attention_norm=None,
+                qk_norm=qk_norm,
             )
 
         # 2. Cross-Attn
@@ -3525,6 +3575,7 @@ class KAttentionBlock(nn.Module):
             bias=attention_bias,
             upcast_attention=upcast_attention,
             cross_attention_norm=cross_attention_norm,
+            qk_norm=qk_norm,
         )
 
     def _to_3d(self, hidden_states: torch.Tensor, height: int, weight: int) -> torch.Tensor:
