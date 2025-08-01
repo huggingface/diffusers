@@ -330,6 +330,8 @@ def _load_lora_into_text_encoder(
     hotswap: bool = False,
     metadata=None,
 ):
+    from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
 
@@ -391,7 +393,9 @@ def _load_lora_into_text_encoder(
             adapter_name = get_adapter_name(text_encoder)
 
         # <Unsafe code
-        is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
+        is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = _func_optionally_disable_offloading(
+            _pipeline
+        )
         # inject LoRA layers and load the state dict
         # in transformers we automatically check whether the adapter name is already in use or not
         text_encoder.load_adapter(
@@ -410,6 +414,10 @@ def _load_lora_into_text_encoder(
             _pipeline.enable_model_cpu_offload()
         elif is_sequential_cpu_offload:
             _pipeline.enable_sequential_cpu_offload()
+        elif is_group_offload:
+            for component in _pipeline.components.values():
+                if isinstance(component, torch.nn.Module):
+                    _maybe_remove_and_reapply_group_offloading(component)
         # Unsafe code />
 
     if prefix is not None and not state_dict:
@@ -433,30 +441,38 @@ def _func_optionally_disable_offloading(_pipeline):
 
     Returns:
         tuple:
-            A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
+            A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` or `is_group_offload` is True.
     """
+    from ..hooks.group_offloading import _is_group_offload_enabled
+
     is_model_cpu_offload = False
     is_sequential_cpu_offload = False
+    is_group_offload = False
 
     if _pipeline is not None and _pipeline.hf_device_map is None:
         for _, component in _pipeline.components.items():
-            if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
-                if not is_model_cpu_offload:
-                    is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
-                if not is_sequential_cpu_offload:
-                    is_sequential_cpu_offload = (
-                        isinstance(component._hf_hook, AlignDevicesHook)
-                        or hasattr(component._hf_hook, "hooks")
-                        and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
-                    )
+            if not isinstance(component, nn.Module):
+                continue
+            is_group_offload = is_group_offload or _is_group_offload_enabled(component)
+            if not hasattr(component, "_hf_hook"):
+                continue
+            is_model_cpu_offload = is_model_cpu_offload or isinstance(component._hf_hook, CpuOffload)
+            is_sequential_cpu_offload = is_sequential_cpu_offload or (
+                isinstance(component._hf_hook, AlignDevicesHook)
+                or hasattr(component._hf_hook, "hooks")
+                and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+            )
 
-                logger.info(
-                    "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                )
-                if is_sequential_cpu_offload or is_model_cpu_offload:
-                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+        if is_sequential_cpu_offload or is_model_cpu_offload:
+            logger.info(
+                "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+            )
+            for _, component in _pipeline.components.items():
+                if not isinstance(component, nn.Module) or not hasattr(component, "_hf_hook"):
+                    continue
+                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-    return (is_model_cpu_offload, is_sequential_cpu_offload)
+    return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
 
 
 class LoraBaseMixin:
@@ -921,6 +937,27 @@ class LoraBaseMixin:
         Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
         you want to load multiple adapters and free some GPU memory.
 
+        After offloading the LoRA adapters to CPU, as long as the rest of the model is still on GPU, the LoRA adapters
+        can no longer be used for inference, as that would cause a device mismatch. Remember to set the device back to
+        GPU before using those LoRA adapters for inference.
+
+        ```python
+        >>> pipe.load_lora_weights(path_1, adapter_name="adapter-1")
+        >>> pipe.load_lora_weights(path_2, adapter_name="adapter-2")
+        >>> pipe.set_adapters("adapter-1")
+        >>> image_1 = pipe(**kwargs)
+        >>> # switch to adapter-2, offload adapter-1
+        >>> pipeline.set_lora_device(adapter_names=["adapter-1"], device="cpu")
+        >>> pipeline.set_lora_device(adapter_names=["adapter-2"], device="cuda:0")
+        >>> pipe.set_adapters("adapter-2")
+        >>> image_2 = pipe(**kwargs)
+        >>> # switch back to adapter-1, offload adapter-2
+        >>> pipeline.set_lora_device(adapter_names=["adapter-2"], device="cpu")
+        >>> pipeline.set_lora_device(adapter_names=["adapter-1"], device="cuda:0")
+        >>> pipe.set_adapters("adapter-1")
+        >>> ...
+        ```
+
         Args:
             adapter_names (`List[str]`):
                 List of adapters to send device to.
@@ -936,6 +973,10 @@ class LoraBaseMixin:
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
                         for adapter_name in adapter_names:
+                            if adapter_name not in module.lora_A:
+                                # it is sufficient to check lora_A
+                                continue
+
                             module.lora_A[adapter_name].to(device)
                             module.lora_B[adapter_name].to(device)
                             # this is a param, not a module, so device placement is not in-place -> re-assign
@@ -1022,15 +1063,3 @@ class LoraBaseMixin:
     @classmethod
     def _optionally_disable_offloading(cls, _pipeline):
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
-
-    @classmethod
-    def _fetch_state_dict(cls, *args, **kwargs):
-        deprecation_message = f"Using the `_fetch_state_dict()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _fetch_state_dict`."
-        deprecate("_fetch_state_dict", "0.35.0", deprecation_message)
-        return _fetch_state_dict(*args, **kwargs)
-
-    @classmethod
-    def _best_guess_weight_name(cls, *args, **kwargs):
-        deprecation_message = f"Using the `_best_guess_weight_name()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _best_guess_weight_name`."
-        deprecate("_best_guess_weight_name", "0.35.0", deprecation_message)
-        return _best_guess_weight_name(*args, **kwargs)

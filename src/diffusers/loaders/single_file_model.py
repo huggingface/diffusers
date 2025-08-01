@@ -24,6 +24,7 @@ from typing_extensions import Self
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
+from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
@@ -31,6 +32,7 @@ from .single_file_utils import (
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_chroma_transformer_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
+    convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
@@ -135,12 +137,20 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "WanVACETransformer3DModel": {
+        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "AutoencoderKLWan": {
         "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
         "default_subfolder": "vae",
     },
     "HiDreamImageTransformer2DModel": {
         "checkpoint_mapping_fn": convert_hidream_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "CosmosTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
 }
@@ -421,6 +431,7 @@ class FromOriginalModelMixin:
                 keep_in_fp32_modules=keep_in_fp32_modules,
                 unexpected_keys=unexpected_keys,
             )
+            empty_device_cache()
         else:
             _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
 

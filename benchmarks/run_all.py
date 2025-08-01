@@ -1,101 +1,84 @@
 import glob
+import logging
+import os
 import subprocess
-import sys
-from typing import List
+
+import pandas as pd
 
 
-sys.path.append(".")
-from benchmark_text_to_image import ALL_T2I_CKPTS  # noqa: E402
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
-
-PATTERN = "benchmark_*.py"
+PATTERN = "benchmarking_*.py"
+FINAL_CSV_FILENAME = "collated_results.csv"
+GITHUB_SHA = os.getenv("GITHUB_SHA", None)
 
 
 class SubprocessCallException(Exception):
     pass
 
 
-# Taken from `test_examples_utils.py`
-def run_command(command: List[str], return_stdout=False):
-    """
-    Runs `command` with `subprocess.check_output` and will potentially return the `stdout`. Will also properly capture
-    if an error occurred while running `command`
-    """
+def run_command(command: list[str], return_stdout=False):
     try:
         output = subprocess.check_output(command, stderr=subprocess.STDOUT)
-        if return_stdout:
-            if hasattr(output, "decode"):
-                output = output.decode("utf-8")
-            return output
+        if return_stdout and hasattr(output, "decode"):
+            return output.decode("utf-8")
     except subprocess.CalledProcessError as e:
-        raise SubprocessCallException(
-            f"Command `{' '.join(command)}` failed with the following error:\n\n{e.output.decode()}"
-        ) from e
+        raise SubprocessCallException(f"Command `{' '.join(command)}` failed with:\n{e.output.decode()}") from e
 
 
-def main():
-    python_files = glob.glob(PATTERN)
+def merge_csvs(final_csv: str = "collated_results.csv"):
+    all_csvs = glob.glob("*.csv")
+    all_csvs = [f for f in all_csvs if f != final_csv]
+    if not all_csvs:
+        logger.info("No result CSVs found to merge.")
+        return
 
-    for file in python_files:
-        print(f"****** Running file: {file} ******")
-
-        # Run with canonical settings.
-        if file != "benchmark_text_to_image.py" and file != "benchmark_ip_adapters.py":
-            command = f"python {file}"
-            run_command(command.split())
-
-            command += " --run_compile"
-            run_command(command.split())
-
-    # Run variants.
-    for file in python_files:
-        # See: https://github.com/pytorch/pytorch/issues/129637
-        if file == "benchmark_ip_adapters.py":
+    df_list = []
+    for f in all_csvs:
+        try:
+            d = pd.read_csv(f)
+        except pd.errors.EmptyDataError:
+            # If a file existed but was zero‐bytes or corrupted, skip it
             continue
+        df_list.append(d)
 
-        if file == "benchmark_text_to_image.py":
-            for ckpt in ALL_T2I_CKPTS:
-                command = f"python {file} --ckpt {ckpt}"
+    if not df_list:
+        logger.info("All result CSVs were empty or invalid; nothing to merge.")
+        return
 
-                if "turbo" in ckpt:
-                    command += " --num_inference_steps 1"
+    final_df = pd.concat(df_list, ignore_index=True)
+    if GITHUB_SHA is not None:
+        final_df["github_sha"] = GITHUB_SHA
+    final_df.to_csv(final_csv, index=False)
+    logger.info(f"Merged {len(all_csvs)} partial CSVs → {final_csv}.")
 
-                run_command(command.split())
 
-                command += " --run_compile"
-                run_command(command.split())
+def run_scripts():
+    python_files = sorted(glob.glob(PATTERN))
+    python_files = [f for f in python_files if f != "benchmarking_utils.py"]
 
-        elif file == "benchmark_sd_img.py":
-            for ckpt in ["stabilityai/stable-diffusion-xl-refiner-1.0", "stabilityai/sdxl-turbo"]:
-                command = f"python {file} --ckpt {ckpt}"
+    for file in python_files:
+        script_name = file.split(".py")[0].split("_")[-1]  # example: benchmarking_foo.py -> foo
+        logger.info(f"\n****** Running file: {file} ******")
 
-                if ckpt == "stabilityai/sdxl-turbo":
-                    command += " --num_inference_steps 2"
+        partial_csv = f"{script_name}.csv"
+        if os.path.exists(partial_csv):
+            logger.info(f"Found {partial_csv}. Removing for safer numbers and duplication.")
+            os.remove(partial_csv)
 
-                run_command(command.split())
-                command += " --run_compile"
-                run_command(command.split())
+        command = ["python", file]
+        try:
+            run_command(command)
+            logger.info(f"→ {file} finished normally.")
+        except SubprocessCallException as e:
+            logger.info(f"Error running {file}:\n{e}")
+        finally:
+            logger.info(f"→ Merging partial CSVs after {file} …")
+            merge_csvs(final_csv=FINAL_CSV_FILENAME)
 
-        elif file in ["benchmark_sd_inpainting.py", "benchmark_ip_adapters.py"]:
-            sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
-            command = f"python {file} --ckpt {sdxl_ckpt}"
-            run_command(command.split())
-
-            command += " --run_compile"
-            run_command(command.split())
-
-        elif file in ["benchmark_controlnet.py", "benchmark_t2i_adapter.py"]:
-            sdxl_ckpt = (
-                "diffusers/controlnet-canny-sdxl-1.0"
-                if "controlnet" in file
-                else "TencentARC/t2i-adapter-canny-sdxl-1.0"
-            )
-            command = f"python {file} --ckpt {sdxl_ckpt}"
-            run_command(command.split())
-
-            command += " --run_compile"
-            run_command(command.split())
+    logger.info(f"\nAll scripts attempted. Final collated CSV: {FINAL_CSV_FILENAME}")
 
 
 if __name__ == "__main__":
-    main()
+    run_scripts()

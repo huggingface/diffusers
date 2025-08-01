@@ -359,7 +359,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 We encourage you to store or share your model with the community. To use huggingface hub, please login to your Hugging Face account, or ([create one](https://huggingface.co/docs/diffusers/main/en/training/hf.co/join) if you don’t have one already):
 
 ```sh
-huggingface-cli login
+hf auth login
 ```
 
 Make sure you have the `MODEL_DIR`,`OUTPUT_DIR` and `HUB_MODEL_ID` environment variables set. The `OUTPUT_DIR` and `HUB_MODEL_ID` variables specify where to save the model to on the Hub:

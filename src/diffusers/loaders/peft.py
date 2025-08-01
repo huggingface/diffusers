@@ -163,6 +163,8 @@ class PeftAdapterMixin:
         from peft import inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
 
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -243,12 +245,19 @@ class PeftAdapterMixin:
                     k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
                 }
 
-            # create LoraConfig
-            lora_config = _create_lora_config(state_dict, network_alphas, metadata, rank)
-
             # adapter_name
             if adapter_name is None:
                 adapter_name = get_adapter_name(self)
+
+            # create LoraConfig
+            lora_config = _create_lora_config(
+                state_dict,
+                network_alphas,
+                metadata,
+                rank,
+                model_state_dict=self.state_dict(),
+                adapter_name=adapter_name,
+            )
 
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
@@ -256,7 +265,9 @@ class PeftAdapterMixin:
 
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error.
-            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
+                _pipeline
+            )
             peft_kwargs = {}
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
@@ -347,6 +358,10 @@ class PeftAdapterMixin:
                 _pipeline.enable_model_cpu_offload()
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
+            elif is_group_offload:
+                for component in _pipeline.components.values():
+                    if isinstance(component, torch.nn.Module):
+                        _maybe_remove_and_reapply_group_offloading(component)
             # Unsafe code />
 
         if prefix is not None and not state_dict:
@@ -681,11 +696,16 @@ class PeftAdapterMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `unload_lora()`.")
 
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
         from ..utils import recurse_remove_peft_layers
 
         recurse_remove_peft_layers(self)
         if hasattr(self, "peft_config"):
             del self.peft_config
+        if hasattr(self, "_hf_peft_config_loaded"):
+            self._hf_peft_config_loaded = None
+
+        _maybe_remove_and_reapply_group_offloading(self)
 
     def disable_lora(self):
         """
