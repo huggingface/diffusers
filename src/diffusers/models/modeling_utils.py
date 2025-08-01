@@ -1551,9 +1551,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # When the actual device allocations happen, the allocator already has a pool of unused device memory
         # that it can re-use for faster loading of the model.
         # TODO: add support for warmup with hf_quantizer
-        if device_map is not None and hf_quantizer is None:
+        if device_map is not None:
             expanded_device_map = _expand_device_map(device_map, expected_keys)
-            _caching_allocator_warmup(model, expanded_device_map, dtype)
+            _caching_allocator_warmup(model, expanded_device_map, dtype, hf_quantizer)
 
         offload_index = {} if device_map is not None and "disk" in device_map.values() else None
         state_dict_folder, state_dict_index = None, None
