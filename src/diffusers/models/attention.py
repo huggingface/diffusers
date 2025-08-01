@@ -799,6 +799,7 @@ class BasicTransformerBlock(nn.Module):
         ff_inner_dim: Optional[int] = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         self.dim = dim
@@ -867,6 +868,7 @@ class BasicTransformerBlock(nn.Module):
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
             out_bias=attention_out_bias,
+            qk_norm=qk_norm,
         )
 
         # 2. Cross-Attn

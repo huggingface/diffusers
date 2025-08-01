@@ -199,6 +199,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
+                    qk_norm=self.config.qk_norm,
                 )
                 for _ in range(self.config.num_layers)
             ]
