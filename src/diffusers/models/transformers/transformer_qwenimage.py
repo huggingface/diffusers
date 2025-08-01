@@ -310,7 +310,13 @@ class QwenDoubleStreamAttnProcessor2_0:
 
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
-            joint_query, joint_key, joint_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            joint_query,
+            joint_key,
+            joint_value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
         )
 
         # Reshape back

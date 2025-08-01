@@ -138,6 +138,7 @@ def _register_transformer_blocks_metadata():
     )
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
+    from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
 
     # BasicTransformerBlock
@@ -237,6 +238,15 @@ def _register_transformer_blocks_metadata():
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=None,
+        ),
+    )
+
+    # QwenImage
+    TransformerBlockRegistry.register(
+        model_class=QwenImageTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
         ),
     )
 
