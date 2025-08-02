@@ -61,6 +61,12 @@ _import_structure = {
         "is_unidecode_available",
         "logging",
     ],
+    "image_processor": [
+        "VaeImageProcessor",
+    ],
+    "video_processor": [
+        "VideoProcessor",
+    ],
 }
 
 try:
