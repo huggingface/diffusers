@@ -3117,6 +3117,132 @@ class StableAudioAttnProcessor2_0:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
+    
+
+class F5TTSAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
+    used in the F5 TTS model. It applies rotary embedding to selected heads, and allows MHA, GQA or MQA.
+    """
+
+    def __init__(self, pe_attn_head: Optional[int] = None):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "F5TTSAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
+        self.pe_attn_head = pe_attn_head
+
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        from .embeddings import apply_rotary_emb
+
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        head_dim = query.shape[-1] // attn.heads
+        kv_heads = key.shape[-1] // head_dim
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+
+        if kv_heads != attn.heads:
+            # if GQA or MQA, repeat the key/value heads to reach the number of query heads.
+            heads_per_kv_head = attn.heads // kv_heads
+            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1, output_size=key.shape[1] * heads_per_kv_head)
+            value = torch.repeat_interleave(
+                value, heads_per_kv_head, dim=1, output_size=value.shape[1] * heads_per_kv_head
+            )
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # Apply RoPE if needed
+        if rotary_emb is not None:
+            query_dtype = query.dtype
+            key_dtype = key.dtype
+            query = query.to(torch.float32)
+            key = key.to(torch.float32)
+
+
+            if self.pe_attn_head is not None:
+                query_rotated = apply_rotary_emb(
+                    query[..., :self.pe_attn_head, :], rotary_emb, use_real=True, use_real_unbind_dim=-2
+                )
+
+                query_unrotated = query[..., self.pe_attn_head:, :]
+                query = torch.cat((query_rotated, query_unrotated), dim=-2)
+
+            if not attn.is_cross_attention:
+                key_to_rotate, key_unrotated = key[..., :self.pe_attn_head, :], key[..., self.pe_attn_head:, :]
+                key_rotated = apply_rotary_emb(key_to_rotate, rotary_emb, use_real=True, use_real_unbind_dim=-2)
+                key = torch.cat((key_rotated, key_unrotated), dim=-2)
+
+            query = query.to(query_dtype)
+            key = key.to(key_dtype)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+        
+        
+        # these two need to be no-ops
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+    
+
 
 
 class HunyuanAttnProcessor2_0:
