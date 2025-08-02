@@ -10,6 +10,7 @@ from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
 from .autoencoder_kl_wan import AutoencoderKLWan
+from .autoencoder_kl_MMQuant import AutoencoderKLMMQuant
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_tiny import AutoencoderTiny
 from .consistency_decoder_vae import ConsistencyDecoderVAE
