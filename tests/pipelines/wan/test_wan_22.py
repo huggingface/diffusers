@@ -12,27 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
+import tempfile
 import unittest
 
+import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
-import numpy as np
-import tempfile
 
-from diffusers import AutoencoderKLWan, WanPipeline, WanTransformer3DModel, UniPCMultistepScheduler
+from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanPipeline, WanTransformer3DModel
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
-    require_torch_accelerator,
-    slow,
     torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
-
-
 
 
 enable_full_determinism()
@@ -139,7 +133,9 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"
 
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components, )
+        pipe = self.pipeline_class(
+            **components,
+        )
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -159,14 +155,13 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
-    
-    def test_save_load_optional_components(self, expected_max_difference=1e-4):
 
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
         optional_component = "transformer"
 
         components = self.get_dummy_components()
         components[optional_component] = None
-        components["boundary_ratio"] = 1.0 # for wan 2.2 14B, transformer is not used when boundary_ratio is 1.0
+        components["boundary_ratio"] = 1.0  # for wan 2.2 14B, transformer is not used when boundary_ratio is 1.0
 
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -189,9 +184,10 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
-        self.assertTrue(getattr(pipe_loaded, "transformer") is None,
-                f"`transformer` did not stay set to None after loading.",
-            )
+        self.assertTrue(
+            getattr(pipe_loaded, "transformer") is None,
+            "`transformer` did not stay set to None after loading.",
+        )
 
         inputs = self.get_dummy_inputs(generator_device)
         torch.manual_seed(0)
@@ -199,7 +195,6 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
         self.assertLess(max_diff, expected_max_difference)
-
 
 
 class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -230,8 +225,8 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             out_channels=12,
             is_residual=True,
             patch_size=2,
-            latents_mean = [0.0] * 48,
-            latents_std = [1.0] * 48,
+            latents_mean=[0.0] * 48,
+            latents_std=[1.0] * 48,
             dim_mult=[1, 1, 1, 1],
             num_res_blocks=1,
             scale_factor_spatial=16,
@@ -295,7 +290,9 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"
 
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components, )
+        pipe = self.pipeline_class(
+            **components,
+        )
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -311,7 +308,10 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3), f"generated_slice: {generated_slice}, expected_slice: {expected_slice}")
+        self.assertTrue(
+            torch.allclose(generated_slice, expected_slice, atol=1e-3),
+            f"generated_slice: {generated_slice}, expected_slice: {expected_slice}",
+        )
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
@@ -327,7 +327,6 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
-
         optional_component = "transformer_2"
 
         components = self.get_dummy_components()
@@ -353,9 +352,10 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
-        self.assertTrue(getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
-            )
+        self.assertTrue(
+            getattr(pipe_loaded, optional_component) is None,
+            f"`{optional_component}` did not stay set to None after loading.",
+        )
 
         inputs = self.get_dummy_inputs(generator_device)
         torch.manual_seed(0)
@@ -363,6 +363,6 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
         self.assertLess(max_diff, expected_max_difference)
-    
+
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
