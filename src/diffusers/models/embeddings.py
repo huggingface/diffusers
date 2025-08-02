@@ -1220,7 +1220,6 @@ def apply_rotary_emb(
             x_rotated = torch.cat([-x_imag, x_real], dim=-1)
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
-
         out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
         return out
