@@ -87,23 +87,6 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        transformer_2 = WanTransformer3DModel(
-            patch_size=(1, 2, 2),
-            num_attention_heads=2,
-            attention_head_dim=12,
-            in_channels=36,
-            out_channels=16,
-            text_dim=32,
-            freq_dim=256,
-            ffn_dim=32,
-            num_layers=2,
-            cross_attn_norm=True,
-            qk_norm="rms_norm_across_heads",
-            rope_max_seq_len=32,
-            image_dim=4,
-        )
-
-        torch.manual_seed(0)
         image_encoder_config = CLIPVisionConfig(
             hidden_size=4,
             projection_dim=4,
@@ -126,7 +109,7 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "image_encoder": image_encoder,
             "image_processor": image_processor,
-            "transformer_2": transformer_2,
+            "transformer_2": None,
         }
         return components
 
@@ -243,24 +226,6 @@ class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        transformer_2 = WanTransformer3DModel(
-            patch_size=(1, 2, 2),
-            num_attention_heads=2,
-            attention_head_dim=12,
-            in_channels=36,
-            out_channels=16,
-            text_dim=32,
-            freq_dim=256,
-            ffn_dim=32,
-            num_layers=2,
-            cross_attn_norm=True,
-            qk_norm="rms_norm_across_heads",
-            rope_max_seq_len=32,
-            image_dim=4,
-            pos_embed_seq_len=2 * (4 * 4 + 1),
-        )
-
-        torch.manual_seed(0)
         image_encoder_config = CLIPVisionConfig(
             hidden_size=4,
             projection_dim=4,
@@ -283,7 +248,7 @@ class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "image_encoder": image_encoder,
             "image_processor": image_processor,
-            "transformer_2": transformer_2,
+            "transformer_2": None,
         }
         return components
 
