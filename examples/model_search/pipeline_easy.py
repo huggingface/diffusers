@@ -1249,7 +1249,7 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
         <Tip>
 
         To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        `hf auth login`.
 
         </Tip>
 
@@ -1358,7 +1358,7 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
         <Tip>
 
         To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        `hf auth login`.
 
         </Tip>
 
@@ -1507,7 +1507,7 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
         <Tip>
 
         To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        `hf auth login`.
 
         </Tip>
 
@@ -1617,7 +1617,7 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
         <Tip>
 
         To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        `hf auth login`.
 
         </Tip>
 
@@ -1766,7 +1766,7 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
         <Tip>
 
         To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        `hf auth login
 
         </Tip>
 
@@ -1875,7 +1875,7 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
         <Tip>
 
         To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        `hf auth login
 
         </Tip>
 

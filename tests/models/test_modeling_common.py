@@ -1530,7 +1530,8 @@ class ModelTesterMixin:
 
     @torch.no_grad()
     def test_layerwise_casting_inference(self):
-        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
 
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1544,7 +1545,7 @@ class ModelTesterMixin:
             if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
                 patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
             for name, submodule in module.named_modules():
-                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                if not isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     continue
                 dtype_to_check = storage_dtype
                 if any(re.search(pattern, name) for pattern in patterns_to_check):
@@ -1948,6 +1949,7 @@ class ModelPushToHubTester(unittest.TestCase):
 @require_torch_2
 @is_torch_compile
 @slow
+@require_torch_version_greater("2.7.1")
 class TorchCompileTesterMixin:
     different_shapes_for_compilation = None
 
@@ -2046,6 +2048,7 @@ class TorchCompileTesterMixin:
 @require_torch_accelerator
 @require_peft_backend
 @require_peft_version_greater("0.14.0")
+@require_torch_version_greater("2.7.1")
 @is_torch_compile
 class LoraHotSwappingForModelTesterMixin:
     """Test that hotswapping does not result in recompilation on the model directly.
