@@ -39,8 +39,8 @@ else:
 
 def project(v0: torch.Tensor, v1: torch.Tensor, upcast_to_double: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Project vector v0 onto vector v1, returning the parallel and orthogonal components of v0. Implementation from
-    paper (Algorithm 2).
+    Project vector v0 onto vector v1, returning the parallel and orthogonal components of v0. Implementation from paper
+    (Algorithm 2).
     """
     # v0 shape: [B, ...]
     # v1 shape: [B, ...]
@@ -76,19 +76,19 @@ class FrequencyDecoupledGuidance(BaseGuidance):
 
     FDG is a technique similar to (and based on) classifier-free guidance (CFG) which is used to improve generation
     quality and condition-following in diffusion models. Like CFG, during training we jointly train the model on both
-    conditional and unconditional data, and use a combination of the two during inference. (If you want more details
-    on how CFG works, you can check out the CFG guider.)
+    conditional and unconditional data, and use a combination of the two during inference. (If you want more details on
+    how CFG works, you can check out the CFG guider.)
 
-    FDG differs from CFG in that the normal CFG prediction is instead decoupled into low- and high-frequency
-    components using a frequency transform (such as a Laplacian pyramid). The CFG update is then performed in
-    frequency space separately for the low- and high-frequency components with different guidance scales. Finally, the
-    inverse frequency transform is used to map the CFG frequency predictions back to data space (e.g. pixel space for
-    images) to form the final FDG prediction.
+    FDG differs from CFG in that the normal CFG prediction is instead decoupled into low- and high-frequency components
+    using a frequency transform (such as a Laplacian pyramid). The CFG update is then performed in frequency space
+    separately for the low- and high-frequency components with different guidance scales. Finally, the inverse
+    frequency transform is used to map the CFG frequency predictions back to data space (e.g. pixel space for images)
+    to form the final FDG prediction.
 
     For images, the FDG authors found that using low guidance scales for the low-frequency components retains sample
     diversity and realistic color composition, while using high guidance scales for high-frequency components enhances
-    sample quality (such as better visual details). Therefore, they recommend using low guidance scales (low w_low)
-    for the low-frequency components and high guidance scales (high w_high) for the high-frequency components. As an
+    sample quality (such as better visual details). Therefore, they recommend using low guidance scales (low w_low) for
+    the low-frequency components and high guidance scales (high w_high) for the high-frequency components. As an
     example, they suggest w_low = 5.0 and w_high = 10.0 for Stable Diffusion XL (see Table 8 in the paper).
 
     As with CFG, Diffusers implements the scaling and shifting on the unconditional prediction based on the [Imagen
