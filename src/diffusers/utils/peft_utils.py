@@ -197,20 +197,6 @@ def get_peft_kwargs(
         "lora_bias": lora_bias,
     }
 
-    # Example: try load FusionX LoRA into Wan VACE
-    exclude_modules = _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name)
-    if exclude_modules:
-        if not is_peft_version(">=", "0.14.0"):
-            msg = """
-It seems like there are certain modules that need to be excluded when initializing `LoraConfig`. Your current `peft`
-version doesn't support passing an `exclude_modules` to `LoraConfig`. Please update it by running `pip install -U
-peft`. For most cases, this can be completely ignored. But if it seems unexpected, please file an issue -
-https://github.com/huggingface/diffusers/issues/new
-            """
-            logger.debug(msg)
-        else:
-            lora_config_kwargs.update({"exclude_modules": exclude_modules})
-
     return lora_config_kwargs
 
 
@@ -388,27 +374,3 @@ def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
 
     if warn_msg:
         logger.warning(warn_msg)
-
-
-def _derive_exclude_modules(model_state_dict, peft_state_dict, adapter_name=None):
-    """
-    Derives the modules to exclude while initializing `LoraConfig` through `exclude_modules`. It works by comparing the
-    `model_state_dict` and `peft_state_dict` and adds a module from `model_state_dict` to the exclusion set if it
-    doesn't exist in `peft_state_dict`.
-    """
-    if model_state_dict is None:
-        return
-    all_modules = set()
-    string_to_replace = f"{adapter_name}." if adapter_name else ""
-
-    for name in model_state_dict.keys():
-        if string_to_replace:
-            name = name.replace(string_to_replace, "")
-        if "." in name:
-            module_name = name.rsplit(".", 1)[0]
-            all_modules.add(module_name)
-
-    target_modules_set = {name.split(".lora")[0] for name in peft_state_dict.keys()}
-    exclude_modules = list(all_modules - target_modules_set)
-
-    return exclude_modules
