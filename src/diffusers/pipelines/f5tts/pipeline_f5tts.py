@@ -8,7 +8,6 @@ d - dimension
 """
 
 from __future__ import annotations
-
 from random import random
 from typing import Callable
 
@@ -17,7 +16,6 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 from torchdiffeq import odeint
-
 import torchaudio
 
 import os
@@ -25,12 +23,11 @@ import random
 from collections import defaultdict
 from importlib.resources import files
 
-
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from vocos import Vocos
-from ...models.transformers.f5tts_transformer import DiT, MelSpec, ConditioningEncoder
+from diffusers.models.transformers.f5tts_transformer import   DiT, MelSpec, ConditioningEncoder
 # helpers
 
 
@@ -46,25 +43,20 @@ class F5FlowPipeline(DiffusionPipeline):
         transformer: DiT,
         conditioning_encoder: ConditioningEncoder,
         odeint_kwargs: dict = dict(
-            # atol = 1e-5,
-            # rtol = 1e-5,
-            method="euler"  # 'midpoint'
+            method="euler" 
         ),
-        num_channels=None,
-        mel_spec_module: nn.Module | None = None,
         mel_spec_kwargs: dict = dict(),
         vocab_char_map: dict[str:int] | None = None,
     ):
         super().__init__()
         self.transformer = transformer
-        self.mel_spec = default(mel_spec_module, MelSpec(**mel_spec_kwargs))
-        num_channels = default(num_channels, self.mel_spec.n_mel_channels)
+        self.mel_spec = MelSpec(**mel_spec_kwargs)
+        num_channels = self.mel_spec.n_mel_channels
         self.num_channels = num_channels
         # sampling related
         self.odeint_kwargs = odeint_kwargs
         # vocab map for tokenization
         self.vocab_char_map = vocab_char_map
-        self.device = device or torch.device("cpu")
 
 
     # simple utf-8 tokenizer, since paper went character based
@@ -217,9 +209,6 @@ class F5FlowPipeline(DiffusionPipeline):
             cond_mask, cond, torch.zeros_like(cond)
         )  # allow direct control (cut cond audio) with lens passed in
         
-
-
-
         
         step_cond = self.conditioning_encoder(x, step_cond, text)
 
@@ -267,12 +256,12 @@ class F5FlowPipeline(DiffusionPipeline):
         for dur in duration:
             if exists(seed):
                 torch.manual_seed(seed)
-            y0.append(torch.randn(dur, self.num_channels, device=self.device, dtype=step_cond.dtype))
+            y0.append(torch.randn(dur, self.num_channels, device=self.transformer.device, dtype=step_cond.dtype))
         y0 = pad_sequence(y0, padding_value=0, batch_first=True)
         t_start = 0
 
         # TODO Add Empirically Pruned Step Sampling for low NFE
-        t = torch.linspace(t_start, 1, steps + 1, device=self.device, dtype=step_cond.dtype)
+        t = torch.linspace(t_start, 1, steps + 1, device=self.transformer.device, dtype=step_cond.dtype)
         if sway_sampling_coef is not None:
             t = t + sway_sampling_coef * (torch.cos(torch.pi / 2 * t) - 1 + t)
 
@@ -293,4 +282,55 @@ class F5FlowPipeline(DiffusionPipeline):
         return generated_cpu
 
 
+
+if __name__ == "__main__":
+    print('entering main funcitn')
+    
+    dit_config = {
+        "dim": 1024,
+        "depth": 22,
+        "heads": 16,
+        "ff_mult": 2,
+        "text_dim": 512,
+        "text_num_embeds": 256,
+        "text_mask_padding": True,
+        "qk_norm": None,  # null | rms_norm
+        "conv_layers": 4,
+        "pe_attn_head": None,
+        "attn_backend": "torch",  # torch | flash_attn
+        "attn_mask_enabled": False,
+        "checkpoint_activations": False,  # recompute activations and save memory for extra compute
+    }
+    
+  
+    mel_spec_config = {
+        "target_sample_rate": 24000,
+        "n_mel_channels": 100,
+        "hop_length": 256,
+        "win_length": 1024,
+        "n_fft": 1024,
+    }
+
+
+    dit = DiT(**dit_config)
+    print("DiT model initialized with config:", dit_config)
+    
+    conditioning_encoder_config = {
+        'dim': 1024,
+        'text_num_embeds': 256,
+        'text_dim': 512,
+        'text_mask_padding': True,
+        'conv_layers': 4,
+        'mel_dim': mel_spec_config['n_mel_channels'],
+    }
+    conditioning_encoder = ConditioningEncoder(**conditioning_encoder_config)
+    print("Conditioning Encoder initialized with config:", conditioning_encoder_config)
+    
+    f5_pipeline = F5FlowPipeline(
+        transformer=dit,
+        conditioning_encoder=conditioning_encoder,
+        odeint_kwargs={"method": "euler"},
+        mel_spec_kwargs=mel_spec_config,
+    )
+    print("F5FlowPipeline initialized with DiT and Conditioning Encoder.")
 
