@@ -106,6 +106,7 @@ class DiTBlock(nn.Module):
             dim_head=dim_head,
             dropout=dropout,
             qk_norm=qk_norm,
+            bias=True,
         )
 
         self.ff_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
@@ -418,8 +419,11 @@ class DiT(nn.Module):
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
             time = time.repeat(batch)
+        print('time:', time)
         temb = self.time_embed(time)  # b d
+        print('temb:', temb)
         rope = get_1d_rotary_pos_embed(pos=seq_len, dim=self.dim, use_real=True)
+        print('x:', x)
         for block in self.transformer_blocks:
                 x = block(x, temb, mask=mask, rope=rope)
 
