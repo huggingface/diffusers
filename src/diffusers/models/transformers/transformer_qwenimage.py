@@ -156,7 +156,7 @@ class QwenTimestepProjEmbeddings(nn.Module):
 
 
 class QwenEmbedRope(nn.Module):
-    def __init__(self, theta: int, axes_dim: list[int], scale_rope=False):
+    def __init__(self, theta: int, axes_dim: List[int], scale_rope=False):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
