@@ -377,8 +377,12 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "FluxAutoBlocks",
+            "FluxModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
+            "WanAutoBlocks",
+            "WanModularPipeline",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -1018,8 +1022,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            FluxAutoBlocks,
+            FluxModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
+            WanAutoBlocks,
+            WanModularPipeline,
         )
         from .pipelines import (
             AllegroPipeline,
