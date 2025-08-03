@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
 import unittest
 
+import numpy as np
 import torch
 from PIL import Image
 from transformers import (
@@ -25,7 +27,7 @@ from transformers import (
 )
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanImageToVideoPipeline, WanTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin

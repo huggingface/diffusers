@@ -17,6 +17,7 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanImageToVideoPipeline, WanTransformer3DModel
@@ -27,7 +28,6 @@ from diffusers.utils.testing_utils import (
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
-from PIL import Image
 
 
 enable_full_determinism()
@@ -157,7 +157,10 @@ class Wan22ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3), f"generated_slice: {generated_slice}, expected_slice: {expected_slice}")
+        self.assertTrue(
+            torch.allclose(generated_slice, expected_slice, atol=1e-3),
+            f"generated_slice: {generated_slice}, expected_slice: {expected_slice}",
+        )
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
@@ -371,7 +374,7 @@ class Wan225BImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             self.assertTrue(
                 getattr(pipe_loaded, component) is None,
                 f"`{component}` did not stay set to None after loading.",
-                )
+            )
 
         inputs = self.get_dummy_inputs(generator_device)
         torch.manual_seed(0)

@@ -13,8 +13,10 @@
 # limitations under the License.
 
 import gc
+import tempfile
 import unittest
 
+import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -177,6 +179,7 @@ class WanPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
         self.assertLess(max_diff, expected_max_difference)
+
 
 @slow
 @require_torch_accelerator
