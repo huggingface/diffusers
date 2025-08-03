@@ -675,7 +675,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # only wan 2.1 i2v transformer accepts image_embeds
-        if self.transformer is not None and self.transformer.config.added_kv_proj_dim is not None:
+        if self.transformer is not None and self.transformer.config.image_dim is not None:
             if image_embeds is None:
                 if last_image is None:
                     image_embeds = self.encode_image(image, device)
