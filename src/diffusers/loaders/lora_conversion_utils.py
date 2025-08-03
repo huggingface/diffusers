@@ -1974,6 +1974,10 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             converted_key = f"condition_embedder.image_embedder.{img_ours}.lora_B.weight"
             if original_key in original_state_dict:
                 converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+                bias_key_theirs = original_key.removesuffix(f".{lora_up_key}.weight") + ".diff_b"
+                if bias_key_theirs in original_state_dict:
+                    bias_key = converted_key.removesuffix(".weight") + ".bias"
+                    converted_state_dict[bias_key] = original_state_dict.pop(bias_key_theirs)
 
     if len(original_state_dict) > 0:
         diff = all(".diff" in k for k in original_state_dict)
