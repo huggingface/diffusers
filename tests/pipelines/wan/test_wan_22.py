@@ -50,7 +50,6 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     test_xformers_attention = False
     supports_dduf = False
-    test_optional_components = ["transformer_2", "transformer"]
 
     def get_dummy_components(self):
         torch.manual_seed(0)
