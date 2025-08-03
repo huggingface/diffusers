@@ -16,15 +16,12 @@
 import gc
 import math
 import unittest
-from collections import defaultdict
 
 import torch
-from torch.nn import ModuleList
 
 from diffusers import UNet2DModel
 from diffusers.models.attention_processor import Attention
 from diffusers.models.normalization import RMSNorm
-from diffusers.pipelines.deprecated.versatile_diffusion.modeling_text_unet import get_up_block
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
@@ -35,7 +32,6 @@ from diffusers.utils.testing_utils import (
     torch_all_close,
     torch_device,
 )
-from examples.community.matryoshka import get_mid_block
 
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -160,27 +156,49 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
     def test_qk_norm_argument(self):
         from diffusers.models.unets.unet_2d_blocks import get_down_block, get_mid_block, get_up_block
+
         # test if block can be instantiated with qk_norm argument
         # TODO: is there a canonical list of supported block types?
-        down_block_types = ["DownBlock2D", "ResnetDownsampleBlock2D",
-                     "AttnDownBlock2D", "CrossAttnDownBlock2D",
-                     "SimpleCrossAttnDownBlock2D", "SkipDownBlock2D",
-                     "AttnSkipDownBlock2D", "DownEncoderBlock2D",
-                     "AttnDownEncoderBlock2D", "KDownBlock2D",
-                     "KCrossAttnDownBlock2D"]
+        down_block_types = [
+            "DownBlock2D",
+            "ResnetDownsampleBlock2D",
+            "AttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "SimpleCrossAttnDownBlock2D",
+            "SkipDownBlock2D",
+            "AttnSkipDownBlock2D",
+            "DownEncoderBlock2D",
+            "AttnDownEncoderBlock2D",
+            "KDownBlock2D",
+            "KCrossAttnDownBlock2D",
+        ]
         mid_block_types = ["UNetMidBlock2DCrossAttn", "UNetMidBlock2DSimpleCrossAttn", "UNetMidBlock2D"]
-        up_block_types = [block_type.replace('Down', 'Up')
-                          for block_type in down_block_types
-                          if (block_type != "DownEncoderBlock2D" and block_type != "AttnDownEncoderBlock2D")]
+        up_block_types = [
+            block_type.replace("Down", "Up")
+            for block_type in down_block_types
+            if (block_type != "DownEncoderBlock2D" and block_type != "AttnDownEncoderBlock2D")
+        ]
 
-        for (block_getter, block_types, block_type_arg, extra_kwargs) in [
-            (get_down_block, down_block_types, 'down_block_type',
-             {'num_layers': 2, 'out_channels': 64, 'add_downsample': False, 'attention_head_dim': 8}),
-            (get_mid_block, mid_block_types, 'mid_block_type',
-             {}),
-            (get_up_block, up_block_types, 'up_block_type',
-             {'num_layers': 2, 'out_channels': 64, 'prev_output_channel': 64,
-              'add_upsample': False, 'attention_head_dim': 8})
+        for block_getter, block_types, block_type_arg, extra_kwargs in [
+            (
+                get_down_block,
+                down_block_types,
+                "down_block_type",
+                {"num_layers": 2, "out_channels": 64, "add_downsample": False, "attention_head_dim": 8},
+            ),
+            (get_mid_block, mid_block_types, "mid_block_type", {}),
+            (
+                get_up_block,
+                up_block_types,
+                "up_block_type",
+                {
+                    "num_layers": 2,
+                    "out_channels": 64,
+                    "prev_output_channel": 64,
+                    "add_upsample": False,
+                    "attention_head_dim": 8,
+                },
+            ),
         ]:
             for block_type in block_types:
                 block_type_kwarg = {block_type_arg: block_type}
@@ -191,15 +209,14 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
                     temb_channels=32,
                     resnet_groups=32,
                     resnet_eps=1e-5,
-                    resnet_act_fn='silu',
+                    resnet_act_fn="silu",
                     cross_attention_dim=1024,
                     num_attention_heads=8,
                     qk_norm="rms_norm",  # <--- new argument
                 )
-                if 'Attn' in block_type:
+                if "Attn" in block_type:
                     # discover attentions
-                    attentions = [module for module in block.named_modules()
-                                  if isinstance(module, Attention)]
+                    attentions = [module for module in block.named_modules() if isinstance(module, Attention)]
                     for attn in attentions:
                         k_norm = getattr(attn, "norm_k", None)
                         assert k_norm is not None
@@ -209,11 +226,8 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
                         assert isinstance(q_norm, RMSNorm)
                 else:
                     # make sure i didn't miss anything
-                    attentions = [module for module in block.named_modules()
-                                  if isinstance(module, Attention)]
+                    attentions = [module for module in block.named_modules() if isinstance(module, Attention)]
                     assert len(attentions) == 0
-
-
 
 
 class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
