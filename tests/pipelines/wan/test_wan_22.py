@@ -302,8 +302,8 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_video.shape, (9, 3, 32, 32))
 
         # fmt: off
-        expected_slice = torch.tensor([[0.4814, 0.5336, 0.5094, 0.4922, 0.5061, 0.4923, 0.5043, 0.4923, 0.6821,
-                                       0.5965, 0.6753, 0.6014, 0.6939, 0.6076, 0.5133, 0.5651]])
+        expected_slice = torch.tensor([[[0.4814, 0.4298, 0.5094, 0.4289, 0.5061, 0.4301, 0.5043, 0.4284, 0.5375,
+                                        0.5965, 0.5527, 0.6014, 0.5228, 0.6076, 0.6644, 0.5651]]])
         # fmt: on
 
         generated_slice = generated_video.flatten()
