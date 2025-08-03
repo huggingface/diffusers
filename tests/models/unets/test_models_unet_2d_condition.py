@@ -27,11 +27,13 @@ from pytest import mark
 
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import (
+    Attention,
     CustomDiffusionAttnProcessor,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
 )
 from diffusers.models.embeddings import ImageProjection, IPAdapterFaceIDImageProjection, IPAdapterPlusImageProjection
+from diffusers.models.normalization import RMSNorm
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
@@ -1142,6 +1144,94 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         warning_message = str(warning.warnings[0].message)
         assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
+
+    def test_qk_norm_argument_unet2dcondition(self):
+        config_minimal = {}
+        model = UNet2DConditionModel.from_config(config_minimal)
+        qk_norm_modules = [n for n, _ in model.named_modules()
+                           if n.endswith('.norm_q') or n.endswith('.norm_k')]
+        assert len(qk_norm_modules) == 0
+
+        config_minimal_qknorm = {"qk_norm": "rms_norm"}
+        model_qknorm = UNet2DConditionModel.from_config(config_minimal_qknorm)
+        qk_norm_modules = [n for n, _ in model_qknorm.named_modules()
+                           if n.endswith('.norm_q') or n.endswith('.norm_k')]
+        assert len(qk_norm_modules) > 0
+
+    def test_qk_norm_argument_blocks(self):
+        from diffusers.models.unets.unet_2d_blocks import get_down_block, get_mid_block, get_up_block
+
+        # test if block can be instantiated with qk_norm argument
+        # TODO: is there a canonical list of supported block types?
+        down_block_types = [
+            "DownBlock2D",
+            "ResnetDownsampleBlock2D",
+            "AttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "SimpleCrossAttnDownBlock2D",
+            "SkipDownBlock2D",
+            "AttnSkipDownBlock2D",
+            "DownEncoderBlock2D",
+            "AttnDownEncoderBlock2D",
+            "KDownBlock2D",
+            "KCrossAttnDownBlock2D",
+        ]
+        mid_block_types = ["UNetMidBlock2DCrossAttn", "UNetMidBlock2DSimpleCrossAttn", "UNetMidBlock2D"]
+        up_block_types = [
+            block_type.replace("Down", "Up")
+            for block_type in down_block_types
+            if (block_type != "DownEncoderBlock2D" and block_type != "AttnDownEncoderBlock2D")
+        ]
+
+        for block_getter, block_types, block_type_arg, extra_kwargs in [
+            (
+                get_down_block,
+                down_block_types,
+                "down_block_type",
+                {"num_layers": 2, "out_channels": 64, "add_downsample": False, "attention_head_dim": 8},
+            ),
+            (get_mid_block, mid_block_types, "mid_block_type", {}),
+            (
+                get_up_block,
+                up_block_types,
+                "up_block_type",
+                {
+                    "num_layers": 2,
+                    "out_channels": 64,
+                    "prev_output_channel": 64,
+                    "add_upsample": False,
+                    "attention_head_dim": 8,
+                },
+            ),
+        ]:
+            for block_type in block_types:
+                block_type_kwarg = {block_type_arg: block_type}
+                block = block_getter(
+                    **block_type_kwarg,
+                    **extra_kwargs,
+                    in_channels=32,
+                    temb_channels=32,
+                    resnet_groups=32,
+                    resnet_eps=1e-5,
+                    resnet_act_fn="silu",
+                    cross_attention_dim=1024,
+                    num_attention_heads=8,
+                    qk_norm="rms_norm",  # <--- new argument
+                )
+                if "Attn" in block_type:
+                    # discover attentions
+                    attentions = [module for module in block.named_modules() if isinstance(module, Attention)]
+                    for attn in attentions:
+                        k_norm = getattr(attn, "norm_k", None)
+                        assert k_norm is not None
+                        assert isinstance(k_norm, RMSNorm)
+                        q_norm = getattr(attn, "norm_q", None)
+                        assert q_norm is not None
+                        assert isinstance(q_norm, RMSNorm)
+                else:
+                    # make sure i didn't miss anything
+                    attentions = [module for module in block.named_modules() if isinstance(module, Attention)]
+                    assert len(attentions) == 0
 
 
 class UNet2DConditionModelCompileTests(TorchCompileTesterMixin, unittest.TestCase):
