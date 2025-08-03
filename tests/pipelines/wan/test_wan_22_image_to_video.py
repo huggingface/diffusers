@@ -195,10 +195,11 @@ class Wan22ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
-        self.assertTrue(
-            getattr(pipe_loaded, "transformer") is None,
-            "`transformer` did not stay set to None after loading.",
-        )
+        for component in optional_component:
+            self.assertTrue(
+                getattr(pipe_loaded, component) is None,
+                f"`{component}` did not stay set to None after loading.",
+            )
 
         inputs = self.get_dummy_inputs(generator_device)
         torch.manual_seed(0)
