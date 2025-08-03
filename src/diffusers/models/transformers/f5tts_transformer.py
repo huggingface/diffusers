@@ -12,6 +12,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 from torch import nn
+import torchaudio
 from ..normalization import GlobalResponseNorm, AdaLayerNorm, RMSNorm
 import math
 from ..embeddings import get_1d_rotary_pos_embed, apply_rotary_emb
@@ -20,8 +21,8 @@ from ..attention_processor import F5TTSAttnProcessor2_0
 from ..attention import Attention
 from einops import rearrange, repeat, reduce, pack, unpack
 from torch import nn, einsum, tensor, Tensor, cat, stack, arange, is_tensor
-import jieba
-from pypinyin import Style, lazy_pinyin
+# import jieba
+# from pypinyin import Style, lazy_pinyin
 
 
 
@@ -115,7 +116,7 @@ class DiTBlock(nn.Module):
         norm, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.attn_norm(x, emb=t)
 
         # attention
-        attn_output = self.attn(x=norm, mask=mask, rope=rope)
+        attn_output = self.attn(hidden_states=norm, attention_mask=mask, rotary_emb=rope)
 
         # process attention output for input x
         x = x + gate_msa.unsqueeze(1) * attn_output
@@ -287,6 +288,7 @@ class TextEmbedding(nn.Module):
                 text = text.masked_fill(text_mask.unsqueeze(-1).expand(-1, -1, text.size(-1)), 0.0)
                 for block in self.text_blocks:
                     text = block(text)
+                    text = text.squeeze(0) # TODO for some reason an extra dimension is added
                     text = text.masked_fill(text_mask.unsqueeze(-1).expand(-1, -1, text.size(-1)), 0.0)
             else:
                 text = self.text_blocks(text)
@@ -318,7 +320,7 @@ class InputEmbedding(nn.Module):
 class ConditioningEncoder(nn.Module):
     def __init__(
         self,
-        dim
+        dim,
         text_num_embeds, 
         text_dim, 
         text_mask_padding, 
@@ -343,13 +345,9 @@ class ConditioningEncoder(nn.Module):
         seq_len = x.shape[1]
         if cache:
             if drop_text:
-                if self.text_uncond is None:
-                    self.text_uncond = self.text_embed(text, seq_len, drop_text=True)
-                text_embed = self.text_uncond
+                text_embed = self.text_embed(text, seq_len, drop_text=True)
             else:
-                if self.text_cond is None:
-                    self.text_cond = self.text_embed(text, seq_len, drop_text=False)
-                text_embed = self.text_cond
+                text_embed = self.text_embed(text, seq_len, drop_text=False)
         else:
             text_embed = self.text_embed(text, seq_len, drop_text=drop_text)
 
@@ -406,7 +404,7 @@ class DiT(nn.Module):
         )
         self.long_skip_connection = nn.Linear(dim * 2, dim, bias=False) if long_skip_connection else None
 
-        self.norm_out = AdaLayerNorm(dim)  # final modulation
+        self.norm_out = AdaLayerNorm(dim, chunk_dim=1)  # final modulation
         self.proj_out = nn.Linear(dim, mel_dim)
 
 
@@ -420,11 +418,12 @@ class DiT(nn.Module):
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
             time = time.repeat(batch)
-        rope = get_1d_rotary_pos_embed(seq_len, self.dim, device=x.device)
+        temb = self.time_embed(time)  # b d
+        rope = get_1d_rotary_pos_embed(pos=seq_len, dim=self.dim, use_real=True)
         for block in self.transformer_blocks:
-                x = block(x, t, mask=mask, rope=rope)
+                x = block(x, temb, mask=mask, rope=rope)
 
-        x = self.norm_out(x, t)
+        x = self.norm_out(x, temb=temb)
         output = self.proj_out(x)
 
         return output

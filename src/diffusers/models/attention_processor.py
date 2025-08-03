@@ -3150,7 +3150,6 @@ class F5TTSAttnProcessor2_0:
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
@@ -3208,7 +3207,7 @@ class F5TTSAttnProcessor2_0:
                 query_unrotated = query[..., self.pe_attn_head:, :]
                 query = torch.cat((query_rotated, query_unrotated), dim=-2)
 
-            if not attn.is_cross_attention:
+            if not attn.is_cross_attention and self.pe_attn_head is not None:
                 key_to_rotate, key_unrotated = key[..., :self.pe_attn_head, :], key[..., self.pe_attn_head:, :]
                 key_rotated = apply_rotary_emb(key_to_rotate, rotary_emb, use_real=True, use_real_unbind_dim=-2)
                 key = torch.cat((key_rotated, key_unrotated), dim=-2)
