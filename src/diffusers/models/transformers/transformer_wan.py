@@ -180,6 +180,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         added_kv_proj_dim: Optional[int] = None,
         cross_attention_dim_head: Optional[int] = None,
         processor=None,
+        is_cross_attention=None,
     ):
         super().__init__()
 
@@ -206,6 +207,8 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
             self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
+
+        self.is_cross_attention = cross_attention_dim_head is not None
 
         self.set_processor(processor)
 
@@ -324,7 +327,7 @@ class WanTimeTextImageEmbedding(nn.Module):
     ):
         timestep = self.timesteps_proj(timestep)
         if timestep_seq_len is not None:
-            timestep = timestep.unflatten(0, (1, timestep_seq_len))
+            timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
