@@ -58,10 +58,8 @@ class QwenImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "dim_mult": [1, 2, 4],
         "num_res_blocks": 1,
         "temperal_downsample": [False, True],
-        # fmt: off
         "latents_mean": [0.0] * 4,
         "latents_std": [1.0] * 4,
-        # fmt: on
     }
     vae_cls = AutoencoderKLQwenImage
     tokenizer_cls, tokenizer_id = Qwen2Tokenizer, "hf-internal-testing/tiny-random-Qwen25VLForCondGen"
