@@ -1,4 +1,4 @@
-# Copyright 2025 The Qwen-Image Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Qwen-Image Team, Wan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# We gratefully acknowledge the Wan Team for their outstanding contributions.
+# QwenImageVAE is further fine-tuned from the Wan Video VAE to achieve improved performance.
+# For more information about the Wan VAE, please refer to:
+# - GitHub: https://github.com/Wan-Video/Wan2.1
+# - arXiv: https://arxiv.org/abs/2503.20314
 
 from typing import List, Optional, Tuple, Union
 
@@ -668,6 +674,7 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     _supports_gradient_checkpointing = False
 
+    # fmt: off
     @register_to_config
     def __init__(
         self,
@@ -678,43 +685,10 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         attn_scales: List[float] = [],
         temperal_downsample: List[bool] = [False, True, True],
         dropout: float = 0.0,
-        latents_mean: List[float] = [
-            -0.7571,
-            -0.7089,
-            -0.9113,
-            0.1075,
-            -0.1745,
-            0.9653,
-            -0.1517,
-            1.5508,
-            0.4134,
-            -0.0715,
-            0.5517,
-            -0.3632,
-            -0.1922,
-            -0.9497,
-            0.2503,
-            -0.2921,
-        ],
-        latents_std: List[float] = [
-            2.8184,
-            1.4541,
-            2.3275,
-            2.6558,
-            1.2196,
-            1.7708,
-            2.6052,
-            2.0743,
-            3.2687,
-            2.1526,
-            2.8652,
-            1.5579,
-            1.6382,
-            1.1253,
-            2.8251,
-            1.9160,
-        ],
+        latents_mean: List[float] = [-0.7571, -0.7089, -0.9113, 0.1075, -0.1745, 0.9653, -0.1517, 1.5508, 0.4134, -0.0715, 0.5517, -0.3632, -0.1922, -0.9497, 0.2503, -0.2921],
+        latents_std: List[float] = [2.8184, 1.4541, 2.3275, 2.6558, 1.2196, 1.7708, 2.6052, 2.0743, 3.2687, 2.1526, 2.8652, 1.5579, 1.6382, 1.1253, 2.8251, 1.9160],
     ) -> None:
+    # fmt: on
         super().__init__()
 
         self.z_dim = z_dim
