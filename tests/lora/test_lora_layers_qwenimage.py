@@ -24,11 +24,8 @@ from diffusers import (
     QwenImagePipeline,
     QwenImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import floats_tensor, is_peft_available, require_peft_backend
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
 
-
-if is_peft_available():
-    pass
 
 sys.path.append(".")
 
