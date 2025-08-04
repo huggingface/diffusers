@@ -1,6 +1,6 @@
 - sections:
   - local: index
-    title: 🧨 Diffusers
+    title: Diffusers
   - local: quicktour
     title: 快速入门
   - local: stable_diffusion
@@ -10,3 +10,61 @@
   - local: installation
     title: 安装
   title: 开始
+
+- title: Training
+  isExpanded: false
+  sections:
+  - local: training/overview
+    title: Overview
+  - local: training/adapt_a_model
+    title: Adapt a model to a new task
+  - title: Models
+    sections:
+    - local: training/text2image
+      title: Text-to-image
+    - local: training/controlnet
+      title: ControlNet
+  - title: Methods
+    sections:
+    - local: training/text_inversion
+      title: Textual Inversion
+    - local: training/dreambooth
+      title: DreamBooth
+    - local: training/lora
+      title: LoRA
+
+- title: Inference optimization
+  isExpanded: false
+  sections:
+  - local: optimization/fp16
+    title: Accelerate inference
+  - title: Community optimizations
+    sections:
+    - local: optimization/xformers
+      title: xFormers
+
+- title: Model accelerators and hardware
+  isExpanded: false
+  sections:
+  - local: using-diffusers/stable_diffusion_jax_how_to
+    title: JAX/Flax
+  - local: optimization/onnx
+    title: ONNX
+
+- title: DiffusionPipeline
+  isExpanded: false
+  sections:
+  - local: using-diffusers/schedulers
+    title: Load schedulers and models
+
+- title: Resources
+  isExpanded: false
+  sections:
+    - local: conceptual/philosophy
+      title: Philosophy
+    - local: conceptual/contribution
+      title: How to contribute?
+    - local: conceptual/ethical_guidelines
+      title: Diffusers' Ethical Guidelines
+    - local: conceptual/evaluation
+      title: Evaluating Diffusion Models
