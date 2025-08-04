@@ -45,4 +45,3 @@ unet = AutoModel.from_pretrained(
 ```
 
 此时文生图模型的其他组件权重仍保持预训练状态，但UNet的输入卷积层权重(`conv_in.weight`)会随机初始化。由于这一关键变化，必须对模型进行修复任务的微调，否则模型将仅会输出噪声。
- Disclaimers: This content is powered by i18n-agent-action with LLM service https://api.deepseek.com with model deepseek-chat, for some reason, (for example, we are not native speaker) we use LLM to provide this translate for you. If you find any corrections, please file an issue or raise a PR back to github, and switch back to default language.
