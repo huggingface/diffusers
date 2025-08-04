@@ -116,7 +116,7 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "dance monkey",
-            "negative_prompt": "negative",  # TODO
+            "negative_prompt": "negative", 
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
