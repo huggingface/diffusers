@@ -189,6 +189,7 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
             f"{target_module}.lora_A.weight": torch.ones(lora_rank, target_mod_shape[1]) * 22,
             f"{target_module}.lora_B.weight": torch.ones(target_mod_shape[0], lora_rank) * 33,
         }
+        # Passing exclude_modules should no longer be necessary (or even passing target_modules, for that matter).
         config = LoraConfig(
             r=lora_rank, target_modules=["single_transformer_blocks.0.proj_out"], exclude_modules=["proj_out"]
         )
