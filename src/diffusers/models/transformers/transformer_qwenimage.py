@@ -140,7 +140,7 @@ def apply_rotary_emb_qwen(
 
 
 class QwenTimestepProjEmbeddings(nn.Module):
-    def __init__(self, embedding_dim, pooled_projection_dim):
+    def __init__(self, embedding_dim):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0, scale=1000)
@@ -473,8 +473,6 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         joint_attention_dim (`int`, defaults to `3584`):
             The number of dimensions to use for the joint attention (embedding/channel dimension of
             `encoder_hidden_states`).
-        pooled_projection_dim (`int`, defaults to `768`):
-            The number of dimensions to use for the pooled projection.
         guidance_embeds (`bool`, defaults to `False`):
             Whether to use guidance embeddings for guidance-distilled variant of the model.
         axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
@@ -495,8 +493,7 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 3584,
-        pooled_projection_dim: int = 768,
-        guidance_embeds: bool = False,
+        guidance_embeds: bool = False,  # TODO: this should probably be removed
         axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
     ):
         super().__init__()
@@ -505,9 +502,7 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
 
         self.pos_embed = QwenEmbedRope(theta=10000, axes_dim=list(axes_dims_rope), scale_rope=True)
 
-        self.time_text_embed = QwenTimestepProjEmbeddings(
-            embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
-        )
+        self.time_text_embed = QwenTimestepProjEmbeddings(embedding_dim=self.inner_dim)
 
         self.txt_norm = RMSNorm(joint_attention_dim, eps=1e-6)
 
@@ -538,10 +533,9 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         timestep: torch.LongTensor = None,
         img_shapes: Optional[List[Tuple[int, int, int]]] = None,
         txt_seq_lens: Optional[List[int]] = None,
-        guidance: torch.Tensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guidance: torch.Tensor = None,  # TODO: this should probably be removed
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-        controlnet_blocks_repeat: bool = False,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
         The [`QwenTransformer2DModel`] forward method.
@@ -555,7 +549,7 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
                 Mask of the input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            joint_attention_kwargs (`dict`, *optional*):
+            attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -567,9 +561,9 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        if joint_attention_kwargs is not None:
-            joint_attention_kwargs = joint_attention_kwargs.copy()
-            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
         else:
             lora_scale = 1.0
 
@@ -577,7 +571,7 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
         else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
@@ -617,7 +611,7 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
                     encoder_hidden_states_mask=encoder_hidden_states_mask,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=joint_attention_kwargs,
+                    joint_attention_kwargs=attention_kwargs,
                 )
 
         # Use only the image part (hidden_states) from the dual-stream blocks
