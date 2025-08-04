@@ -140,7 +140,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="mit",  # TODO: Which license is this gonna be?
+        license="apache-2.0",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
