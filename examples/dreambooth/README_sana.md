@@ -111,6 +111,25 @@ To better track our training experiments, we're using the following flags in the
 
 ## Notes
 
+### LoRA Rank and Alpha
+Two key LoRA hyperparameters are LoRA rank and LoRA alpha. 
+- `--rank`: Defines the dimension of the trainable LoRA matrices. A higher rank means more expressiveness and capacity to learn (and more parameters).
+- `--lora_alpha`: A scaling factor for the LoRA's output. The LoRA update is scaled by lora_alpha / lora_rank.
+- lora_alpha vs. rank:
+This ratio dictates the LoRA's effective strength:
+lora_alpha == rank: Scaling factor is 1. The LoRA is applied with its learned strength. (e.g., alpha=16, rank=16)
+lora_alpha < rank: Scaling factor < 1. Reduces the LoRA's impact. Useful for subtle changes or to prevent overpowering the base model. (e.g., alpha=8, rank=16)
+lora_alpha > rank: Scaling factor > 1. Amplifies the LoRA's impact. Allows a lower rank LoRA to have a stronger effect. (e.g., alpha=32, rank=16)
+
+> [!TIP]
+> A common starting point is to set `lora_alpha` equal to `rank`. 
+> Some also set `lora_alpha` to be twice the `rank` (e.g., lora_alpha=32 for lora_rank=16) 
+> to give the LoRA updates more influence without increasing parameter count. 
+> If you find your LoRA is "overcooking" or learning too aggressively, consider setting `lora_alpha` to half of `rank` 
+> (e.g., lora_alpha=8 for rank=16). Experimentation is often key to finding the optimal balance for your use case.
+
+### Additional CLI arguments
+
 Additionally, we welcome you to explore the following CLI arguments:
 
 * `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
