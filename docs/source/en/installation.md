@@ -53,7 +53,7 @@ You should also install 🤗 Transformers because 🤗 Diffusers relies on its m
 PyTorch only supports Python 3.8 - 3.11 on Windows. Install Diffusers with uv.
 
 ```bash
-uv install diffusers["torch"] transformers
+uv pip install diffusers["torch"] transformers
 ```
 
 You can also install Diffusers with pip.
