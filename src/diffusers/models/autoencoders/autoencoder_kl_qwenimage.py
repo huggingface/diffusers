@@ -678,6 +678,7 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         attn_scales: List[float] = [],
         temperal_downsample: List[bool] = [False, True, True],
         dropout: float = 0.0,
+        # fmt: off
         latents_mean: List[float] = [
             -0.7571,
             -0.7089,
@@ -714,6 +715,7 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             2.8251,
             1.9160,
         ],
+        # fmt: on
     ) -> None:
         super().__init__()
 
