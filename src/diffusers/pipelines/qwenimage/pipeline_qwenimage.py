@@ -17,19 +17,12 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import (
-    Qwen2_5_VLForConditionalGeneration,
-    Qwen2Tokenizer,
-)
+from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLQwenImage, QwenImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import QwenImagePipelineOutput
@@ -135,9 +128,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class QwenImagePipeline(
-    DiffusionPipeline,
-):
+class QwenImagePipeline(DiffusionPipeline):
     r"""
     The QwenImage pipeline for text-to-image generation.
 
@@ -685,8 +676,6 @@ class QwenImagePipeline(
         )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
-
-        # print(f"timesteps: {timesteps}")
 
         # handle guidance
         if self.transformer.config.guidance_embeds:
