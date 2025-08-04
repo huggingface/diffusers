@@ -184,12 +184,8 @@ def log_validation(
     for _ in range(args.num_validation_images):
         with autocast_ctx:
             image = pipeline(
-                prompt_embeds_t5=pipeline_args["prompt_embeds_t5"],
-                prompt_embeds_llama3=pipeline_args["prompt_embeds_llama3"],
-                negative_prompt_embeds_t5=pipeline_args["negative_prompt_embeds_t5"],
-                negative_prompt_embeds_llama3=pipeline_args["negative_prompt_embeds_llama3"],
-                pooled_prompt_embeds=pipeline_args["pooled_prompt_embeds"],
-                negative_pooled_prompt_embeds=pipeline_args["negative_pooled_prompt_embeds"],
+                prompt_embeds=pipeline_args["prompt_embeds"],
+                prompt_embeds_mask=pipeline_args["prompt_embeds_mask"],
                 generator=generator,
             ).images[0]
             images.append(image)
@@ -476,7 +472,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--guidance_scale",
         type=float,
-        default=3.5,
+        default=0.0,
         help="Qwen image is a guidance distilled model",
     )
     parser.add_argument(
@@ -1495,18 +1491,20 @@ def main(args):
                 img_shapes = [
                     (1, args.resolution // vae_scale_factor // 2, args.resolution // vae_scale_factor // 2)
                 ] * bsz
+                # transpose the dimensions
+                noisy_model_input = noisy_model_input.permute(0, 2, 1, 3, 4)
                 packed_noisy_model_input = QwenImagePipeline._pack_latents(
                     noisy_model_input,
                     batch_size=model_input.shape[0],
                     num_channels_latents=model_input.shape[1],
-                    height=model_input.shape[2],
-                    width=model_input.shape[3],
+                    height=model_input.shape[3],
+                    width=model_input.shape[4],
                 )
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
-                    encoder_hidden_states_t5=prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_mask=prompt_embeds_mask,
-                    timesteps=timesteps / 1000,
+                    timestep=timesteps / 1000,
                     guidance=guidance,
                     img_shapes=img_shapes,
                     txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
