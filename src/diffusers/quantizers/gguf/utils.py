@@ -30,7 +30,7 @@ if is_accelerate_available():
 
 
 can_use_cuda_kernels = (
-    os.getenv("DIFFUSERS_GGUF_CUDA_KERNELS", "true").lower() in ["1", "true", "yes"]
+    os.getenv("DIFFUSERS_GGUF_CUDA_KERNELS", "false").lower() in ["1", "true", "yes"]
     and torch.cuda.is_available()
     and torch.cuda.get_device_capability()[0] >= 7
 )

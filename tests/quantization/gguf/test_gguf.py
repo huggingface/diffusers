@@ -32,6 +32,7 @@ from diffusers.utils.testing_utils import (
     require_accelerator,
     require_big_accelerator,
     require_gguf_version_greater_or_equal,
+    require_kernels_version_greater_or_equal,
     require_peft_backend,
     torch_device,
 )
@@ -49,6 +50,7 @@ enable_full_determinism()
 @require_accelerate
 @require_accelerator
 @require_gguf_version_greater_or_equal("0.10.0")
+@require_kernels_version_greater_or_equal("0.9.0")
 class GGUFCudaKernelsTests(unittest.TestCase):
     def setUp(self):
         gc.collect()
