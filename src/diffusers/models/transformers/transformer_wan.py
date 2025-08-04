@@ -180,7 +180,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         added_kv_proj_dim: Optional[int] = None,
         cross_attention_dim_head: Optional[int] = None,
         processor=None,
-        is_cross_attention=None
+        is_cross_attention=None,
     ):
         super().__init__()
 
