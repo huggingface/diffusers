@@ -107,7 +107,7 @@ def save_model_card(
 
 These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
-The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [HiDream Image diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_hidream.md).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [Qwen Image diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_qwen.md).
 
 ## Trigger words
 
@@ -121,21 +121,10 @@ You should use `{instance_prompt}` to trigger the image generation.
 
 ```py
     >>> import torch
-    >>> from transformers import PreTrainedTokenizerFast, LlamaForCausalLM
-    >>> from diffusers import HiDreamImagePipeline
+    >>> from diffusers import QwenImagePipeline
 
-    >>> tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
-    >>> text_encoder_4 = LlamaForCausalLM.from_pretrained(
-    ...     "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    ...     output_hidden_states=True,
-    ...     output_attentions=True,
-    ...     torch_dtype=torch.bfloat16,
-    ... )
-
-    >>> pipe = HiDreamImagePipeline.from_pretrained(
-    ...     "HiDream-ai/HiDream-I1-Full",
-    ...     tokenizer_4=tokenizer_4,
-    ...     text_encoder_4=text_encoder_4,
+    >>> pipe = QwenImagePipeline.from_pretrained(
+    ...     "Qwen/Qwen-Image",
     ...     torch_dtype=torch.bfloat16,
     ... )
     >>> pipe.enable_model_cpu_offload()
@@ -150,7 +139,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="mit",
+        license="mit",  # TODO: Which license is this gonna be?
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -161,8 +150,8 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
         "diffusers-training",
         "diffusers",
         "lora",
-        "hidream",
-        "hidream-diffusers",
+        "qwen-image",
+        "qwen-image-diffusers",
         "template:sd-lora",
     ]
 
@@ -877,6 +866,9 @@ def collate_fn(examples, with_prior_preservation=False):
         prompts += [example["class_prompt"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
+    # Qwen expects a `num_frames` dimension too.
+    if pixel_values.ndim == 4:
+        pixel_values = pixel_values.unsqueeze(2)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
     batch = {"pixel_values": pixel_values, "prompts": prompts}
@@ -1124,7 +1116,10 @@ def main(args):
                 if weights:
                     weights.pop()
 
-            QwenImagePipeline.save_lora_weights(output_dir, transformer_lora_layers=transformer_lora_layers_to_save)
+            QwenImagePipeline.save_lora_weights(
+                output_dir,
+                transformer_lora_layers=transformer_lora_layers_to_save,
+            )
 
     def load_model_hook(models, input_dir):
         transformer_ = None
