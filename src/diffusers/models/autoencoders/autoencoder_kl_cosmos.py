@@ -168,7 +168,9 @@ class CosmosPatchEmbed3d(nn.Module):
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p = self.patch_size
 
-        hidden_states = torch.reshape(batch_size, num_channels, num_frames // p, p, height // p, p, width // p, p)
+        hidden_states = hidden_states.reshape(
+            batch_size, num_channels, num_frames // p, p, height // p, p, width // p, p
+        )
         hidden_states = hidden_states.permute(0, 1, 3, 5, 7, 2, 4, 6).flatten(1, 4).contiguous()
         return hidden_states
 
