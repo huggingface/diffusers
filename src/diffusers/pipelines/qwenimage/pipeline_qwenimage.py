@@ -17,19 +17,12 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import (
-    Qwen2_5_VLForConditionalGeneration,
-    Qwen2Tokenizer,
-)
+from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLQwenImage, QwenImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import QwenImagePipelineOutput
@@ -135,9 +128,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class QwenImagePipeline(
-    DiffusionPipeline,
-):
+class QwenImagePipeline(DiffusionPipeline):
     r"""
     The QwenImage pipeline for text-to-image generation.
 
@@ -157,7 +148,6 @@ class QwenImagePipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
@@ -186,13 +176,10 @@ class QwenImagePipeline(
         self.prompt_template_encode_start_idx = 34
         self.default_sample_size = 128
 
-    def extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor):
+    def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor):
         bool_mask = mask.bool()
-
         valid_lengths = bool_mask.sum(dim=1)
-
         selected = hidden_states[bool_mask]
-
         split_result = torch.split(selected, valid_lengths.tolist(), dim=0)
 
         return split_result
@@ -200,8 +187,6 @@ class QwenImagePipeline(
     def _get_qwen_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
-        num_images_per_prompt: int = 1,
-        max_sequence_length: int = 1024,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -209,7 +194,6 @@ class QwenImagePipeline(
         dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
 
         template = self.prompt_template_encode
         drop_idx = self.prompt_template_encode_start_idx
@@ -223,7 +207,7 @@ class QwenImagePipeline(
             output_hidden_states=True,
         )
         hidden_states = encoder_hidden_states.hidden_states[-1]
-        split_hidden_states = self.extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
+        split_hidden_states = self._extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
         split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
         attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
         max_seq_len = max([e.size(0) for e in split_hidden_states])
@@ -234,17 +218,7 @@ class QwenImagePipeline(
             [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
         )
 
-        dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-
-        _, seq_len, _ = prompt_embeds.shape
-
-        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-        encoder_attention_mask = encoder_attention_mask.repeat(1, num_images_per_prompt, 1)
-        encoder_attention_mask = encoder_attention_mask.view(batch_size * num_images_per_prompt, seq_len)
 
         return prompt_embeds, encoder_attention_mask
 
@@ -253,8 +227,8 @@ class QwenImagePipeline(
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_mask: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_mask: Optional[torch.Tensor] = None,
         max_sequence_length: int = 1024,
     ):
         r"""
@@ -262,38 +236,29 @@ class QwenImagePipeline(
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
-            prompt_2 (`str` or `List[str]`, *optional*):
-                The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
-                used in all text-encoders
             device: (`torch.device`):
                 torch device
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
-                If not provided, pooled text embeddings will be generated from `prompt` input argument.
-            lora_scale (`float`, *optional*):
-                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
         device = device or self._execution_device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(
-                prompt=prompt,
-                device=device,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-            )
+            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
 
-        dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
-        text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
+        _, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
 
-        return prompt_embeds, prompt_embeds_mask, text_ids
+        return prompt_embeds, prompt_embeds_mask
 
     def check_inputs(
         self,
@@ -457,8 +422,8 @@ class QwenImagePipeline(
         return self._guidance_scale
 
     @property
-    def joint_attention_kwargs(self):
-        return self._joint_attention_kwargs
+    def attention_kwargs(self):
+        return self._attention_kwargs
 
     @property
     def num_timesteps(self):
@@ -486,14 +451,14 @@ class QwenImagePipeline(
         guidance_scale: float = 1.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_mask: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds_mask: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_mask: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
@@ -533,41 +498,23 @@ class QwenImagePipeline(
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will be generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
-                If not provided, pooled text embeddings will be generated from `prompt` input argument.
-            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
-                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
-            negative_ip_adapter_image:
-                (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
-            negative_ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
-                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
-                input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.qwenimage.QwenImagePipelineOutput`] instead of a plain tuple.
-            joint_attention_kwargs (`dict`, *optional*):
+            attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -608,7 +555,7 @@ class QwenImagePipeline(
         )
 
         self._guidance_scale = guidance_scale
-        self._joint_attention_kwargs = joint_attention_kwargs
+        self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
 
@@ -626,11 +573,7 @@ class QwenImagePipeline(
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
         )
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
-        (
-            prompt_embeds,
-            prompt_embeds_mask,
-            text_ids,
-        ) = self.encode_prompt(
+        prompt_embeds, prompt_embeds_mask = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
             prompt_embeds_mask=prompt_embeds_mask,
@@ -639,11 +582,7 @@ class QwenImagePipeline(
             max_sequence_length=max_sequence_length,
         )
         if do_true_cfg:
-            (
-                negative_prompt_embeds,
-                negative_prompt_embeds_mask,
-                negative_text_ids,
-            ) = self.encode_prompt(
+            negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
                 prompt=negative_prompt,
                 prompt_embeds=negative_prompt_embeds,
                 prompt_embeds_mask=negative_prompt_embeds_mask,
@@ -686,8 +625,6 @@ class QwenImagePipeline(
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # print(f"timesteps: {timesteps}")
-
         # handle guidance
         if self.transformer.config.guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
@@ -695,8 +632,8 @@ class QwenImagePipeline(
         else:
             guidance = None
 
-        if self.joint_attention_kwargs is None:
-            self._joint_attention_kwargs = {}
+        if self.attention_kwargs is None:
+            self._attention_kwargs = {}
 
         # 6. Denoising loop
         self.scheduler.set_begin_index(0)
@@ -717,7 +654,7 @@ class QwenImagePipeline(
                         encoder_hidden_states=prompt_embeds,
                         img_shapes=img_shapes,
                         txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
-                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
 
@@ -731,7 +668,7 @@ class QwenImagePipeline(
                             encoder_hidden_states=negative_prompt_embeds,
                             img_shapes=img_shapes,
                             txt_seq_lens=negative_prompt_embeds_mask.sum(dim=1).tolist(),
-                            joint_attention_kwargs=self.joint_attention_kwargs,
+                            attention_kwargs=self.attention_kwargs,
                             return_dict=False,
                         )[0]
                     comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
