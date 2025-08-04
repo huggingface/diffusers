@@ -470,12 +470,6 @@ def parse_args(input_args=None):
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
-        "--guidance_scale",
-        type=float,
-        default=0.0,
-        help="Qwen image is a guidance distilled model",
-    )
-    parser.add_argument(
         "--scale_lr",
         action="store_true",
         default=False,
@@ -1431,10 +1425,6 @@ def main(args):
             sigma = sigma.unsqueeze(-1)
         return sigma
 
-    guidance = None
-    if unwrap_model(transformer).config.guidance_embeds:
-        guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
-
     for epoch in range(first_epoch, args.num_train_epochs):
         transformer.train()
 
@@ -1482,11 +1472,6 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
-                # handle guidance
-                if guidance is not None:
-                    guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
-                    guidance = guidance.expand(model_input.shape[0])
-
                 # Predict the noise residual
                 img_shapes = [
                     (1, args.resolution // vae_scale_factor // 2, args.resolution // vae_scale_factor // 2)
@@ -1505,7 +1490,6 @@ def main(args):
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_mask=prompt_embeds_mask,
                     timestep=timesteps / 1000,
-                    guidance=guidance,
                     img_shapes=img_shapes,
                     txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
                     return_dict=False,
