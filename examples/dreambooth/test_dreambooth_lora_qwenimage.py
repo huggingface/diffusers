@@ -40,7 +40,7 @@ class DreamBoothLoRAQwenImage(ExamplesTestsAccelerate):
     instance_prompt = "photo"
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-pipe"
     script_path = "examples/dreambooth/train_dreambooth_lora_qwen_image.py"
-    transformer_layer_type = "single_transformer_blocks.0.attn.to_k"
+    transformer_layer_type = "transformer_blocks.0.attn.to_k"
 
     def test_dreambooth_lora_qwen(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -138,9 +138,9 @@ class DreamBoothLoRAQwenImage(ExamplesTestsAccelerate):
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names. In this test, we only params of
-            # transformer.single_transformer_blocks.0.attn.to_k should be in the state dict
+            # transformer.transformer_blocks.0.attn.to_k should be in the state dict
             starts_with_transformer = all(
-                key.startswith("transformer.single_transformer_blocks.0.attn.to_k") for key in lora_state_dict.keys()
+                key.startswith(f"transformer.{self.transformer_layer_type}") for key in lora_state_dict.keys()
             )
             self.assertTrue(starts_with_transformer)
 

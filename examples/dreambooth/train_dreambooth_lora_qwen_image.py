@@ -54,6 +54,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
+    _collate_lora_metadata,
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
@@ -365,7 +366,12 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
-
+    parser.add_argument(
+        "--lora_alpha",
+        type=int,
+        default=4,
+        help="LoRA alpha to be used for additional scaling.",
+    )
     parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
 
     parser.add_argument(
@@ -1078,7 +1084,7 @@ def main(args):
     # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
-        lora_alpha=args.rank,
+        lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
         init_lora_weights="gaussian",
         target_modules=target_modules,
@@ -1094,11 +1100,13 @@ def main(args):
     def save_model_hook(models, weights, output_dir):
         if accelerator.is_main_process:
             transformer_lora_layers_to_save = None
+            modules_to_save = {}
 
             for model in models:
                 if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
                     model = unwrap_model(model)
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                    modules_to_save["transformer"] = model
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1109,6 +1117,7 @@ def main(args):
             QwenImagePipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
+                **_collate_lora_metadata(modules_to_save),
             )
 
     def load_model_hook(models, input_dir):
@@ -1258,31 +1267,31 @@ def main(args):
 
     def compute_text_embeddings(prompt, text_encoding_pipeline):
         with torch.no_grad():
-            prompt_embeds, prompt_embeds_mask, text_ids = text_encoding_pipeline.encode_prompt(
+            prompt_embeds, prompt_embeds_mask = text_encoding_pipeline.encode_prompt(
                 prompt=prompt, max_sequence_length=args.max_sequence_length
             )
-        return prompt_embeds, prompt_embeds_mask, text_ids
+        return prompt_embeds, prompt_embeds_mask
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            instance_prompt_embeds, instance_prompt_embeds_mask, _ = compute_text_embeddings(
+            instance_prompt_embeds, instance_prompt_embeds_mask = compute_text_embeddings(
                 args.instance_prompt, text_encoding_pipeline
             )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            class_prompt_embeds, class_prompt_embeds_mask, _ = compute_text_embeddings(
+            class_prompt_embeds, class_prompt_embeds_mask = compute_text_embeddings(
                 args.class_prompt, text_encoding_pipeline
             )
 
     validation_embeddings = {}
     if args.validation_prompt is not None:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            (validation_embeddings["prompt_embeds"], validation_embeddings["prompt_embeds_mask"], _) = (
+            (validation_embeddings["prompt_embeds"], validation_embeddings["prompt_embeds_mask"]) = (
                 compute_text_embeddings(args.validation_prompt, text_encoding_pipeline)
             )
 
@@ -1314,7 +1323,7 @@ def main(args):
                     latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
                 if train_dataset.custom_instance_prompts:
                     with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                        prompt_embeds, prompt_embeds_mask, _ = compute_text_embeddings(
+                        prompt_embeds, prompt_embeds_mask = compute_text_embeddings(
                             batch["prompts"], text_encoding_pipeline
                         )
                     prompt_embeds_cache.append(prompt_embeds)
@@ -1438,8 +1447,9 @@ def main(args):
                     prompt_embeds = prompt_embeds_cache[step]
                     prompt_embeds_mask = prompt_embeds_mask_cache[step]
                 else:
-                    prompt_embeds = prompt_embeds.repeat(len(prompts), 1, 1)
-                    prompt_embeds_mask = prompt_embeds_mask.repeat(1, len(prompts), 1, 1)
+                    num_repeat_elements = len(prompts)
+                    prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
+                    prompt_embeds_mask = prompt_embeds_mask.repeat(num_repeat_elements, 1)
                 # Convert images to latent space
                 if args.cache_latents:
                     model_input = latents_cache[step].sample()
@@ -1485,6 +1495,7 @@ def main(args):
                     height=model_input.shape[3],
                     width=model_input.shape[4],
                 )
+                print(f"{prompt_embeds_mask.sum(dim=1).tolist()=}")
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
@@ -1602,6 +1613,7 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        modules_to_save = {}
         transformer = unwrap_model(transformer)
         if args.bnb_quantization_config_path is None:
             if args.upcast_before_saving:
@@ -1609,10 +1621,12 @@ def main(args):
             else:
                 transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
+        modules_to_save["transformer"] = transformer
 
         QwenImagePipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
+            **_collate_lora_metadata(modules_to_save),
         )
 
         images = []
