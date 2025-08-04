@@ -838,6 +838,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
+                        qk_norm=qk_norm,
                     )
                 )
             else:
@@ -849,6 +850,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        qk_norm=qk_norm,
                     )
                 )
             resnets.append(

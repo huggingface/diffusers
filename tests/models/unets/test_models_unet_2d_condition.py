@@ -1220,7 +1220,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                 )
                 if "Attn" in block_type:
                     # discover attentions
-                    attentions = [module for module in block.named_modules() if isinstance(module, Attention)]
+                    attentions = [module for module in block.modules() if isinstance(module, Attention)]
                     for attn in attentions:
                         k_norm = getattr(attn, "norm_k", None)
                         assert k_norm is not None
@@ -1230,7 +1230,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                         assert isinstance(q_norm, RMSNorm)
                 else:
                     # make sure i didn't miss anything
-                    attentions = [module for module in block.named_modules() if isinstance(module, Attention)]
+                    attentions = [module for module in block.modules() if isinstance(module, Attention)]
                     assert len(attentions) == 0
 
 
