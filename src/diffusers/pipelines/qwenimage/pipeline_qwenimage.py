@@ -22,11 +22,7 @@ from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLQwenImage, QwenImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import QwenImagePipelineOutput
@@ -132,9 +128,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class QwenImagePipeline(
-    DiffusionPipeline,
-):
+class QwenImagePipeline(DiffusionPipeline):
     r"""
     The QwenImage pipeline for text-to-image generation.
 
