@@ -281,11 +281,9 @@ class GroupOffloadingHook(ModelHook):
 
     _is_stateful = False
 
-    def __init__(
-        self, group: ModuleGroup, next_group: Optional[ModuleGroup] = None, *, config: GroupOffloadingConfig
-    ) -> None:
+    def __init__(self, group: ModuleGroup, *, config: GroupOffloadingConfig) -> None:
         self.group = group
-        self.next_group = next_group
+        self.next_group: Optional[ModuleGroup] = None
         self.config = config
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
@@ -609,7 +607,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
     # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):
         for group_module in group.modules:
-            _apply_group_offloading_hook(group_module, group, None, config=config)
+            _apply_group_offloading_hook(group_module, group, config=config)
 
     # Parameters and Buffers of the top-level module need to be offloaded/onloaded separately
     # when the forward pass of this module is called. This is because the top-level module is not
@@ -638,9 +636,9 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
         group_id=f"{module.__class__.__name__}_unmatched_group",
     )
     if config.stream is None:
-        _apply_group_offloading_hook(module, unmatched_group, None, config=config)
+        _apply_group_offloading_hook(module, unmatched_group, config=config)
     else:
-        _apply_lazy_group_offloading_hook(module, unmatched_group, None, config=config)
+        _apply_lazy_group_offloading_hook(module, unmatched_group, config=config)
 
 
 def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
@@ -669,7 +667,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             onload_self=True,
             group_id=name,
         )
-        _apply_group_offloading_hook(submodule, group, None, config=config)
+        _apply_group_offloading_hook(submodule, group, config=config)
         modules_with_group_offloading.add(name)
 
     # Parameters and Buffers at all non-leaf levels need to be offloaded/onloaded separately when the forward pass
@@ -716,7 +714,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             onload_self=True,
             group_id=name,
         )
-        _apply_group_offloading_hook(parent_module, group, None, config=config)
+        _apply_group_offloading_hook(parent_module, group, config=config)
 
     if config.stream is not None:
         # When using streams, we need to know the layer execution order for applying prefetching (to overlap data transfer
@@ -738,13 +736,12 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             onload_self=True,
             group_id=_GROUP_ID_LAZY_LEAF,
         )
-        _apply_lazy_group_offloading_hook(module, unmatched_group, None, config=config)
+        _apply_lazy_group_offloading_hook(module, unmatched_group, config=config)
 
 
 def _apply_group_offloading_hook(
     module: torch.nn.Module,
     group: ModuleGroup,
-    next_group: Optional[ModuleGroup] = None,
     *,
     config: GroupOffloadingConfig,
 ) -> None:
@@ -753,14 +750,13 @@ def _apply_group_offloading_hook(
     # We may have already registered a group offloading hook if the module had a torch.nn.Parameter whose parent
     # is the current module. In such cases, we don't want to overwrite the existing group offloading hook.
     if registry.get_hook(_GROUP_OFFLOADING) is None:
-        hook = GroupOffloadingHook(group, next_group, config=config)
+        hook = GroupOffloadingHook(group, config=config)
         registry.register_hook(hook, _GROUP_OFFLOADING)
 
 
 def _apply_lazy_group_offloading_hook(
     module: torch.nn.Module,
     group: ModuleGroup,
-    next_group: Optional[ModuleGroup] = None,
     *,
     config: GroupOffloadingConfig,
 ) -> None:
@@ -769,7 +765,7 @@ def _apply_lazy_group_offloading_hook(
     # We may have already registered a group offloading hook if the module had a torch.nn.Parameter whose parent
     # is the current module. In such cases, we don't want to overwrite the existing group offloading hook.
     if registry.get_hook(_GROUP_OFFLOADING) is None:
-        hook = GroupOffloadingHook(group, next_group, config=config)
+        hook = GroupOffloadingHook(group, config=config)
         registry.register_hook(hook, _GROUP_OFFLOADING)
 
     lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook()
