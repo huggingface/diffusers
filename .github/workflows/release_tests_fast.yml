@@ -222,7 +222,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host
+      options: --gpus all --shm-size "16gb" --ipc host
 
     steps:
     - name: Checkout diffusers
@@ -265,7 +265,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-xformers-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host
+      options: --gpus all --shm-size "16gb" --ipc host
 
     steps:
     - name: Checkout diffusers
@@ -307,7 +307,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host
+      options: --gpus all --shm-size "16gb" --ipc host
 
     steps:
     - name: Checkout diffusers
