@@ -15,8 +15,8 @@
 # We gratefully acknowledge the Wan Team for their outstanding contributions.
 # QwenImageVAE is further fine-tuned from the Wan Video VAE to achieve improved performance.
 # For more information about the Wan VAE, please refer to:
-# - GitHub: https://github.com/Wan-Video/Wan2.1 
-# - arXiv: https://arxiv.org/abs/2503.20314 
+# - GitHub: https://github.com/Wan-Video/Wan2.1
+# - arXiv: https://arxiv.org/abs/2503.20314
 
 from typing import List, Optional, Tuple, Union
 
