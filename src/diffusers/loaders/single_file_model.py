@@ -23,7 +23,8 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, logging
+from ..quantizers.quantization_config import QuantizationMethod
+from ..utils import deprecate, is_accelerate_available, is_nunchaku_available, logging
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
@@ -243,6 +244,28 @@ class FromOriginalModelMixin:
         >>> model = StableCascadeUNet.from_single_file(ckpt_path)
         ```
         """
+        quantization_config = kwargs.get("quantization_config")
+        if quantization_config is not None and quantization_config.quant_method == QuantizationMethod.SVDQUANT:
+            if not is_nunchaku_available():
+                raise ImportError("Loading SVDQuant models requires the `nunchaku` package. Please install it.")
+
+            if isinstance(pretrained_model_link_or_path_or_dict, dict):
+                raise ValueError(
+                    "Loading a nunchaku model from a state_dict is not supported directly via from_single_file. Please provide a path."
+                )
+
+            if "FluxTransformer2DModel" in cls.__name__:
+                from nunchaku import NunchakuFluxTransformer2dModel
+
+                kwargs.pop("quantization_config", None)
+                return NunchakuFluxTransformer2dModel.from_pretrained(pretrained_model_link_or_path_or_dict, **kwargs)
+            elif "SanaTransformer2DModel" in cls.__name__:
+                from nunchaku import NunchakuSanaTransformer2DModel
+
+                kwargs.pop("quantization_config", None)
+                return NunchakuSanaTransformer2DModel.from_pretrained(pretrained_model_link_or_path_or_dict, **kwargs)
+            else:
+                raise NotImplementedError(f"SVDQuant loading is not implemented for {cls.__name__}")
 
         mapping_class_name = _get_single_file_loadable_mapping_class(cls)
         # if class_name not in SINGLE_FILE_LOADABLE_CLASSES:

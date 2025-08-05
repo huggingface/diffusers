@@ -223,6 +223,7 @@ _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("
 _sageattention_available, _sageattention_version = _is_package_available("sageattention")
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
+_nunchaku_available, _nunchaku_version = _is_package_available("nunchaku")
 
 
 def is_torch_available():
@@ -393,6 +394,10 @@ def is_flash_attn_3_available():
     return _flash_attn_3_available
 
 
+def is_nunchaku_available():
+    return _nunchaku_available
+
+
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
 {0} requires the FLAX library but it was not found in your environment. Checkout the instructions on the
@@ -556,6 +561,11 @@ NLTK_IMPORT_ERROR = """
 {0} requires the nltk library but it was not found in your environment. You can install it with pip: `pip install nltk`
 """
 
+NUNCHAKU_IMPORT_ERROR = """
+{0} requires the nunchaku library but it was not found in your environment. You can install it with pip: `pip install
+nunchaku`
+"""
+
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -588,6 +598,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
         ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
         ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
+        ("nunchaku", (is_nunchaku_available, NUNCHAKU_IMPORT_ERROR)),
     ]
 )
 
