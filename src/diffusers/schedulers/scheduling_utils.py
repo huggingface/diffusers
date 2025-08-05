@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -140,8 +140,8 @@ class SchedulerMixin(PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`. You can also activate the special
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
+        auth login`. You can also activate the special
         ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
         firewalled environment.
 

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -42,7 +42,7 @@ We encourage you to share your model with the community, and in order to do that
 Or login in from the terminal:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Since the model checkpoints are quite large, install [Git-LFS](https://git-lfs.com/) to version these large files:

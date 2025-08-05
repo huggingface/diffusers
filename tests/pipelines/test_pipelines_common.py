@@ -33,9 +33,11 @@ from diffusers import (
 )
 from diffusers.hooks import apply_group_offloading
 from diffusers.hooks.faster_cache import FasterCacheBlockHook, FasterCacheDenoiserHook
+from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
+from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
@@ -49,6 +51,7 @@ from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     backend_empty_cache,
+    numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
     require_accelerator,
     require_hf_hub_version_greater,
@@ -94,6 +97,20 @@ def check_qkv_fusion_processors_exist(model):
     current_attn_processors = model.attn_processors
     proc_names = [v.__class__.__name__ for _, v in current_attn_processors.items()]
     return all(p.startswith("Fused") for p in proc_names)
+
+
+def check_qkv_fused_layers_exist(model, layer_names):
+    is_fused_submodules = []
+    for submodule in model.modules():
+        if not isinstance(submodule, AttentionModuleMixin):
+            continue
+        is_fused_attribute_set = submodule.fused_projections
+        is_fused_layer = True
+        for layer in layer_names:
+            is_fused_layer = is_fused_layer and getattr(submodule, layer, None) is not None
+        is_fused = is_fused_attribute_set and is_fused_layer
+        is_fused_submodules.append(is_fused)
+    return all(is_fused_submodules)
 
 
 class SDFunctionTesterMixin:
@@ -521,7 +538,8 @@ class FluxIPAdapterTesterMixin:
 
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
         inputs["negative_prompt"] = ""
-        inputs["true_cfg_scale"] = 4.0
+        if "true_cfg_scale" in inspect.signature(self.pipeline_class.__call__).parameters:
+            inputs["true_cfg_scale"] = 4.0
         inputs["output_type"] = "np"
         inputs["return_dict"] = False
         return inputs
@@ -542,7 +560,11 @@ class FluxIPAdapterTesterMixin:
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        image_embed_dim = pipe.transformer.config.pooled_projection_dim
+        image_embed_dim = (
+            pipe.transformer.config.pooled_projection_dim
+            if hasattr(pipe.transformer.config, "pooled_projection_dim")
+            else 768
+        )
 
         # forward pass without ip adapter
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
@@ -1372,7 +1394,6 @@ class PipelineTesterMixin:
         for component in pipe_fp16.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
-
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
@@ -1380,18 +1401,20 @@ class PipelineTesterMixin:
         # Reset generator in case it is used inside dummy inputs
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
-
         output = pipe(**inputs)[0]
 
         fp16_inputs = self.get_dummy_inputs(torch_device)
         # Reset generator in case it is used inside dummy inputs
         if "generator" in fp16_inputs:
             fp16_inputs["generator"] = self.get_generator(0)
-
         output_fp16 = pipe_fp16(**fp16_inputs)[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
-        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
+        if isinstance(output, torch.Tensor):
+            output = output.cpu()
+            output_fp16 = output_fp16.cpu()
+
+        max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
+        assert max_diff < expected_max_diff
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
@@ -2265,9 +2288,10 @@ class PipelineTesterMixin:
                         if hasattr(module, "_diffusers_hook")
                     )
                 )
-            for component_name in ["vae", "vqvae"]:
-                if hasattr(pipe, component_name):
-                    getattr(pipe, component_name).to(torch_device)
+            for component_name in ["vae", "vqvae", "image_encoder"]:
+                component = getattr(pipe, component_name, None)
+                if isinstance(component, torch.nn.Module):
+                    component.to(torch_device)
 
         def run_forward(pipe):
             torch.manual_seed(0)
@@ -2640,7 +2664,7 @@ class FasterCacheTesterMixin:
         self.faster_cache_config.current_timestep_callback = lambda: pipe.current_timestep
         pipe = create_pipe()
         pipe.transformer.enable_cache(self.faster_cache_config)
-        output = run_forward(pipe).flatten().flatten()
+        output = run_forward(pipe).flatten()
         image_slice_faster_cache_enabled = np.concatenate((output[:8], output[-8:]))
 
         # Run inference with FasterCache disabled
@@ -2745,6 +2769,55 @@ class FasterCacheTesterMixin:
                 self.assertTrue(state.iteration == 0, "Iteration should be reset to 0.")
                 self.assertTrue(state.batch_size is None, "Batch size should be reset to None.")
                 self.assertTrue(state.cache is None, "Cache should be reset to None.")
+
+
+# TODO(aryan, dhruv): the cache tester mixins should probably be rewritten so that more models can be tested out
+# of the box once there is better cache support/implementation
+class FirstBlockCacheTesterMixin:
+    # threshold is intentionally set higher than usual values since we're testing with random unconverged models
+    # that will not satisfy the expected properties of the denoiser for caching to be effective
+    first_block_cache_config = FirstBlockCacheConfig(threshold=0.8)
+
+    def test_first_block_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        def create_pipe():
+            torch.manual_seed(0)
+            num_layers = 2
+            components = self.get_dummy_components(num_layers=num_layers)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            inputs["num_inference_steps"] = 4
+            return pipe(**inputs)[0]
+
+        # Run inference without FirstBlockCache
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_image_slice = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with FirstBlockCache enabled
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.first_block_cache_config)
+        output = run_forward(pipe).flatten()
+        image_slice_fbc_enabled = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with FirstBlockCache disabled
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        image_slice_fbc_disabled = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(original_image_slice, image_slice_fbc_enabled, atol=expected_atol), (
+            "FirstBlockCache outputs should not differ much."
+        )
+        assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

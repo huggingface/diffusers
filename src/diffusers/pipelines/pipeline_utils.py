@@ -67,7 +67,7 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
-from ..utils.torch_utils import get_device, is_compiled_module
+from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
 
 
 if is_torch_npu_available():
@@ -88,6 +88,7 @@ from .pipeline_loading_utils import (
     _identify_model_variants,
     _maybe_raise_error_for_incorrect_transformers,
     _maybe_raise_warning_for_inpainting,
+    _maybe_warn_for_wrong_component_in_quant_config,
     _resolve_custom_pipeline_and_cls,
     _unwrap_model,
     _update_init_kwargs_with_connected_pipeline,
@@ -669,14 +670,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
-                A map that specifies where each submodule should go. It doesn’t need to be defined for each
-                parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
-                same device.
-
-                Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
-                more information about each option see [designing a device
-                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            device_map (`str`, *optional*):
+                Strategy that dictates how the different components of a pipeline should be placed on available
+                devices. Currently, only "balanced" `device_map` is supported. Check out
+                [this](https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement)
+                to know more.
             max_memory (`Dict`, *optional*):
                 A dictionary device identifier for the maximum memory. Will default to the maximum memory available for
                 each GPU and the available CPU RAM if unset.
@@ -712,8 +710,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
+        auth login`.
 
         </Tip>
 
@@ -987,6 +985,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # 7. Load each module in the pipeline
         current_device_map = None
+        _maybe_warn_for_wrong_component_in_quant_config(init_dict, quantization_config)
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 7.1 device_map shenanigans
             if final_device_map is not None and len(final_device_map) > 0:
@@ -1097,6 +1096,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         if device_map is not None:
             setattr(model, "hf_device_map", final_device_map)
+        if quantization_config is not None:
+            setattr(model, "quantization_config", quantization_config)
         return model
 
     @property
@@ -1204,9 +1205,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._offload_device = device
 
         self.to("cpu", silence_dtype_warnings=True)
-        device_mod = getattr(torch, device.type, None)
-        if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-            device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+        empty_device_cache(device.type)
 
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
@@ -1316,10 +1315,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._offload_device = device
 
         if self.device.type != "cpu":
+            orig_device_type = self.device.type
             self.to("cpu", silence_dtype_warnings=True)
-            device_mod = getattr(torch, self.device.type, None)
-            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+            empty_device_cache(orig_device_type)
 
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
@@ -1432,8 +1430,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`.
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
+        auth login
 
         </Tip>
 
@@ -1990,11 +1988,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             f"{'' if k.startswith('_') else '_'}{k}": v for k, v in original_config.items() if k not in pipeline_kwargs
         }
 
+        optional_components = (
+            pipeline._optional_components
+            if hasattr(pipeline, "_optional_components") and pipeline._optional_components
+            else []
+        )
         missing_modules = (
-            set(expected_modules)
-            - set(pipeline._optional_components)
-            - set(pipeline_kwargs.keys())
-            - set(true_optional_modules)
+            set(expected_modules) - set(optional_components) - set(pipeline_kwargs.keys()) - set(true_optional_modules)
         )
 
         if len(missing_modules) > 0:

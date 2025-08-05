@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -27,19 +27,19 @@ Learn how to quantize models in the [Quantization](../quantization/overview) gui
 
 ## BitsAndBytesConfig
 
-[[autodoc]] BitsAndBytesConfig
+[[autodoc]] quantizers.quantization_config.BitsAndBytesConfig
 
 ## GGUFQuantizationConfig
 
-[[autodoc]] GGUFQuantizationConfig
+[[autodoc]] quantizers.quantization_config.GGUFQuantizationConfig
 
 ## QuantoConfig
 
-[[autodoc]] QuantoConfig
+[[autodoc]] quantizers.quantization_config.QuantoConfig
 
 ## TorchAoConfig
 
-[[autodoc]] TorchAoConfig
+[[autodoc]] quantizers.quantization_config.TorchAoConfig
 
 ## DiffusersQuantizer
 

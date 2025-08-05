@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,17 @@ import unittest
 
 import numpy as np
 import torch
+from parameterized import parameterized
 from transformers import AutoTokenizer, GlmModel
 
 from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    floats_tensor,
+    require_peft_backend,
+    require_torch_accelerator,
+    skip_mps,
+    torch_device,
+)
 
 
 sys.path.append(".")
@@ -140,6 +147,13 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
                 "Loading from saved checkpoints should give same results.",
             )
+
+    @parameterized.expand([("block_level", True), ("leaf_level", False)])
+    @require_torch_accelerator
+    def test_group_offloading_inference_denoiser(self, offload_type, use_stream):
+        # TODO: We don't run the (leaf_level, True) test here that is enabled for other models.
+        # The reason for this can be found here: https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
+        super()._test_group_offloading_inference_denoiser(offload_type, use_stream)
 
     @unittest.skip("Not supported in CogView4.")
     def test_simple_inference_with_text_denoiser_block_scale(self):

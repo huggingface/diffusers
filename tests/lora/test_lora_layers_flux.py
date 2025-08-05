@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import pytest
 import safetensors.torch
 import torch
 from parameterized import parameterized
@@ -813,7 +812,6 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace.
 
@@ -960,7 +958,6 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxControlLoRAIntegrationTests(unittest.TestCase):
     num_inference_steps = 10
     seed = 0

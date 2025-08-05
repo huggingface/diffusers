@@ -593,7 +593,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_ref_images = len(reference_images_batch)
             if num_ref_images > 0:
                 mask_padding = torch.zeros_like(mask_[:, :num_ref_images, :, :])
-                mask_ = torch.cat([mask_, mask_padding], dim=1)
+                mask_ = torch.cat([mask_padding, mask_], dim=1)
             mask_list.append(mask_)
         return torch.stack(mask_list)
 
@@ -687,8 +687,33 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
                 instead.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            video (`List[PIL.Image.Image]`, *optional*):
+                The input video or videos to be used as a starting point for the generation. The video should be a list
+                of PIL images, a numpy array, or a torch tensor. Currently, the pipeline only supports generating one
+                video at a time.
+            mask (`List[PIL.Image.Image]`, *optional*):
+                The input mask defines which video regions to condition on and which to generate. Black areas in the
+                mask indicate conditioning regions, while white areas indicate regions for generation. The mask should
+                be a list of PIL images, a numpy array, or a torch tensor. Currently supports generating a single video
+                at a time.
+            reference_images (`List[PIL.Image.Image]`, *optional*):
+                A list of one or more reference images as extra conditioning for the generation. For example, if you
+                are trying to inpaint a video to change the character, you can pass reference images of the new
+                character here. Refer to the Diffusers [examples](https://github.com/huggingface/diffusers/pull/11582)
+                and original [user
+                guide](https://github.com/ali-vilab/VACE/blob/0897c6d055d7d9ea9e191dce763006664d9780f8/UserGuide.md)
+                for a full list of supported tasks and use cases.
+            conditioning_scale (`float`, `List[float]`, `torch.Tensor`, defaults to `1.0`):
+                The conditioning scale to be applied when adding the control conditioning latent stream to the
+                denoising latent stream in each control layer of the model. If a float is provided, it will be applied
+                uniformly to all layers. If a list or tensor is provided, it should have the same length as the number
+                of control layers in the model (`len(transformer.config.vace_layers)`).
             height (`int`, defaults to `480`):
                 The height in pixels of the generated image.
             width (`int`, defaults to `832`):
@@ -733,8 +758,9 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            autocast_dtype (`torch.dtype`, *optional*, defaults to `torch.bfloat16`):
-                The dtype to use for the torch.amp.autocast.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
+                truncated. If the prompt is shorter, it will be padded to this length.
 
         Examples:
 

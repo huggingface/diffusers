@@ -371,6 +371,22 @@ def maybe_raise_or_warn(
         )
 
 
+# a simpler version of get_class_obj_and_candidates, it won't work with custom code
+def simple_get_class_obj(library_name, class_name):
+    from diffusers import pipelines
+
+    is_pipeline_module = hasattr(pipelines, library_name)
+
+    if is_pipeline_module:
+        pipeline_module = getattr(pipelines, library_name)
+        class_obj = getattr(pipeline_module, class_name)
+    else:
+        library = importlib.import_module(library_name)
+        class_obj = getattr(library, class_name)
+
+    return class_obj
+
+
 def get_class_obj_and_candidates(
     library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
 ):
@@ -452,7 +468,7 @@ def _get_pipeline_class(
             revision=revision,
         )
 
-    if class_obj.__name__ != "DiffusionPipeline":
+    if class_obj.__name__ != "DiffusionPipeline" and class_obj.__name__ != "ModularPipeline":
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
@@ -892,7 +908,10 @@ def _fetch_class_library_tuple(module):
         library = not_compiled_module.__module__
 
     # retrieve class_name
-    class_name = not_compiled_module.__class__.__name__
+    if isinstance(not_compiled_module, type):
+        class_name = not_compiled_module.__name__
+    else:
+        class_name = not_compiled_module.__class__.__name__
 
     return (library, class_name)
 
@@ -1131,3 +1150,26 @@ def _maybe_raise_error_for_incorrect_transformers(config_dict):
                 break
     if has_transformers_component and not is_transformers_version(">", "4.47.1"):
         raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")
+
+
+def _maybe_warn_for_wrong_component_in_quant_config(pipe_init_dict, quant_config):
+    if quant_config is None:
+        return
+
+    actual_pipe_components = set(pipe_init_dict.keys())
+    missing = ""
+    quant_components = None
+    if getattr(quant_config, "components_to_quantize", None) is not None:
+        quant_components = set(quant_config.components_to_quantize)
+    elif getattr(quant_config, "quant_mapping", None) is not None and isinstance(quant_config.quant_mapping, dict):
+        quant_components = set(quant_config.quant_mapping.keys())
+
+    if quant_components and not quant_components.issubset(actual_pipe_components):
+        missing = quant_components - actual_pipe_components
+
+    if missing:
+        logger.warning(
+            f"The following components in the quantization config {missing} will be ignored "
+            "as they do not belong to the underlying pipeline. Acceptable values for the pipeline "
+            f"components are: {', '.join(actual_pipe_components)}."
+        )

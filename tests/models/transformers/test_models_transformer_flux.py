@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -57,7 +57,9 @@ def create_flux_ip_adapter_state_dict(model):
 
     image_projection = ImageProjection(
         cross_attention_dim=model.config["joint_attention_dim"],
-        image_embed_dim=model.config["pooled_projection_dim"],
+        image_embed_dim=(
+            model.config["pooled_projection_dim"] if "pooled_projection_dim" in model.config.keys() else 768
+        ),
         num_image_text_embeds=4,
     )
 
@@ -89,10 +91,20 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def dummy_input(self):
+        return self.prepare_dummy_input()
+
+    @property
+    def input_shape(self):
+        return (16, 4)
+
+    @property
+    def output_shape(self):
+        return (16, 4)
+
+    def prepare_dummy_input(self, height=4, width=4):
         batch_size = 1
         num_latent_channels = 4
         num_image_channels = 3
-        height = width = 4
         sequence_length = 48
         embedding_dim = 32
 
@@ -111,14 +123,6 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
             "pooled_projections": pooled_prompt_embeds,
             "timestep": timestep,
         }
-
-    @property
-    def input_shape(self):
-        return (16, 4)
-
-    @property
-    def output_shape(self):
-        return (16, 4)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
@@ -171,13 +175,21 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
 
 class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     model_class = FluxTransformer2DModel
+    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
     def prepare_init_args_and_inputs_for_common(self):
         return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+
+    def prepare_dummy_input(self, height, width):
+        return FluxTransformerTests().prepare_dummy_input(height=height, width=width)
 
 
 class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
     model_class = FluxTransformer2DModel
+    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
     def prepare_init_args_and_inputs_for_common(self):
         return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+
+    def prepare_dummy_input(self, height, width):
+        return FluxTransformerTests().prepare_dummy_input(height=height, width=width)

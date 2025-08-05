@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,10 @@ sys.path.insert(1, git_repo_path)
 # silence FutureWarning warnings in tests since often we can't act on them until
 # they become normal warnings - i.e. the tests still need to test the current functionality
 warnings.simplefilter(action="ignore", category=FutureWarning)
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "big_accelerator: marks tests as requiring big accelerator resources")
 
 
 def pytest_addoption(parser):

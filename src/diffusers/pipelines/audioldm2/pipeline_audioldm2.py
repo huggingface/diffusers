@@ -1,4 +1,4 @@
-# Copyright 2024 CVSSP, ByteDance and The HuggingFace Team. All rights reserved.
+# Copyright 2025 CVSSP, ByteDance and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.import_utils import is_transformers_version
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import empty_device_cache, randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
@@ -267,9 +267,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
-            device_mod = getattr(torch, device.type, None)
-            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+            empty_device_cache(device.type)
 
         model_sequence = [
             self.text_encoder.text_model,
@@ -314,15 +312,14 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 The sequence of generated hidden-states.
         """
         cache_position_kwargs = {}
-        if is_transformers_version("<", "4.52.0.dev0"):
+        if is_transformers_version("<", "4.52.1"):
             cache_position_kwargs["input_ids"] = inputs_embeds
-            cache_position_kwargs["model_kwargs"] = model_kwargs
         else:
             cache_position_kwargs["seq_length"] = inputs_embeds.shape[0]
             cache_position_kwargs["device"] = (
                 self.language_model.device if getattr(self, "language_model", None) is not None else self.device
             )
-            cache_position_kwargs["model_kwargs"] = model_kwargs
+        cache_position_kwargs["model_kwargs"] = model_kwargs
         max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
         model_kwargs = self.language_model._get_initial_cache_position(**cache_position_kwargs)
 

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -99,6 +99,7 @@ if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VA
 else:
     logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
+    _torch_version = "N/A"
 
 _jax_version = "N/A"
 _flax_version = "N/A"
@@ -191,6 +192,7 @@ _torch_xla_available, _torch_xla_version = _is_package_available("torch_xla")
 _torch_npu_available, _torch_npu_version = _is_package_available("torch_npu")
 _transformers_available, _transformers_version = _is_package_available("transformers")
 _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
+_kernels_available, _kernels_version = _is_package_available("kernels")
 _inflect_available, _inflect_version = _is_package_available("inflect")
 _unidecode_available, _unidecode_version = _is_package_available("unidecode")
 _k_diffusion_available, _k_diffusion_version = _is_package_available("k_diffusion")
@@ -219,6 +221,9 @@ _pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_availab
 _better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
 _nltk_available, _nltk_version = _is_package_available("nltk")
 _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("cosmos_guardrail")
+_sageattention_available, _sageattention_version = _is_package_available("sageattention")
+_flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
+_flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
 
 
 def is_torch_available():
@@ -271,6 +276,10 @@ def is_xformers_available():
 
 def is_accelerate_available():
     return _accelerate_available
+
+
+def is_kernels_available():
+    return _kernels_available
 
 
 def is_k_diffusion_available():
@@ -375,6 +384,18 @@ def is_cosmos_guardrail_available():
 
 def is_hpu_available():
     return all(importlib.util.find_spec(lib) for lib in ("habana_frameworks", "habana_frameworks.torch"))
+
+
+def is_sageattention_available():
+    return _sageattention_available
+
+
+def is_flash_attn_available():
+    return _flash_attn_available
+
+
+def is_flash_attn_3_available():
+    return _flash_attn_3_available
 
 
 # docstyle-ignore
@@ -801,6 +822,51 @@ def is_optimum_quanto_version(operation: str, version: str):
     if not _optimum_quanto_available:
         return False
     return compare_versions(parse(_optimum_quanto_version), operation, version)
+
+
+def is_xformers_version(operation: str, version: str):
+    """
+    Compares the current xformers version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _xformers_available:
+        return False
+    return compare_versions(parse(_xformers_version), operation, version)
+
+
+def is_sageattention_version(operation: str, version: str):
+    """
+    Compares the current sageattention version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _sageattention_available:
+        return False
+    return compare_versions(parse(_sageattention_version), operation, version)
+
+
+def is_flash_attn_version(operation: str, version: str):
+    """
+    Compares the current flash-attention version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _flash_attn_available:
+        return False
+    return compare_versions(parse(_flash_attn_version), operation, version)
 
 
 def get_objects_from_module(module):

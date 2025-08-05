@@ -1,4 +1,5 @@
 import functools
+import glob
 import importlib
 import importlib.metadata
 import inspect
@@ -18,7 +19,7 @@ from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -35,6 +36,7 @@ from .import_utils import (
     is_compel_available,
     is_flax_available,
     is_gguf_available,
+    is_kernels_available,
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
@@ -131,6 +133,29 @@ def numpy_cosine_similarity_distance(a, b):
     distance = 1.0 - similarity.mean()
 
     return distance
+
+
+def check_if_dicts_are_equal(dict1, dict2):
+    dict1, dict2 = dict1.copy(), dict2.copy()
+
+    for key, value in dict1.items():
+        if isinstance(value, set):
+            dict1[key] = sorted(value)
+    for key, value in dict2.items():
+        if isinstance(value, set):
+            dict2[key] = sorted(value)
+
+    for key in dict1:
+        if key not in dict2:
+            return False
+        if dict1[key] != dict2[key]:
+            return False
+
+    for key in dict2:
+        if key not in dict1:
+            return False
+
+    return True
 
 
 def print_tensor_test(
@@ -291,6 +316,18 @@ def require_torch_version_greater_equal(torch_version):
     return decorator
 
 
+def require_torch_version_greater(torch_version):
+    """Decorator marking a test that requires torch with a specific version greater."""
+
+    def decorator(test_case):
+        correct_torch_version = is_torch_available() and is_torch_version(">", torch_version)
+        return unittest.skipUnless(
+            correct_torch_version, f"test requires torch with the version greater than {torch_version}"
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
@@ -300,9 +337,7 @@ def require_torch_gpu(test_case):
 
 def require_torch_cuda_compatibility(expected_compute_capability):
     def decorator(test_case):
-        if not torch.cuda.is_available():
-            return unittest.skip(test_case)
-        else:
+        if torch.cuda.is_available():
             current_compute_capability = get_torch_cuda_device_capability()
             return unittest.skipUnless(
                 float(current_compute_capability) == float(expected_compute_capability),
@@ -388,6 +423,10 @@ def require_big_accelerator(test_case):
     Decorator marking a test that requires a bigger hardware accelerator (24GB) for execution. Some example pipelines:
     Flux, SD3, Cog, etc.
     """
+    import pytest
+
+    test_case = pytest.mark.big_accelerator(test_case)
+
     if not is_torch_available():
         return unittest.skip("test requires PyTorch")(test_case)
 
@@ -591,6 +630,18 @@ def require_torchao_version_greater_or_equal(torchao_version):
         ) >= version.parse(torchao_version)
         return unittest.skipUnless(
             correct_torchao_version, f"Test requires torchao with version greater than {torchao_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_kernels_version_greater_or_equal(kernels_version):
+    def decorator(test_case):
+        correct_kernels_version = is_kernels_available() and version.parse(
+            version.parse(importlib.metadata.version("kernels")).base_version
+        ) >= version.parse(kernels_version)
+        return unittest.skipUnless(
+            correct_kernels_version, f"Test requires kernels with version greater than {kernels_version}."
         )(test_case)
 
     return decorator
@@ -957,10 +1008,10 @@ def pytest_terminal_summary_main(tr, id):
     config.option.tbstyle = orig_tbstyle
 
 
-# Copied from https://github.com/huggingface/transformers/blob/000e52aec8850d3fe2f360adc6fd256e5b47fe4c/src/transformers/testing_utils.py#L1905
+# Adapted from https://github.com/huggingface/transformers/blob/000e52aec8850d3fe2f360adc6fd256e5b47fe4c/src/transformers/testing_utils.py#L1905
 def is_flaky(max_attempts: int = 5, wait_before_retry: Optional[float] = None, description: Optional[str] = None):
     """
-    To decorate flaky tests. They will be retried on failures.
+    To decorate flaky tests (methods or entire classes). They will be retried on failures.
 
     Args:
         max_attempts (`int`, *optional*, defaults to 5):
@@ -972,22 +1023,33 @@ def is_flaky(max_attempts: int = 5, wait_before_retry: Optional[float] = None, d
             etc.)
     """
 
-    def decorator(test_func_ref):
-        @functools.wraps(test_func_ref)
+    def decorator(obj):
+        # If decorating a class, wrap each test method on it
+        if inspect.isclass(obj):
+            for attr_name, attr_value in list(obj.__dict__.items()):
+                if callable(attr_value) and attr_name.startswith("test"):
+                    # recursively decorate the method
+                    setattr(obj, attr_name, decorator(attr_value))
+            return obj
+
+        # Otherwise we're decorating a single test function / method
+        @functools.wraps(obj)
         def wrapper(*args, **kwargs):
             retry_count = 1
-
             while retry_count < max_attempts:
                 try:
-                    return test_func_ref(*args, **kwargs)
-
+                    return obj(*args, **kwargs)
                 except Exception as err:
-                    print(f"Test failed with {err} at try {retry_count}/{max_attempts}.", file=sys.stderr)
+                    msg = (
+                        f"[FLAKY] {description or obj.__name__!r} "
+                        f"failed on attempt {retry_count}/{max_attempts}: {err}"
+                    )
+                    print(msg, file=sys.stderr)
                     if wait_before_retry is not None:
                         time.sleep(wait_before_retry)
                     retry_count += 1
 
-            return test_func_ref(*args, **kwargs)
+            return obj(*args, **kwargs)
 
         return wrapper
 
@@ -1343,6 +1405,103 @@ if TYPE_CHECKING:
     DevicePropertiesUserDict = UserDict[DeviceProperties, Any]
 else:
     DevicePropertiesUserDict = UserDict
+
+if is_torch_available():
+    from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+    from diffusers.hooks.group_offloading import (
+        _GROUP_ID_LAZY_LEAF,
+        _compute_group_hash,
+        _find_parent_module_in_module_dict,
+        _gather_buffers_with_no_group_offloading_parent,
+        _gather_parameters_with_no_group_offloading_parent,
+    )
+
+    def _get_expected_safetensors_files(
+        module: torch.nn.Module,
+        offload_to_disk_path: str,
+        offload_type: str,
+        num_blocks_per_group: Optional[int] = None,
+    ) -> Set[str]:
+        expected_files = set()
+
+        def get_hashed_filename(group_id: str) -> str:
+            short_hash = _compute_group_hash(group_id)
+            return os.path.join(offload_to_disk_path, f"group_{short_hash}.safetensors")
+
+        if offload_type == "block_level":
+            if num_blocks_per_group is None:
+                raise ValueError("num_blocks_per_group must be provided for 'block_level' offloading.")
+
+            # Handle groups of ModuleList and Sequential blocks
+            unmatched_modules = []
+            for name, submodule in module.named_children():
+                if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
+                    unmatched_modules.append(module)
+                    continue
+
+                for i in range(0, len(submodule), num_blocks_per_group):
+                    current_modules = submodule[i : i + num_blocks_per_group]
+                    if not current_modules:
+                        continue
+                    group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
+                    expected_files.add(get_hashed_filename(group_id))
+
+            # Handle the group for unmatched top-level modules and parameters
+            for module in unmatched_modules:
+                expected_files.add(get_hashed_filename(f"{module.__class__.__name__}_unmatched_group"))
+
+        elif offload_type == "leaf_level":
+            # Handle leaf-level module groups
+            for name, submodule in module.named_modules():
+                if isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
+                    # These groups will always have parameters, so a file is expected
+                    expected_files.add(get_hashed_filename(name))
+
+            # Handle groups for non-leaf parameters/buffers
+            modules_with_group_offloading = {
+                name for name, sm in module.named_modules() if isinstance(sm, _GO_LC_SUPPORTED_PYTORCH_LAYERS)
+            }
+            parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
+            buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
+
+            all_orphans = parameters + buffers
+            if all_orphans:
+                parent_to_tensors = {}
+                module_dict = dict(module.named_modules())
+                for tensor_name, _ in all_orphans:
+                    parent_name = _find_parent_module_in_module_dict(tensor_name, module_dict)
+                    if parent_name not in parent_to_tensors:
+                        parent_to_tensors[parent_name] = []
+                    parent_to_tensors[parent_name].append(tensor_name)
+
+                for parent_name in parent_to_tensors:
+                    # A file is expected for each parent that gathers orphaned tensors
+                    expected_files.add(get_hashed_filename(parent_name))
+            expected_files.add(get_hashed_filename(_GROUP_ID_LAZY_LEAF))
+
+        else:
+            raise ValueError(f"Unsupported offload_type: {offload_type}")
+
+        return expected_files
+
+    def _check_safetensors_serialization(
+        module: torch.nn.Module,
+        offload_to_disk_path: str,
+        offload_type: str,
+        num_blocks_per_group: Optional[int] = None,
+    ) -> bool:
+        if not os.path.isdir(offload_to_disk_path):
+            return False, None, None
+
+        expected_files = _get_expected_safetensors_files(
+            module, offload_to_disk_path, offload_type, num_blocks_per_group
+        )
+        actual_files = set(glob.glob(os.path.join(offload_to_disk_path, "*.safetensors")))
+        missing_files = expected_files - actual_files
+        extra_files = actual_files - expected_files
+
+        is_correct = not missing_files and not extra_files
+        return is_correct, extra_files, missing_files
 
 
 class Expectations(DevicePropertiesUserDict):

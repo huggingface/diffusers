@@ -1,4 +1,4 @@
-﻿<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+﻿<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -42,7 +42,7 @@ Unconditional 이미지 생성은 학습에 사용된 데이터셋과 유사한 
 또는 터미널로 로그인할 수 있습니다:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 모델 체크포인트가 상당히 크기 때문에 [Git-LFS](https://git-lfs.com/)에서 대용량 파일의 버전 관리를 할 수 있습니다.

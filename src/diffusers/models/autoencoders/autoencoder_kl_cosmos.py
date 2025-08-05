@@ -1,4 +1,4 @@
-# Copyright 2024 The NVIDIA Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The NVIDIA Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -110,8 +110,11 @@ class CosmosPatchEmbed3d(nn.Module):
         self.patch_size = patch_size
         self.patch_method = patch_method
 
-        self.register_buffer("wavelets", _WAVELETS[patch_method], persistent=False)
-        self.register_buffer("_arange", torch.arange(_WAVELETS[patch_method].shape[0]), persistent=False)
+        wavelets = _WAVELETS.get(patch_method).clone()
+        arange = torch.arange(wavelets.shape[0])
+
+        self.register_buffer("wavelets", wavelets, persistent=False)
+        self.register_buffer("_arange", arange, persistent=False)
 
     def _dwt(self, hidden_states: torch.Tensor, mode: str = "reflect", rescale=False) -> torch.Tensor:
         dtype = hidden_states.dtype
@@ -165,7 +168,9 @@ class CosmosPatchEmbed3d(nn.Module):
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p = self.patch_size
 
-        hidden_states = torch.reshape(batch_size, num_channels, num_frames // p, p, height // p, p, width // p, p)
+        hidden_states = hidden_states.reshape(
+            batch_size, num_channels, num_frames // p, p, height // p, p, width // p, p
+        )
         hidden_states = hidden_states.permute(0, 1, 3, 5, 7, 2, 4, 6).flatten(1, 4).contiguous()
         return hidden_states
 
@@ -185,12 +190,11 @@ class CosmosUnpatcher3d(nn.Module):
         self.patch_size = patch_size
         self.patch_method = patch_method
 
-        self.register_buffer("wavelets", _WAVELETS[patch_method], persistent=False)
-        self.register_buffer(
-            "_arange",
-            torch.arange(_WAVELETS[patch_method].shape[0]),
-            persistent=False,
-        )
+        wavelets = _WAVELETS.get(patch_method).clone()
+        arange = torch.arange(wavelets.shape[0])
+
+        self.register_buffer("wavelets", wavelets, persistent=False)
+        self.register_buffer("_arange", arange, persistent=False)
 
     def _idwt(self, hidden_states: torch.Tensor, rescale: bool = False) -> torch.Tensor:
         device = hidden_states.device

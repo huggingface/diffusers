@@ -1,4 +1,4 @@
-# Copyright 2024 PixArt-Alpha Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2025 PixArt-Alpha Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -256,7 +256,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
         transformer ([`PixArtTransformer2DModel`]):
-            A text conditioned `PixArtTransformer2DModel` to denoise the encoded image latents.
+            A text conditioned `PixArtTransformer2DModel` to denoise the encoded image latents. Initially published as
+            [`Transformer2DModel`](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS/blob/main/transformer/config.json#L2)
+            in the config, but the mismatch can be ignored.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
