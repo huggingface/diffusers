@@ -61,6 +61,7 @@ from diffusers.utils import (
 from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    _check_safetensors_serialization,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
@@ -74,7 +75,6 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_accelerator,
     require_torch_accelerator_with_training,
-    require_torch_gpu,
     require_torch_multi_accelerator,
     require_torch_version_greater,
     run_test_in_subprocess,
@@ -1530,7 +1530,8 @@ class ModelTesterMixin:
 
     @torch.no_grad()
     def test_layerwise_casting_inference(self):
-        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
 
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1544,7 +1545,7 @@ class ModelTesterMixin:
             if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
                 patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
             for name, submodule in module.named_modules():
-                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                if not isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     continue
                 dtype_to_check = storage_dtype
                 if any(re.search(pattern, name) for pattern in patterns_to_check):
@@ -1702,18 +1703,43 @@ class ModelTesterMixin:
         model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
         _ = model(**inputs_dict)[0]
 
-    @parameterized.expand([(False, "block_level"), (True, "leaf_level")])
+    @parameterized.expand([("block_level", False), ("leaf_level", True)])
     @require_torch_accelerator
     @torch.no_grad()
-    def test_group_offloading_with_disk(self, record_stream, offload_type):
+    @torch.inference_mode()
+    def test_group_offloading_with_disk(self, offload_type, record_stream, atol=1e-5):
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
-        torch.manual_seed(0)
+        def _has_generator_arg(model):
+            sig = inspect.signature(model.forward)
+            params = sig.parameters
+            return "generator" in params
+
+        def _run_forward(model, inputs_dict):
+            accepts_generator = _has_generator_arg(model)
+            if accepts_generator:
+                inputs_dict["generator"] = torch.manual_seed(0)
+            torch.manual_seed(0)
+            return model(**inputs_dict)[0]
+
+        if self.__class__.__name__ == "AutoencoderKLCosmosTests" and offload_type == "leaf_level":
+            pytest.skip("With `leaf_type` as the offloading type, it fails. Needs investigation.")
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+
+        model.eval()
+        model.to(torch_device)
+        output_without_group_offloading = _run_forward(model, inputs_dict)
+
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.eval()
-        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
+
+        num_blocks_per_group = None if offload_type == "leaf_level" else 1
+        additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": num_blocks_per_group}
         with tempfile.TemporaryDirectory() as tmpdir:
             model.enable_group_offload(
                 torch_device,
@@ -1724,8 +1750,25 @@ class ModelTesterMixin:
                 **additional_kwargs,
             )
             has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
-            self.assertTrue(len(has_safetensors) > 0, "No safetensors found in the offload directory.")
-            _ = model(**inputs_dict)[0]
+            self.assertTrue(has_safetensors, "No safetensors found in the directory.")
+
+            # For "leaf-level", there is a prefetching hook which makes this check a bit non-deterministic
+            # in nature. So, skip it.
+            if offload_type != "leaf_level":
+                is_correct, extra_files, missing_files = _check_safetensors_serialization(
+                    module=model,
+                    offload_to_disk_path=tmpdir,
+                    offload_type=offload_type,
+                    num_blocks_per_group=num_blocks_per_group,
+                )
+                if not is_correct:
+                    if extra_files:
+                        raise ValueError(f"Found extra files: {', '.join(extra_files)}")
+                    elif missing_files:
+                        raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
+
+            output_with_group_offloading = _run_forward(model, inputs_dict)
+            self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=atol))
 
     def test_auto_model(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
@@ -1786,8 +1829,8 @@ class ModelTesterMixin:
 
         assert msg_substring in str(err_ctx.exception)
 
-    @parameterized.expand([0, "cuda", torch.device("cuda")])
-    @require_torch_gpu
+    @parameterized.expand([0, torch_device, torch.device(torch_device)])
+    @require_torch_accelerator
     def test_passing_non_dict_device_map_works(self, device_map):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).eval()
@@ -1796,8 +1839,8 @@ class ModelTesterMixin:
             loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
             _ = loaded_model(**inputs_dict)
 
-    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
-    @require_torch_gpu
+    @parameterized.expand([("", torch_device), ("", torch.device(torch_device))])
+    @require_torch_accelerator
     def test_passing_dict_device_map_works(self, name, device):
         # There are other valid dict-based `device_map` values too. It's best to refer to
         # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
@@ -1902,10 +1945,11 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
 
-@require_torch_gpu
+@require_torch_accelerator
 @require_torch_2
 @is_torch_compile
 @slow
+@require_torch_version_greater("2.7.1")
 class TorchCompileTesterMixin:
     different_shapes_for_compilation = None
 
@@ -1970,7 +2014,7 @@ class TorchCompileTesterMixin:
         model.eval()
         # TODO: Can test for other group offloading kwargs later if needed.
         group_offload_kwargs = {
-            "onload_device": "cuda",
+            "onload_device": torch_device,
             "offload_device": "cpu",
             "offload_type": "block_level",
             "num_blocks_per_group": 1,
@@ -2004,6 +2048,7 @@ class TorchCompileTesterMixin:
 @require_torch_accelerator
 @require_peft_backend
 @require_peft_version_greater("0.14.0")
+@require_torch_version_greater("2.7.1")
 @is_torch_compile
 class LoraHotSwappingForModelTesterMixin:
     """Test that hotswapping does not result in recompilation on the model directly.

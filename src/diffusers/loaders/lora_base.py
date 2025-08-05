@@ -25,7 +25,6 @@ import torch.nn as nn
 from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
-from ..hooks.group_offloading import _is_group_offload_enabled, _maybe_remove_and_reapply_group_offloading
 from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -331,6 +330,8 @@ def _load_lora_into_text_encoder(
     hotswap: bool = False,
     metadata=None,
 ):
+    from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
 
@@ -442,6 +443,8 @@ def _func_optionally_disable_offloading(_pipeline):
         tuple:
             A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` or `is_group_offload` is True.
     """
+    from ..hooks.group_offloading import _is_group_offload_enabled
+
     is_model_cpu_offload = False
     is_sequential_cpu_offload = False
     is_group_offload = False
@@ -467,7 +470,7 @@ def _func_optionally_disable_offloading(_pipeline):
             for _, component in _pipeline.components.items():
                 if not isinstance(component, nn.Module) or not hasattr(component, "_hf_hook"):
                     continue
-            remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
     return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
 

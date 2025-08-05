@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
 import os
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ import safetensors.torch
 import torch
 
 from ..utils import get_logger, is_accelerate_available
+from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
 
@@ -37,14 +39,7 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 _GROUP_OFFLOADING = "group_offloading"
 _LAYER_EXECUTION_TRACKER = "layer_execution_tracker"
 _LAZY_PREFETCH_GROUP_OFFLOADING = "lazy_prefetch_group_offloading"
-
-_SUPPORTED_PYTORCH_LAYERS = (
-    torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
-    torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
-    torch.nn.Linear,
-    # TODO(aryan): look into torch.nn.LayerNorm, torch.nn.GroupNorm later, seems to be causing some issues with CogVideoX
-    # because of double invocation of the same norm layer in CogVideoXLayerNorm
-)
+_GROUP_ID_LAZY_LEAF = "lazy_leafs"
 # fmt: on
 
 
@@ -82,6 +77,7 @@ class ModuleGroup:
         low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
         offload_to_disk_path: Optional[str] = None,
+        group_id: Optional[int] = None,
     ) -> None:
         self.modules = modules
         self.offload_device = offload_device
@@ -100,7 +96,10 @@ class ModuleGroup:
         self._is_offloaded_to_disk = False
 
         if self.offload_to_disk_path:
-            self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{id(self)}.safetensors")
+            # Instead of `group_id or str(id(self))` we do this because `group_id` can be "" as well.
+            self.group_id = group_id if group_id is not None else str(id(self))
+            short_hash = _compute_group_hash(self.group_id)
+            self.safetensors_file_path = os.path.join(self.offload_to_disk_path, f"group_{short_hash}.safetensors")
 
             all_tensors = []
             for module in self.modules:
@@ -362,7 +361,8 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
     def initialize_hook(self, module):
         def make_execution_order_update_callback(current_name, current_submodule):
             def callback():
-                logger.debug(f"Adding {current_name} to the execution order")
+                if not torch.compiler.is_compiling():
+                    logger.debug(f"Adding {current_name} to the execution order")
                 self.execution_order.append((current_name, current_submodule))
 
             return callback
@@ -399,12 +399,13 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         # if the missing layers end up being executed in the future.
         if execution_order_module_names != self._layer_execution_tracker_module_names:
             unexecuted_layers = list(self._layer_execution_tracker_module_names - execution_order_module_names)
-            logger.warning(
-                "It seems like some layers were not executed during the forward pass. This may lead to problems when "
-                "applying lazy prefetching with automatic tracing and lead to device-mismatch related errors. Please "
-                "make sure that all layers are executed during the forward pass. The following layers were not executed:\n"
-                f"{unexecuted_layers=}"
-            )
+            if not torch.compiler.is_compiling():
+                logger.warning(
+                    "It seems like some layers were not executed during the forward pass. This may lead to problems when "
+                    "applying lazy prefetching with automatic tracing and lead to device-mismatch related errors. Please "
+                    "make sure that all layers are executed during the forward pass. The following layers were not executed:\n"
+                    f"{unexecuted_layers=}"
+                )
 
         # Remove the layer execution tracker hooks from the submodules
         base_module_registry = module._diffusers_hook
@@ -432,7 +433,8 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         for i in range(num_executed - 1):
             name1, _ = self.execution_order[i]
             name2, _ = self.execution_order[i + 1]
-            logger.debug(f"Applying lazy prefetch group offloading from {name1} to {name2}")
+            if not torch.compiler.is_compiling():
+                logger.debug(f"Applying lazy prefetch group offloading from {name1} to {name2}")
             group_offloading_hooks[i].next_group = group_offloading_hooks[i + 1].group
             group_offloading_hooks[i].next_group.onload_self = False
 
@@ -609,6 +611,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
 
         for i in range(0, len(submodule), config.num_blocks_per_group):
             current_modules = submodule[i : i + config.num_blocks_per_group]
+            group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
             group = ModuleGroup(
                 modules=current_modules,
                 offload_device=config.offload_device,
@@ -621,6 +624,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
                 record_stream=config.record_stream,
                 low_cpu_mem_usage=config.low_cpu_mem_usage,
                 onload_self=True,
+                group_id=group_id,
             )
             matched_module_groups.append(group)
             for j in range(i, i + len(current_modules)):
@@ -655,6 +659,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
         stream=None,
         record_stream=False,
         onload_self=True,
+        group_id=f"{module.__class__.__name__}_unmatched_group",
     )
     if config.stream is None:
         _apply_group_offloading_hook(module, unmatched_group, None, config=config)
@@ -672,7 +677,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
     # Create module groups for leaf modules and apply group offloading hooks
     modules_with_group_offloading = set()
     for name, submodule in module.named_modules():
-        if not isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
+        if not isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
             continue
         group = ModuleGroup(
             modules=[submodule],
@@ -686,6 +691,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             record_stream=config.record_stream,
             low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
+            group_id=name,
         )
         _apply_group_offloading_hook(submodule, group, None, config=config)
         modules_with_group_offloading.add(name)
@@ -732,6 +738,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             record_stream=config.record_stream,
             low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
+            group_id=name,
         )
         _apply_group_offloading_hook(parent_module, group, None, config=config)
 
@@ -753,6 +760,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             record_stream=False,
             low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
+            group_id=_GROUP_ID_LAZY_LEAF,
         )
         _apply_lazy_group_offloading_hook(module, unmatched_group, None, config=config)
 
@@ -871,6 +879,12 @@ def _get_group_onload_device(module: torch.nn.Module) -> torch.device:
     if top_level_group_offload_hook is not None:
         return top_level_group_offload_hook.config.onload_device
     raise ValueError("Group offloading is not enabled for the provided module.")
+
+
+def _compute_group_hash(group_id):
+    hashed_id = hashlib.sha256(group_id.encode("utf-8")).hexdigest()
+    # first 16 characters for a reasonably short but unique name
+    return hashed_id[:16]
 
 
 def _maybe_remove_and_reapply_group_offloading(module: torch.nn.Module) -> None:
