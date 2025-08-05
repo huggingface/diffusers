@@ -13,8 +13,10 @@
 # limitations under the License.
 
 import gc
+import tempfile
 import unittest
 
+import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -85,29 +87,13 @@ class WanPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             rope_max_seq_len=32,
         )
 
-        torch.manual_seed(0)
-        transformer_2 = WanTransformer3DModel(
-            patch_size=(1, 2, 2),
-            num_attention_heads=2,
-            attention_head_dim=12,
-            in_channels=16,
-            out_channels=16,
-            text_dim=32,
-            freq_dim=256,
-            ffn_dim=32,
-            num_layers=2,
-            cross_attn_norm=True,
-            qk_norm="rms_norm_across_heads",
-            rope_max_seq_len=32,
-        )
-
         components = {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "transformer_2": transformer_2,
+            "transformer_2": None,
         }
         return components
 
@@ -154,6 +140,45 @@ class WanPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
+
+    # _optional_components include transformer, transformer_2, but only transformer_2 is optional for this wan2.1 t2v pipeline
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        optional_component = "transformer_2"
+
+        components = self.get_dummy_components()
+        components[optional_component] = None
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        self.assertTrue(
+            getattr(pipe_loaded, optional_component) is None,
+            f"`{optional_component}` did not stay set to None after loading.",
+        )
+
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
+        self.assertLess(max_diff, expected_max_difference)
 
 
 @slow

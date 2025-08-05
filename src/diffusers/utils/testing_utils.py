@@ -36,6 +36,7 @@ from .import_utils import (
     is_compel_available,
     is_flax_available,
     is_gguf_available,
+    is_kernels_available,
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
@@ -629,6 +630,18 @@ def require_torchao_version_greater_or_equal(torchao_version):
         ) >= version.parse(torchao_version)
         return unittest.skipUnless(
             correct_torchao_version, f"Test requires torchao with version greater than {torchao_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_kernels_version_greater_or_equal(kernels_version):
+    def decorator(test_case):
+        correct_kernels_version = is_kernels_available() and version.parse(
+            version.parse(importlib.metadata.version("kernels")).base_version
+        ) >= version.parse(kernels_version)
+        return unittest.skipUnless(
+            correct_kernels_version, f"Test requires kernels with version greater than {kernels_version}."
         )(test_case)
 
     return decorator

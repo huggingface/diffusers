@@ -61,6 +61,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
     "WanVACETransformer3DModel": lambda model_cls, weights: weights,
     "ChromaTransformer2DModel": lambda model_cls, weights: weights,
+    "QwenImageTransformer2DModel": lambda model_cls, weights: weights,
 }
 
 

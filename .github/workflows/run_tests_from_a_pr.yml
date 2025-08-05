@@ -30,7 +30,7 @@ jobs:
       group: aws-g4dn-2xlarge
     container:
       image: ${{ github.event.inputs.docker_image }}
-      options: --gpus 0 --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+      options: --gpus all --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
       - name: Validate test files input
