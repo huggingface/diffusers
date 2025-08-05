@@ -133,7 +133,7 @@ lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
 </hfoption>
 <hfoption id="text encoder">
 
-当需要微调文本编码器时（如SDXL模型），Diffusers同样支持通过PEFT库实现。[`~peft.LoraConfig`]配置适配器参数后注入文本编码器，并筛选LoRA层进行训练。
+当需要微调文本编码器时（如SDXL模型），Diffusers同样支持通过[PEFT](https://hf.co/docs/peft)库实现。[`~peft.LoraConfig`]配置适配器参数后注入文本编码器，并筛选LoRA层进行训练。
 
 ```py
 text_lora_config = LoraConfig(
@@ -170,7 +170,7 @@ optimizer = optimizer_cls(
 
 完成所有配置后，即可启动训练脚本！🚀
 
-以下示例使用[火影忍者BLIP标注数据集](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions)训练生成火影角色。请设置环境变量`MODEL_NAME`和`DATASET_NAME`指定基础模型和数据集，`OUTPUT_DIR`设置输出目录，`HUB_MODEL_ID`指定Hub存储库名称。脚本运行后将生成以下文件：
+以下示例使用[Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions)训练生成火影角色。请设置环境变量`MODEL_NAME`和`DATASET_NAME`指定基础模型和数据集，`OUTPUT_DIR`设置输出目录，`HUB_MODEL_ID`指定Hub存储库名称。脚本运行后将生成以下文件：
 
 - 模型检查点
 - `pytorch_lora_weights.safetensors`（训练好的LoRA权重）
@@ -220,7 +220,7 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights("path/to/lora/model", weight_name="pytorch_lora_weights.safetensors")
-image = pipeline("蓝色眼睛的火影忍者角色").images[0]
+image = pipeline("A naruto with blue eyes").images[0]
 ```
 
 ## 后续步骤

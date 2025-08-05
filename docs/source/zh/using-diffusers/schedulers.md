@@ -12,7 +12,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 # 加载调度器与模型
 
-[[在Colab中打开]]
+[[open-in-colab]]
 
 Diffusion管道是由可互换的调度器(schedulers)和模型(models)组成的集合，可通过混合搭配来定制特定用例的流程。调度器封装了整个去噪过程（如去噪步数和寻找去噪样本的算法），其本身不包含可训练参数，因此内存占用极低。模型则主要负责从含噪输入到较纯净样本的前向传播过程。
 
@@ -81,7 +81,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
-prompt = "一张宇航员在火星上骑马的高清照片，高分辨率，高画质。"
+prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
 generator = torch.Generator(device="cuda").manual_seed(8)
 ```
 

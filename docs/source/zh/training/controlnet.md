@@ -106,7 +106,7 @@ write_basic_config()
 
 训练脚本提供了丰富的可配置参数，所有参数及其说明详见 [`parse_args()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/controlnet/train_controlnet.py#L231) 函数。虽然该函数已为每个参数提供默认值（如训练批大小、学习率等），但您可以通过命令行参数覆盖这些默认值。
 
-例如，使用fp16混合精度加速训练：
+例如，使用fp16混合精度加速训练, 可使用`--mixed_precision`参数
 
 ```bash
 accelerate launch train_controlnet.py \

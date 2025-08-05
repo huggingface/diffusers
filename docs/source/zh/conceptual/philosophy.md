@@ -45,7 +45,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 Hugging Face称此设计为**单文件政策**——即某个类的几乎所有代码都应写在单一自包含文件中。更多哲学探讨可参阅[此博文](https://huggingface.co/blog/transformers-design-philosophy)。
 
-Diffusers对流程和调度器完全遵循该哲学，但对扩散模型仅部分适用。原因在于多数扩散流程（如[DDPM](https://huggingface.co/docs/diffusers/api/pipelines/ddpm)、[Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/overview#stable-diffusion-pipelines)、[unCLIP (DALL·E 2)](https://huggingface.co/docs/diffusers/api/pipelines/unclip)和[Imagen](https://imagen.research.google/)）都基于相同扩散模型——[UNet](https://huggingface.co/docs/diffusers/api/models/unet2d-cond)。
+Diffusers对流程和调度器完全遵循该哲学，但对diffusion模型仅部分适用。原因在于多数扩散流程（如[DDPM](https://huggingface.co/docs/diffusers/api/pipelines/ddpm)、[Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/overview#stable-diffusion-pipelines)、[unCLIP (DALL·E 2)](https://huggingface.co/docs/diffusers/api/pipelines/unclip)和[Imagen](https://imagen.research.google/)）都基于相同扩散模型——[UNet](https://huggingface.co/docs/diffusers/api/models/unet2d-cond)。
 
 现在您应已理解🧨 Diffusers的设计理念🤗。我们力求在全库贯彻这些原则，但仍存在少数例外或欠佳设计。如有反馈，我们❤️欢迎在[GitHub提交](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=)。
 
@@ -68,7 +68,7 @@ Diffusers对流程和调度器完全遵循该哲学，但对扩散模型仅部�
 - 流程**非**功能完备的用户界面。完整UI推荐[InvokeAI](https://github.com/invoke-ai/InvokeAI)、[Diffuzers](https://github.com/abhishekkrthakur/diffuzers)或[lama-cleaner](https://github.com/Sanster/lama-cleaner)。
 - 每个流程应通过唯一的`__call__`方法运行，且参数命名应跨流程统一。
 - 流程应以其解决的任务命名。
-- 几乎所有新扩散流程都应在新文件夹/文件中实现。
+- 几乎所有新diffusion流程都应在新文件夹/文件中实现。
 
 ### 模型
 

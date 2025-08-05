@@ -11,7 +11,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 ## 前言
 
-[Diffusers](https://huggingface.co/docs/diffusers/index)不仅提供预训练的扩散模型，还是一个模块化工具箱，支持推理和训练功能。
+[Diffusers](https://huggingface.co/docs/diffusers/index)不仅提供预训练的diffusion模型，还是一个模块化工具箱，支持推理和训练功能。
 
 鉴于该技术在实际场景中的应用及其可能对社会产生的负面影响，我们认为有必要制定项目伦理准则，以指导Diffusers库的开发、用户贡献和使用规范。
 
@@ -39,7 +39,7 @@ Diffusers社区将在项目开发中贯彻以下伦理准则，并协调社区�
 
 ## 实施案例：安全功能与机制
 
-团队持续开发技术和非技术工具，以应对扩散技术相关的伦理与社会风险。社区反馈对于功能实施和风险意识提升具有不可替代的价值：
+团队持续开发技术和非技术工具，以应对diffusion技术相关的伦理与社会风险。社区反馈对于功能实施和风险意识提升具有不可替代的价值：
 
 - [**社区讨论区**](https://huggingface.co/docs/hub/repositories-pull-requests-discussions)：促进社区成员就项目开展协作讨论。
 
@@ -47,7 +47,7 @@ Diffusers社区将在项目开发中贯彻以下伦理准则，并协调社区�
 
 - **部署安全强化**：
   
-  - [**Safe Stable Diffusion**](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_safe)：解决Stable Diffusion等基于未过滤网络爬取数据训练的模型容易产生不当内容的问题。相关论文：[安全潜在扩散：缓解扩散模型中的不当退化](https://huggingface.co/papers/2211.05105)。
+  - [**Safe Stable Diffusion**](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_safe)：解决Stable Diffusion等基于未过滤网络爬取数据训练的模型容易产生不当内容的问题。相关论文：[Safe Latent Diffusion：缓解diffusion模型中的不当退化](https://huggingface.co/papers/2211.05105)。
 
   - [**安全检测器**](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py)：通过比对图像生成后嵌入空间中硬编码有害概念集的类别概率进行检测。有害概念列表经特殊处理以防逆向工程。
 
