@@ -1,4 +1,4 @@
-# Copyright 2025 The Qwen-Image Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Qwen-Image Team, Wan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# We gratefully acknowledge the Wan Team for their outstanding contributions.
+# QwenImageVAE is further fine-tuned from the Wan Video VAE to achieve improved performance.
+# For more information about the Wan VAE, please refer to:
+# - GitHub: https://github.com/Wan-Video/Wan2.1
+# - arXiv: https://arxiv.org/abs/2503.20314
 
 from typing import List, Optional, Tuple, Union
 

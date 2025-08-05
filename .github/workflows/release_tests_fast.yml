@@ -62,7 +62,7 @@ jobs:
       group: aws-g4dn-2xlarge
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host --gpus 0
+      options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
@@ -107,7 +107,7 @@ jobs:
       group: aws-g4dn-2xlarge
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host --gpus 0
+      options: --shm-size "16gb" --ipc host --gpus all
     defaults:
       run:
         shell: bash
@@ -163,7 +163,7 @@ jobs:
       group: aws-g4dn-2xlarge
     container:
       image: diffusers/diffusers-pytorch-minimum-cuda
-      options: --shm-size "16gb" --ipc host --gpus 0
+      options: --shm-size "16gb" --ipc host --gpus all
     defaults:
       run:
         shell: bash
@@ -222,7 +222,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host
+      options: --gpus all --shm-size "16gb" --ipc host
 
     steps:
     - name: Checkout diffusers
@@ -265,7 +265,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-xformers-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host
+      options: --gpus all --shm-size "16gb" --ipc host
 
     steps:
     - name: Checkout diffusers
@@ -307,7 +307,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host
+      options: --gpus all --shm-size "16gb" --ipc host
 
     steps:
     - name: Checkout diffusers
