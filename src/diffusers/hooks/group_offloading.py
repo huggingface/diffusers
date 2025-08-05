@@ -302,12 +302,14 @@ class GroupOffloadingHook(ModelHook):
         if self.group.onload_leader == module:
             if self.group.onload_self:
                 self.group.onload_()
-            
+
             should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
             if should_onload_next_group:
                 self.next_group.onload_()
-            
-            should_synchronize = not self.group.onload_self and self.group.stream is not None and not should_onload_next_group
+
+            should_synchronize = (
+                not self.group.onload_self and self.group.stream is not None and not should_onload_next_group
+            )
             if should_synchronize:
                 # If this group didn't onload itself, it means it was asynchronously onloaded by the
                 # previous group. We need to synchronize the side stream to ensure parameters
