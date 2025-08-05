@@ -20,11 +20,13 @@ In addition to being built entirely on licensed data, 3.2 provides several advan
 - Fine-tuning Speedup: 2x faster fine-tuning on L40S and A100.
 
 Original model checkpoints for Bria 3.2 can be found [here](https://huggingface.co/briaai/BRIA-3.2).
+Github repo for Bria 3.2 can be found [here](https://github.com/briaai/BRIA-3.2).
+
+If you want to learn more about the Bria platform, and get free traril access, please visit [bria.ai](https://bria.ai).
 
 
 ## Inference
 
-The Diffusers version of Chroma is based on the [`unlocked-v37`](https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors) version of the original model, which is available in the [Chroma repository](https://huggingface.co/lodestones/Chroma).
 
 ```python
 import torch
