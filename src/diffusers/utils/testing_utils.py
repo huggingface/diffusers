@@ -635,7 +635,7 @@ def require_torchao_version_greater_or_equal(torchao_version):
     return decorator
 
 
-def require_kernels_greater_or_equal(kernels_version):
+def require_kernels_version_greater_or_equal(kernels_version):
     def decorator(test_case):
         correct_kernels_version = is_kernels_available() and version.parse(
             version.parse(importlib.metadata.version("kernels")).base_version
