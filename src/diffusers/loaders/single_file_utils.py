@@ -60,6 +60,7 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 CHECKPOINT_KEY_NAMES = {
+    "v1": "model.diffusion_model.output_blocks.11.0.skip_connection.weight",
     "v2": "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight",
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
@@ -2195,12 +2196,6 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     for k in keys:
         if "model.diffusion_model." in k:
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
-
-    original_flux = any(k.startswith("double_blocks.") for k in checkpoint) or any(
-        k.startswith("single_blocks.") for k in checkpoint
-    )
-    if not original_flux:
-        return checkpoint
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "double_blocks." in k))[-1] + 1  # noqa: C401
     num_single_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "single_blocks." in k))[-1] + 1  # noqa: C401
