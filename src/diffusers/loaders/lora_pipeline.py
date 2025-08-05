@@ -1800,28 +1800,24 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
@@ -3551,28 +3547,24 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -3895,28 +3887,24 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -4237,28 +4225,24 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -4581,28 +4565,24 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -4926,28 +4906,24 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
@@ -5321,28 +5297,24 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -5719,28 +5691,24 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -6061,28 +6029,24 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
@@ -6405,28 +6369,24 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
@@ -6747,28 +6707,24 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
             transformer_lora_adapter_metadata:
                 LoRA adapter metadata associated with the transformer to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
