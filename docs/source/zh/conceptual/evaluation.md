@@ -8,14 +8,14 @@ http://www.apache.org/licenses/LICENSE-2.0
 除非适用法律要求或书面同意，本软件按"原样"分发，不附带任何明示或暗示的担保或条件。详见许可证中规定的特定语言权限和限制。
 -->
 
-# 扩散模型评估指南
+# Diffusion模型评估指南
 
 <a target="_blank" href="https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/evaluation.ipynb">
     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="在 Colab 中打开"/>
 </a>
 
 > [!TIP]
-> 鉴于当前已出现针对图像生成扩散模型的成熟评估框架（如[HEIM](https://crfm.stanford.edu/helm/heim/latest/)、[T2I-Compbench](https://huggingface.co/papers/2307.06350)、[GenEval](https://huggingface.co/papers/2310.11513)），本文档部分内容已过时。
+> 鉴于当前已出现针对图像生成Diffusion模型的成熟评估框架（如[HEIM](https://crfm.stanford.edu/helm/heim/latest/)、[T2I-Compbench](https://huggingface.co/papers/2307.06350)、[GenEval](https://huggingface.co/papers/2310.11513)），本文档部分内容已过时。
 
 像 [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) 这类生成模型的评估本质上是主观的。但作为开发者和研究者，我们经常需要在众多可能性中做出审慎选择。那么当面对不同生成模型（如 GANs、Diffusion 等）时，该如何决策？
 
@@ -27,7 +27,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 ## 评估场景
 
-我们涵盖以下扩散模型管线的评估：
+我们涵盖以下Diffusion模型管线的评估：
 
 - 文本引导图像生成（如 [`StableDiffusionPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/text2img)）
 - 基于文本和输入图像的引导生成（如 [`StableDiffusionImg2ImgPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/img2img) 和 [`StableDiffusionInstructPix2PixPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix)）
@@ -35,7 +35,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 ## 定性评估
 
-定性评估通常涉及对生成图像的人工评判。评估维度包括构图质量、图文对齐度和空间关系等方面。标准化的提示词能为这些主观指标提供统一基准。[DrawBench](https://imagen.research.google/)和[PartiPrompts](https://parti.research.google/)是常用的定性评估提示词数据集，分别由Imagen和Parti团队提出。
+定性评估通常涉及对生成图像的人工评判。评估维度包括构图质量、图文对齐度和空间关系等方面。标准化的提示词能为这些主观指标提供统一基准。DrawBench和PartiPrompts是常用的定性评估提示词数据集，分别由[Imagen](https://imagen.research.google/)和[Parti](https://parti.research.google/)团队提出。
 
 根据[Parti官方网站](https://parti.research.google/)说明：
 
@@ -48,13 +48,13 @@ PartiPrompts包含以下字段：
 - Category（类别，如"抽象"、"世界知识"等）
 - Challenge（难度等级，如"基础"、"复杂"、"文字与符号"等）
 
-这些基准测试支持对不同图像生成模型进行并排人工对比评估。为此，🧨 Diffusers团队构建了**Open Parti Prompts**——一个基于Parti Prompts的社区驱动型定性评估基准，用于比较顶尖开源扩散模型：
+这些基准测试支持对不同图像生成模型进行并排人工对比评估。为此，🧨 Diffusers团队构建了**Open Parti Prompts**——一个基于Parti Prompts的社区驱动型定性评估基准，用于比较顶尖开源diffusion模型：
 - [Open Parti Prompts游戏](https://huggingface.co/spaces/OpenGenAI/open-parti-prompts)：展示10个parti提示词对应的4张生成图像，用户选择最符合提示的图片
-- [Open Parti Prompts排行榜](https://huggingface.co/spaces/OpenGenAI/parti-prompts-leaderboard)：对比当前最优开源扩散模型的性能榜单
+- [Open Parti Prompts排行榜](https://huggingface.co/spaces/OpenGenAI/parti-prompts-leaderboard)：对比当前最优开源diffusion模型的性能榜单
 
 为进行手动图像对比，我们演示如何使用`diffusers`处理部分PartiPrompts提示词。
 
-以下是从不同挑战维度（基础、复杂、语言结构、想象力、文字与符号）采样的提示词示例（使用[nateraw/parti-prompts](https://huggingface.co/datasets/nateraw/parti-prompts)数据集）：
+以下是从不同挑战维度（基础、复杂、语言结构、想象力、文字与符号）采样的提示词示例（使用[PartiPrompts作为数据集](https://huggingface.co/datasets/nateraw/parti-prompts)）：
 
 ```python
 from datasets import load_dataset
@@ -63,7 +63,7 @@ from datasets import load_dataset
 # prompts = prompts.shuffle()
 # sample_prompts = [prompts[i]["Prompt"] for i in range(5)]
 
-# 为保证可复现性，固定使用以下示例提示词
+# Fixing these sample prompts in the interest of reproducibility.
 sample_prompts = [
     "a corgi",
     "a hot air balloon with a yin-yang symbol, with the moon visible in the daytime sky",
@@ -96,7 +96,7 @@ images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generato
 
 在模型训练过程中查看推理样本有助于评估训练进度。我们的[训练脚本](https://github.com/huggingface/diffusers/tree/main/examples/)支持此功能，并额外提供TensorBoard和Weights & Biases日志记录功能。
 
-</提示>
+</Tip>
 
 ## 定量评估
 
@@ -123,12 +123,12 @@ sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, torch_dtype=to
 
 ```python
 prompts = [
-    "火星上宇航员骑马的照片",
-    "亚马逊雨林中高科技太阳能朋克乌托邦",
-    "皮卡丘在埃菲尔铁塔景观餐厅享用美食",
-    "贫民窟中表现主义风格的机甲机器人",
-    "正在准备美味餐点的昆虫机器人",
-    "迪士尼风格、artstation画风的雪山之巅小木屋",
+    "a photo of an astronaut riding a horse on mars",
+    "A high tech solarpunk utopia in the Amazon rainforest",
+    "A pikachu fine dining with a view to the Eiffel Tower",
+    "A mecha robot in a favela in expressionist style",
+    "an insect robot preparing a delicious meal",
+    "A small cabin on top of a snowy mountain in the style of Disney, artstation",
 ]
 
 images = sd_pipeline(prompts, num_images_per_prompt=1, output_type="np").images
@@ -193,13 +193,14 @@ print(f"v-1-5版本的CLIP分数: {sd_clip_score_1_5}")
 
 该分数存在固有局限性：训练数据中的标题是从网络爬取，并提取自图片关联的`alt`等标签。这些描述未必符合人类描述图像的方式，因此我们需要人工"设计"部分提示词。
 
-</提示>
+</Tip>
 
 ### 图像条件式文本生成图像
 
 这种情况下，生成管道同时接受输入图像和文本提示作为条件。以[`StableDiffusionInstructPix2PixPipeline`]为例，该管道接收编辑指令作为输入提示，并接受待编辑的输入图像。
 
 示例图示：
+
 ![编辑指令](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-instruction.png)
 
 评估此类模型的策略之一是测量两幅图像间变化的连贯性（通过[CLIP](https://huggingface.co/docs/transformers/model_doc/clip)定义）中两个图像之间的变化与两个图像描述之间的变化的一致性（如论文[《CLIP-Guided Domain Adaptation of Image Generators》](https://huggingface.co/papers/2108.00946)所示）。这被称为“**CLIP方向相似度**”。  

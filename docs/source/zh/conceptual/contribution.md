@@ -19,7 +19,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 ## 概述
 
-您可以通过多种方式做出贡献，从在issue和讨论区回答问题，到向核心库添加新的扩散模型。
+您可以通过多种方式做出贡献，从在issue和讨论区回答问题，到向核心库添加新的diffusion模型。
 
 下面我们按难度升序列出不同的贡献方式，所有方式对社区都很有价值：
 
@@ -33,7 +33,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 * 8. 解决标记为"Good second issue"的中等难度问题，详见[此处](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22)
 * 9. 添加新pipeline/模型/调度器，参见["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22)和["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22)类issue。此类贡献请先阅读[设计哲学](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md)
 
-重申：所有贡献对社区都具有重要价值。下文将详细说明各类贡献方式。
+重申：**所有贡献对社区都具有重要价值。**下文将详细说明各类贡献方式。
 
 对于4-9类贡献，您需要提交PR（拉取请求），具体操作详见[如何提交PR](#how-to-open-a-pr)章节。
 
@@ -48,13 +48,13 @@ http://www.apache.org/licenses/LICENSE-2.0
 - 论文解读
 - 基于Diffusers库的个人项目求助
 - 一般性问题
-- 关于扩散模型的伦理讨论
+- 关于diffusion模型的伦理讨论
 - ...
 
 论坛/Discord上的每个问题都能促使社区公开分享知识，很可能帮助未来遇到相同问题的初学者。请务必提出您的疑问。
 同样地，通过回答问题您也在为社区创造公共知识文档，这种贡献极具价值。
 
-请注意：提问/回答时投入的精力越多，产生的公共知识质量就越高。精心构建的问题与专业解答能形成高质量知识库，而表述不清的问题则可能降低讨论价值。
+**请注意**：提问/回答时投入的精力越多，产生的公共知识质量就越高。精心构建的问题与专业解答能形成高质量知识库，而表述不清的问题则可能降低讨论价值。
 
 低质量的问题或回答会降低公共知识库的整体质量。  
 简而言之，高质量的问题或回答应具备*精确性*、*简洁性*、*相关性*、*易于理解*、*可访问性*和*格式规范/表述清晰*等特质。更多详情请参阅[如何提交优质议题](#how-to-write-a-good-issue)章节。
@@ -111,11 +111,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 #### 2.3 设计反馈
 
-关于库设计的反馈（无论正面还是负面）能极大帮助核心维护者打造更友好的库。要了解当前设计理念，请参阅[此文档](https://huggingface.co/docs/diffusers/conceptu
-
-### 2.3 设计理念反馈
-
-Diffusers库遵循特定的[设计理念](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md)。如果您认为某个设计选择与当前理念不符，请说明原因及改进建议。如果某个设计选择因过度遵循理念而限制了使用场景，也请解释原因并提出调整方案。  
+关于库设计的反馈（无论正面还是负面）能极大帮助核心维护者打造更友好的库。要了解当前设计理念，请参阅[此文档](https://huggingface.co/docs/diffusers/conceptual/philosophy)如果您认为某个设计选择与当前理念不符，请说明原因及改进建议。如果某个设计选择因过度遵循理念而限制了使用场景，也请解释原因并提出调整方案。  
 若某个设计对您特别实用，请同样留下备注——这对未来的设计决策极具参考价值。
 
 您可通过[此链接](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=)提交设计反馈。
@@ -130,7 +126,7 @@ Diffusers库遵循特定的[设计理念](https://github.com/huggingface/diffuse
 
 #### 2.5 新模型/调度器/pipeline提案
 
-若扩散模型社区发布了您希望集成到Diffusers库的新模型、pipeline或调度器，请提供以下信息：  
+若diffusion模型社区发布了您希望集成到Diffusers库的新模型、pipeline或调度器，请提供以下信息：  
 * 简要说明并附论文或发布链接  
 * 开源实现链接（如有）  
 * 模型权重下载链接（如已公开）  
@@ -141,7 +137,7 @@ Diffusers库遵循特定的[设计理念](https://github.com/huggingface/diffuse
 
 ### 3. 解答GitHub问题
 
-回答GitHub问题可能需要Diffusers的技术知识，但我们鼓励所有人尝试参与——即使您对答案不完全确定。高质量回答的建议：  
+回答GitHub问题可能需要Diffusers的技术知识，但我们鼓励所有人尝试参与——即使您对答案不完全正确。高质量回答的建议：  
 - 保持简洁精炼  
 - 严格聚焦问题本身  
 - 提供代码/论文等佐证材料  
@@ -152,7 +148,6 @@ Diffusers库遵循特定的[设计理念](https://github.com/huggingface/diffuse
 - 标记重复issue并附原链接  
 - 推荐用户至[论坛](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63)或[Discord](https://discord.gg/G7tWnz98XR)  
 
-（注：保留技术专有名词Diffusers/stable_diffusion/consisid原文）
 在确认提交的Bug报告正确且需要修改源代码后，请继续阅读以下章节内容。
 
 以下所有贡献都需要提交PR（拉取请求）。具体操作步骤详见[如何提交PR](#how-to-open-a-pr)章节。
@@ -166,7 +161,7 @@ Diffusers库遵循特定的[设计理念](https://github.com/huggingface/diffuse
 
 ### 5. 文档贡献
 
-优秀库必然拥有优秀文档！官方文档是新用户的首要接触点，因此文档贡献具有极高价值。贡献形式包括：
+优秀库**必然**拥有优秀文档！官方文档是新用户的首要接触点，因此文档贡献具有**极高价值**。贡献形式包括：
 - 修正拼写/语法错误
 - 修复文档字符串格式错误（如显示异常或链接失效）
 - 修正文档字符串中张量的形状/维度描述
@@ -175,12 +170,11 @@ Diffusers库遵循特定的[设计理念](https://github.com/huggingface/diffuse
 - 文档翻译
 
 [官方文档页面](https://huggingface.co/docs/diffusers/index)所有内容均属可修改范围，对应[文档源文件](https://github.com/huggingface/diffusers/tree/main/docs/source)可进行编辑。修改前请查阅[验证说明](https://github.com/huggingface/diffusers/tree/main/docs)。
-以下是翻译成中文的内容（保留Diffusers、stable_diffusion、consisid等术语不翻译）：
 
 ### 6. 贡献社区流程
 
 > [!TIP]
-> 阅读[社区流程](../using-diffusers/custom_pipeline_overview#community-pipelines)指南了解GitHub与Hugging Face Hub社区流程的区别。若想了解我们设立社区流程的原因，请查看GitHub Issue [#841](https://github.com/huggingface/diffusers/issues/841)（简而言之，我们无法维护扩散模型所有可能的推理使用方式，但也不希望限制社区构建这些流程）。
+> 阅读[社区流程](../using-diffusers/custom_pipeline_overview#community-pipelines)指南了解GitHub与Hugging Face Hub社区流程的区别。若想了解我们设立社区流程的原因，请查看GitHub Issue [#841](https://github.com/huggingface/diffusers/issues/841)（简而言之，我们无法维护diffusion模型所有可能的推理使用方式，但也不希望限制社区构建这些流程）。
 
 贡献社区流程是向社区分享创意与成果的绝佳方式。您可以在[`DiffusionPipeline`]基础上构建流程，任何人都能通过设置`custom_pipeline`参数加载使用。本节将指导您创建一个简单的"单步"流程——UNet仅执行单次前向传播并调用调度器一次。
 
@@ -264,7 +258,7 @@ Diffusers训练示例是位于[examples](https://github.com/huggingface/diffuser
 
 研究型训练示例位于[examples/research_projects](https://github.com/huggingface/diffusers/tree/main/examples/research_projects)，而官方训练示例包含[examples](https://github.com/huggingface/diffusers/tree/main/examples)目录下除`research_projects`和`community`外的所有文件夹。
 官方训练示例由Diffusers核心维护者维护，研究型训练示例则由社区维护。
-这与[6. 贡献社区pipeline](#6-contribute-a-community-pipeline)中关于官方pipeline与社区pipeline的原因相同：核心维护者不可能维护扩散模型的所有可能训练方法。
+这与[6. 贡献社区pipeline](#6-contribute-a-community-pipeline)中关于官方pipeline与社区pipeline的原因相同：核心维护者不可能维护diffusion模型的所有可能训练方法。
 如果Diffusers核心维护者和社区认为某种训练范式过于实验性或不够普及，相应训练代码应放入`research_projects`文件夹并由作者维护。
 
 官方训练和研究型示例都包含一个目录，其中含有一个或多个训练脚本、`requirements.txt`文件和`README.md`文件。用户使用时需要先克隆代码库：
@@ -283,7 +277,7 @@ pip install -r examples/<your-example-folder>/requirements.txt
 因此添加示例时，`requirements.txt`文件应定义训练示例所需的所有pip依赖项，安装完成后用户即可运行示例训练脚本。可参考[DreamBooth的requirements.txt文件](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/requirements.txt)。
 - 运行示例所需的所有代码应集中在单个Python文件中  
 - 用户应能通过命令行`python <your-example>.py --args`直接运行示例  
-- 示例应保持简洁，主要展示如何使用Diffusers进行训练。示例脚本的目的**不是**创建最先进的扩散模型，而是复现已知训练方案，避免添加过多自定义逻辑。因此，这些示例也力求成为优质的教学材料。
+- **示例**应保持简洁，主要展示如何使用Diffusers进行训练。示例脚本的目的**不是**创建最先进的diffusion模型，而是复现已知训练方案，避免添加过多自定义逻辑。因此，这些示例也力求成为优质的教学材料。
 
 提交示例时，强烈建议参考现有示例（如[dreambooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py)）来了解规范格式。  
 我们强烈建议贡献者使用[Accelerate库](https://github.com/huggingface/accelerate)，因其与Diffusers深度集成。  
@@ -302,7 +296,7 @@ pip install -r examples/<your-example-folder>/requirements.txt
 
 ### 9. 添加管道、模型和调度器
 
-管道（pipelines）、模型（models）和调度器（schedulers）是Diffusers库中最重要的组成部分。它们提供了对最先进扩散技术的便捷访问，使得社区能够构建强大的生成式AI应用。
+管道（pipelines）、模型（models）和调度器（schedulers）是Diffusers库中最重要的组成部分。它们提供了对最先进diffusion技术的便捷访问，使得社区能够构建强大的生成式AI应用。
 
 通过添加新的模型、管道或调度器，您可能为依赖Diffusers的任何用户界面开启全新的强大用例，这对整个生成式AI生态系统具有巨大价值。
 
@@ -326,13 +320,15 @@ Diffusers针对这三类组件都有一些开放的功能请求——如果您�
 # 从 diffusers.pipelines.stable_diffusion.pipeline_output.StableDiffusionPipelineOutput 复制并将 Stable 替换为 Alt
 class AltDiffusionPipelineOutput(BaseOutput):
     """
-    Alt Diffusion 流水线的输出类。
+    Output class for Alt Diffusion pipelines.
 
-    参数:
-        images (`List[PIL.Image.Image]` 或 `np.ndarray`)
-            长度为 `batch_size` 的去噪 PIL 图像列表，或形状为 `(batch_size, height, width, num_channels)` 的 NumPy 数组。
+    Args:
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
         nsfw_content_detected (`List[bool]`)
-            指示对应生成图像是否包含"不适合工作场所"(nsfw)内容的列表，若无法执行安全检查则为 `None`。
+            List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
+            `None` if safety checking could not be performed.
     """
 ```
 
@@ -344,7 +340,7 @@ class AltDiffusionPipelineOutput(BaseOutput):
 
 1. 确保使用了正确的issue模板。您可以选择*错误报告*、*功能请求*、*API设计反馈*、*新模型/流水线/调度器添加*、*论坛*或空白issue。在[新建issue](https://github.com/huggingface/diffusers/issues/new/choose)时务必选择正确的模板。
 2. **精确描述**：为issue起一个恰当的标题。尽量用最简练的语言描述问题。提交issue时越精确，理解问题和潜在解决方案所需的时间就越少。确保一个issue只针对一个问题，不要将多个问题放在同一个issue中。如果发现多个问题，请分别创建多个issue。如果是错误报告，请尽可能精确描述错误类型——不应只写"diffusers出错"。
-3. **可复现性**：无法复现的代码片段 == 无法解决问题。如果遇到错误，维护人员必须能够复现它。确保包含一个可以复制粘贴到Python解释器中复现问题的代码片段。确保您的代码片段是可运行的，即没有缺少导入或图像链接等问题。issue应包含错误信息和可直接复制粘贴以复现相同错误的代码片段。如果issue涉及本地模型权重或无法被读者访问的本地数据，则问题无法解决。如果无法共享数据或模型，请尝试创建虚拟模型或虚拟数据。
+3. **可复现性**：无法复现的代码片段 == 无法解决问题。如果遇到错误，维护人员必须能够**复现**它。确保包含一个可以复制粘贴到Python解释器中复现问题的代码片段。确保您的代码片段是可运行的，即没有缺少导入或图像链接等问题。issue应包含错误信息和可直接复制粘贴以复现相同错误的代码片段。如果issue涉及本地模型权重或无法被读者访问的本地数据，则问题无法解决。如果无法共享数据或模型，请尝试创建虚拟模型或虚拟数据。
 4. **最小化原则**：通过尽可能简洁的描述帮助读者快速理解问题。删除所有与问题无关的代码/信息。如果发现错误，请创建最简单的代码示例来演示问题，不要一发现错误就把整个工作流程都转储到issue中。例如，如果在训练模型时某个阶段出现错误或训练过程中遇到问题时，应首先尝试理解训练代码的哪部分导致了错误，并用少量代码尝试复现。建议使用模拟数据替代完整数据集进行测试。
 5. 添加引用链接。当提及特定命名、方法或模型时，请务必提供引用链接以便读者理解。若涉及具体PR或issue，请确保添加对应链接。不要假设读者了解你所指内容。issue中引用链接越丰富越好。
 6. 规范格式。请确保规范格式化issue内容：Python代码使用代码语法块，错误信息使用标准代码语法。详见[GitHub官方格式文档](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax)。
@@ -482,8 +478,6 @@ $ git checkout -b 您的同步分支名称
 $ git pull --squash --no-commit upstream main
 $ git commit -m '提交信息（不要包含 GitHub 引用）'
 $ git push --set-upstream origin 您的分支名称
-```
-                -branch-for-syncing
 ```
 
 ### 风格指南

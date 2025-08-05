@@ -28,8 +28,6 @@
     sections:
     - local: training/text_inversion
       title: Textual Inversion
-    - local: training/dreambooth
-      title: DreamBooth
     - local: training/lora
       title: LoRA
 
@@ -46,8 +44,6 @@
 - title: Model accelerators and hardware
   isExpanded: false
   sections:
-  - local: using-diffusers/stable_diffusion_jax_how_to
-    title: JAX/Flax
   - local: optimization/onnx
     title: ONNX
 

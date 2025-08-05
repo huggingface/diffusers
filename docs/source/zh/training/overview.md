@@ -9,7 +9,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 # 概述
 
-🤗 Diffusers 提供了一系列训练脚本供您训练自己的扩散模型。您可以在 [diffusers/examples](https://github.com/huggingface/diffusers/tree/main/examples) 找到所有训练脚本。
+🤗 Diffusers 提供了一系列训练脚本供您训练自己的diffusion模型。您可以在 [diffusers/examples](https://github.com/huggingface/diffusers/tree/main/examples) 找到所有训练脚本。
 
 每个训练脚本具有以下特点：
 
@@ -22,10 +22,10 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 | 训练类型 | 支持SDXL | 支持LoRA | 支持Flax |
 |---|---|---|---|
-| [无条件图像生成](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation) [![在Colab打开](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) |  |  |  |
-| [文生图](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) | 👍 | 👍 | 👍 |
-| [文本反转](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion) [![在Colab打开](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb) |  |  | 👍 |
-| [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) [![在Colab打开](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb) | 👍 | 👍 | 👍 |
+| [unconditional image generation](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) |  |  |  |
+| [text-to-image](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) | 👍 | 👍 | 👍 |
+| [textual inversion](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb) |  |  | 👍 |
+| [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb) | 👍 | 👍 | 👍 |
 | [ControlNet](https://github.com/huggingface/diffusers/tree/main/examples/controlnet) | 👍 |  | 👍 |
 | [InstructPix2Pix](https://github.com/huggingface/diffusers/tree/main/examples/instruct_pix2pix) | 👍 |  |  |
 | [Custom Diffusion](https://github.com/huggingface/diffusers/tree/main/examples/custom_diffusion) |  |  |  |
