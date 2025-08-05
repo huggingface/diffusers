@@ -13,41 +13,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
-# /// script
-# dependencies = [
-#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
-#     "torch>=2.0.0",
-#     "accelerate>=1.0.0",
-#     "transformers>=4.47.0",
-#     "ftfy",
-#     "tensorboard",
-#     "Jinja2",
-#     "peft>=0.14.0",
-#     "sentencepiece",
-# ]
-# ///
-
 import argparse
 import copy
 import itertools
+import json
 import logging
 import math
 import os
 import random
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
 import torch
-import torch.utils.checkpoint
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from huggingface_hub.utils import insecure_hashlib
-from peft import LoraConfig, set_peft_model_state_dict
+from peft import LoraConfig, prepare_model_for_kbit_training, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
@@ -55,14 +42,15 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, Gemma2Model
+from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
 import diffusers
 from diffusers import (
-    AutoencoderDC,
+    AutoencoderKLQwenImage,
+    BitsAndBytesConfig,
     FlowMatchEulerDiscreteScheduler,
-    SanaPipeline,
-    SanaTransformer2DModel,
+    QwenImagePipeline,
+    QwenImageTransformer2DModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
@@ -71,6 +59,7 @@ from diffusers.training_utils import (
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
     free_memory,
+    offload_models,
 )
 from diffusers.utils import (
     check_min_version,
@@ -111,7 +100,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# Sana DreamBooth LoRA - {repo_id}
+# HiDream Image DreamBooth LoRA - {repo_id}
 
 <Gallery />
 
@@ -119,8 +108,7 @@ def save_model_card(
 
 These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
-The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [Sana diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sana.md).
-
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [Qwen Image diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_qwen.md).
 
 ## Trigger words
 
@@ -133,19 +121,26 @@ You should use `{instance_prompt}` to trigger the image generation.
 ## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
 
 ```py
-TODO
+    >>> import torch
+    >>> from diffusers import QwenImagePipeline
+
+    >>> pipe = QwenImagePipeline.from_pretrained(
+    ...     "Qwen/Qwen-Image",
+    ...     torch_dtype=torch.bfloat16,
+    ... )
+    >>> pipe.enable_model_cpu_offload()
+    >>> pipe.load_lora_weights(f"{repo_id}")
+    >>> image = pipe(f"{instance_prompt}").images[0]
+
+
 ```
 
 For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
-
-## License
-
-TODO
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="other",
+        license="apache-2.0",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -156,8 +151,8 @@ TODO
         "diffusers-training",
         "diffusers",
         "lora",
-        "sana",
-        "sana-diffusers",
+        "qwen-image",
+        "qwen-image-diffusers",
         "template:sd-lora",
     ]
 
@@ -171,23 +166,30 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
+    args.num_validation_images = args.num_validation_images if args.num_validation_images else 1
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    if args.enable_vae_tiling:
-        pipeline.vae.enable_tiling(tile_sample_min_height=1024, tile_sample_stride_width=1024)
-
-    pipeline.text_encoder = pipeline.text_encoder.to(torch.bfloat16)
-    pipeline = pipeline.to(accelerator.device)
+    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
+    autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
 
-    images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+    images = []
+    for _ in range(args.num_validation_images):
+        with autocast_ctx:
+            image = pipeline(
+                prompt_embeds=pipeline_args["prompt_embeds"],
+                prompt_embeds_mask=pipeline_args["prompt_embeds_mask"],
+                generator=generator,
+            ).images[0]
+            images.append(image)
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
@@ -204,8 +206,7 @@ def log_validation(
             )
 
     del pipeline
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    free_memory()
 
     return images
 
@@ -218,6 +219,24 @@ def parse_args(input_args=None):
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--pretrained_tokenizer_4_name_or_path",
+        type=str,
+        default="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--pretrained_text_encoder_4_name_or_path",
+        type=str,
+        default="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--bnb_quantization_config_path",
+        type=str,
+        default=None,
+        help="Quantization config in a JSON file that will be used to define the bitsandbytes quant config of the DiT.",
     )
     parser.add_argument(
         "--revision",
@@ -302,20 +321,29 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--max_sequence_length",
         type=int,
-        default=300,
-        help="Maximum sequence length to use with with the Gemma model",
+        default=512,
+        help="Maximum sequence length to use with the Qwen2.5 VL as text encoder.",
     )
-    parser.add_argument(
-        "--complex_human_instruction",
-        type=str,
-        default=None,
-        help="Instructions for complex human attention: https://github.com/NVlabs/Sana/blob/main/configs/sana_app_config/Sana_1600M_app.yaml#L55.",
-    )
+
     parser.add_argument(
         "--validation_prompt",
         type=str,
         default=None,
         help="A prompt that is used during validation to verify that the model is learning.",
+    )
+
+    parser.add_argument(
+        "--skip_final_inference",
+        default=False,
+        action="store_true",
+        help="Whether to skip the final inference step with loaded lora weights upon training completion. This will run intermediate validation inference if `validation_prompt` is provided. Specify to reduce memory.",
+    )
+
+    parser.add_argument(
+        "--final_validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is used during a final validation to verify that the model is learning. Ignored if `--validation_prompt` is provided.",
     )
     parser.add_argument(
         "--num_validation_images",
@@ -345,6 +373,7 @@ def parse_args(input_args=None):
         help="LoRA alpha to be used for additional scaling.",
     )
     parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
@@ -364,7 +393,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="sana-dreambooth-lora",
+        default="hidream-dreambooth-lora",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -527,10 +556,6 @@ def parse_args(input_args=None):
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
     parser.add_argument(
-        "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
-    )
-
-    parser.add_argument(
         "--lora_layers",
         type=str,
         default=None,
@@ -626,8 +651,6 @@ def parse_args(input_args=None):
         help="Whether to offload the VAE and the text encoder to CPU when they are not used.",
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
-    parser.add_argument("--enable_vae_tiling", action="store_true", help="Enabla vae tiling in log validation")
-    parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -839,6 +862,9 @@ def collate_fn(examples, with_prior_preservation=False):
         prompts += [example["class_prompt"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
+    # Qwen expects a `num_frames` dimension too.
+    if pixel_values.ndim == 4:
+        pixel_values = pixel_values.unsqueeze(2)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
     batch = {"pixel_values": pixel_values, "prompts": prompts}
@@ -921,14 +947,12 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            pipeline = SanaPipeline.from_pretrained(
+            pipeline = QwenImagePipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
-                torch_dtype=torch.float32,
+                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                 revision=args.revision,
                 variant=args.variant,
             )
-            pipeline.text_encoder = pipeline.text_encoder.to(torch.bfloat16)
-            pipeline.transformer = pipeline.transformer.to(torch.float16)
             pipeline.set_progress_bar_config(disable=True)
 
             num_new_images = args.num_class_images - cur_class_images
@@ -950,6 +974,7 @@ def main(args):
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
+            pipeline.to("cpu")
             del pipeline
             free_memory()
 
@@ -964,35 +989,12 @@ def main(args):
                 exist_ok=True,
             ).repo_id
 
-    # Load the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
+    # Load the tokenizers
+    tokenizer = Qwen2Tokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         revision=args.revision,
     )
-
-    # Load scheduler and models
-    noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision
-    )
-    noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    text_encoder = Gemma2Model.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
-    )
-    vae = AutoencoderDC.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="vae",
-        revision=args.revision,
-        variant=args.variant,
-    )
-    transformer = SanaTransformer2DModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
-    )
-
-    # We only train the additional adapter LoRA layers
-    transformer.requires_grad_(False)
-    vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
 
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -1002,33 +1004,73 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
+    # Load scheduler and models
+    noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision, shift=3.0
+    )
+    noise_scheduler_copy = copy.deepcopy(noise_scheduler)
+    vae = AutoencoderKLQwenImage.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+        variant=args.variant,
+    )
+    vae_scale_factor = 2 ** len(vae.temperal_downsample)
+    latents_mean = (torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1)).to(accelerator.device)
+    latents_std = 1.0 / torch.tensor(vae.config.latents_std).view(1, vae.config.z_dim, 1, 1, 1).to(accelerator.device)
+    text_encoder = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, torch_dtype=weight_dtype
+    )
+    quantization_config = None
+    if args.bnb_quantization_config_path is not None:
+        with open(args.bnb_quantization_config_path, "r") as f:
+            config_kwargs = json.load(f)
+            if "load_in_4bit" in config_kwargs and config_kwargs["load_in_4bit"]:
+                config_kwargs["bnb_4bit_compute_dtype"] = weight_dtype
+        quantization_config = BitsAndBytesConfig(**config_kwargs)
+
+    transformer = QwenImageTransformer2DModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        revision=args.revision,
+        variant=args.variant,
+        quantization_config=quantization_config,
+        torch_dtype=weight_dtype,
+    )
+    if args.bnb_quantization_config_path is not None:
+        transformer = prepare_model_for_kbit_training(transformer, use_gradient_checkpointing=False)
+
+    # We only train the additional adapter LoRA layers
+    transformer.requires_grad_(False)
+    vae.requires_grad_(False)
+    text_encoder.requires_grad_(False)
+
     if torch.backends.mps.is_available() and weight_dtype == torch.bfloat16:
         # due to pytorch#99272, MPS does not yet support bfloat16.
         raise ValueError(
             "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
         )
 
-    # VAE should always be kept in fp32 for SANA (?)
-    vae.to(dtype=torch.float32)
-    transformer.to(accelerator.device, dtype=weight_dtype)
-    # because Gemma2 is particularly suited for bfloat16.
-    text_encoder.to(dtype=torch.bfloat16)
-
-    if args.enable_npu_flash_attention:
-        if is_torch_npu_available():
-            logger.info("npu flash attention enabled.")
-            for block in transformer.transformer_blocks:
-                block.attn2.set_use_npu_flash_attention(True)
-        else:
-            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
+    to_kwargs = {"dtype": weight_dtype, "device": accelerator.device} if not args.offload else {"dtype": weight_dtype}
+    # flux vae is stable in bf16 so load it in weight_dtype to reduce memory
+    vae.to(**to_kwargs)
+    text_encoder.to(**to_kwargs)
+    # we never offload the transformer to CPU, so we can just use the accelerator device
+    transformer_to_kwargs = (
+        {"device": accelerator.device}
+        if args.bnb_quantization_config_path is not None
+        else {"device": accelerator.device, "dtype": weight_dtype}
+    )
+    transformer.to(**transformer_to_kwargs)
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
-    text_encoding_pipeline = SanaPipeline.from_pretrained(
+    text_encoding_pipeline = QwenImagePipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=None,
         transformer=None,
-        text_encoder=text_encoder,
         tokenizer=tokenizer,
+        text_encoder=text_encoder,
+        scheduler=None,
     )
 
     if args.gradient_checkpointing:
@@ -1037,7 +1079,7 @@ def main(args):
     if args.lora_layers is not None:
         target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
-        target_modules = ["to_k", "to_q", "to_v"]
+        target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
 
     # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
@@ -1059,17 +1101,20 @@ def main(args):
         if accelerator.is_main_process:
             transformer_lora_layers_to_save = None
             modules_to_save = {}
+
             for model in models:
-                if isinstance(model, type(unwrap_model(transformer))):
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    model = unwrap_model(model)
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                     modules_to_save["transformer"] = model
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                if weights:
+                    weights.pop()
 
-            SanaPipeline.save_lora_weights(
+            QwenImagePipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 **_collate_lora_metadata(modules_to_save),
@@ -1078,15 +1123,22 @@ def main(args):
     def load_model_hook(models, input_dir):
         transformer_ = None
 
-        while len(models) > 0:
-            model = models.pop()
+        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
+            while len(models) > 0:
+                model = models.pop()
 
-            if isinstance(model, type(unwrap_model(transformer))):
-                transformer_ = model
-            else:
-                raise ValueError(f"unexpected save model: {model.__class__}")
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    model = unwrap_model(model)
+                    transformer_ = model
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
+        else:
+            transformer_ = QwenImageTransformer2DModel.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="transformer"
+            )
+            transformer_.add_adapter(transformer_lora_config)
 
-        lora_state_dict = SanaPipeline.lora_state_dict(input_dir)
+        lora_state_dict = QwenImagePipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
             f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
@@ -1214,61 +1266,78 @@ def main(args):
     )
 
     def compute_text_embeddings(prompt, text_encoding_pipeline):
-        text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
         with torch.no_grad():
-            prompt_embeds, prompt_attention_mask, _, _ = text_encoding_pipeline.encode_prompt(
-                prompt,
-                max_sequence_length=args.max_sequence_length,
-                complex_human_instruction=args.complex_human_instruction,
+            prompt_embeds, prompt_embeds_mask = text_encoding_pipeline.encode_prompt(
+                prompt=prompt, max_sequence_length=args.max_sequence_length
             )
-        if args.offload:
-            text_encoding_pipeline = text_encoding_pipeline.to("cpu")
-        prompt_embeds = prompt_embeds.to(transformer.dtype)
-        return prompt_embeds, prompt_attention_mask
+        return prompt_embeds, prompt_embeds_mask
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
-        instance_prompt_hidden_states, instance_prompt_attention_mask = compute_text_embeddings(
-            args.instance_prompt, text_encoding_pipeline
-        )
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            instance_prompt_embeds, instance_prompt_embeds_mask = compute_text_embeddings(
+                args.instance_prompt, text_encoding_pipeline
+            )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        class_prompt_hidden_states, class_prompt_attention_mask = compute_text_embeddings(
-            args.class_prompt, text_encoding_pipeline
-        )
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            class_prompt_embeds, class_prompt_embeds_mask = compute_text_embeddings(
+                args.class_prompt, text_encoding_pipeline
+            )
 
-    # Clear the memory here
-    if not train_dataset.custom_instance_prompts:
-        del text_encoder, tokenizer
-        free_memory()
+    validation_embeddings = {}
+    if args.validation_prompt is not None:
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            (validation_embeddings["prompt_embeds"], validation_embeddings["prompt_embeds_mask"]) = (
+                compute_text_embeddings(args.validation_prompt, text_encoding_pipeline)
+            )
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
     if not train_dataset.custom_instance_prompts:
-        prompt_embeds = instance_prompt_hidden_states
-        prompt_attention_mask = instance_prompt_attention_mask
+        prompt_embeds = instance_prompt_embeds
+        prompt_embeds_mask = instance_prompt_embeds_mask
         if args.with_prior_preservation:
-            prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
-            prompt_attention_mask = torch.cat([prompt_attention_mask, class_prompt_attention_mask], dim=0)
+            prompt_embeds = torch.cat([prompt_embeds, class_prompt_embeds], dim=0)
+            prompt_embeds_mask = torch.cat([prompt_embeds_mask, class_prompt_embeds_mask], dim=0)
 
-    vae_config_scaling_factor = vae.config.scaling_factor
-    if args.cache_latents:
+    # if cache_latents is set to True, we encode images to latents and store them.
+    # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
+    # we encode them in advance as well.
+    precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
+    if precompute_latents:
+        prompt_embeds_cache = []
+        prompt_embeds_mask_cache = []
         latents_cache = []
-        vae = vae.to(accelerator.device)
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
-                batch["pixel_values"] = batch["pixel_values"].to(
-                    accelerator.device, non_blocking=True, dtype=vae.dtype
-                )
-                latents_cache.append(vae.encode(batch["pixel_values"]).latent)
+                if args.cache_latents:
+                    with offload_models(vae, device=accelerator.device, offload=args.offload):
+                        batch["pixel_values"] = batch["pixel_values"].to(
+                            accelerator.device, non_blocking=True, dtype=vae.dtype
+                        )
+                    latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+                if train_dataset.custom_instance_prompts:
+                    with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+                        prompt_embeds, prompt_embeds_mask = compute_text_embeddings(
+                            batch["prompts"], text_encoding_pipeline
+                        )
+                    prompt_embeds_cache.append(prompt_embeds)
+                    prompt_embeds_mask_cache.append(prompt_embeds_mask)
 
-        if args.validation_prompt is None:
-            del vae
-            free_memory()
+    # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
+    if args.cache_latents:
+        vae = vae.to("cpu")
+        del vae
+
+    # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
+    text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+    del text_encoder, tokenizer
+    free_memory()
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1301,7 +1370,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = "dreambooth-sana-lora"
+        tracker_name = "dreambooth-qwen-image-lora"
         accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
@@ -1370,23 +1439,26 @@ def main(args):
 
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]
-            with accelerator.accumulate(models_to_accumulate):
-                prompts = batch["prompts"]
+            prompts = batch["prompts"]
 
+            with accelerator.accumulate(models_to_accumulate):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-                    prompt_embeds, prompt_attention_mask = compute_text_embeddings(prompts, text_encoding_pipeline)
-
+                    prompt_embeds = prompt_embeds_cache[step]
+                    prompt_embeds_mask = prompt_embeds_mask_cache[step]
+                else:
+                    num_repeat_elements = len(prompts)
+                    prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
+                    prompt_embeds_mask = prompt_embeds_mask.repeat(num_repeat_elements, 1)
                 # Convert images to latent space
                 if args.cache_latents:
-                    model_input = latents_cache[step]
+                    model_input = latents_cache[step].sample()
                 else:
-                    vae = vae.to(accelerator.device)
-                    pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
-                    model_input = vae.encode(pixel_values).latent
-                    if args.offload:
-                        vae = vae.to("cpu")
-                model_input = model_input * vae_config_scaling_factor
+                    with offload_models(vae, device=accelerator.device, offload=args.offload):
+                        pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+                    model_input = vae.encode(pixel_values).latent_dist.sample()
+
+                model_input = (model_input - latents_mean) * latents_std
                 model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents
@@ -1411,21 +1483,37 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Predict the noise residual
+                img_shapes = [
+                    (1, args.resolution // vae_scale_factor // 2, args.resolution // vae_scale_factor // 2)
+                ] * bsz
+                # transpose the dimensions
+                noisy_model_input = noisy_model_input.permute(0, 2, 1, 3, 4)
+                packed_noisy_model_input = QwenImagePipeline._pack_latents(
+                    noisy_model_input,
+                    batch_size=model_input.shape[0],
+                    num_channels_latents=model_input.shape[1],
+                    height=model_input.shape[3],
+                    width=model_input.shape[4],
+                )
+                print(f"{prompt_embeds_mask.sum(dim=1).tolist()=}")
                 model_pred = transformer(
-                    hidden_states=noisy_model_input,
+                    hidden_states=packed_noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
-                    timestep=timesteps,
+                    encoder_hidden_states_mask=prompt_embeds_mask,
+                    timestep=timesteps / 1000,
+                    img_shapes=img_shapes,
+                    txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
                     return_dict=False,
                 )[0]
+                model_pred = QwenImagePipeline._unpack_latents(
+                    model_pred, args.resolution, args.resolution, vae_scale_factor
+                )
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
-                # flow matching loss
                 target = noise - model_input
-
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
                     model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
@@ -1465,7 +1553,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1501,84 +1589,87 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
-                pipeline = SanaPipeline.from_pretrained(
+                pipeline = QwenImagePipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
+                    tokenizer=None,
+                    text_encoder=None,
                     transformer=accelerator.unwrap_model(transformer),
                     revision=args.revision,
                     variant=args.variant,
-                    torch_dtype=torch.float32,
+                    torch_dtype=weight_dtype,
                 )
-                pipeline_args = {
-                    "prompt": args.validation_prompt,
-                    "complex_human_instruction": args.complex_human_instruction,
-                }
                 images = log_validation(
                     pipeline=pipeline,
                     args=args,
                     accelerator=accelerator,
-                    pipeline_args=pipeline_args,
+                    pipeline_args=validation_embeddings,
+                    torch_dtype=weight_dtype,
                     epoch=epoch,
                 )
-                free_memory()
-
-                images = None
                 del pipeline
+                images = None
+                free_memory()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        transformer = unwrap_model(transformer)
         modules_to_save = {}
-        if args.upcast_before_saving:
-            transformer.to(torch.float32)
-        else:
-            transformer = transformer.to(weight_dtype)
+        transformer = unwrap_model(transformer)
+        if args.bnb_quantization_config_path is None:
+            if args.upcast_before_saving:
+                transformer.to(torch.float32)
+            else:
+                transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
         modules_to_save["transformer"] = transformer
 
-        SanaPipeline.save_lora_weights(
+        QwenImagePipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
             **_collate_lora_metadata(modules_to_save),
         )
 
-        # Final inference
-        # Load previous pipeline
-        pipeline = SanaPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            revision=args.revision,
-            variant=args.variant,
-            torch_dtype=torch.float32,
-        )
-        pipeline.transformer = pipeline.transformer.to(torch.float16)
-        # load attention processors
-        pipeline.load_lora_weights(args.output_dir)
-
-        # run inference
         images = []
-        if args.validation_prompt and args.num_validation_images > 0:
-            pipeline_args = {
-                "prompt": args.validation_prompt,
-                "complex_human_instruction": args.complex_human_instruction,
-            }
+        run_validation = (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
+        should_run_final_inference = not args.skip_final_inference and run_validation
+        if should_run_final_inference:
+            # Final inference
+            # Load previous pipeline
+            pipeline = QwenImagePipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                tokenizer=None,
+                text_encoder=None,
+                revision=args.revision,
+                variant=args.variant,
+                torch_dtype=weight_dtype,
+            )
+            # load attention processors
+            pipeline.load_lora_weights(args.output_dir)
+
+            # run inference
             images = log_validation(
                 pipeline=pipeline,
                 args=args,
                 accelerator=accelerator,
-                pipeline_args=pipeline_args,
+                pipeline_args=validation_embeddings,
                 epoch=epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
+            del pipeline
+            free_memory()
+
+        validation_prompt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
+        save_model_card(
+            (args.hub_model_id or Path(args.output_dir).name) if not args.push_to_hub else repo_id,
+            images=images,
+            base_model=args.pretrained_model_name_or_path,
+            instance_prompt=args.instance_prompt,
+            validation_prompt=validation_prompt,
+            repo_folder=args.output_dir,
+        )
 
         if args.push_to_hub:
-            save_model_card(
-                repo_id,
-                images=images,
-                base_model=args.pretrained_model_name_or_path,
-                instance_prompt=args.instance_prompt,
-                validation_prompt=args.validation_prompt,
-                repo_folder=args.output_dir,
-            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
@@ -1587,7 +1678,6 @@ def main(args):
             )
 
         images = None
-        del pipeline
 
     accelerator.end_training()
 
