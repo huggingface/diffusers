@@ -20,6 +20,7 @@ import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import QwenImageLoraLoaderMixin
 from ...models import AutoencoderKLQwenImage, QwenImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -44,12 +45,12 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import QwenImagePipeline
 
-        >>> pipe = QwenImagePipeline.from_pretrained("Qwen/QwenImage-20B", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
+        >>> image = pipe(prompt, num_inference_steps=50).images[0]
         >>> image.save("qwenimage.png")
         ```
 """
@@ -128,7 +129,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class QwenImagePipeline(DiffusionPipeline):
+class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     r"""
     The QwenImage pipeline for text-to-image generation.
 
