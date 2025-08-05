@@ -122,7 +122,7 @@ We provide several options for optimizing memory optimization:
 * `cache_latents`: When enabled, we will pre-compute the latents from the input images with the VAE and remove the VAE from memory once done.
 * `--use_8bit_adam`: When enabled, we will use the 8bit version of AdamW provided by the `bitsandbytes` library.
 
-Refer to the [official documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/qwen) of the `QwenImagePipeline` to know more about the models available under the SANA family and their preferred dtypes during inference.
+Refer to the [official documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/qwenimage) of the `QwenImagePipeline` to know more about the models available under the SANA family and their preferred dtypes during inference.
 
 ## Using quantization
 

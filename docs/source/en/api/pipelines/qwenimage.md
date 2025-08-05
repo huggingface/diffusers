@@ -14,7 +14,9 @@
 
 # QwenImage
 
-<!-- TODO: update this section when model is out -->
+Qwen-Image from the Qwen team is an image generation foundation model in the Qwen series that achieves significant advances in complex text rendering and precise image editing. Experiments show strong general capabilities in both image generation and editing, with exceptional performance in text rendering, especially for Chinese.
+
+Check out the model card [here](https://huggingface.co/Qwen/Qwen-Image) to learn more.
 
 <Tip>
 
@@ -28,6 +30,6 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
   - all
   - __call__
 
-## QwenImagePipeline
+## QwenImagePipelineOutput
 
 [[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
