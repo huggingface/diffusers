@@ -174,6 +174,7 @@ else:
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMagvit",
             "AutoencoderKLMochi",
+            "AutoencoderKLQwenImage",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderKLWan",
             "AutoencoderOobleck",
@@ -215,6 +216,7 @@ else:
             "OmniGenTransformer2DModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
+            "QwenImageTransformer2DModel",
             "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SD3ControlNetModel",
@@ -364,6 +366,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "FluxAutoBlocks",
+            "FluxModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
             "WanAutoBlocks",
@@ -484,6 +488,7 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
+            "QwenImagePipeline",
             "ReduxImageEncoder",
             "SanaControlNetPipeline",
             "SanaPAGPipeline",
@@ -830,6 +835,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
+            AutoencoderKLQwenImage,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
@@ -871,6 +877,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            QwenImageTransformer2DModel,
             SanaControlNetModel,
             SanaTransformer2DModel,
             SD3ControlNetModel,
@@ -999,6 +1006,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            FluxAutoBlocks,
+            FluxModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
             WanAutoBlocks,
@@ -1115,6 +1124,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
+            QwenImagePipeline,
             ReduxImageEncoder,
             SanaControlNetPipeline,
             SanaPAGPipeline,

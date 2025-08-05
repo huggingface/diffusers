@@ -179,7 +179,7 @@
   isExpanded: false
   sections:
   - local: quantization/overview
-    title: Getting Started
+    title: Getting started
   - local: quantization/bitsandbytes
     title: bitsandbytes
   - local: quantization/gguf
@@ -366,6 +366,8 @@
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
         title: PriorTransformer
+      - local: api/models/qwenimage_transformer2d
+        title: QwenImageTransformer2DModel
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
       - local: api/models/sd3_transformer2d
@@ -418,6 +420,8 @@
         title: AutoencoderKLMagvit
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
+      - local: api/models/autoencoderkl_qwenimage
+        title: AutoencoderKLQwenImage
       - local: api/models/autoencoder_kl_wan
         title: AutoencoderKLWan
       - local: api/models/consistency_decoder_vae
@@ -554,6 +558,8 @@
       title: PixArt-α
     - local: api/pipelines/pixart_sigma
       title: PixArt-Σ
+    - local: api/pipelines/qwenimage
+      title: QwenImage
     - local: api/pipelines/sana
       title: Sana
     - local: api/pipelines/sana_sprint
