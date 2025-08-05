@@ -5064,7 +5064,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`WanTransformer3DModel`]. Specific to [`WanPipeline`] and `[WanImageToVideoPipeline`].
     """
 
-    _lora_loadable_modules = ["transformer"]
+    _lora_loadable_modules = ["transformer", "transformer_2"]
     transformer_name = TRANSFORMER_NAME
 
     @classmethod
@@ -5269,15 +5269,28 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_transformer(
-            state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
+        if load_into_transformer_2:
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=self.transformer_2,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+        else:
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=getattr(self, self.transformer_name) if not hasattr(self,
+                                                                                "transformer") else self.transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->WanTransformer3DModel
