@@ -53,6 +53,16 @@ image = pipe(prompt, generator=torch.manual_seed(0)).images[0]
 image.save("flux-gguf.png")
 ```
 
+## Using Optimized CUDA Kernels with GGUF
+
+Optimized CUDA kernels can accelerate GGUF quantized model inference by approximately 10%. This functionality requires a compatible GPU with `torch.cuda.get_device_capability` greater than 7 and the kernels library:
+
+```shell
+pip install -U kernels
+```
+
+Once installed, set `DIFFUSERS_GGUF_CUDA_KERNELS=true`  to use optimized kernels when available. Note that CUDA kernels may introduce minor numerical differences compared to the original GGUF implementation, potentially causing subtle visual variations in generated images. To disable CUDA kernel usage, set the environment variable `DIFFUSERS_GGUF_CUDA_KERNELS=false`.
+
 ## Supported Quantization Types
 
 - BF16
