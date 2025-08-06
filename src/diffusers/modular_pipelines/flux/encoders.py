@@ -112,6 +112,7 @@ class FluxVaeEncoderStep(PipelineBlock):
             )
         ]
 
+    @staticmethod
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_inpaint.StableDiffusion3InpaintPipeline._encode_vae_image with self.vae->vae
     def _encode_vae_image(vae, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
@@ -148,7 +149,7 @@ class FluxVaeEncoderStep(PipelineBlock):
             )
 
         block_state.image_latents = self._encode_vae_image(
-            components, image=block_state.image, generator=block_state.generator
+            components.vae, image=block_state.image, generator=block_state.generator
         )
 
         self.set_block_state(state, block_state)

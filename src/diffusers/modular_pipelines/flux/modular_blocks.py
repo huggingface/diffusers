@@ -148,10 +148,8 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", FluxTextEncoderStep),
         ("input", FluxInputStep),
-        ("prepare_latents", FluxPrepareLatentsStep),
-        # Setting it after preparation of latents because we rely on `latents`
-        # to calculate `img_seq_len` for `shift`.
         ("set_timesteps", FluxSetTimestepsStep),
+        ("prepare_latents", FluxPrepareLatentsStep),
         ("denoise", FluxDenoiseStep),
         ("decode", FluxDecodeStep),
     ]
@@ -162,8 +160,8 @@ IMAGE2IMAGE_BLOCKS = InsertableDict(
         ("text_encoder", FluxTextEncoderStep),
         ("image_encoder", FluxVaeEncoderStep),
         ("input", FluxInputStep),
-        ("prepare_latents", FluxImg2ImgPrepareLatentsStep),
         ("set_timesteps", FluxImg2ImgSetTimestepsStep),
+        ("prepare_latents", FluxImg2ImgPrepareLatentsStep),
         ("denoise", FluxDenoiseStep),
         ("decode", FluxDecodeStep),
     ]

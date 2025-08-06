@@ -104,6 +104,7 @@ def calculate_shift(
     return mu
 
 
+# Adapted from the original implementation.
 def prepare_latents_img2img(
     vae, scheduler, image, timestep, batch_size, num_channels_latents, height, width, dtype, device, generator
 ):
@@ -196,8 +197,19 @@ def _encode_vae_image(vae, image: torch.Tensor, generator: torch.Generator):
     return image_latents
 
 
-def _get_timesteps_and_optionals(transformer, scheduler, latents, num_inference_steps, guidance_scale, sigmas, device):
-    image_seq_len = latents.shape[1]
+def _get_initial_timesteps_and_optionals(
+    transformer,
+    scheduler,
+    batch_size,
+    height,
+    width,
+    vae_scale_factor,
+    num_inference_steps,
+    guidance_scale,
+    sigmas,
+    device,
+):
+    image_seq_len = (int(height) // vae_scale_factor // 2) * (int(width) // vae_scale_factor // 2)
 
     sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
     if hasattr(scheduler.config, "use_flow_sigmas") and scheduler.config.use_flow_sigmas:
@@ -212,7 +224,7 @@ def _get_timesteps_and_optionals(transformer, scheduler, latents, num_inference_
     timesteps, num_inference_steps = retrieve_timesteps(scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu)
     if transformer.config.guidance_embeds:
         guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
-        guidance = guidance.expand(latents.shape[0])
+        guidance = guidance.expand(batch_size)
     else:
         guidance = None
 
@@ -328,18 +340,20 @@ class FluxSetTimestepsStep(PipelineBlock):
             InputParam("timesteps"),
             InputParam("sigmas"),
             InputParam("guidance_scale", default=3.5),
-            InputParam("latents", type_hint=torch.Tensor),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("height", type_hint=int),
+            InputParam("width", type_hint=int),
         ]
 
     @property
     def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
-                "latents",
+                "batch_size",
                 required=True,
-                type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
-            )
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_images_per_prompt`. Can be generated in input step.",
+            ),
         ]
 
     @property
@@ -362,10 +376,14 @@ class FluxSetTimestepsStep(PipelineBlock):
         scheduler = components.scheduler
         transformer = components.transformer
 
-        timesteps, num_inference_steps, sigmas, guidance = _get_timesteps_and_optionals(
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        timesteps, num_inference_steps, sigmas, guidance = _get_initial_timesteps_and_optionals(
             transformer,
             scheduler,
-            block_state.latents,
+            batch_size,
+            block_state.height,
+            block_state.width,
+            components.vae_scale_factor,
             block_state.num_inference_steps,
             block_state.guidance_scale,
             block_state.sigmas,
@@ -397,20 +415,22 @@ class FluxImg2ImgSetTimestepsStep(PipelineBlock):
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
             InputParam("sigmas"),
+            InputParam("strength", default=0.6),
             InputParam("guidance_scale", default=3.5),
-            InputParam("latents", type_hint=torch.Tensor),
             InputParam("num_images_per_prompt", default=1),
+            InputParam("height", type_hint=int),
+            InputParam("width", type_hint=int),
         ]
 
     @property
     def intermediate_inputs(self) -> List[str]:
         return [
             InputParam(
-                "latents",
+                "batch_size",
                 required=True,
-                type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
-            )
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_images_per_prompt`. Can be generated in input step.",
+            ),
         ]
 
     @property
@@ -430,6 +450,19 @@ class FluxImg2ImgSetTimestepsStep(PipelineBlock):
             OutputParam("guidance", type_hint=torch.Tensor, description="Optional guidance to be used."),
         ]
 
+    @staticmethod
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps with self->scheduler
+    def get_timesteps(scheduler, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+        t_start = int(max(num_inference_steps - init_timestep, 0))
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
+        if hasattr(scheduler, "set_begin_index"):
+            scheduler.set_begin_index(t_start * scheduler.order)
+
+        return timesteps, num_inference_steps - t_start
+
     @torch.no_grad()
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -437,23 +470,28 @@ class FluxImg2ImgSetTimestepsStep(PipelineBlock):
 
         scheduler = components.scheduler
         transformer = components.transformer
-
-        timesteps, num_inference_steps, sigmas, guidance = _get_timesteps_and_optionals(
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        timesteps, num_inference_steps, sigmas, guidance = _get_initial_timesteps_and_optionals(
             transformer,
             scheduler,
-            block_state.latents,
+            batch_size,
+            block_state.height,
+            block_state.width,
+            components.vae_scale_factor,
             block_state.num_inference_steps,
             block_state.guidance_scale,
             block_state.sigmas,
             block_state.device,
+        )
+        timesteps, num_inference_steps = self.get_timesteps(
+            scheduler, num_inference_steps, block_state.strength, block_state.device
         )
         block_state.timesteps = timesteps
         block_state.num_inference_steps = num_inference_steps
         block_state.sigmas = sigmas
         block_state.guidance = guidance
 
-        batch_size = block_state.latents.shape[0]
-        block_state.latent_timestep = timesteps[:1].repeat(batch_size * block_state.num_images_per_prompt)
+        block_state.latent_timestep = timesteps[:1].repeat(batch_size)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -468,7 +506,7 @@ class FluxPrepareLatentsStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "Prepare latents step that prepares the latents for the text-to-video generation process"
+        return "Prepare latents step that prepares the latents for the text-to-image generation process"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -565,10 +603,10 @@ class FluxPrepareLatentsStep(PipelineBlock):
         block_state.num_channels_latents = components.num_channels_latents
 
         self.check_inputs(components, block_state)
-
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
         block_state.latents, block_state.latent_image_ids = self.prepare_latents(
             components,
-            block_state.batch_size * block_state.num_images_per_prompt,
+            batch_size,
             block_state.num_channels_latents,
             block_state.height,
             block_state.width,
@@ -601,7 +639,6 @@ class FluxImg2ImgPrepareLatentsStep(PipelineBlock):
             InputParam("width", type_hint=int),
             InputParam("latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_images_per_prompt", type_hint=int, default=1),
-            InputParam("latents"),
         ]
 
     @property
@@ -655,14 +692,14 @@ class FluxImg2ImgPrepareLatentsStep(PipelineBlock):
         block_state.device = components._execution_device
 
         # TODO: implement `check_inputs`
-
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
         if block_state.latents is None:
             block_state.latents, block_state.latent_image_ids = prepare_latents_img2img(
                 components.vae,
                 components.scheduler,
                 block_state.image_latents,
                 block_state.latent_timestep,
-                block_state.batch_size * block_state.num_images_per_prompt,
+                batch_size,
                 block_state.num_channels_latents,
                 block_state.height,
                 block_state.width,
