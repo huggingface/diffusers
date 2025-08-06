@@ -348,8 +348,6 @@ class GroupOffloadTests(unittest.TestCase):
 
         for (ref_name, ref_module), (name, module) in zip(model_ref.named_modules(), model.named_modules()):
             assert ref_name == name
-            if not isinstance(ref_module, (torch.nn.Linear, torch.nn.LayerNorm)):
-                continue
             ref_outputs = (
                 HookRegistry.check_if_exists_or_initialize(ref_module).get_hook("layer_output_tracker").outputs
             )
