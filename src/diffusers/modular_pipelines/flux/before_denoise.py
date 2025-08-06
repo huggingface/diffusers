@@ -181,7 +181,7 @@ def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
     return latent_image_ids.to(device=device, dtype=dtype)
 
 
-# Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_inpaint.StableDiffusion3InpaintPipeline._encode_vae_image with self.vae->vae
+# Cannot use "# Copied from" because it introduces weird indentation errors.
 def _encode_vae_image(vae, image: torch.Tensor, generator: torch.Generator):
     if isinstance(generator, list):
         image_latents = [
