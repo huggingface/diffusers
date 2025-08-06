@@ -91,7 +91,10 @@ class ComponentSpec:
     type_hint: Optional[Type] = None
     description: Optional[str] = None
     config: Optional[FrozenDict] = None
-    # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
+    # YiYi TODO: currently required is only used to mark optional components that the block can run without, in the future:
+    # 1. the spec for an optional component should has lower priority when combined in sequential/auto blocks
+    # 2. should not need to define default_creation_method for optional components
+    required: bool = True
     repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
     subfolder: Optional[str] = field(default="", metadata={"loading": True})
     variant: Optional[str] = field(default=None, metadata={"loading": True})

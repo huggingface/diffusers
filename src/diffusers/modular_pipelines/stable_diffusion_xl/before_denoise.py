@@ -418,21 +418,21 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
         device = components._execution_device
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            components.scheduler,
-            block_state.num_inference_steps,
-            block_state.device,
-            block_state.timesteps,
-            block_state.sigmas,
+            scheduler=components.scheduler,
+            num_inference_steps=block_state.num_inference_steps,
+            device=device,
+            timesteps=block_state.timesteps,
+            sigmas=block_state.sigmas,
         )
 
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
 
         block_state.timesteps, block_state.num_inference_steps = self.get_timesteps(
-            components,
-            block_state.num_inference_steps,
-            block_state.strength,
-            device,
+            components=components,
+            num_inference_steps=block_state.num_inference_steps,
+            strength=block_state.strength,
+            device=device,
             denoising_start=block_state.denoising_start
             if denoising_value_valid(block_state.denoising_start)
             else None,
@@ -498,14 +498,14 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.device = components._execution_device
+        device = components._execution_device
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            components.scheduler,
-            block_state.num_inference_steps,
-            block_state.device,
-            block_state.timesteps,
-            block_state.sigmas,
+            scheduler=components.scheduler,
+            num_inference_steps=block_state.num_inference_steps,
+            device=device,
+            timesteps=block_state.timesteps,
+            sigmas=block_state.sigmas,
         )
 
         if (
@@ -581,7 +581,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
                 description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step.",
             ),
             InputParam(
-                "mask",
+                "processed_mask_image",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The mask for the inpainting generation. Can be generated in vae_encode step.",
@@ -591,7 +591,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
                 type_hint=torch.Tensor,
                 description="The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be generated in vae_encode step.",
             ),
-            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
+            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs, can be generated in input step."),
         ]
 
     @property
