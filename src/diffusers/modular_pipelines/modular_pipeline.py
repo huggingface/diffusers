@@ -1326,7 +1326,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     def doc(self):
         return make_doc_string(
             self.inputs,
-            self.intermediate_inputs,
             self.outputs,
             self.description,
             class_name=self.__class__.__name__,
