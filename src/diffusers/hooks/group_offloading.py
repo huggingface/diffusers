@@ -185,7 +185,7 @@ class ModuleGroup:
 
         with context:
             # Load to CPU (if using streams) or directly to target device, pin, and async copy to device
-            device = self.onload_device if self.stream is None else "cpu"
+            device = str(self.onload_device) if self.stream is None else "cpu"
             loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=device)
 
             if self.stream is not None:
