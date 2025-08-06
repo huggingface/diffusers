@@ -581,7 +581,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
                 description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step.",
             ),
             InputParam(
-                "processed_mask_image",
+                "mask_latents",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The mask for the inpainting generation. Can be generated in vae_encode step.",
@@ -643,44 +643,43 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
 
 
     
-    def check_inputs(self, image_latents, mask, masked_image_latents):
+    def check_inputs(self, batch_size, image_latents, mask_latents, masked_image_latents):
 
-        if image_latents.shape[0] != 1:
-            raise ValueError(f"image_latents should have have batch size 1, but got {image_latents.shape[0]}")
-        if mask.shape[0] != 1:
-            raise ValueError(f"mask should have have batch size 1, but got {mask.shape[0]}")
-        if masked_image_latents is not None and masked_image_latents.shape[0] != 1:
-            raise ValueError(f"masked_image_latents should have have batch size 1, but got {masked_image_latents.shape[0]}")
+        if not (image_latents.shape[0] == 1 or image_latents.shape[0] == batch_size):
+            raise ValueError(f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}")
+
+        if not (mask_latents.shape[0] == 1 or mask_latents.shape[0] == batch_size):
+            raise ValueError(f"mask_latents should have have batch size 1 or {batch_size}, but got {mask_latents.shape[0]}")
         
-        if latent_timestep is not None and len(latent_timestep.shape) > 0:
-            raise ValueError(f"latent_timestep should be a scalar, but got {latent_timestep.shape}")
+        if not (masked_image_latents.shape[0] == 1 or masked_image_latents.shape[0] == batch_size):
+            raise ValueError(f"masked_image_latents should have have batch size 1 or {batch_size}, but got {masked_image_latents.shape[0]}")
     
     
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         
-        self.check_inputs(block_state.image_latents, block_state.mask, block_state.masked_image_latents, block_state.latent_timestep)
+        self.check_inputs(
+            batch_size=block_state.batch_size,
+            image_latents=block_state.image_latents, 
+            mask_latents=block_state.mask_latents, 
+            masked_image_latents=block_state.masked_image_latents, 
+            )
 
         dtype = block_state.dtype if block_state.dtype is not None else block_state.image_latents.dtype
         device = components._execution_device
-
+        
         final_batch_size = block_state.batch_size * block_state.num_images_per_prompt 
-        _, _, height_latents, width_latents = block_state.image_latents.shape
         
         block_state.image_latents = block_state.image_latents.to(device=device, dtype=dtype)
-        block_state.image_latents = block_state.image_latents.repeat(final_batch_size, 1, 1, 1)
+        block_state.image_latents = block_state.image_latents.repeat(final_batch_size//block_state.image_latents.shape[0], 1, 1, 1)
 
         # 7. Prepare mask latent variables
-        block_state.mask = torch.nn.functional.interpolate(
-            block_state.mask, size=(height_latents, width_latents)
-        )
-        block_state.mask = block_state.mask.to(device=device, dtype=dtype)
-        block_state.mask = block_state.mask.repeat(final_batch_size, 1, 1, 1)
+        block_state.mask_latents = block_state.mask_latents.to(device=device, dtype=dtype)
+        block_state.mask_latents = block_state.mask_latents.repeat(final_batch_size//block_state.mask_latents.shape[0], 1, 1, 1)
 
-        if block_state.masked_image_latents is not None:
-            block_state.masked_image_latents = block_state.masked_image_latents.to(device=device, dtype=dtype)
-            block_state.masked_image_latents = block_state.masked_image_latents.repeat(final_batch_size, 1, 1, 1)
+        block_state.masked_image_latents = block_state.masked_image_latents.to(device=device, dtype=dtype)
+        block_state.masked_image_latents = block_state.masked_image_latents.repeat(final_batch_size//block_state.masked_image_latents.shape[0], 1, 1, 1)
         
         if block_state.latent_timestep is not None:
             block_state.latent_timestep = block_state.latent_timestep.repeat(final_batch_size)
@@ -758,9 +757,9 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
             )
         ]
     
-    def check_inputs(self, image_latents):
-        if image_latents.shape[0] != 1:
-            raise ValueError(f"image_latents should have have batch size 1, but got {image_latents.shape[0]}")
+    def check_inputs(self, batch_size, image_latents):
+        if not (image_latents.shape[0] == 1 or image_latents.shape[0] == batch_size):
+            raise ValueError(f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}")
     
     def prepare_latents(image_latents, scheduler, timestep, dtype, device, generator=None):
         if isinstance(generator, list) and len(generator) != image_latents.shape[0]:
@@ -778,13 +777,18 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
+        self.check_inputs(
+            batch_size=block_state.batch_size,
+            image_latents=block_state.image_latents,
+        )
+
         dtype = block_state.dtype if block_state.dtype is not None else block_state.image_latents.dtype
         device = components._execution_device
 
         final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
         block_state.image_latents = block_state.image_latents.to(device=device, dtype=dtype)
-        block_state.image_latents = block_state.image_latents.repeat(final_batch_size, 1, 1, 1)
+        block_state.image_latents = block_state.image_latents.repeat(final_batch_size//block_state.image_latents.shape[0], 1, 1, 1)
 
         if block_state.latent_timestep is not None:
             block_state.latent_timestep = block_state.latent_timestep.repeat(final_batch_size)
@@ -793,9 +797,9 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         add_noise = True if block_state.denoising_start is None else False
 
         if add_noise:
-            block_state.latents = prepare_latents(
-                block_state.image_latents,
-                components.scheduler,
+            block_state.latents = self.prepare_latents(
+                image_latents=block_state.image_latents,
+                scheduler=components.scheduler,
                 timestep=block_state.latent_timestep,
                 dtype=dtype,
                 device=device,
