@@ -295,7 +295,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         - Use a division factor of 4 for int8 weights
         """
         # Original mapping for non-AOBaseConfig types
-        map_to_target_dtype = {"int4_*": 8, "int8_*": 4, "float8*": 4}
+        map_to_target_dtype = {"int4_*": 8, "int8_*": 4, "uint*": 8, "float8*": 4}
         quant_type = self.quantization_config.quant_type
         for pattern, target_dtype in map_to_target_dtype.items():
             if fnmatch(quant_type, pattern):
