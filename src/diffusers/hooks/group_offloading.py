@@ -314,7 +314,7 @@ class GroupOffloadingHook(ModelHook):
                 # If this group didn't onload itself, it means it was asynchronously onloaded by the
                 # previous group. We need to synchronize the side stream to ensure parameters
                 # are completely loaded to proceed with forward pass.
-                # Also, we should only do this synchronize if we don't already do it from the sync call in
+                # Also, we should only do this synchronization if we don't already do it from the sync call in
                 # self.next_group.onload_, hence the `not should_onload_next_group` check.
                 self.group.stream.synchronize()
 
