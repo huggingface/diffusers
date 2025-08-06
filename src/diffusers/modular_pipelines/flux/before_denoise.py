@@ -583,7 +583,7 @@ class FluxPrepareLatentsStep(PipelineBlock):
         return components, state
 
 
-class FluxLImg2ImgPrepareLatentsStep(PipelineBlock):
+class FluxImg2ImgPrepareLatentsStep(PipelineBlock):
     model_name = "flux"
 
     @property
