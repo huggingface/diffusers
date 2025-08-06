@@ -88,11 +88,7 @@ class FluxVaeEncoderStep(PipelineBlock):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("image", required=True),
-            InputParam("height"),
-            InputParam("width"),
-        ]
+        return [InputParam("image", required=True), InputParam("height"), InputParam("width")]
 
     @property
     def intermediate_inputs(self) -> List[InputParam]:
