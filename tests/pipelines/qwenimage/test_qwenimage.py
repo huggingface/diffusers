@@ -234,3 +234,40 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
+
+    def test_long_prompt_no_error(self):
+        # Test for issue #12083: long prompts should not cause dimension mismatch errors
+        device = torch_device
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        
+        # Create a very long prompt that exceeds 1024 tokens when combined with image positioning
+        # Repeat a long phrase to simulate a real long prompt scenario
+        long_phrase = "A beautiful, detailed, high-resolution, photorealistic image showing "
+        long_prompt = (long_phrase * 50)[:1200]  # Ensure we exceed 1024 characters
+        
+        inputs = {
+            "prompt": long_prompt,
+            "generator": torch.Generator(device=device).manual_seed(0),
+            "num_inference_steps": 2,
+            "guidance_scale": 3.0,
+            "true_cfg_scale": 1.0,
+            "height": 32,  # Small size for fast test
+            "width": 32,   # Small size for fast test
+            "max_sequence_length": 1200,  # Allow long sequence
+            "output_type": "pt",
+        }
+        
+        # This should not raise a RuntimeError about tensor dimension mismatch
+        try:
+            output = pipe(**inputs)
+            # Basic sanity check that we got reasonable output
+            self.assertIsNotNone(output)
+            self.assertIsNotNone(output[0])
+        except RuntimeError as e:
+            if "must match the size of tensor" in str(e):
+                self.fail(f"Long prompt caused dimension mismatch error: {e}")
+            else:
+                # Re-raise other runtime errors that aren't related to our fix
+                raise
