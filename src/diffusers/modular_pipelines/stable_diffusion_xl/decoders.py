@@ -179,11 +179,6 @@ class StableDiffusionXLInpaintOverlayMaskStep(ModularPipelineBlocks):
             InputParam("image"),
             InputParam("mask_image"),
             InputParam("padding_mask_crop"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "images",
                 type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],

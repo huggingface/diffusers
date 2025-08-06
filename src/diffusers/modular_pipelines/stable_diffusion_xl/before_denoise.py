@@ -1697,11 +1697,6 @@ class StableDiffusionXLControlNetUnionInputStep(ModularPipelineBlocks):
             InputParam("controlnet_conditioning_scale", default=1.0),
             InputParam("guess_mode", default=False),
             InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam(
                 "latents",
                 required=True,
