@@ -661,7 +661,7 @@ class WanGGUFTexttoVideoSingleFileTests(GGUFSingleFileTesterMixin, unittest.Test
 
     def get_dummy_inputs(self):
         return {
-            "hidden_states": torch.randn((1, 36, 2, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
+            "hidden_states": torch.randn((1, 16, 2, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
                 torch_device, self.torch_dtype
             ),
             "encoder_hidden_states": torch.randn(
