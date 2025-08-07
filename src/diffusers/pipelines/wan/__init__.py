@@ -38,6 +38,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_wan_i2v import WanImageToVideoPipeline
         from .pipeline_wan_vace import WanVACEPipeline
         from .pipeline_wan_video2video import WanVideoToVideoPipeline
+        from .pipeline_wan_t2i import WanTextToImagePipeline
 
 else:
     import sys
