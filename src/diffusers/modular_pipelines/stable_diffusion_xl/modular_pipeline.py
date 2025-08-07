@@ -95,7 +95,10 @@ class StableDiffusionXLModularPipeline(
         # by default, always prepare unconditional embeddings
         requires_unconditional_embeds = True
 
-        if hasattr(self, "guider") and self.guider is not None:
+        if hasattr(self, "unet") and self.unet is not None and self.unet.config.time_cond_proj_dim is None:
+            requires_unconditional_embeds = False
+
+        elif hasattr(self, "guider") and self.guider is not None:
             requires_unconditional_embeds = self.guider.num_conditions > 1
 
         return requires_unconditional_embeds

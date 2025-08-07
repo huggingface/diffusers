@@ -390,7 +390,6 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
-        device = device or components._execution_device
         dtype = components.text_encoder_2.dtype
 
 
@@ -526,7 +525,6 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         self.check_inputs(block_state.prompt, block_state.prompt_2, block_state.negative_prompt, block_state.negative_prompt_2)
 
         device = components._execution_device
-        dtype = components.text_encoder_2.dtype
 
         # Encode input prompt
         lora_scale = (
@@ -542,8 +540,8 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         ) = self.encode_prompt(
             components,
             prompt=block_state.prompt,
-            prompt2=block_state.prompt_2,
-            device = device,
+            prompt_2=block_state.prompt_2,
+            device=device,
             requires_unconditional_embeds=components.requires_unconditional_embeds,
             negative_prompt=block_state.negative_prompt,
             negative_prompt_2=block_state.negative_prompt_2,
@@ -604,11 +602,11 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         device = components._execution_device
         dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
 
-        block_state.processed_image = components.image_processor.preprocess(block_state.image)
+        image = components.image_processor.preprocess(block_state.image)
 
         # Encode image into latents
         block_state.image_latents = encode_vae_image(
-            image=block_state.processed_image, 
+            image=image, 
             vae=components.vae,
             generator=block_state.generator,
             dtype=dtype,
@@ -681,7 +679,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
                 description="The crop coordinates to use for the preprocess/postprocess of the image and mask",
             ),
             OutputParam(
-                "mask_latents", 
+                "mask", 
                 type_hint=torch.Tensor, 
                 description="The mask to apply on the latents for the inpainting generation.",
             ),
@@ -715,15 +713,15 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
             width = components.default_width
 
         if block_state.padding_mask_crop is not None:
-            crops_coords = components.mask_processor.get_crop_region(
+            block_state.crops_coords = components.mask_processor.get_crop_region(
                 mask_image=block_state.mask_image, width=width, height=height, pad=block_state.padding_mask_crop
             )
             resize_mode = "fill"
         else:
-            crops_coords = None
+            block_state.crops_coords = None
             resize_mode = "default"
 
-        processed_image = components.image_processor.preprocess(
+        image = components.image_processor.preprocess(
             block_state.image,
             height=height,
             width=width,
@@ -731,9 +729,9 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
             resize_mode=resize_mode,
         )
 
-        processed_image = processed_image.to(dtype=torch.float32)
+        image = image.to(dtype=torch.float32)
 
-        processed_mask_image = components.mask_processor.preprocess(
+        mask = components.mask_processor.preprocess(
             block_state.mask_image,
             height=height,
             width=width,
@@ -741,11 +739,11 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
             crops_coords=crops_coords,
         )
         
-        masked_image = processed_image * (block_state.mask_latents < 0.5)
+        masked_image = image * (block_state.mask_latents < 0.5)
 
         # Prepare image latent variables
         block_state.image_latents = encode_vae_image(
-            image=processed_image, 
+            image=image, 
             vae=components.vae,
             generator=block_state.generator,
             dtype=dtype,
@@ -763,11 +761,11 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         
         # resize mask to match the image latents
         _, _, height_latents, width_latents = block_state.image_latents.shape
-        block_state.mask_latents = torch.nn.functional.interpolate(
-            processed_mask_image, 
+        block_state.mask = torch.nn.functional.interpolate(
+            mask, 
             size=(height_latents, width_latents), 
         )
-        block_state.mask_latents = block_state.mask_latents.to(dtype=dtype, device=device)
+        block_state.mask = block_state.mask.to(dtype=dtype, device=device)
 
         self.set_block_state(state, block_state)
 
