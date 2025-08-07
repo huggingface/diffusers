@@ -260,4 +260,40 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         
         # This should not raise a RuntimeError about tensor dimension mismatch
-    _ = pipe(**inputs)
+        _ = pipe(**inputs)
+
+    def test_long_prompt_warning(self):
+        """Test that long prompts trigger appropriate warning about training limitation"""
+        from diffusers.utils.testing_utils import CaptureLogger
+        from diffusers.utils import logging
+        
+        device = torch_device
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        
+        # Create prompt that will exceed 512 tokens to trigger warning
+        # Use a longer phrase and repeat more times to ensure we exceed the 512 token limit
+        long_phrase = "A detailed photorealistic description of a complex scene with many elements "
+        long_prompt = (long_phrase * 20)[:800]  # Create a prompt that will exceed 512 tokens
+        
+        # Capture transformer logging  
+        logger = logging.get_logger("diffusers.models.transformers.transformer_qwenimage")
+        logger.setLevel(30)  # WARNING level
+        
+        with CaptureLogger(logger) as cap_logger:
+            _ = pipe(
+                prompt=long_prompt,
+                generator=torch.Generator(device=device).manual_seed(0),
+                num_inference_steps=2,
+                guidance_scale=3.0,
+                true_cfg_scale=1.0,
+                height=32,  # Small size for fast test
+                width=32,   # Small size for fast test
+                max_sequence_length=900,  # Allow long sequence
+                output_type="pt"
+            )
+        
+        # Verify warning was logged about the 512-token training limitation
+        self.assertTrue("512 tokens" in cap_logger.out)
+        self.assertTrue("unpredictable behavior" in cap_logger.out)

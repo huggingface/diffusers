@@ -203,6 +203,14 @@ class QwenEmbedRope(nn.Module):
         # Calculate new size (use next power of 2 or round to nearest 512 for efficiency)
         new_max_len = max(required_len, int((required_len + 511) // 512) * 512)
         
+        # Log warning about potential quality degradation for long prompts
+        if required_len > 512:
+            logger.warning(
+                f"QwenImage model was trained on prompts up to 512 tokens. "
+                f"Current prompt requires {required_len} tokens, which may lead to unpredictable behavior. "
+                f"Consider using shorter prompts for better results."
+            )
+        
         # Generate expanded indices
         pos_index = torch.arange(new_max_len, device=self.pos_freqs.device)
         neg_index = torch.arange(new_max_len, device=self.neg_freqs.device).flip(0) * -1 - 1
