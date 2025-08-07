@@ -20,10 +20,20 @@ In addition to being built entirely on licensed data, 3.2 provides several advan
 - Fine-tuning Speedup: 2x faster fine-tuning on L40S and A100.
 
 Original model checkpoints for Bria 3.2 can be found [here](https://huggingface.co/briaai/BRIA-3.2).
-Github repo for Bria 3.2 can be found [here](https://github.com/briaai/BRIA-3.2).
+Github repo for Bria 3.2 can be found [here](https://github.com/Bria-AI/BRIA-3.2).
 
 If you want to learn more about the Bria platform, and get free traril access, please visit [bria.ai](https://bria.ai).
 
+
+## Usage
+
+_As the model is gated, before using it with diffusers you first need to go to the [Bria 3.2 Hugging Face page](https://huggingface.co/briaai/BRIA-3.2), fill in the form and accept the gate. Once you are in, you need to login so that your system knows you’ve accepted the gate._
+
+Use the command below to log in:
+
+```bash
+hf auth login
+```
 
 ## Inference
 

@@ -28,7 +28,7 @@ from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTest
 enable_full_determinism()
 
 
-def create_chroma_ip_adapter_state_dict(model):
+def create_bria_ip_adapter_state_dict(model):
     # "ip_adapter" (cross-attention weights)
     ip_cross_attn_state_dict = {}
     key_id = 0

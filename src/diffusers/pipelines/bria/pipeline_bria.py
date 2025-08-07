@@ -9,15 +9,19 @@ from transformers import (
     T5TokenizerFast,
 )
 
-from diffusers import AutoencoderKL, DDIMScheduler, EulerAncestralDiscreteScheduler
-from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FluxLoraLoaderMixin
-from diffusers.models.transformers.transformer_bria import BriaTransformer2DModel
-from diffusers.pipelines.bria.pipeline_output import BriaPipelineOutput
-from diffusers.pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.schedulers import FlowMatchEulerDiscreteScheduler, KarrasDiffusionSchedulers
-from diffusers.utils import (
+from ...image_processor import VaeImageProcessor
+from ...loaders import FluxLoraLoaderMixin
+from ...models import AutoencoderKL
+from ...models.transformers.transformer_bria import BriaTransformer2DModel
+from ...pipelines.bria.pipeline_output import BriaPipelineOutput
+from ...pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
+from ...schedulers import (
+    DDIMScheduler,
+    EulerAncestralDiscreteScheduler,
+    FlowMatchEulerDiscreteScheduler,
+    KarrasDiffusionSchedulers,
+)
+from ...utils import (
     USE_PEFT_BACKEND,
     is_torch_xla_available,
     logging,
@@ -25,7 +29,7 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from diffusers.utils.torch_utils import randn_tensor
+from ...utils.torch_utils import randn_tensor
 
 
 if is_torch_xla_available():
@@ -42,15 +46,23 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusion3Pipeline
+        >>> from diffusers import BriaPipeline
 
-        >>> pipe = StableDiffusion3Pipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
-        ... )
+        >>> pipe = BriaPipeline.from_pretrained("briaai/BRIA-3.2", torch_dtype=torch.float16)
         >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
+        # BRIA's T5 text encoder is sensitive to precision. We need to cast it to float16 and keep the final layer in float32.
+
+        >>> pipe.text_encoder = pipe.text_encoder.to(dtype=torch.float16)
+        >>> for block in pipe.text_encoder.encoder.block:
+        ...     block.layer[-1].DenseReluDense.wo.to(dtype=torch.float32)
+        # BRIA's VAE is not supported in mixed precision, so we use float32.
+
+        >>> if pipe.vae.config.shift_factor == 0:
+        ...     pipe.vae.to(dtype=torch.float32)
+
+        >>> prompt = "Photorealistic food photography of a stack of fluffy pancakes on a white plate, with maple syrup being poured over them. On top of the pancakes are the words 'BRIA 3.2' in bold, yellow, 3D letters. The background is dark and out of focus."
         >>> image = pipe(prompt).images[0]
-        >>> image.save("sd3.png")
+        >>> image.save("bria.png")
         ```
 """
 
@@ -75,78 +87,22 @@ def get_original_sigmas(num_train_timesteps=1000, num_inference_steps=1000):
     return new_sigmas
 
 
-def get_t5_prompt_embeds(
-    tokenizer: T5TokenizerFast,
-    text_encoder: T5EncoderModel,
-    prompt: Union[str, List[str]] = None,
-    num_images_per_prompt: int = 1,
-    max_sequence_length: int = 128,
-    device: Optional[torch.device] = None,
-):
-    device = device or text_encoder.device
-
-    prompt = [prompt] if isinstance(prompt, str) else prompt
-    batch_size = len(prompt)
-    prompt_embeds_list = []
-    for p in prompt:
-        text_inputs = tokenizer(
-            p,
-            # padding="max_length",
-            max_length=max_sequence_length,
-            truncation=True,
-            add_special_tokens=True,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-        untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
-            logger.warning(
-                "The following part of your input was truncated because `max_sequence_length` is set to "
-                f" {max_sequence_length} tokens: {removed_text}"
-            )
-
-        prompt_embeds = text_encoder(text_input_ids.to(device))[0]
-
-        # Concat zeros to max_sequence
-        b, seq_len, dim = prompt_embeds.shape
-        if seq_len < max_sequence_length:
-            padding = torch.zeros(
-                (b, max_sequence_length - seq_len, dim), dtype=prompt_embeds.dtype, device=prompt_embeds.device
-            )
-            prompt_embeds = torch.concat([prompt_embeds, padding], dim=1)
-        prompt_embeds_list.append(prompt_embeds)
-
-    prompt_embeds = torch.concat(prompt_embeds_list, dim=0)
-    prompt_embeds = prompt_embeds.to(device=device)
-
-    # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-    prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-    prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, max_sequence_length, -1)
-
-    return prompt_embeds
-
-
-"""
-Based on FluxPipeline with several changes:
-- no pooled embeddings
-- We use zero padding for prompts
-- No guidance embedding since this is not a distilled version
-"""
-
-
 class BriaPipeline(FluxPipeline):
     r"""
+    Based on FluxPipeline with several changes:
+    - no pooled embeddings
+    - We use zero padding for prompts
+    - No guidance embedding since this is not a distilled version
+
     Args:
-        transformer ([`SD3Transformer2DModel`]):
+        transformer ([`BriaTransformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
-            Frozen text-encoder. Stable Diffusion 3 uses
+            Frozen text-encoder. Bria uses
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
             [t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
         tokenizer (`T5TokenizerFast`):
@@ -248,14 +204,12 @@ class BriaPipeline(FluxPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds = get_t5_prompt_embeds(
-                self.tokenizer,
-                self.text_encoder,
+            prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
-            ).to(dtype=self.transformer.dtype)
+            )
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             if not is_ng_none(negative_prompt):
@@ -275,14 +229,12 @@ class BriaPipeline(FluxPipeline):
                         " the batch size of `prompt`."
                     )
 
-                negative_prompt_embeds = get_t5_prompt_embeds(
-                    self.tokenizer,
-                    self.text_encoder,
+                negative_prompt_embeds = self._get_t5_prompt_embeds(
                     prompt=negative_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     max_sequence_length=max_sequence_length,
                     device=device,
-                ).to(dtype=self.transformer.dtype)
+                )
             else:
                 negative_prompt_embeds = torch.zeros_like(prompt_embeds)
 
@@ -291,8 +243,7 @@ class BriaPipeline(FluxPipeline):
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
-        dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
-        text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
+        text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device)
         text_ids = text_ids.repeat(num_images_per_prompt, 1, 1)
 
         return prompt_embeds, negative_prompt_embeds, text_ids
@@ -310,7 +261,7 @@ class BriaPipeline(FluxPipeline):
 
     @property
     def joint_attention_kwargs(self):
-        return self._joint_attention_kwargs
+        return self.attention_kwargs
 
     @property
     def num_timesteps(self):
@@ -338,7 +289,7 @@ class BriaPipeline(FluxPipeline):
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 128,
@@ -393,8 +344,7 @@ class BriaPipeline(FluxPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
-                of a plain tuple.
+                Whether or not to return a [`~pipelines.bria.BriaPipelineOutput`] instead of a plain tuple.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -413,7 +363,7 @@ class BriaPipeline(FluxPipeline):
         Examples:
 
           Returns:
-            [`~pipelines.flux.FluxPipelineOutput`] or `tuple`: [`~pipelines.flux.FluxPipelineOutput`] if `return_dict`
+            [`~pipelines.bria.BriaPipelineOutput`] or `tuple`: [`~pipelines.bria.BriaPipelineOutput`] if `return_dict`
             is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
             images.
         """
@@ -432,7 +382,7 @@ class BriaPipeline(FluxPipeline):
         )
 
         self._guidance_scale = guidance_scale
-        self._joint_attention_kwargs = joint_attention_kwargs
+        self.attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -520,8 +470,6 @@ class BriaPipeline(FluxPipeline):
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
-
-        # Supprot different diffusers versions
 
         if len(latent_image_ids.shape) == 3:
             latent_image_ids = latent_image_ids[0]
@@ -620,8 +568,6 @@ class BriaPipeline(FluxPipeline):
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
-        # if height % 8 != 0 or width % 8 != 0:
-        #     raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
@@ -662,18 +608,60 @@ class BriaPipeline(FluxPipeline):
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
-    def to(self, *args, **kwargs):
-        DiffusionPipeline.to(self, *args, **kwargs)
-        # T5 is senstive to precision so we use the precision used for precompute and cast as needed
-        if self.text_encoder is not None:
-            self.text_encoder = self.text_encoder.to(dtype=T5_PRECISION)
-            for block in self.text_encoder.encoder.block:
-                block.layer[-1].DenseReluDense.wo.to(dtype=torch.float32)
+    def _get_t5_prompt_embeds(
+        self,
+        prompt: Union[str, List[str]] = None,
+        num_images_per_prompt: int = 1,
+        max_sequence_length: int = 128,
+        device: Optional[torch.device] = None,
+    ):
+        tokenizer = self.tokenizer
+        text_encoder = self.text_encoder
+        device = device or text_encoder.device
 
-        if self.vae.config.shift_factor == 0 and self.vae.dtype != torch.float32:
-            self.vae.to(dtype=torch.float32)
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt)
+        prompt_embeds_list = []
+        for p in prompt:
+            text_inputs = tokenizer(
+                p,
+                # padding="max_length",
+                max_length=max_sequence_length,
+                truncation=True,
+                add_special_tokens=True,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids
+            untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-        return self
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
+                removed_text = tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
+                logger.warning(
+                    "The following part of your input was truncated because `max_sequence_length` is set to "
+                    f" {max_sequence_length} tokens: {removed_text}"
+                )
+
+            prompt_embeds = text_encoder(text_input_ids.to(device))[0]
+
+            # Concat zeros to max_sequence
+            b, seq_len, dim = prompt_embeds.shape
+            if seq_len < max_sequence_length:
+                padding = torch.zeros(
+                    (b, max_sequence_length - seq_len, dim), dtype=prompt_embeds.dtype, device=prompt_embeds.device
+                )
+                prompt_embeds = torch.concat([prompt_embeds, padding], dim=1)
+            prompt_embeds_list.append(prompt_embeds)
+
+        prompt_embeds = torch.concat(prompt_embeds_list, dim=0)
+        prompt_embeds = prompt_embeds.to(device=device)
+
+        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, max_sequence_length, -1)
+        prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
+        return prompt_embeds
 
     def prepare_latents(
         self,

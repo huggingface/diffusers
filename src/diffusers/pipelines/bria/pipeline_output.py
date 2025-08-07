@@ -10,7 +10,7 @@ from ...utils import BaseOutput
 @dataclass
 class BriaPipelineOutput(BaseOutput):
     """
-    Output class for Stable Diffusion pipelines.
+    Output class for Bria pipelines.
 
     Args:
         images (`List[PIL.Image.Image]` or `np.ndarray`)
