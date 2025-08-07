@@ -254,8 +254,8 @@ export_to_video(video, "output.mp4", fps=24)
   pipeline.vae.enable_tiling()
 
   def round_to_nearest_resolution_acceptable_by_vae(height, width):
-      height = height - (height % pipeline.vae_temporal_compression_ratio)
-      width = width - (width % pipeline.vae_temporal_compression_ratio)
+      height = height - (height % pipeline.vae_spatial_compression_ratio)
+      width = width - (width % pipeline.vae_spatial_compression_ratio)
       return height, width
 
   prompt = """
@@ -295,6 +295,95 @@ export_to_video(video, "output.mp4", fps=24)
   upscaled_latents = pipe_upsample(
       latents=latents,
       adain_factor=1.0,
+      output_type="latent"
+  ).frames
+
+  # 3. Denoise the upscaled video with few steps to improve texture (optional, but recommended)
+  video = pipeline(
+      prompt=prompt,
+      negative_prompt=negative_prompt,
+      width=upscaled_width,
+      height=upscaled_height,
+      num_frames=num_frames,
+      denoise_strength=0.999,  # Effectively, 4 inference steps out of 5
+      timesteps=[1000, 909, 725, 421, 0],
+      latents=upscaled_latents,
+      decode_timestep=0.05,
+      decode_noise_scale=0.025,
+      image_cond_noise_scale=0.0,
+      guidance_scale=1.0,
+      guidance_rescale=0.7,
+      generator=torch.Generator().manual_seed(0),
+      output_type="pil",
+  ).frames[0]
+
+  # 4. Downscale the video to the expected resolution
+  video = [frame.resize((expected_width, expected_height)) for frame in video]
+
+  export_to_video(video, "output.mp4", fps=24)
+  ```
+
+  </details>
+
+- LTX-Video 0.9.8 distilled model is similar to the 0.9.7 variant. It is guidance and timestep-distilled, and similar inference code can be used as above. An improvement of this version is that it supports generating very long videos. Additionally, it supports using tone mapping to improve the quality of the generated video using the `tone_map_compression_ratio` parameter. The default value of `0.6` is recommended.
+
+  <details>
+  <summary>Show example code</summary>
+  
+  ```python
+  import torch
+  from diffusers import LTXConditionPipeline, LTXLatentUpsamplePipeline
+  from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
+  from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
+  from diffusers.utils import export_to_video, load_video
+
+  pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.8-13B-distilled", torch_dtype=torch.bfloat16)
+  # TODO: Update the checkpoint here once updated in LTX org
+  upsampler = LTXLatentUpsamplerModel.from_pretrained("a-r-r-o-w/LTX-0.9.8-Latent-Upsampler", torch_dtype=torch.bfloat16)
+  pipe_upsample = LTXLatentUpsamplePipeline(vae=pipeline.vae, latent_upsampler=upsampler).to(torch.bfloat16)
+  pipeline.to("cuda")
+  pipe_upsample.to("cuda")
+  pipeline.vae.enable_tiling()
+
+  def round_to_nearest_resolution_acceptable_by_vae(height, width):
+      height = height - (height % pipeline.vae_spatial_compression_ratio)
+      width = width - (width % pipeline.vae_spatial_compression_ratio)
+      return height, width
+
+  prompt = """The camera pans over a snow-covered mountain range, revealing a vast expanse of snow-capped peaks and valleys.The mountains are covered in a thick layer of snow, with some areas appearing almost white while others have a slightly darker, almost grayish hue. The peaks are jagged and irregular, with some rising sharply into the sky while others are more rounded. The valleys are deep and narrow, with steep slopes that are also covered in snow. The trees in the foreground are mostly bare, with only a few leaves remaining on their branches. The sky is overcast, with thick clouds obscuring the sun. The overall impression is one of peace and tranquility, with the snow-covered mountains standing as a testament to the power and beauty of nature."""
+  # prompt = """A woman walks away from a white Jeep parked on a city street at night, then ascends a staircase and knocks on a door. The woman, wearing a dark jacket and jeans, walks away from the Jeep parked on the left side of the street, her back to the camera; she walks at a steady pace, her arms swinging slightly by her sides; the street is dimly lit, with streetlights casting pools of light on the wet pavement; a man in a dark jacket and jeans walks past the Jeep in the opposite direction; the camera follows the woman from behind as she walks up a set of stairs towards a building with a green door; she reaches the top of the stairs and turns left, continuing to walk towards the building; she reaches the door and knocks on it with her right hand; the camera remains stationary, focused on the doorway; the scene is captured in real-life footage."""
+  negative_prompt = "bright colors, symbols, graffiti, watermarks, worst quality, inconsistent motion, blurry, jittery, distorted"
+  expected_height, expected_width = 480, 832
+  downscale_factor = 2 / 3
+  # num_frames = 161
+  num_frames = 361
+
+  # 1. Generate video at smaller resolution
+  downscaled_height, downscaled_width = int(expected_height * downscale_factor), int(expected_width * downscale_factor)
+  downscaled_height, downscaled_width = round_to_nearest_resolution_acceptable_by_vae(downscaled_height, downscaled_width)
+  latents = pipeline(
+      prompt=prompt,
+      negative_prompt=negative_prompt,
+      width=downscaled_width,
+      height=downscaled_height,
+      num_frames=num_frames,
+      timesteps=[1000, 993, 987, 981, 975, 909, 725, 0.03],
+      decode_timestep=0.05,
+      decode_noise_scale=0.025,
+      image_cond_noise_scale=0.0,
+      guidance_scale=1.0,
+      guidance_rescale=0.7,
+      generator=torch.Generator().manual_seed(0),
+      output_type="latent",
+  ).frames
+
+  # 2. Upscale generated video using latent upsampler with fewer inference steps
+  # The available latent upsampler upscales the height/width by 2x
+  upscaled_height, upscaled_width = downscaled_height * 2, downscaled_width * 2
+  upscaled_latents = pipe_upsample(
+      latents=latents,
+      adain_factor=1.0,
+      tone_map_compression_ratio=0.6,
       output_type="latent"
   ).frames
 
