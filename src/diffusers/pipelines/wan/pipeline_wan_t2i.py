@@ -22,11 +22,12 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import WanImagePipelineOutput
+from ...video_processor import VideoProcessor
 
 
 if is_torch_xla_available():
@@ -120,7 +121,7 @@ class WanTextToImagePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: UniPCMultistepScheduler,
         transformer: Optional[WanTransformer3DModel] = None,
         expand_timesteps: bool = False,  # Wan2.2 ti2v
     ):
@@ -136,6 +137,7 @@ class WanTextToImagePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.register_to_config(expand_timesteps=expand_timesteps)
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
@@ -146,7 +148,7 @@ class WanTextToImagePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         from . import WanPipeline
         
         # Load the original pipeline temporarily to get transformer_2
-        original_pipe = WanPipeline.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        original_pipe = WanPipeline.from_pretrained(pretrained_model_name_or_path, transformer=None, **kwargs)
         
         # If transformer_2 exists, use it as the transformer for the text-to-image pipeline
         if hasattr(original_pipe, 'transformer_2') and original_pipe.transformer_2 is not None:
@@ -625,6 +627,7 @@ class WanTextToImagePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             images = self.vae.decode(latents, return_dict=False)[0]
             # Squeeze temporal dimension for single-frame output (num_frames=1)
             images = images.squeeze(2)  # Remove temporal dimension: (B, C, 1, H, W) -> (B, C, H, W)
+            images = self.video_processor.postprocess_video(images, output_type=output_type)
             if isinstance(images, list):
                 images = [img[0] if len(img) > 0 else img for img in images]
         else:
