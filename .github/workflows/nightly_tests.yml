@@ -333,7 +333,7 @@ jobs:
             additional_deps: ["peft"]
           - backend: "gguf"
             test_location: "gguf"
-            additional_deps: ["peft"]
+            additional_deps: ["peft", "kernels"]
           - backend: "torchao"
             test_location: "torchao"
             additional_deps: []
