@@ -260,14 +260,4 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         
         # This should not raise a RuntimeError about tensor dimension mismatch
-        try:
-            output = pipe(**inputs)
-            # Basic sanity check that we got reasonable output
-            self.assertIsNotNone(output)
-            self.assertIsNotNone(output[0])
-        except RuntimeError as e:
-            if "must match the size of tensor" in str(e):
-                self.fail(f"Long prompt caused dimension mismatch error: {e}")
-            else:
-                # Re-raise other runtime errors that aren't related to our fix
-                raise
+    _ = pipe(**inputs)
