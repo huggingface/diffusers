@@ -22,6 +22,7 @@ if is_torch_available():
     from .auto_guidance import AutoGuidance
     from .classifier_free_guidance import ClassifierFreeGuidance
     from .classifier_free_zero_star_guidance import ClassifierFreeZeroStarGuidance
+    from .frequency_decoupled_guidance import FrequencyDecoupledGuidance
     from .perturbed_attention_guidance import PerturbedAttentionGuidance
     from .skip_layer_guidance import SkipLayerGuidance
     from .smoothed_energy_guidance import SmoothedEnergyGuidance
@@ -32,6 +33,7 @@ if is_torch_available():
         AutoGuidance,
         ClassifierFreeGuidance,
         ClassifierFreeZeroStarGuidance,
+        FrequencyDecoupledGuidance,
         PerturbedAttentionGuidance,
         SkipLayerGuidance,
         SmoothedEnergyGuidance,
