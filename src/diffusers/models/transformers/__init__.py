@@ -21,6 +21,7 @@ if is_torch_available():
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
     from .transformer_cogview4 import CogView4Transformer2DModel
     from .transformer_cosmos import CosmosTransformer3DModel
+    from .transformer_dream import DreamTransformer1DModel
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .transformer_flux import FluxTransformer2DModel
     from .transformer_hidream_image import HiDreamImageTransformer2DModel
