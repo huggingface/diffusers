@@ -1871,7 +1871,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             if has_alpha:
                 down_weight = original_state_dict.pop(original_key_A)
                 up_weight = original_state_dict.pop(original_key_B)
-                scale_down, scale_up = get_alpha_scales(down_weight, f"blocks.{i}.self_attn.{o}.alpha")
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
                 converted_state_dict[converted_key_A] = down_weight * scale_down
                 converted_state_dict[converted_key_B] = up_weight * scale_up
 
