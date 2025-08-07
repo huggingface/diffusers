@@ -26,6 +26,7 @@ else:
     _import_structure["pipeline_wan_i2v"] = ["WanImageToVideoPipeline"]
     _import_structure["pipeline_wan_vace"] = ["WanVACEPipeline"]
     _import_structure["pipeline_wan_video2video"] = ["WanVideoToVideoPipeline"]
+    _import_structure["pipeline_wan_t2i"] = ["WanTextToImagePipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
