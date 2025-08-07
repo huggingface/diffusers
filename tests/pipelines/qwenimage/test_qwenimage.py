@@ -255,7 +255,7 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "true_cfg_scale": 1.0,
             "height": 32,  # Small size for fast test
             "width": 32,  # Small size for fast test
-            "max_sequence_length": 1200,  # Allow long sequence
+            "max_sequence_length": 1024,  # Allow long sequence (max allowed)
             "output_type": "pt",
         }
 
@@ -270,9 +270,17 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
 
-        # Create prompt that will exceed 512 tokens to trigger warning
-        long_phrase = "A detailed photorealistic description of a complex scene with many elements "
-        long_prompt = (long_phrase * 20)[:800]  # Create a prompt that will exceed 512 tokens
+        # Create a long prompt that will exceed the RoPE expansion threshold
+        # The warning is triggered when required_len = max(height, width) + text_tokens > _current_max_len
+        # Since _current_max_len is 1024 and height=width=32, we need > 992 tokens
+        phrase = "A detailed photorealistic image showing many beautiful elements and complex artistic creative features with intricate designs."
+        long_prompt = phrase * 58  # Generates ~1045 tokens, ensuring required_len > 1024
+        
+        # Verify we exceed the threshold (for test robustness)
+        tokenizer = components["tokenizer"]
+        token_count = len(tokenizer.encode(long_prompt))
+        required_len = 32 + token_count  # height/width + tokens
+        self.assertGreater(required_len, 1024, f"Test prompt must exceed threshold (got {required_len})")
 
         # Capture transformer logging
         logger = logging.get_logger("diffusers.models.transformers.transformer_qwenimage")
@@ -287,7 +295,7 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 true_cfg_scale=1.0,
                 height=32,  # Small size for fast test
                 width=32,  # Small size for fast test
-                max_sequence_length=900,  # Allow long sequence
+                max_sequence_length=1024,  # Allow long sequence
                 output_type="pt",
             )
 
