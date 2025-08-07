@@ -153,6 +153,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "QwenImageTransformer2DModel": {
+        "checkpoint_mapping_fn": lambda x: x,
+        "default_subfolder": "transformer",
+    },
 }
 
 
