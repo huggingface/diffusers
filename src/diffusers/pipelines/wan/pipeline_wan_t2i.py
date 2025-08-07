@@ -625,8 +625,6 @@ class WanTextToImagePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             images = self.vae.decode(latents, return_dict=False)[0]
             # Squeeze temporal dimension for single-frame output (num_frames=1)
             images = images.squeeze(2)  # Remove temporal dimension: (B, C, 1, H, W) -> (B, C, H, W)
-            images = self.video_processor.postprocess_video(images.unsqueeze(2), output_type=output_type)
-            # Extract single frame from video format
             if isinstance(images, list):
                 images = [img[0] if len(img) > 0 else img for img in images]
         else:
