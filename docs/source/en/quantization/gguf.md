@@ -77,19 +77,18 @@ Once installed, set `DIFFUSERS_GGUF_CUDA_KERNELS=true`  to use optimized kernels
 - Q5_K
 - Q6_K
 
-## Using Diffusers checkpoints
+## Convert to GGUF
 
-You can convert a Diffusers checkpoint to GGUF and use it to perform inference. Use the Space below to
+Use the Space below to convert a Diffusers checkpoint into the GGUF format for inference.
 run conversion:
 
-<script
-	type="module"
-	src="https://gradio.s3-us-west-2.amazonaws.com/5.41.1/gradio.js"
-></script>
+<iframe
+	src="https://diffusers-internal-dev-diffusers-to-gguf.hf.space"
+	frameborder="0"
+	width="850"
+	height="450"
+></iframe>
 
-<gradio-app src="https://diffusers-internal-dev-diffusers-to-gguf.hf.space"></gradio-app>
-
-Once it is obtained, you can run inference:
 
 ```py
 import torch
@@ -102,6 +101,8 @@ ckpt_path = (
 transformer = FluxTransformer2DModel.from_single_file(
     ckpt_path,
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+    config="black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
     torch_dtype=torch.bfloat16,
 )
 pipe = FluxPipeline.from_pretrained(
