@@ -1860,7 +1860,8 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     for i in range(min_block, max_block + 1):
         # Self-attention
         for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
-            has_alpha = f"blocks.{i}.self_attn.{o}.alpha" in original_state_dict
+            alpha_key = f"blocks.{i}.self_attn.{o}.alpha"
+            has_alpha = alpha_key in original_state_dict
             original_key_A = f"blocks.{i}.self_attn.{o}.{lora_down_key}.weight"
             converted_key_A = f"blocks.{i}.attn1.{c}.lora_A.weight"
 
