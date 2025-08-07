@@ -886,6 +886,7 @@ class Bnb4BitCompileTests(QuantCompileTests, unittest.TestCase):
             components_to_quantize=["transformer", "text_encoder_2"],
         )
 
+    @require_bitsandbytes_version_greater("0.46.1")
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
         super().test_torch_compile()
