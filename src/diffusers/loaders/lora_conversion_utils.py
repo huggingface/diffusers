@@ -1888,7 +1888,8 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
         # Cross-attention
         for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
-            has_alpha = f"blocks.{i}.cross_attn.{o}.alpha" in original_state_dict
+            alpha_key = f"blocks.{i}.cross_attn.{o}.alpha"
+            has_alpha = alpha_key in original_state_dict
             original_key_A = f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
             converted_key_A = f"blocks.{i}.attn2.{c}.lora_A.weight"
 
@@ -1898,7 +1899,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             if has_alpha:
                 down_weight = original_state_dict.pop(original_key_A)
                 up_weight = original_state_dict.pop(original_key_B)
-                scale_down, scale_up = get_alpha_scales(down_weight, f"blocks.{i}.cross_attn.{o}.alpha")
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
                 converted_state_dict[converted_key_A] = down_weight * scale_down
                 converted_state_dict[converted_key_B] = up_weight * scale_up
             else:
@@ -1915,7 +1916,8 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
         if is_i2v_lora:
             for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
-                has_alpha = f"blocks.{i}.cross_attn.{o}.alpha" in original_state_dict
+                alpha_key = f"blocks.{i}.cross_attn.{o}.alpha"
+                has_alpha = alpha_key in original_state_dict
                 original_key_A = f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
                 converted_key_A = f"blocks.{i}.attn2.{c}.lora_A.weight"
 
@@ -1925,7 +1927,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                 if has_alpha:
                     down_weight = original_state_dict.pop(original_key_A)
                     up_weight = original_state_dict.pop(original_key_B)
-                    scale_down, scale_up = get_alpha_scales(down_weight, f"blocks.{i}.cross_attn.{o}.alpha")
+                    scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
                     converted_state_dict[converted_key_A] = down_weight * scale_down
                     converted_state_dict[converted_key_B] = up_weight * scale_up
                 else:
@@ -1942,7 +1944,8 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
         # FFN
         for o, c in zip(["ffn.0", "ffn.2"], ["net.0.proj", "net.2"]):
-            has_alpha = f"blocks.{i}.{o}.alpha" in original_state_dict
+            alpha_key = f"blocks.{i}.{o}.alpha"
+            has_alpha = alpha_key in original_state_dict
             original_key_A = f"blocks.{i}.{o}.{lora_down_key}.weight"
             converted_key_A = f"blocks.{i}.ffn.{c}.lora_A.weight"
 
@@ -1952,7 +1955,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             if has_alpha:
                 down_weight = original_state_dict.pop(original_key_A)
                 up_weight = original_state_dict.pop(original_key_B)
-                scale_down, scale_up = get_alpha_scales(down_weight, f"blocks.{i}.{o}.alpha")
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
                 converted_state_dict[converted_key_A] = down_weight * scale_down
                 converted_state_dict[converted_key_B] = up_weight * scale_up
             else:
