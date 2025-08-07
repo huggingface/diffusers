@@ -24,7 +24,7 @@ from diffusers import (
     QwenImagePipeline,
     QwenImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -264,27 +264,24 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_long_prompt_warning(self):
         """Test that long prompts trigger appropriate warning about training limitation"""
-        from diffusers.utils.testing_utils import CaptureLogger
         from diffusers.utils import logging
         
-        device = torch_device
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        pipe.to(device)
+        pipe.to(torch_device)
         
         # Create prompt that will exceed 512 tokens to trigger warning
-        # Use a longer phrase and repeat more times to ensure we exceed the 512 token limit
         long_phrase = "A detailed photorealistic description of a complex scene with many elements "
         long_prompt = (long_phrase * 20)[:800]  # Create a prompt that will exceed 512 tokens
         
         # Capture transformer logging  
         logger = logging.get_logger("diffusers.models.transformers.transformer_qwenimage")
-        logger.setLevel(30)  # WARNING level
+        logger.setLevel(logging.WARNING)
         
         with CaptureLogger(logger) as cap_logger:
             _ = pipe(
                 prompt=long_prompt,
-                generator=torch.Generator(device=device).manual_seed(0),
+                generator=torch.Generator(device=torch_device).manual_seed(0),
                 num_inference_steps=2,
                 guidance_scale=3.0,
                 true_cfg_scale=1.0,
