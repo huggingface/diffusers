@@ -26,7 +26,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import WanPipelineOutput
+from .pipeline_output import WanImagePipelineOutput
 
 
 if is_torch_xla_available():
@@ -60,14 +60,14 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
-        >>> output = pipe(
+        >>> image = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
         ...     height=1024,
         ...     width=1024,
         ...     guidance_scale=3.5,
-        ... ).frames[0]
-        >>> output[0].save("output.png")
+        ... ).images[0]
+        >>> image.save("output.png")
         ```
 """
 
@@ -622,14 +622,20 @@ class WanTextToImagePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latents.device, latents.dtype
             )
             latents = latents / latents_std + latents_mean
-            frames = self.vae.decode(latents, return_dict=False)[0]
+            images = self.vae.decode(latents, return_dict=False)[0]
+            # Squeeze temporal dimension for single-frame output (num_frames=1)
+            images = images.squeeze(2)  # Remove temporal dimension: (B, C, 1, H, W) -> (B, C, H, W)
+            images = self.video_processor.postprocess_video(images.unsqueeze(2), output_type=output_type)
+            # Extract single frame from video format
+            if isinstance(images, list):
+                images = [img[0] if len(img) > 0 else img for img in images]
         else:
-            frames = latents
+            images = latents.squeeze(2) if latents.dim() == 5 else latents  # Squeeze temporal dimension if present
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (frames,)
+            return (images,)
 
-        return WanPipelineOutput(frames=frames)
+        return WanImagePipelineOutput(images=images)

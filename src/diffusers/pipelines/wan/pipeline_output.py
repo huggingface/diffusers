@@ -18,3 +18,18 @@ class WanPipelineOutput(BaseOutput):
     """
 
     frames: torch.Tensor
+
+
+@dataclass
+class WanImagePipelineOutput(BaseOutput):
+    r"""
+    Output class for Wan text-to-image pipelines.
+
+    Args:
+        images (`torch.Tensor`, `np.ndarray`, or List[PIL.Image.Image]):
+            List of image outputs - It can be a list of PIL images or a NumPy array or Torch tensor of shape
+            `(batch_size, channels, height, width)`. The tensor dimensions are automatically squeezed to remove
+            the temporal dimension for single-frame outputs.
+    """
+
+    images: torch.Tensor
