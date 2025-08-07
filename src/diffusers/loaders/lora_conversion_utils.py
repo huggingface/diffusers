@@ -1896,18 +1896,16 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             original_key_B = f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
             converted_key_B = f"blocks.{i}.attn2.{c}.lora_B.weight"
 
-            if has_alpha:
+            if original_key_A in original_state_dict:
                 down_weight = original_state_dict.pop(original_key_A)
+                converted_state_dict[converted_key_A] = down_weight
+            if original_key_B in original_state_dict:
                 up_weight = original_state_dict.pop(original_key_B)
+                converted_state_dict[converted_key_B] = up_weight
+            if has_alpha:
                 scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
-                converted_state_dict[converted_key_A] = down_weight * scale_down
-                converted_state_dict[converted_key_B] = up_weight * scale_up
-            else:
-                if original_key_A in original_state_dict:
-                    converted_state_dict[converted_key_A] = original_state_dict.pop(original_key_A)
-
-                if original_key_B in original_state_dict:
-                    converted_state_dict[converted_key_B] = original_state_dict.pop(original_key_B)
+                converted_state_dict[converted_key_A] *= scale_down
+                converted_state_dict[converted_key_B] *= scale_up
 
             original_key = f"blocks.{i}.cross_attn.{o}.diff_b"
             converted_key = f"blocks.{i}.attn2.{c}.lora_B.bias"
@@ -1924,18 +1922,16 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                 original_key_B = f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
                 converted_key_B = f"blocks.{i}.attn2.{c}.lora_B.weight"
 
-                if has_alpha:
+                if original_key_A in original_state_dict:
                     down_weight = original_state_dict.pop(original_key_A)
+                    converted_state_dict[converted_key_A] = down_weight
+                if original_key_B in original_state_dict:
                     up_weight = original_state_dict.pop(original_key_B)
+                    converted_state_dict[converted_key_B] = up_weight
+                if has_alpha:
                     scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
-                    converted_state_dict[converted_key_A] = down_weight * scale_down
-                    converted_state_dict[converted_key_B] = up_weight * scale_up
-                else:
-                    if original_key_A in original_state_dict:
-                        converted_state_dict[converted_key_A] = original_state_dict.pop(original_key_A)
-
-                    if original_key_B in original_state_dict:
-                        converted_state_dict[converted_key_B] = original_state_dict.pop(original_key_B)
+                    converted_state_dict[converted_key_A] *= scale_down
+                    converted_state_dict[converted_key_B] *= scale_up
 
                 original_key = f"blocks.{i}.cross_attn.{o}.diff_b"
                 converted_key = f"blocks.{i}.attn2.{c}.lora_B.bias"
@@ -1952,18 +1948,16 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             original_key_B = f"blocks.{i}.{o}.{lora_up_key}.weight"
             converted_key_B = f"blocks.{i}.ffn.{c}.lora_B.weight"
 
-            if has_alpha:
+            if original_key_A in original_state_dict:
                 down_weight = original_state_dict.pop(original_key_A)
+                converted_state_dict[converted_key_A] = down_weight
+            if original_key_B in original_state_dict:
                 up_weight = original_state_dict.pop(original_key_B)
+                converted_state_dict[converted_key_B] = up_weight
+            if has_alpha:
                 scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
-                converted_state_dict[converted_key_A] = down_weight * scale_down
-                converted_state_dict[converted_key_B] = up_weight * scale_up
-            else:
-                if original_key_A in original_state_dict:
-                    converted_state_dict[converted_key_A] = original_state_dict.pop(original_key_A)
-
-                if original_key_B in original_state_dict:
-                    converted_state_dict[converted_key_B] = original_state_dict.pop(original_key_B)
+                converted_state_dict[converted_key_A] *= scale_down
+                converted_state_dict[converted_key_B] *= scale_up
 
             original_key = f"blocks.{i}.{o}.diff_b"
             converted_key = f"blocks.{i}.ffn.{c}.lora_B.bias"
