@@ -107,6 +107,7 @@ class TransformerBlockRegistry:
 def _register_attention_processors_metadata():
     from ..models.attention_processor import AttnProcessor2_0
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
+    from ..models.transformers.transformer_flux import FluxAttnProcessor
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
 
     # AttnProcessor2_0
@@ -133,6 +134,12 @@ def _register_attention_processors_metadata():
         ),
     )
 
+    # FluxAttnProcessor
+    AttentionProcessorRegistry.register(
+        model_class=FluxAttnProcessor,
+        metadata=AttentionProcessorMetadata(skip_processor_output_fn=_skip_proc_output_fn_Attention_FluxAttnProcessor),
+    )
+
 
 def _register_transformer_blocks_metadata():
     from ..models.attention import BasicTransformerBlock
@@ -147,6 +154,7 @@ def _register_transformer_blocks_metadata():
     )
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
+    from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
 
     # BasicTransformerBlock
@@ -249,6 +257,15 @@ def _register_transformer_blocks_metadata():
         ),
     )
 
+    # QwenImage
+    TransformerBlockRegistry.register(
+        model_class=QwenImageTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+
 
 # fmt: off
 def _skip_attention___ret___hidden_states(self, *args, **kwargs):
@@ -271,4 +288,6 @@ def _skip_attention___ret___hidden_states___encoder_hidden_states(self, *args, *
 _skip_proc_output_fn_Attention_AttnProcessor2_0 = _skip_attention___ret___hidden_states
 _skip_proc_output_fn_Attention_CogView4AttnProcessor = _skip_attention___ret___hidden_states___encoder_hidden_states
 _skip_proc_output_fn_Attention_WanAttnProcessor2_0 = _skip_attention___ret___hidden_states
+# not sure what this is yet.
+_skip_proc_output_fn_Attention_FluxAttnProcessor = _skip_attention___ret___hidden_states
 # fmt: on

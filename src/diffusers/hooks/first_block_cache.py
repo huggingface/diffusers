@@ -192,6 +192,38 @@ class FBCBlockHook(ModelHook):
 
 
 def apply_first_block_cache(module: torch.nn.Module, config: FirstBlockCacheConfig) -> None:
+    """
+    Applies [First Block
+    Cache](https://github.com/chengzeyi/ParaAttention/blob/4de137c5b96416489f06e43e19f2c14a772e28fd/README.md#first-block-cache-our-dynamic-caching)
+    to a given module.
+
+    First Block Cache builds on the ideas of [TeaCache](https://huggingface.co/papers/2411.19108). It is much simpler
+    to implement generically for a wide range of models and has been integrated first for experimental purposes.
+
+    Args:
+        module (`torch.nn.Module`):
+            The pytorch module to apply FBCache to. Typically, this should be a transformer architecture supported in
+            Diffusers, such as `CogVideoXTransformer3DModel`, but external implementations may also work.
+        config (`FirstBlockCacheConfig`):
+            The configuration to use for applying the FBCache method.
+
+    Example:
+        ```python
+        >>> import torch
+        >>> from diffusers import CogView4Pipeline
+        >>> from diffusers.hooks import apply_first_block_cache, FirstBlockCacheConfig
+
+        >>> pipe = CogView4Pipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16)
+        >>> pipe.to("cuda")
+
+        >>> apply_first_block_cache(pipe.transformer, FirstBlockCacheConfig(threshold=0.2))
+
+        >>> prompt = "A photo of an astronaut riding a horse on mars"
+        >>> image = pipe(prompt, generator=torch.Generator().manual_seed(42)).images[0]
+        >>> image.save("output.png")
+        ```
+    """
+
     state_manager = StateManager(FBCSharedBlockState, (), {})
     remaining_blocks = []
 

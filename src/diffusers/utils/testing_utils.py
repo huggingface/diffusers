@@ -36,6 +36,7 @@ from .import_utils import (
     is_compel_available,
     is_flax_available,
     is_gguf_available,
+    is_kernels_available,
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
@@ -629,6 +630,18 @@ def require_torchao_version_greater_or_equal(torchao_version):
         ) >= version.parse(torchao_version)
         return unittest.skipUnless(
             correct_torchao_version, f"Test requires torchao with version greater than {torchao_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_kernels_version_greater_or_equal(kernels_version):
+    def decorator(test_case):
+        correct_kernels_version = is_kernels_available() and version.parse(
+            version.parse(importlib.metadata.version("kernels")).base_version
+        ) >= version.parse(kernels_version)
+        return unittest.skipUnless(
+            correct_kernels_version, f"Test requires kernels with version greater than {kernels_version}."
         )(test_case)
 
     return decorator
@@ -1394,9 +1407,9 @@ else:
     DevicePropertiesUserDict = UserDict
 
 if is_torch_available():
+    from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
     from diffusers.hooks.group_offloading import (
         _GROUP_ID_LAZY_LEAF,
-        _SUPPORTED_PYTORCH_LAYERS,
         _compute_group_hash,
         _find_parent_module_in_module_dict,
         _gather_buffers_with_no_group_offloading_parent,
@@ -1440,13 +1453,13 @@ if is_torch_available():
         elif offload_type == "leaf_level":
             # Handle leaf-level module groups
             for name, submodule in module.named_modules():
-                if isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
+                if isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     # These groups will always have parameters, so a file is expected
                     expected_files.add(get_hashed_filename(name))
 
             # Handle groups for non-leaf parameters/buffers
             modules_with_group_offloading = {
-                name for name, sm in module.named_modules() if isinstance(sm, _SUPPORTED_PYTORCH_LAYERS)
+                name for name, sm in module.named_modules() if isinstance(sm, _GO_LC_SUPPORTED_PYTORCH_LAYERS)
             }
             parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
             buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
