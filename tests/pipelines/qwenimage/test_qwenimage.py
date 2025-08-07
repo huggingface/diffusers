@@ -246,7 +246,7 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # This tests the original issue fix without triggering the warning
         phrase = "A beautiful, detailed, high-resolution, photorealistic image showing "
         long_prompt = phrase * 40  # Generates ~800 tokens, well within limits
-        
+
         # Verify token count for test clarity
         tokenizer = components["tokenizer"]
         token_count = len(tokenizer.encode(long_prompt))
@@ -283,7 +283,7 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Since _current_max_len is 1024 and height=width=32, we need > 992 tokens
         phrase = "A detailed photorealistic image showing many beautiful elements and complex artistic creative features with intricate designs."
         long_prompt = phrase * 58  # Generates ~1045 tokens, ensuring required_len > 1024
-        
+
         # Verify we exceed the threshold (for test robustness)
         tokenizer = components["tokenizer"]
         token_count = len(tokenizer.encode(long_prompt))
