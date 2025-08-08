@@ -78,6 +78,8 @@ if is_torch_available():
             "Lumina2LoraLoaderMixin",
             "WanLoraLoaderMixin",
             "HiDreamImageLoraLoaderMixin",
+            "SkyReelsV2LoraLoaderMixin",
+            "QwenImageLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -117,8 +119,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 LTXVideoLoraLoaderMixin,
                 Lumina2LoraLoaderMixin,
                 Mochi1LoraLoaderMixin,
+                QwenImageLoraLoaderMixin,
                 SanaLoraLoaderMixin,
                 SD3LoraLoaderMixin,
+                SkyReelsV2LoraLoaderMixin,
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
                 WanLoraLoaderMixin,

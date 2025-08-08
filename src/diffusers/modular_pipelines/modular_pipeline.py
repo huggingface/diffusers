@@ -60,12 +60,16 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
+        ("wan", "WanModularPipeline"),
+        ("flux", "FluxModularPipeline"),
     ]
 )
 
 MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
     [
         ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
+        ("WanModularPipeline", "WanAutoBlocks"),
+        ("FluxModularPipeline", "FluxAutoBlocks"),
     ]
 )
 
@@ -323,6 +327,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     """
 
     config_name = "config.json"
+    model_name = None
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -332,6 +337,14 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         expected_modules = set(required_parameters.keys()) - {"self"}
 
         return expected_modules, optional_parameters
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return []
+
+    @property
+    def expected_configs(self) -> List[ConfigSpec]:
+        return []
 
     @classmethod
     def from_pretrained(
@@ -358,7 +371,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             trust_remote_code, pretrained_model_name_or_path, has_remote_code
         )
         if not (has_remote_code and trust_remote_code):
-            raise ValueError("TODO")
+            raise ValueError(
+                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+            )
 
         class_ref = config["auto_map"][cls.__name__]
         module_file, class_name = class_ref.split(".")
@@ -367,7 +382,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             pretrained_model_name_or_path,
             module_file=module_file,
             class_name=class_name,
-            is_modular=True,
             **hub_kwargs,
             **kwargs,
         )
@@ -1667,7 +1681,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
             if input_param.name:
                 value = state.get_intermediate(input_param.name)
                 if input_param.required and value is None:
-                    raise ValueError(f"Required intermediate input '{input_param.name}' is missing")
+                    raise ValueError(f"Required intermediate input '{input_param.name}' is missing.")
                 elif value is not None or (value is None and input_param.name not in data):
                     data[input_param.name] = value
             elif input_param.kwargs_type:
