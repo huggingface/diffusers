@@ -115,3 +115,6 @@ prompt = "A cat holding a sign that says hello world"
 image = pipe(prompt, generator=torch.manual_seed(0)).images[0]
 image.save("flux-gguf.png")
 ```
+
+When using Diffusers format GGUF checkpoints, it's a must to provide the model `config` path. If the
+model config resides in a `subfolder`, that needs to be specified, too.
