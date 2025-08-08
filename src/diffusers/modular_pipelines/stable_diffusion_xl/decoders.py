@@ -105,9 +105,9 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
         if not block_state.output_type == "latent":
             latents = block_state.latents
             # make sure the VAE is in float32 mode, as it overflows in float16
-            block_state.needs_upcasting = components.vae.dtype == torch.float16 and components.vae.config.force_upcast
+            needs_upcasting = components.vae.dtype == torch.float16 and components.vae.config.force_upcast
 
-            if block_state.needs_upcasting:
+            if needs_upcasting:
                 self.upcast_vae(components)
                 latents = latents.to(next(iter(components.vae.post_quant_conv.parameters())).dtype)
             elif latents.dtype != components.vae.dtype:
@@ -117,21 +117,21 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
 
             # unscale/denormalize the latents
             # denormalize with the mean and std if available and not None
-            block_state.has_latents_mean = (
+            has_latents_mean = (
                 hasattr(components.vae.config, "latents_mean") and components.vae.config.latents_mean is not None
             )
-            block_state.has_latents_std = (
+            has_latents_std = (
                 hasattr(components.vae.config, "latents_std") and components.vae.config.latents_std is not None
             )
-            if block_state.has_latents_mean and block_state.has_latents_std:
-                block_state.latents_mean = (
+            if has_latents_mean and has_latents_std:
+                latents_mean = (
                     torch.tensor(components.vae.config.latents_mean).view(1, 4, 1, 1).to(latents.device, latents.dtype)
                 )
-                block_state.latents_std = (
+                latents_std = (
                     torch.tensor(components.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
                 )
                 latents = (
-                    latents * block_state.latents_std / components.vae.config.scaling_factor + block_state.latents_mean
+                    latents * latents_std / components.vae.config.scaling_factor + latents_mean
                 )
             else:
                 latents = latents / components.vae.config.scaling_factor

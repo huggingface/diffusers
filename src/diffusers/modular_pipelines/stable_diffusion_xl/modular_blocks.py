@@ -26,6 +26,7 @@ from .before_denoise import (
     StableDiffusionXLPrepareAdditionalConditioningStep,
     StableDiffusionXLPrepareLatentsStep,
     StableDiffusionXLSetTimestepsStep,
+    StableDiffusionXLLCMStep,
 )
 from .decoders import (
     StableDiffusionXLDecodeStep,
@@ -77,6 +78,16 @@ class StableDiffusionXLAutoIPAdapterStep(AutoPipelineBlocks):
     @property
     def description(self):
         return "Run IP Adapter step if `ip_adapter_image` is provided. This step should be placed before the 'input' step.\n"
+
+
+class StableDiffusionXLAutoLCMStep(AutoPipelineBlocks):
+    block_classes = [StableDiffusionXLLCMStep]
+    block_names = ["lcm"]
+    block_trigger_inputs = ["embedded_guidance_scale"]
+
+    @property
+    def description(self):
+        return "Run LCM step if `latents` is provided. This step should be placed before the 'input' step.\n"
 
 
 # before_denoise: text2img
@@ -262,6 +273,7 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
         StableDiffusionXLAutoIPAdapterStep,
         StableDiffusionXLAutoVaeEncoderStep,
         StableDiffusionXLAutoBeforeDenoiseStep,
+        StableDiffusionXLAutoLCMStep,
         StableDiffusionXLAutoControlNetInputStep,
         StableDiffusionXLAutoDenoiseStep,
         StableDiffusionXLAutoDecodeStep,
@@ -271,6 +283,7 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
         "ip_adapter",
         "image_encoder",
         "before_denoise",
+        "lcm",
         "controlnet_input",
         "denoise",
         "decoder",
@@ -286,6 +299,7 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
             + "- to run the controlnet_union workflow, you need to provide `control_image` and `control_mode`\n"
             + "- to run the ip_adapter workflow, you need to provide `ip_adapter_image`\n"
             + "- for text-to-image generation, all you need to provide is `prompt`"
+            + "- to run the latent consistency models workflow, you need to provide `embedded_guidance_scale`"
         )
 
 
@@ -357,6 +371,13 @@ IP_ADAPTER_BLOCKS = InsertableDict(
     ]
 )
 
+LCM_BLOCKS = InsertableDict(
+
+    [
+        ("lcm", StableDiffusionXLAutoLCMStep),
+    ]
+)
+
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusionXLTextEncoderStep),
@@ -376,5 +397,6 @@ ALL_BLOCKS = {
     "inpaint": INPAINT_BLOCKS,
     "controlnet": CONTROLNET_BLOCKS,
     "ip_adapter": IP_ADAPTER_BLOCKS,
+    "lcm": LCM_BLOCKS,
     "auto": AUTO_BLOCKS,
 }

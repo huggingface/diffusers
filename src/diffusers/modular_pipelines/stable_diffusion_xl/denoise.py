@@ -67,7 +67,7 @@ class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
-        block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
+        block_state.latent_model_input = components.scheduler.scale_model_input(block_state.latents, t)
 
         return components, block_state
 
@@ -134,10 +134,10 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
     def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
         self.check_inputs(components, block_state)
 
-        block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
+        block_state.latent_model_input = components.scheduler.scale_model_input(block_state.latents, t)
         if components.num_channels_unet == 9:
-            block_state.scaled_latents = torch.cat(
-                [block_state.scaled_latents, block_state.mask, block_state.masked_image_latents], dim=1
+            block_state.latent_model_input = torch.cat(
+                [block_state.latent_model_input, block_state.mask, block_state.masked_image_latents], dim=1
             )
 
         return components, block_state
@@ -232,7 +232,7 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
             guider_state_batch.noise_pred = components.unet(
-                block_state.scaled_latents,
+                block_state.latent_model_input,
                 t,
                 encoder_hidden_states=prompt_embeds,
                 timestep_cond=block_state.timestep_cond,
@@ -410,7 +410,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
                 mid_block_res_sample = block_state.mid_block_res_sample_zeros
             else:
                 down_block_res_samples, mid_block_res_sample = components.controlnet(
-                    block_state.scaled_latents,
+                    block_state.latent_model_input,
                     t,
                     encoder_hidden_states=guider_state_batch.prompt_embeds,
                     controlnet_cond=block_state.controlnet_cond,
@@ -430,7 +430,7 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
             # Predict the noise
             # store the noise_pred in guider_state_batch so we can apply guidance across all batches
             guider_state_batch.noise_pred = components.unet(
-                block_state.scaled_latents,
+                block_state.latent_model_input,
                 t,
                 encoder_hidden_states=guider_state_batch.prompt_embeds,
                 timestep_cond=block_state.timestep_cond,

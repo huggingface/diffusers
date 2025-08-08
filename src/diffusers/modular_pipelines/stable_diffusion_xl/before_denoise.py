@@ -117,84 +117,6 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-def prepare_latents_img2img(
-    vae, scheduler, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
-):
-    if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
-        raise ValueError(f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}")
-
-    image = image.to(device=device, dtype=dtype)
-
-    batch_size = batch_size * num_images_per_prompt
-
-    if image.shape[1] == 4:
-        init_latents = image
-
-    else:
-        latents_mean = latents_std = None
-        if hasattr(vae.config, "latents_mean") and vae.config.latents_mean is not None:
-            latents_mean = torch.tensor(vae.config.latents_mean).view(1, 4, 1, 1)
-        if hasattr(vae.config, "latents_std") and vae.config.latents_std is not None:
-            latents_std = torch.tensor(vae.config.latents_std).view(1, 4, 1, 1)
-        # make sure the VAE is in float32 mode, as it overflows in float16
-        if vae.config.force_upcast:
-            image = image.float()
-            vae.to(dtype=torch.float32)
-
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        elif isinstance(generator, list):
-            if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
-                image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
-            elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
-                raise ValueError(
-                    f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
-                )
-
-            init_latents = [
-                retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i]) for i in range(batch_size)
-            ]
-            init_latents = torch.cat(init_latents, dim=0)
-        else:
-            init_latents = retrieve_latents(vae.encode(image), generator=generator)
-
-        if vae.config.force_upcast:
-            vae.to(dtype)
-
-        init_latents = init_latents.to(dtype)
-        if latents_mean is not None and latents_std is not None:
-            latents_mean = latents_mean.to(device=device, dtype=dtype)
-            latents_std = latents_std.to(device=device, dtype=dtype)
-            init_latents = (init_latents - latents_mean) * vae.config.scaling_factor / latents_std
-        else:
-            init_latents = vae.config.scaling_factor * init_latents
-
-    if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
-        # expand init_latents for batch_size
-        additional_image_per_prompt = batch_size // init_latents.shape[0]
-        init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
-    elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
-        raise ValueError(
-            f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
-        )
-    else:
-        init_latents = torch.cat([init_latents], dim=0)
-
-    if add_noise:
-        shape = init_latents.shape
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        # get latents
-        init_latents = scheduler.add_noise(init_latents, noise, timestep)
-
-    latents = init_latents
-
-    return latents
-
-
 class StableDiffusionXLInputStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
@@ -419,8 +341,6 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
             InputParam("denoising_end"),
             InputParam("strength", default=0.3),
             InputParam("denoising_start"),
-            # YiYi TODO: do we need num_images_per_prompt here?
-            InputParam("num_images_per_prompt", default=1),
         ]
 
     @property
@@ -495,31 +415,29 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.device = components._execution_device
+        device = components._execution_device
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            components.scheduler,
-            block_state.num_inference_steps,
-            block_state.device,
-            block_state.timesteps,
-            block_state.sigmas,
+            scheduler=components.scheduler,
+            num_inference_steps=block_state.num_inference_steps,
+            device=device,
+            timesteps=block_state.timesteps,
+            sigmas=block_state.sigmas,
         )
 
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
 
         block_state.timesteps, block_state.num_inference_steps = self.get_timesteps(
-            components,
-            block_state.num_inference_steps,
-            block_state.strength,
-            block_state.device,
+            components=components,
+            num_inference_steps=block_state.num_inference_steps,
+            strength=block_state.strength,
+            device=device,
             denoising_start=block_state.denoising_start
             if denoising_value_valid(block_state.denoising_start)
             else None,
         )
-        block_state.latent_timestep = block_state.timesteps[:1].repeat(
-            block_state.batch_size * block_state.num_images_per_prompt
-        )
+        block_state.latent_timestep = block_state.timesteps[:1]
 
         if (
             block_state.denoising_end is not None
@@ -527,14 +445,14 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
             and block_state.denoising_end > 0
             and block_state.denoising_end < 1
         ):
-            block_state.discrete_timestep_cutoff = int(
+            discrete_timestep_cutoff = int(
                 round(
                     components.scheduler.config.num_train_timesteps
                     - (block_state.denoising_end * components.scheduler.config.num_train_timesteps)
                 )
             )
             block_state.num_inference_steps = len(
-                list(filter(lambda ts: ts >= block_state.discrete_timestep_cutoff, block_state.timesteps))
+                list(filter(lambda ts: ts >= discrete_timestep_cutoff, block_state.timesteps))
             )
             block_state.timesteps = block_state.timesteps[: block_state.num_inference_steps]
 
@@ -580,14 +498,14 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.device = components._execution_device
+        device = components._execution_device
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            components.scheduler,
-            block_state.num_inference_steps,
-            block_state.device,
-            block_state.timesteps,
-            block_state.sigmas,
+            scheduler=components.scheduler,
+            num_inference_steps=block_state.num_inference_steps,
+            device=device,
+            timesteps=block_state.timesteps,
+            sigmas=block_state.sigmas,
         )
 
         if (
@@ -596,14 +514,14 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
             and block_state.denoising_end > 0
             and block_state.denoising_end < 1
         ):
-            block_state.discrete_timestep_cutoff = int(
+            discrete_timestep_cutoff = int(
                 round(
                     components.scheduler.config.num_train_timesteps
                     - (block_state.denoising_end * components.scheduler.config.num_train_timesteps)
                 )
             )
             block_state.num_inference_steps = len(
-                list(filter(lambda ts: ts >= block_state.discrete_timestep_cutoff, block_state.timesteps))
+                list(filter(lambda ts: ts >= discrete_timestep_cutoff, block_state.timesteps))
             )
             block_state.timesteps = block_state.timesteps[: block_state.num_inference_steps]
 
@@ -627,7 +545,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("latents"),
             InputParam("num_images_per_prompt", default=1),
             InputParam("denoising_start"),
             InputParam(
@@ -654,7 +571,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             ),
             InputParam(
                 "latent_timestep",
-                required=True,
                 type_hint=torch.Tensor,
                 description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step.",
             ),
@@ -675,7 +591,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
                 type_hint=torch.Tensor,
                 description="The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be generated in vae_encode step.",
             ),
-            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
+            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs, can be generated in input step."),
         ]
 
     @property
@@ -691,209 +607,97 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             ),
         ]
 
-    # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image with self->components
-    # YiYi TODO: update the _encode_vae_image so that we can use #Coped from
-    @staticmethod
-    def _encode_vae_image(components, image: torch.Tensor, generator: torch.Generator):
-        latents_mean = latents_std = None
-        if hasattr(components.vae.config, "latents_mean") and components.vae.config.latents_mean is not None:
-            latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, 4, 1, 1)
-        if hasattr(components.vae.config, "latents_std") and components.vae.config.latents_std is not None:
-            latents_std = torch.tensor(components.vae.config.latents_std).view(1, 4, 1, 1)
-
-        dtype = image.dtype
-        if components.vae.config.force_upcast:
-            image = image.float()
-            components.vae.to(dtype=torch.float32)
-
-        if isinstance(generator, list):
-            image_latents = [
-                retrieve_latents(components.vae.encode(image[i : i + 1]), generator=generator[i])
-                for i in range(image.shape[0])
-            ]
-            image_latents = torch.cat(image_latents, dim=0)
-        else:
-            image_latents = retrieve_latents(components.vae.encode(image), generator=generator)
-
-        if components.vae.config.force_upcast:
-            components.vae.to(dtype)
-
-        image_latents = image_latents.to(dtype)
-        if latents_mean is not None and latents_std is not None:
-            latents_mean = latents_mean.to(device=image_latents.device, dtype=dtype)
-            latents_std = latents_std.to(device=image_latents.device, dtype=dtype)
-            image_latents = (image_latents - latents_mean) * components.vae.config.scaling_factor / latents_std
-        else:
-            image_latents = components.vae.config.scaling_factor * image_latents
-
-        return image_latents
-
-    # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.prepare_latents adding components as first argument
-    def prepare_latents_inpaint(
+    def prepare_latents(
         self,
-        components,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
+        image_latents,
+        scheduler,
         dtype,
         device,
         generator,
-        latents=None,
-        image=None,
         timestep=None,
         is_strength_max=True,
         add_noise=True,
-        return_noise=False,
-        return_image_latents=False,
     ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            int(height) // components.vae_scale_factor,
-            int(width) // components.vae_scale_factor,
-        )
+  
+        batch_size = image_latents.shape[0]
+
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        if (image is None or timestep is None) and not is_strength_max:
-            raise ValueError(
-                "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
-                "However, either the image or the noise timestep has not been provided."
-            )
-
-        if image.shape[1] == 4:
-            image_latents = image.to(device=device, dtype=dtype)
-            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
-        elif return_image_latents or (latents is None and not is_strength_max):
-            image = image.to(device=device, dtype=dtype)
-            image_latents = self._encode_vae_image(components, image=image, generator=generator)
-            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
-
-        if latents is None and add_noise:
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        if add_noise:
+            noise = randn_tensor(image_latents.shape, generator=generator, device=device, dtype=dtype)
             # if strength is 1. then initialise the latents to noise, else initial to image + noise
-            latents = noise if is_strength_max else components.scheduler.add_noise(image_latents, noise, timestep)
+            latents = noise if is_strength_max else scheduler.add_noise(image_latents, noise, timestep)
             # if pure noise then scale the initial latents by the  Scheduler's init sigma
-            latents = latents * components.scheduler.init_noise_sigma if is_strength_max else latents
-        elif add_noise:
-            noise = latents.to(device)
-            latents = noise * components.scheduler.init_noise_sigma
+            latents = latents * scheduler.init_noise_sigma if is_strength_max else latents
+
         else:
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            noise = randn_tensor(image_latents.shape, generator=generator, device=device, dtype=dtype)
             latents = image_latents.to(device)
 
-        outputs = (latents,)
+        return latents, noise
 
-        if return_noise:
-            outputs += (noise,)
 
-        if return_image_latents:
-            outputs += (image_latents,)
+    
+    def check_inputs(self, batch_size, image_latents, mask, masked_image_latents):
 
-        return outputs
+        if not (image_latents.shape[0] == 1 or image_latents.shape[0] == batch_size):
+            raise ValueError(f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}")
 
-    # modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.prepare_mask_latents
-    # do not accept do_classifier_free_guidance
-    def prepare_mask_latents(
-        self, components, mask, masked_image, batch_size, height, width, dtype, device, generator
-    ):
-        # resize the mask to latents shape as we concatenate the mask to the latents
-        # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
-        # and half precision
-        mask = torch.nn.functional.interpolate(
-            mask, size=(height // components.vae_scale_factor, width // components.vae_scale_factor)
-        )
-        mask = mask.to(device=device, dtype=dtype)
-
-        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        if mask.shape[0] < batch_size:
-            if not batch_size % mask.shape[0] == 0:
-                raise ValueError(
-                    "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
-                    f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
-                    " of masks that you pass is divisible by the total requested batch size."
-                )
-            mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
-
-        if masked_image is not None and masked_image.shape[1] == 4:
-            masked_image_latents = masked_image
-        else:
-            masked_image_latents = None
-
-        if masked_image is not None:
-            if masked_image_latents is None:
-                masked_image = masked_image.to(device=device, dtype=dtype)
-                masked_image_latents = self._encode_vae_image(components, masked_image, generator=generator)
-
-            if masked_image_latents.shape[0] < batch_size:
-                if not batch_size % masked_image_latents.shape[0] == 0:
-                    raise ValueError(
-                        "The passed images and the required batch size don't match. Images are supposed to be duplicated"
-                        f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
-                        " Make sure the number of images that you pass is divisible by the total requested batch size."
-                    )
-                masked_image_latents = masked_image_latents.repeat(
-                    batch_size // masked_image_latents.shape[0], 1, 1, 1
-                )
-
-            # aligning device to prevent device errors when concating it with the latent model input
-            masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
-
-        return mask, masked_image_latents
-
+        if not (mask.shape[0] == 1 or mask.shape[0] == batch_size):
+            raise ValueError(f"mask should have have batch size 1 or {batch_size}, but got {mask.shape[0]}")
+        
+        if not (masked_image_latents.shape[0] == 1 or masked_image_latents.shape[0] == batch_size):
+            raise ValueError(f"masked_image_latents should have have batch size 1 or {batch_size}, but got {masked_image_latents.shape[0]}")
+    
+    
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+        
+        self.check_inputs(
+            batch_size=block_state.batch_size,
+            image_latents=block_state.image_latents, 
+            mask=block_state.mask, 
+            masked_image_latents=block_state.masked_image_latents, 
+            )
 
-        block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
-        block_state.device = components._execution_device
-
-        block_state.is_strength_max = block_state.strength == 1.0
-
-        # for non-inpainting specific unet, we do not need masked_image_latents
-        if hasattr(components, "unet") and components.unet is not None:
-            if components.unet.config.in_channels == 4:
-                block_state.masked_image_latents = None
-
-        block_state.add_noise = True if block_state.denoising_start is None else False
-
-        block_state.height = block_state.image_latents.shape[-2] * components.vae_scale_factor
-        block_state.width = block_state.image_latents.shape[-1] * components.vae_scale_factor
-
-        block_state.latents, block_state.noise = self.prepare_latents_inpaint(
-            components,
-            block_state.batch_size * block_state.num_images_per_prompt,
-            components.num_channels_latents,
-            block_state.height,
-            block_state.width,
-            block_state.dtype,
-            block_state.device,
-            block_state.generator,
-            block_state.latents,
-            image=block_state.image_latents,
-            timestep=block_state.latent_timestep,
-            is_strength_max=block_state.is_strength_max,
-            add_noise=block_state.add_noise,
-            return_noise=True,
-            return_image_latents=False,
-        )
+        dtype = block_state.dtype if block_state.dtype is not None else block_state.image_latents.dtype
+        device = components._execution_device
+        
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt 
+        
+        block_state.image_latents = block_state.image_latents.to(device=device, dtype=dtype)
+        block_state.image_latents = block_state.image_latents.repeat(final_batch_size//block_state.image_latents.shape[0], 1, 1, 1)
 
         # 7. Prepare mask latent variables
-        block_state.mask, block_state.masked_image_latents = self.prepare_mask_latents(
-            components,
-            block_state.mask,
-            block_state.masked_image_latents,
-            block_state.batch_size * block_state.num_images_per_prompt,
-            block_state.height,
-            block_state.width,
-            block_state.dtype,
-            block_state.device,
-            block_state.generator,
+        block_state.mask = block_state.mask.to(device=device, dtype=dtype)
+        block_state.mask = block_state.mask.repeat(final_batch_size//block_state.mask.shape[0], 1, 1, 1)
+
+        block_state.masked_image_latents = block_state.masked_image_latents.to(device=device, dtype=dtype)
+        block_state.masked_image_latents = block_state.masked_image_latents.repeat(final_batch_size//block_state.masked_image_latents.shape[0], 1, 1, 1)
+        
+        if block_state.latent_timestep is not None:
+            block_state.latent_timestep = block_state.latent_timestep.repeat(final_batch_size)
+            block_state.latent_timestep = block_state.latent_timestep.to(device=device, dtype=dtype)
+
+        is_strength_max = block_state.strength == 1.0
+        add_noise = True if block_state.denoising_start is None else False
+
+        block_state.latents, block_state.noise = self.prepare_latents(
+            image_latents=block_state.image_latents,
+            scheduler=components.scheduler,
+            dtype=dtype,
+            device=device,
+            generator=block_state.generator,
+            timestep=block_state.latent_timestep,
+            is_strength_max=is_strength_max,
+            add_noise=add_noise,
         )
+
 
         self.set_block_state(state, block_state)
 
@@ -906,7 +710,6 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("vae", AutoencoderKL),
             ComponentSpec("scheduler", EulerDiscreteScheduler),
         ]
 
@@ -917,7 +720,6 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("latents"),
             InputParam("num_images_per_prompt", default=1),
             InputParam("denoising_start"),
         ]
@@ -928,7 +730,6 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
             InputParam("generator"),
             InputParam(
                 "latent_timestep",
-                required=True,
                 type_hint=torch.Tensor,
                 description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step.",
             ),
@@ -944,7 +745,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
                 type_hint=int,
                 description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
-            InputParam("dtype", required=True, type_hint=torch.dtype, description="The dtype of the model inputs"),
+            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
         ]
 
     @property
@@ -954,27 +755,57 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
             )
         ]
+    
+    def check_inputs(self, batch_size, image_latents):
+        if not (image_latents.shape[0] == 1 or image_latents.shape[0] == batch_size):
+            raise ValueError(f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}")
+    
+    def prepare_latents(image_latents, scheduler, timestep, dtype, device, generator=None):
+        if isinstance(generator, list) and len(generator) != image_latents.shape[0]:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {image_latents.shape[0]}. Make sure the batch size matches the length of the generators."
+            )
+
+        noise = randn_tensor(image_latents.shape, generator=generator, device=device, dtype=dtype)
+        latents = scheduler.add_noise(image_latents, noise, timestep)
+
+        return latents
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
-        block_state.device = components._execution_device
-        block_state.add_noise = True if block_state.denoising_start is None else False
-        if block_state.latents is None:
-            block_state.latents = prepare_latents_img2img(
-                components.vae,
-                components.scheduler,
-                block_state.image_latents,
-                block_state.latent_timestep,
-                block_state.batch_size,
-                block_state.num_images_per_prompt,
-                block_state.dtype,
-                block_state.device,
-                block_state.generator,
-                block_state.add_noise,
+        self.check_inputs(
+            batch_size=block_state.batch_size,
+            image_latents=block_state.image_latents,
+        )
+
+        dtype = block_state.dtype if block_state.dtype is not None else block_state.image_latents.dtype
+        device = components._execution_device
+
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
+
+        block_state.image_latents = block_state.image_latents.to(device=device, dtype=dtype)
+        block_state.image_latents = block_state.image_latents.repeat(final_batch_size//block_state.image_latents.shape[0], 1, 1, 1)
+
+        if block_state.latent_timestep is not None:
+            block_state.latent_timestep = block_state.latent_timestep.repeat(final_batch_size)
+            block_state.latent_timestep = block_state.latent_timestep.to(device=device, dtype=dtype)
+
+        add_noise = True if block_state.denoising_start is None else False
+
+        if add_noise:
+            block_state.latents = self.prepare_latents(
+                image_latents=block_state.image_latents,
+                scheduler=components.scheduler,
+                timestep=block_state.latent_timestep,
+                dtype=dtype,
+                device=device,
+                generator=block_state.generator,
             )
+        else:
+            block_state.latents = block_state.image_latents
 
         self.set_block_state(state, block_state)
 
@@ -988,7 +819,6 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("scheduler", EulerDiscreteScheduler),
-            ComponentSpec("vae", AutoencoderKL),
         ]
 
     @property
@@ -1026,15 +856,15 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
         ]
 
     @staticmethod
-    def check_inputs(components, block_state):
+    def check_inputs(components, height, width):
         if (
-            block_state.height is not None
-            and block_state.height % components.vae_scale_factor != 0
-            or block_state.width is not None
-            and block_state.width % components.vae_scale_factor != 0
+            height is not None
+            and height % components.vae_scale_factor != 0
+            or width is not None
+            and width % components.vae_scale_factor != 0
         ):
             raise ValueError(
-                f"`height` and `width` have to be divisible by {components.vae_scale_factor} but are {block_state.height} and {block_state.width}."
+                f"`height` and `width` have to be divisible by {components.vae_scale_factor} but are {height} and {width}."
             )
 
     @staticmethod
@@ -1065,26 +895,27 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        if block_state.dtype is None:
-            block_state.dtype = components.vae.dtype
+        dtype = block_state.dtype
+        if dtype is None:
+            dtype = components.unet.dtype if hasattr(components, "unet") else torch.float32
 
-        block_state.device = components._execution_device
+        device = components._execution_device
 
-        self.check_inputs(components, block_state)
+        self.check_inputs(components, block_state.height, block_state.width)
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        height = block_state.height or components.default_sample_size * components.vae_scale_factor
+        width = block_state.width or components.default_sample_size * components.vae_scale_factor
 
-        block_state.height = block_state.height or components.default_sample_size * components.vae_scale_factor
-        block_state.width = block_state.width or components.default_sample_size * components.vae_scale_factor
-        block_state.num_channels_latents = components.num_channels_latents
         block_state.latents = self.prepare_latents(
-            components,
-            block_state.batch_size * block_state.num_images_per_prompt,
-            block_state.num_channels_latents,
-            block_state.height,
-            block_state.width,
-            block_state.dtype,
-            block_state.device,
-            block_state.generator,
-            block_state.latents,
+            comp=components,
+            batch_size=final_batch_size,
+            num_channels_latents=components.num_channels_latents,
+            height=height,
+            width=width,
+            dtype=dtype,
+            device=device,
+            generator=block_state.generator,
+            latents=block_state.latents,
         )
 
         self.set_block_state(state, block_state)
@@ -1103,15 +934,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("unet", UNet2DConditionModel),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 7.5}),
-                default_creation_method="from_config",
-            ),
-        ]
+        return [ComponentSpec("unet", UNet2DConditionModel),]
 
     @property
     def description(self) -> str:
@@ -1121,14 +944,14 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("original_size"),
-            InputParam("target_size"),
             InputParam("negative_original_size"),
+            InputParam("target_size"),
             InputParam("negative_target_size"),
             InputParam("crops_coords_top_left", default=(0, 0)),
             InputParam("negative_crops_coords_top_left", default=(0, 0)),
-            InputParam("num_images_per_prompt", default=1),
             InputParam("aesthetic_score", default=6.0),
             InputParam("negative_aesthetic_score", default=2.0),
+            InputParam("num_images_per_prompt", default=1),
         ]
 
     @property
@@ -1225,52 +1048,24 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
 
         return add_time_ids, add_neg_time_ids
 
-    # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
-    def get_guidance_scale_embedding(
-        self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
-    ) -> torch.Tensor:
-        """
-        See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
-
-        Args:
-            w (`torch.Tensor`):
-                Generate embedding vectors with a specified guidance scale to subsequently enrich timestep embeddings.
-            embedding_dim (`int`, *optional*, defaults to 512):
-                Dimension of the embeddings to generate.
-            dtype (`torch.dtype`, *optional*, defaults to `torch.float32`):
-                Data type of the generated embeddings.
-
-        Returns:
-            `torch.Tensor`: Embedding vectors with shape `(len(w), embedding_dim)`.
-        """
-        assert len(w.shape) == 1
-        w = w * 1000.0
-
-        half_dim = embedding_dim // 2
-        emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=dtype) * -emb)
-        emb = w.to(dtype)[:, None] * emb[None, :]
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
-        if embedding_dim % 2 == 1:  # zero pad
-            emb = torch.nn.functional.pad(emb, (0, 1))
-        assert emb.shape == (w.shape[0], embedding_dim)
-        return emb
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        block_state.device = components._execution_device
+        
+        device = components._execution_device
+        dtype = block_state.dtype if block_state.dtype is not None else block_state.pooled_prompt_embeds.dtype
 
-        block_state.vae_scale_factor = components.vae_scale_factor
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        text_encoder_projection_dim = int(block_state.pooled_prompt_embeds.shape[-1])
 
-        block_state.height, block_state.width = block_state.latents.shape[-2:]
-        block_state.height = block_state.height * block_state.vae_scale_factor
-        block_state.width = block_state.width * block_state.vae_scale_factor
+        # define original_size/negative_original_size/target_size/negative_target_size
+        # - they are all defaulted to None
+        _, _, height_latents, width_latents = block_state.latents.shape
+        height = height_latents * components.vae_scale_factor
+        width = width_latents * components.vae_scale_factor
 
-        block_state.original_size = block_state.original_size or (block_state.height, block_state.width)
-        block_state.target_size = block_state.target_size or (block_state.height, block_state.width)
-
-        block_state.text_encoder_projection_dim = int(block_state.pooled_prompt_embeds.shape[-1])
+        block_state.original_size = block_state.original_size or (height, width)
+        block_state.target_size = block_state.target_size or (height, width)
 
         if block_state.negative_original_size is None:
             block_state.negative_original_size = block_state.original_size
@@ -1287,30 +1082,11 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
             block_state.negative_original_size,
             block_state.negative_crops_coords_top_left,
             block_state.negative_target_size,
-            dtype=block_state.pooled_prompt_embeds.dtype,
-            text_encoder_projection_dim=block_state.text_encoder_projection_dim,
+            dtype=dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
         )
-        block_state.add_time_ids = block_state.add_time_ids.repeat(
-            block_state.batch_size * block_state.num_images_per_prompt, 1
-        ).to(device=block_state.device)
-        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(
-            block_state.batch_size * block_state.num_images_per_prompt, 1
-        ).to(device=block_state.device)
-
-        # Optionally get Guidance Scale Embedding for LCM
-        block_state.timestep_cond = None
-        if (
-            hasattr(components, "unet")
-            and components.unet is not None
-            and components.unet.config.time_cond_proj_dim is not None
-        ):
-            # TODO(yiyi, aryan): Ideally, this should be `embedded_guidance_scale` instead of pulling from guider. Guider scales should be different from this!
-            block_state.guidance_scale_tensor = torch.tensor(components.guider.guidance_scale - 1).repeat(
-                block_state.batch_size * block_state.num_images_per_prompt
-            )
-            block_state.timestep_cond = self.get_guidance_scale_embedding(
-                block_state.guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
-            ).to(device=block_state.device, dtype=block_state.latents.dtype)
+        block_state.add_time_ids = block_state.add_time_ids.repeat(final_batch_size, 1).to(device=device)
+        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(final_batch_size, 1).to(device=device)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1325,15 +1101,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("unet", UNet2DConditionModel),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 7.5}),
-                default_creation_method="from_config",
-            ),
-        ]
+        return [ComponentSpec("unet", UNet2DConditionModel),]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1385,7 +1153,6 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
                 kwargs_type="guider_input_fields",
                 description="The negative time ids to condition the denoising process",
             ),
-            OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
         ]
 
     @staticmethod
@@ -1407,6 +1174,84 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
 
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
+
+    @torch.no_grad()
+    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        dtype = block_state.dtype if block_state.dtype is not None else block_state.pooled_prompt_embeds.dtype
+        text_encoder_projection_dim = int(block_state.pooled_prompt_embeds.shape[-1])
+
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
+
+        _, _, height_latents, width_latents = block_state.latents.shape
+        height = height_latents * components.vae_scale_factor
+        width = width_latents * components.vae_scale_factor
+        original_size = block_state.original_size or (block_state.height, block_state.width)
+        target_size = block_state.target_size or (block_state.height, block_state.width)
+
+
+        block_state.add_time_ids = self._get_add_time_ids(
+            components,
+            original_size,
+            block_state.crops_coords_top_left,
+            target_size,
+            dtype=dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
+        )
+        if block_state.negative_original_size is not None and block_state.negative_target_size is not None:
+            block_state.negative_add_time_ids = self._get_add_time_ids(
+                components,
+                block_state.negative_original_size,
+                block_state.negative_crops_coords_top_left,
+                block_state.negative_target_size,
+                dtype=dtype,
+                text_encoder_projection_dim=text_encoder_projection_dim,
+            )
+        else:
+            block_state.negative_add_time_ids = block_state.add_time_ids
+
+        block_state.add_time_ids = block_state.add_time_ids.repeat(final_batch_size, 1).to(device=device)
+        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(final_batch_size, 1).to(device=device)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class StableDiffusionXLLCMStep(PipelineBlock):
+    model_name = "stable-diffusion-xl"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [ComponentSpec("unet", UNet2DConditionModel),]
+
+    @property
+    def description(self) -> str:
+        return "Step that prepares the timestep cond input for latent consistency models"
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("embedded_guidance_scale"),
+        ]
+
+    @property
+    def intermediate_inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
+        ]
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -1439,61 +1284,33 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
 
+    
+    def check_input(self, unet, embedded_guidance_scale):
+
+        if embedded_guidance_scale is not None and unet.config.time_cond_proj_dim is None:
+            raise ValueError(f"cannot use `embedded_guidance_scale` {embedded_guidance_scale} because unet.config.time_cond_proj_dim is None")
+
+        if embedded_guidance_scale is None and unet.config.time_cond_proj_dim is not None:
+            raise ValueError(f"unet.config.time_cond_proj_dim is not None, but `embedded_guidance_scale` is None")
+
+  
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        block_state.device = components._execution_device
+        
+        device = components._execution_device
+        dtype = block_state.dtype if block_state.dtype is not None else components.unet.dtype
 
-        block_state.height, block_state.width = block_state.latents.shape[-2:]
-        block_state.height = block_state.height * components.vae_scale_factor
-        block_state.width = block_state.width * components.vae_scale_factor
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
-        block_state.original_size = block_state.original_size or (block_state.height, block_state.width)
-        block_state.target_size = block_state.target_size or (block_state.height, block_state.width)
-
-        block_state.text_encoder_projection_dim = int(block_state.pooled_prompt_embeds.shape[-1])
-
-        block_state.add_time_ids = self._get_add_time_ids(
-            components,
-            block_state.original_size,
-            block_state.crops_coords_top_left,
-            block_state.target_size,
-            block_state.pooled_prompt_embeds.dtype,
-            text_encoder_projection_dim=block_state.text_encoder_projection_dim,
-        )
-        if block_state.negative_original_size is not None and block_state.negative_target_size is not None:
-            block_state.negative_add_time_ids = self._get_add_time_ids(
-                components,
-                block_state.negative_original_size,
-                block_state.negative_crops_coords_top_left,
-                block_state.negative_target_size,
-                block_state.pooled_prompt_embeds.dtype,
-                text_encoder_projection_dim=block_state.text_encoder_projection_dim,
-            )
-        else:
-            block_state.negative_add_time_ids = block_state.add_time_ids
-
-        block_state.add_time_ids = block_state.add_time_ids.repeat(
-            block_state.batch_size * block_state.num_images_per_prompt, 1
-        ).to(device=block_state.device)
-        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(
-            block_state.batch_size * block_state.num_images_per_prompt, 1
-        ).to(device=block_state.device)
 
         # Optionally get Guidance Scale Embedding for LCM
         block_state.timestep_cond = None
-        if (
-            hasattr(components, "unet")
-            and components.unet is not None
-            and components.unet.config.time_cond_proj_dim is not None
-        ):
-            # TODO(yiyi, aryan): Ideally, this should be `embedded_guidance_scale` instead of pulling from guider. Guider scales should be different from this!
-            block_state.guidance_scale_tensor = torch.tensor(components.guider.guidance_scale - 1).repeat(
-                block_state.batch_size * block_state.num_images_per_prompt
-            )
-            block_state.timestep_cond = self.get_guidance_scale_embedding(
-                block_state.guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
-            ).to(device=block_state.device, dtype=block_state.latents.dtype)
+   
+        guidance_scale_tensor = torch.tensor(block_state.embedded_guidance_scale - 1).repeat(final_batch_size).to(device=device)
+        block_state.timestep_cond = self.get_guidance_scale_embedding(
+            guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
+        ).to(device=device, dtype=dtype)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1613,13 +1430,17 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        # (1) prepare controlnet inputs
-        block_state.device = components._execution_device
-        block_state.height, block_state.width = block_state.latents.shape[-2:]
-        block_state.height = block_state.height * components.vae_scale_factor
-        block_state.width = block_state.width * components.vae_scale_factor
-
         controlnet = unwrap_module(components.controlnet)
+
+        device = components._execution_device
+        dtype = components.controlnet.dtype
+
+        _, _, height_latents, width_latents = block_state.latents.shape
+        height = height_latents * components.vae_scale_factor
+        width = width_latents * components.vae_scale_factor
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
+
+        # (1) prepare controlnet inputs
 
         # (1.1)
         # control_guidance_start/control_guidance_end (align format)
@@ -1645,37 +1466,37 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
             )
 
         # (1.2)
-        # controlnet_conditioning_scale (align format)
+        # conditioning_scale (align format)
         if isinstance(controlnet, MultiControlNetModel) and isinstance(
             block_state.controlnet_conditioning_scale, float
         ):
-            block_state.controlnet_conditioning_scale = [block_state.controlnet_conditioning_scale] * len(
+            block_state.conditioning_scale = [block_state.controlnet_conditioning_scale] * len(
                 controlnet.nets
             )
+        else:
+            block_state.conditioning_scale = block_state.controlnet_conditioning_scale
 
         # (1.3)
-        # global_pool_conditions
-        block_state.global_pool_conditions = (
+        # guess_mode
+        global_pool_conditions = (
             controlnet.config.global_pool_conditions
             if isinstance(controlnet, ControlNetModel)
             else controlnet.nets[0].config.global_pool_conditions
         )
-        # (1.4)
-        # guess_mode
-        block_state.guess_mode = block_state.guess_mode or block_state.global_pool_conditions
+        block_state.guess_mode = block_state.guess_mode or global_pool_conditions
 
-        # (1.5)
-        # control_image
+        # (1.4)
+        # controlnet_cond
         if isinstance(controlnet, ControlNetModel):
-            block_state.control_image = self.prepare_control_image(
+            block_state.controlnet_cond = self.prepare_control_image(
                 components,
                 image=block_state.control_image,
-                width=block_state.width,
-                height=block_state.height,
-                batch_size=block_state.batch_size * block_state.num_images_per_prompt,
+                width=width,
+                height=height,
+                batch_size=final_batch_size,
                 num_images_per_prompt=block_state.num_images_per_prompt,
-                device=block_state.device,
-                dtype=controlnet.dtype,
+                device=device,
+                dtype=dtype,
                 crops_coords=block_state.crops_coords,
             )
         elif isinstance(controlnet, MultiControlNetModel):
@@ -1685,18 +1506,18 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
                 control_image = self.prepare_control_image(
                     components,
                     image=control_image_,
-                    width=block_state.width,
-                    height=block_state.height,
-                    batch_size=block_state.batch_size * block_state.num_images_per_prompt,
+                    width=width,
+                    height=height,
+                    batch_size=final_batch_size,
                     num_images_per_prompt=block_state.num_images_per_prompt,
-                    device=block_state.device,
-                    dtype=controlnet.dtype,
+                    device=device,
+                    dtype=dtype,
                     crops_coords=block_state.crops_coords,
                 )
 
                 control_images.append(control_image)
 
-            block_state.control_image = control_images
+            block_state.controlnet_cond = control_images
         else:
             assert False
 
@@ -1709,9 +1530,6 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
                 for s, e in zip(block_state.control_guidance_start, block_state.control_guidance_end)
             ]
             block_state.controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
-
-        block_state.controlnet_cond = block_state.control_image
-        block_state.conditioning_scale = block_state.controlnet_conditioning_scale
 
         self.set_block_state(state, block_state)
 
@@ -1852,9 +1670,10 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
         device = components._execution_device
         dtype = block_state.dtype or components.controlnet.dtype
 
-        block_state.height, block_state.width = block_state.latents.shape[-2:]
-        block_state.height = block_state.height * components.vae_scale_factor
-        block_state.width = block_state.width * components.vae_scale_factor
+        _, _, height_latents, width_latents = block_state.latents.shape
+        height = height_latents * components.vae_scale_factor
+        width = width_latents * components.vae_scale_factor
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
         # control_guidance_start/control_guidance_end (align format)
         if not isinstance(block_state.control_guidance_start, list) and isinstance(
@@ -1871,8 +1690,8 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
             ]
 
         # guess_mode
-        block_state.global_pool_conditions = controlnet.config.global_pool_conditions
-        block_state.guess_mode = block_state.guess_mode or block_state.global_pool_conditions
+        global_pool_conditions = controlnet.config.global_pool_conditions
+        block_state.guess_mode = block_state.guess_mode or global_pool_conditions
 
         # control_image
         if not isinstance(block_state.control_image, list):
@@ -1885,30 +1704,32 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
             raise ValueError("Expected len(control_image) == len(control_type)")
 
         # control_type
-        block_state.num_control_type = controlnet.config.num_control_type
-        block_state.control_type = [0 for _ in range(block_state.num_control_type)]
+        num_control_type = controlnet.config.num_control_type
+        block_state.control_type = [0 for _ in range(num_control_type)]
         for control_idx in block_state.control_mode:
             block_state.control_type[control_idx] = 1
         block_state.control_type = torch.Tensor(block_state.control_type)
 
-        block_state.control_type = block_state.control_type.reshape(1, -1).to(device, dtype=block_state.dtype)
+        block_state.control_type = block_state.control_type.reshape(1, -1).to(device, dtype=dtype)
         repeat_by = block_state.batch_size * block_state.num_images_per_prompt // block_state.control_type.shape[0]
         block_state.control_type = block_state.control_type.repeat_interleave(repeat_by, dim=0)
 
-        # prepare control_image
+        # prepare controlnet_cond
+        block_state.controlnet_cond = []
         for idx, _ in enumerate(block_state.control_image):
-            block_state.control_image[idx] = self.prepare_control_image(
+            control_image = self.prepare_control_image(
                 components,
                 image=block_state.control_image[idx],
-                width=block_state.width,
-                height=block_state.height,
-                batch_size=block_state.batch_size * block_state.num_images_per_prompt,
+                width=width,
+                height=height,
+                batch_size=final_batch_size,
                 num_images_per_prompt=block_state.num_images_per_prompt,
                 device=device,
                 dtype=dtype,
                 crops_coords=block_state.crops_coords,
             )
-            block_state.height, block_state.width = block_state.control_image[idx].shape[-2:]
+            _, _, height, width = control_image.shape
+            block_state.controlnet_cond.append(control_image)
 
         # controlnet_keep
         block_state.controlnet_keep = []
@@ -1921,7 +1742,6 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
                 )
             )
         block_state.control_type_idx = block_state.control_mode
-        block_state.controlnet_cond = block_state.control_image
         block_state.conditioning_scale = block_state.controlnet_conditioning_scale
 
         self.set_block_state(state, block_state)
