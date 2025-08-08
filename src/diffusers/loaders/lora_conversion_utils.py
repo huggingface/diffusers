@@ -817,7 +817,11 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
     # has both `peft` and non-peft state dict.
     has_peft_state_dict = any(k.startswith("transformer.") for k in state_dict)
     if has_peft_state_dict:
-        state_dict = {k: v for k, v in state_dict.items() if k.startswith("transformer.")}
+        state_dict = {
+            k.replace("lora_down.weight", "lora_A.weight").replace("lora_up.weight", "lora_B.weight"): v
+            for k, v in state_dict.items()
+            if k.startswith("transformer.")
+        }
         return state_dict
 
     # Another weird one.
