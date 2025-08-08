@@ -1272,6 +1272,11 @@ class StableDiffusionXLLCMStep(PipelineBlock):
                 type_hint=int,
                 description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
+            InputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs. Can be generated in input step.",
+            ),
         ]
 
     @property
@@ -1332,9 +1337,7 @@ class StableDiffusionXLLCMStep(PipelineBlock):
         # Optionally get Guidance Scale Embedding for LCM
         block_state.timestep_cond = None
 
-        guidance_scale_tensor = (
-            torch.tensor(block_state.embedded_guidance_scale - 1).repeat(final_batch_size).to(device=device)
-        )
+        guidance_scale_tensor = torch.tensor(block_state.embedded_guidance_scale - 1).repeat(final_batch_size)
         block_state.timestep_cond = self.get_guidance_scale_embedding(
             guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
         ).to(device=device, dtype=dtype)
