@@ -29,11 +29,7 @@ from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..pipelines.pipeline_loading_utils import _fetch_class_library_tuple, simple_get_class_obj
-from ..utils import (
-    PushToHubMixin,
-    is_accelerate_available,
-    logging,
-)
+from ..utils import PushToHubMixin, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from .components_manager import ComponentsManager
