@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import AutoModularPipelineBlockss, SequentialModularPipelineBlockss
+from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     WanInputStep,
@@ -29,7 +29,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # before_denoise: text2vid
-class WanBeforeDenoiseStep(SequentialModularPipelineBlockss):
+class WanBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         WanInputStep,
         WanSetTimestepsStep,
@@ -49,7 +49,7 @@ class WanBeforeDenoiseStep(SequentialModularPipelineBlockss):
 
 
 # before_denoise: all task (text2vid,)
-class WanAutoBeforeDenoiseStep(AutoModularPipelineBlockss):
+class WanAutoBeforeDenoiseStep(AutoPipelineBlocks):
     block_classes = [
         WanBeforeDenoiseStep,
     ]
@@ -66,7 +66,7 @@ class WanAutoBeforeDenoiseStep(AutoModularPipelineBlockss):
 
 
 # denoise: text2vid
-class WanAutoDenoiseStep(AutoModularPipelineBlockss):
+class WanAutoDenoiseStep(AutoPipelineBlocks):
     block_classes = [
         WanDenoiseStep,
     ]
@@ -83,7 +83,7 @@ class WanAutoDenoiseStep(AutoModularPipelineBlockss):
 
 
 # decode: all task (text2img, img2img, inpainting)
-class WanAutoDecodeStep(AutoModularPipelineBlockss):
+class WanAutoDecodeStep(AutoPipelineBlocks):
     block_classes = [WanDecodeStep]
     block_names = ["non-inpaint"]
     block_trigger_inputs = [None]
@@ -94,7 +94,7 @@ class WanAutoDecodeStep(AutoModularPipelineBlockss):
 
 
 # text2vid
-class WanAutoBlocks(SequentialModularPipelineBlockss):
+class WanAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         WanTextEncoderStep,
         WanAutoBeforeDenoiseStep,
