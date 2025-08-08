@@ -15,13 +15,11 @@
 import inspect
 from typing import Any, List, Optional, Tuple, Union
 
-import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...guiders import ClassifierFreeGuidance
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, ControlNetModel, ControlNetUnionModel, UNet2DConditionModel
+from ...models import ControlNetModel, ControlNetUnionModel, UNet2DConditionModel
 from ...pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging
@@ -591,7 +589,11 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
                 type_hint=torch.Tensor,
                 description="The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be generated in vae_encode step.",
             ),
-            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs, can be generated in input step."),
+            InputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs, can be generated in input step.",
+            ),
         ]
 
     @property
@@ -618,7 +620,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         is_strength_max=True,
         add_noise=True,
     ):
-  
         batch_size = image_latents.shape[0]
 
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -640,46 +641,50 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
 
         return latents, noise
 
-
-    
     def check_inputs(self, batch_size, image_latents, mask, masked_image_latents):
-
         if not (image_latents.shape[0] == 1 or image_latents.shape[0] == batch_size):
-            raise ValueError(f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}")
+            raise ValueError(
+                f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}"
+            )
 
         if not (mask.shape[0] == 1 or mask.shape[0] == batch_size):
             raise ValueError(f"mask should have have batch size 1 or {batch_size}, but got {mask.shape[0]}")
-        
+
         if not (masked_image_latents.shape[0] == 1 or masked_image_latents.shape[0] == batch_size):
-            raise ValueError(f"masked_image_latents should have have batch size 1 or {batch_size}, but got {masked_image_latents.shape[0]}")
-    
-    
+            raise ValueError(
+                f"masked_image_latents should have have batch size 1 or {batch_size}, but got {masked_image_latents.shape[0]}"
+            )
+
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        
+
         self.check_inputs(
             batch_size=block_state.batch_size,
-            image_latents=block_state.image_latents, 
-            mask=block_state.mask, 
-            masked_image_latents=block_state.masked_image_latents, 
-            )
+            image_latents=block_state.image_latents,
+            mask=block_state.mask,
+            masked_image_latents=block_state.masked_image_latents,
+        )
 
         dtype = block_state.dtype if block_state.dtype is not None else block_state.image_latents.dtype
         device = components._execution_device
-        
-        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt 
-        
+
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
+
         block_state.image_latents = block_state.image_latents.to(device=device, dtype=dtype)
-        block_state.image_latents = block_state.image_latents.repeat(final_batch_size//block_state.image_latents.shape[0], 1, 1, 1)
+        block_state.image_latents = block_state.image_latents.repeat(
+            final_batch_size // block_state.image_latents.shape[0], 1, 1, 1
+        )
 
         # 7. Prepare mask latent variables
         block_state.mask = block_state.mask.to(device=device, dtype=dtype)
-        block_state.mask = block_state.mask.repeat(final_batch_size//block_state.mask.shape[0], 1, 1, 1)
+        block_state.mask = block_state.mask.repeat(final_batch_size // block_state.mask.shape[0], 1, 1, 1)
 
         block_state.masked_image_latents = block_state.masked_image_latents.to(device=device, dtype=dtype)
-        block_state.masked_image_latents = block_state.masked_image_latents.repeat(final_batch_size//block_state.masked_image_latents.shape[0], 1, 1, 1)
-        
+        block_state.masked_image_latents = block_state.masked_image_latents.repeat(
+            final_batch_size // block_state.masked_image_latents.shape[0], 1, 1, 1
+        )
+
         if block_state.latent_timestep is not None:
             block_state.latent_timestep = block_state.latent_timestep.repeat(final_batch_size)
             block_state.latent_timestep = block_state.latent_timestep.to(device=device, dtype=dtype)
@@ -697,7 +702,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             is_strength_max=is_strength_max,
             add_noise=add_noise,
         )
-
 
         self.set_block_state(state, block_state)
 
@@ -755,11 +759,13 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
             )
         ]
-    
+
     def check_inputs(self, batch_size, image_latents):
         if not (image_latents.shape[0] == 1 or image_latents.shape[0] == batch_size):
-            raise ValueError(f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}")
-    
+            raise ValueError(
+                f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}"
+            )
+
     @staticmethod
     def prepare_latents(image_latents, scheduler, timestep, dtype, device, generator=None):
         if isinstance(generator, list) and len(generator) != image_latents.shape[0]:
@@ -788,7 +794,9 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
         block_state.image_latents = block_state.image_latents.to(device=device, dtype=dtype)
-        block_state.image_latents = block_state.image_latents.repeat(final_batch_size//block_state.image_latents.shape[0], 1, 1, 1)
+        block_state.image_latents = block_state.image_latents.repeat(
+            final_batch_size // block_state.image_latents.shape[0], 1, 1, 1
+        )
 
         if block_state.latent_timestep is not None:
             block_state.latent_timestep = block_state.latent_timestep.repeat(final_batch_size)
@@ -935,7 +943,9 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [ComponentSpec("unet", UNet2DConditionModel),]
+        return [
+            ComponentSpec("unet", UNet2DConditionModel),
+        ]
 
     @property
     def description(self) -> str:
@@ -976,7 +986,11 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
                 type_hint=int,
                 description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
-            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs, can be generated in input step."),
+            InputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs, can be generated in input step.",
+            ),
         ]
 
     @property
@@ -1052,7 +1066,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        
+
         device = components._execution_device
         dtype = block_state.dtype if block_state.dtype is not None else block_state.pooled_prompt_embeds.dtype
 
@@ -1087,7 +1101,9 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
             text_encoder_projection_dim=text_encoder_projection_dim,
         )
         block_state.add_time_ids = block_state.add_time_ids.repeat(final_batch_size, 1).to(device=device)
-        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(final_batch_size, 1).to(device=device)
+        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(final_batch_size, 1).to(
+            device=device
+        )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1102,7 +1118,9 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [ComponentSpec("unet", UNet2DConditionModel),]
+        return [
+            ComponentSpec("unet", UNet2DConditionModel),
+        ]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1196,7 +1214,6 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         original_size = block_state.original_size or (height, width)
         target_size = block_state.target_size or (height, width)
 
-
         block_state.add_time_ids = self._get_add_time_ids(
             components,
             original_size,
@@ -1218,7 +1235,9 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
             block_state.negative_add_time_ids = block_state.add_time_ids
 
         block_state.add_time_ids = block_state.add_time_ids.repeat(final_batch_size, 1).to(device=device)
-        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(final_batch_size, 1).to(device=device)
+        block_state.negative_add_time_ids = block_state.negative_add_time_ids.repeat(final_batch_size, 1).to(
+            device=device
+        )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1229,7 +1248,9 @@ class StableDiffusionXLLCMStep(PipelineBlock):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [ComponentSpec("unet", UNet2DConditionModel),]
+        return [
+            ComponentSpec("unet", UNet2DConditionModel),
+        ]
 
     @property
     def description(self) -> str:
@@ -1290,30 +1311,30 @@ class StableDiffusionXLLCMStep(PipelineBlock):
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
 
-    
     def check_input(self, unet, embedded_guidance_scale):
-
         if embedded_guidance_scale is not None and unet.config.time_cond_proj_dim is None:
-            raise ValueError(f"cannot use `embedded_guidance_scale` {embedded_guidance_scale} because unet.config.time_cond_proj_dim is None")
+            raise ValueError(
+                f"cannot use `embedded_guidance_scale` {embedded_guidance_scale} because unet.config.time_cond_proj_dim is None"
+            )
 
         if embedded_guidance_scale is None and unet.config.time_cond_proj_dim is not None:
-            raise ValueError(f"unet.config.time_cond_proj_dim is not None, but `embedded_guidance_scale` is None")
+            raise ValueError("unet.config.time_cond_proj_dim is not None, but `embedded_guidance_scale` is None")
 
-  
     @torch.no_grad()
     def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        
+
         device = components._execution_device
         dtype = block_state.dtype if block_state.dtype is not None else components.unet.dtype
 
         final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
-
         # Optionally get Guidance Scale Embedding for LCM
         block_state.timestep_cond = None
-   
-        guidance_scale_tensor = torch.tensor(block_state.embedded_guidance_scale - 1).repeat(final_batch_size).to(device=device)
+
+        guidance_scale_tensor = (
+            torch.tensor(block_state.embedded_guidance_scale - 1).repeat(final_batch_size).to(device=device)
+        )
         block_state.timestep_cond = self.get_guidance_scale_embedding(
             guidance_scale_tensor, embedding_dim=components.unet.config.time_cond_proj_dim
         ).to(device=device, dtype=dtype)
@@ -1476,9 +1497,7 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         if isinstance(controlnet, MultiControlNetModel) and isinstance(
             block_state.controlnet_conditioning_scale, float
         ):
-            block_state.conditioning_scale = [block_state.controlnet_conditioning_scale] * len(
-                controlnet.nets
-            )
+            block_state.conditioning_scale = [block_state.controlnet_conditioning_scale] * len(controlnet.nets)
         else:
             block_state.conditioning_scale = block_state.controlnet_conditioning_scale
 

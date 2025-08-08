@@ -23,10 +23,10 @@ from .before_denoise import (
     StableDiffusionXLImg2ImgSetTimestepsStep,
     StableDiffusionXLInpaintPrepareLatentsStep,
     StableDiffusionXLInputStep,
+    StableDiffusionXLLCMStep,
     StableDiffusionXLPrepareAdditionalConditioningStep,
     StableDiffusionXLPrepareLatentsStep,
     StableDiffusionXLSetTimestepsStep,
-    StableDiffusionXLLCMStep,
 )
 from .decoders import (
     StableDiffusionXLDecodeStep,
@@ -372,7 +372,6 @@ IP_ADAPTER_BLOCKS = InsertableDict(
 )
 
 LCM_BLOCKS = InsertableDict(
-
     [
         ("lcm", StableDiffusionXLAutoLCMStep),
     ]

@@ -89,7 +89,7 @@ class StableDiffusionXLModularPipeline(
         if hasattr(self, "vae") and self.vae is not None:
             num_channels_latents = self.vae.config.latent_channels
         return num_channels_latents
-    
+
     @property
     def requires_unconditional_embeds(self):
         # by default, always prepare unconditional embeddings
@@ -101,7 +101,7 @@ class StableDiffusionXLModularPipeline(
 
         elif hasattr(self, "guider") and self.guider is not None:
             requires_unconditional_embeds = self.guider.num_conditions > 1
-        
+
         elif not hasattr(self, "guider") or self.guider is None:
             requires_unconditional_embeds = False
 

@@ -130,9 +130,7 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
                 latents_std = (
                     torch.tensor(components.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
                 )
-                latents = (
-                    latents * latents_std / components.vae.config.scaling_factor + latents_mean
-                )
+                latents = latents * latents_std / components.vae.config.scaling_factor + latents_mean
             else:
                 latents = latents / components.vae.config.scaling_factor
 
