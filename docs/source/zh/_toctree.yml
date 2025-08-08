@@ -1,4 +1,5 @@
-- sections:
+- title: 开始Diffusers
+  sections:
   - local: index
     title: Diffusers
   - local: quicktour
@@ -9,7 +10,6 @@
     title: 身份保持的文本到视频生成
   - local: installation
     title: 安装
-  title: 开始
 
 - title: Training
   isExpanded: false
