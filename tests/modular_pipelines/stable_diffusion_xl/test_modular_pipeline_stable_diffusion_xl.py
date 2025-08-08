@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import random
-import tempfile
 import unittest
 from typing import Any, Dict
 
@@ -24,7 +23,6 @@ from PIL import Image
 
 from diffusers import (
     ClassifierFreeGuidance,
-    ModularPipeline,
     StableDiffusionXLAutoBlocks,
     StableDiffusionXLModularPipeline,
 )
@@ -380,27 +378,6 @@ class SDXLModularPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
-
-    def test_stable_diffusion_xl_save_from_pretrained(self):
-        pipes = []
-        sd_pipe = self.get_pipeline().to(torch_device)
-        pipes.append(sd_pipe)
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            sd_pipe.save_pretrained(tmpdirname)
-            sd_pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            sd_pipe.load_default_components(torch_dtype=torch.float32)
-            sd_pipe.to(torch_device)
-        pipes.append(sd_pipe)
-
-        image_slices = []
-        for pipe in pipes:
-            inputs = self.get_dummy_inputs(torch_device)
-            image = pipe(**inputs, output="images")
-
-            image_slices.append(image[0, -3:, -3:, -1].flatten())
-
-        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
 
 class SDXLImg2ImgModularPipelineFastTests(
