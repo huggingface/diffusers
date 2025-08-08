@@ -5271,7 +5271,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
         load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
         if load_into_transformer_2:
-            if getattr(self, "transformer_2", None) is None:
+            if not hasattr(self, "transformer_2"):
                 raise ValueError(
                     "Cannot load LoRA into transformer_2: transformer_2 is not available for this model"
                     "Ensure the model has a transformer_2 component before setting load_into_transformer_2=True."
