@@ -20,7 +20,7 @@ import torch
 from diffusers import FluxTransformer2DModel
 from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
 from diffusers.models.embeddings import ImageProjection
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, is_peft_available, torch_device
 
 from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
 
@@ -174,6 +174,7 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     # The test exists for cases like
     # https://github.com/huggingface/diffusers/issues/11874
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
     def test_lora_exclude_modules(self):
         from peft import LoraConfig, get_peft_model_state_dict, inject_adapter_in_model, set_peft_model_state_dict
 
