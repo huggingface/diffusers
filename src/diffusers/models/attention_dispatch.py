@@ -281,7 +281,8 @@ def dispatch_attention_fn(
         and not _AttentionBackendRegistry._is_context_parallel_enabled(backend_name)
     ):
         raise ValueError(
-            f"Backend {backend_name} does not support context parallelism, but a parallel configuration is provided."
+            f"Backend {backend_name} either does not support context parallelism or context parallelism "
+            f"was enabled with a world size of 1."
         )
 
     kwargs = {
