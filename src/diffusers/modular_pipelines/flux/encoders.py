@@ -21,7 +21,7 @@ from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5Tokeniz
 
 from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
 from ...utils import USE_PEFT_BACKEND, is_ftfy_available, logging, scale_lora_layers, unscale_lora_layers
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import FluxModularPipeline
 
@@ -50,7 +50,7 @@ def prompt_clean(text):
     return text
 
 
-class FluxTextEncoderStep(PipelineBlock):
+class FluxTextEncoderStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
