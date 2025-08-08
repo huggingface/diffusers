@@ -23,7 +23,7 @@ from ...schedulers import UniPCMultistepScheduler
 from ...utils import logging
 from ..modular_pipeline import (
     BlockState,
-    LoopSequentialModularPipelineBlockss,
+    LoopSequentialPipelineBlocks,
     ModularPipelineBlocks,
     PipelineState,
 )
@@ -53,7 +53,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Step within the denoising loop that denoise the latents with guidance. "
-            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialModularPipelineBlockss` "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
             "object (e.g. `WanDenoiseLoopWrapper`)"
         )
 
@@ -145,7 +145,7 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "step within the denoising loop that update the latents. "
-            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialModularPipelineBlockss` "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
             "object (e.g. `WanDenoiseLoopWrapper`)"
         )
 
@@ -181,7 +181,7 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
-class WanDenoiseLoopWrapper(LoopSequentialModularPipelineBlockss):
+class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     model_name = "wan"
 
     @property
