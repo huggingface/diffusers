@@ -139,7 +139,7 @@ class StableDiffusionXLDecodeStep(PipelineBlock):
             block_state.images = components.vae.decode(latents, return_dict=False)[0]
 
             # cast back to fp16 if needed
-            if block_state.needs_upcasting:
+            if needs_upcasting:
                 components.vae.to(dtype=torch.float16)
         else:
             block_state.images = block_state.latents

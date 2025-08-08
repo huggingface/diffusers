@@ -607,8 +607,8 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             ),
         ]
 
+    @staticmethod
     def prepare_latents(
-        self,
         image_latents,
         scheduler,
         dtype,
@@ -760,6 +760,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         if not (image_latents.shape[0] == 1 or image_latents.shape[0] == batch_size):
             raise ValueError(f"image_latents should have have batch size 1 or {batch_size}, but got {image_latents.shape[0]}")
     
+    @staticmethod
     def prepare_latents(image_latents, scheduler, timestep, dtype, device, generator=None):
         if isinstance(generator, list) and len(generator) != image_latents.shape[0]:
             raise ValueError(
@@ -975,6 +976,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
                 type_hint=int,
                 description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
+            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs, can be generated in input step."),
         ]
 
     @property
@@ -992,7 +994,6 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
                 kwargs_type="guider_input_fields",
                 description="The negative time ids to condition the denoising process",
             ),
-            OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
         ]
 
     @staticmethod
@@ -1136,6 +1137,11 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
                 type_hint=int,
                 description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
+            InputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs. Can be generated in input step.",
+            ),
         ]
 
     @property
@@ -1187,8 +1193,8 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         _, _, height_latents, width_latents = block_state.latents.shape
         height = height_latents * components.vae_scale_factor
         width = width_latents * components.vae_scale_factor
-        original_size = block_state.original_size or (block_state.height, block_state.width)
-        target_size = block_state.target_size or (block_state.height, block_state.width)
+        original_size = block_state.original_size or (height, width)
+        target_size = block_state.target_size or (height, width)
 
 
         block_state.add_time_ids = self._get_add_time_ids(

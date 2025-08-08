@@ -39,6 +39,8 @@ from ..modular_pipeline import PipelineBlock, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusionXLModularPipeline
 
+from PIL import Image
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -504,11 +506,11 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
             negative_pooled_prompt_embeds = torch.concat(negative_pooled_prompt_embeds_list, dim=0)
 
-        prompt_embeds = prompt_embeds.to(dtype, device=device)
-        pooled_prompt_embeds = pooled_prompt_embeds.to(dtype, device=device)
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+        pooled_prompt_embeds = pooled_prompt_embeds.to(dtype=dtype, device=device)
         if requires_unconditional_embeds:
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype, device=device)
-            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(dtype=dtype, device=device)
 
         for text_encoder in text_encoders:
             if isinstance(components, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
@@ -687,12 +689,12 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
     
     def check_inputs(self, image, mask_image, padding_mask_crop):
         
-        if padding_mask_crop is not None and not isinstance(image, PIL.Image.Image):
+        if padding_mask_crop is not None and not isinstance(image, Image.Image):
             raise ValueError(
                 f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
             )
 
-        if padding_mask_crop is not None and not isinstance(mask_image, PIL.Image.Image):
+        if padding_mask_crop is not None and not isinstance(mask_image, Image.Image):
             raise ValueError(
                 f"The mask image should be a PIL image when inpainting mask crop, but is of type"
                 f" {type(mask_image)}."
@@ -707,10 +709,8 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
         device = components._execution_device
 
-        if block_state.height is None:
-            height = components.default_height
-        if block_state.width is None:
-            width = components.default_width
+        height = block_state.height if block_state.height is not None else components.default_height
+        width = block_state.width if block_state.width is not None else components.default_width
 
         if block_state.padding_mask_crop is not None:
             block_state.crops_coords = components.mask_processor.get_crop_region(
@@ -725,21 +725,21 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
             block_state.image,
             height=height,
             width=width,
-            crops_coords=crops_coords,
+            crops_coords=block_state.crops_coords,
             resize_mode=resize_mode,
         )
 
         image = image.to(dtype=torch.float32)
 
-        mask = components.mask_processor.preprocess(
+        mask_image = components.mask_processor.preprocess(
             block_state.mask_image,
             height=height,
             width=width,
             resize_mode=resize_mode,
-            crops_coords=crops_coords,
+            crops_coords=block_state.crops_coords,
         )
         
-        masked_image = image * (block_state.mask_latents < 0.5)
+        masked_image = image * (mask_image < 0.5)
 
         # Prepare image latent variables
         block_state.image_latents = encode_vae_image(
@@ -762,7 +762,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
         # resize mask to match the image latents
         _, _, height_latents, width_latents = block_state.image_latents.shape
         block_state.mask = torch.nn.functional.interpolate(
-            mask, 
+            mask_image, 
             size=(height_latents, width_latents), 
         )
         block_state.mask = block_state.mask.to(dtype=dtype, device=device)
