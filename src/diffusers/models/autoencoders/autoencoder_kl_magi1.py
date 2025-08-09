@@ -476,16 +476,24 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_sample_min_height = 256
         self.tile_sample_min_width = 256
 
+        # The minimal tile length for temporal tiling to be used
+        self.tile_sample_min_length = 16
+
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
+
+        # The minimal distance between two temporal tiles
+        self.tile_sample_stride_length = 16
 
     def enable_tiling(
         self,
         tile_sample_min_height: Optional[int] = None,
         tile_sample_min_width: Optional[int] = None,
+        tile_sample_min_length: Optional[int] = None,
         tile_sample_stride_height: Optional[float] = None,
         tile_sample_stride_width: Optional[float] = None,
+        tile_sample_stride_length: Optional[float] = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -507,8 +515,10 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
+        self.tile_sample_min_length = tile_sample_min_length or self.tile_sample_min_length
         self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
+        self.tile_sample_stride_length = tile_sample_stride_length or self.tile_sample_stride_length
 
     def disable_tiling(self) -> None:
         r"""
@@ -532,9 +542,9 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.use_slicing = False
 
     def _encode(self, x: torch.Tensor):
-        _, _, num_frame, height, width = x.shape
+        _, _, num_frames, height, width = x.shape
 
-        if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
+        if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height or num_frames > self.tile_sample_min_length):
             return self.tiled_encode(x)
 
         out = self.encoder(x)
@@ -624,7 +634,45 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             )
         return b
 
-    def tiled_encode(self, x: torch.Tensor) -> AutoencoderKLOutput:
+    def blend_t(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[-3], b.shape[-3], blend_extent)
+        for t in range(blend_extent):
+            b[:, :, t, :, :] = a[:, :, -blend_extent + t, :, :] * (1 - t / blend_extent) + b[:, :, t, :, :] * (
+                t / blend_extent
+            )
+        return b
+
+    def _split_moments(self, h: torch.Tensor):
+        # h: [B, 2C, T, H, W] -> (mu, logvar) each [B, C, T, H, W]
+        B, C2, T, H, W = h.shape
+        C = C2 // 2
+        mu = h[:, :C]
+        logvar = h[:, C:]
+        return mu, logvar
+
+    def _cat_moments(self, mu: torch.Tensor, logvar: torch.Tensor):
+        return torch.cat([mu, logvar], dim=1)
+
+    def _encode_tile_moments(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return encoder moments [mu | logvar] for a single tile.
+        """
+        N, C, T, H, W = x.shape
+        x_dtype = x.dtype
+
+        if T == 1 and self.temporal_compression_ratio > 1:
+            # replicate to 4 frames, run encoder, slice back to first latent frame
+            x4 = x.expand(-1, -1, 4, -1, -1)
+            h4 = self.encoder(x4)  # [B, 2C, T', H', W']
+            # Keep the first latent frame
+            h4 = h4[:, :, :1]      # [B, 2C, 1, H', W']
+            return h4.to(x_dtype)
+        else:
+            h = self.encoder(x)     # [B, 2C, T', H', W']
+            return h.to(x_dtype)
+
+
+    def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
 
         Args:
@@ -634,57 +682,93 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             `torch.Tensor`:
                 The latent representation of the encoded videos.
         """
-        _, _, num_frames, height, width = x.shape
+        B, C, num_frames, height, width = x.shape
+        x_dtype = x.dtype
+
+        # Latent sizes after compression
         latent_height = height // self.spatial_compression_ratio
         latent_width = width // self.spatial_compression_ratio
+        latent_length = num_frames // self.temporal_compression_ratio
 
+        # Tile latent sizes / strides
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_min_width  = self.tile_sample_min_width  // self.spatial_compression_ratio
+        tile_latent_min_length = self.tile_sample_min_length // self.temporal_compression_ratio
+
         tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_stride_width  = self.tile_sample_stride_width  // self.spatial_compression_ratio
+        tile_latent_stride_length = self.tile_sample_stride_length // self.temporal_compression_ratio
 
+        # Overlap (blend) sizes in latent space
         blend_height = tile_latent_min_height - tile_latent_stride_height
-        blend_width = tile_latent_min_width - tile_latent_stride_width
+        blend_width  = tile_latent_min_width  - tile_latent_stride_width
+        blend_length = tile_latent_min_length - tile_latent_stride_length
 
-        # Split x into overlapping tiles and encode them separately.
-        # The tiles have an overlap to avoid seams between tiles.
-        rows = []
-        for i in range(0, height, self.tile_sample_stride_height):
-            row = []
-            for j in range(0, width, self.tile_sample_stride_width):
-                time = []
-                frame_range = 1 + (num_frames - 1) // 4
-                for k in range(frame_range):
-                    if k == 0:
-                        tile = x[:, :, :1, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
-                    else:
-                        tile = x[
-                            :,
-                            :,
-                            1 + 4 * (k - 1) : 1 + 4 * k,
-                            i : i + self.tile_sample_min_height,
-                            j : j + self.tile_sample_min_width,
-                        ]
-                    tile = self.encoder(tile)
-                    time.append(tile)
-                row.append(torch.cat(time, dim=2))
-            rows.append(row)
+        # 1) Encode tiles to moments (no sampling)
+        times = []
+        for t in range(0, num_frames, self.tile_sample_stride_length):
+            rows = []
+            for i in range(0, height, self.tile_sample_stride_height):
+                row = []
+                for j in range(0, width, self.tile_sample_stride_width):
+                    tile = x[
+                        :,
+                        :,
+                        t : t + self.tile_sample_min_length,
+                        i : i + self.tile_sample_min_height,
+                        j : j + self.tile_sample_min_width,
+                    ]
+                    h_tile = self._encode_tile_moments(tile)  # [B, 2C_lat, t', h', w']
+                    row.append(h_tile)
+                rows.append(row)
+            times.append(rows)
 
-        result_rows = []
-        for i, row in enumerate(rows):
-            result_row = []
-            for j, tile in enumerate(row):
-                # blend the above tile and the left tile
-                # to the current tile and add the current tile to the result row
-                if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
-                if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_width)
-                result_row.append(tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width])
-            result_rows.append(torch.cat(result_row, dim=-1))
+        # 2) Blend neighbors in moments space (apply same weights separately to mu and logvar)
+        stitched_per_time = []
+        for t_idx, rows in enumerate(times):
+            result_rows = []
+            for i_idx, row in enumerate(rows):
+                result_row = []
+                for j_idx, h in enumerate(row):
+                    mu, logvar = self._split_moments(h)
 
-        enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
-        return enc
+                    if t_idx > 0:
+                        mu_prev, logvar_prev = self._split_moments(times[t_idx - 1][i_idx][j_idx])
+                        mu     = self.blend_t(mu_prev,     mu,     blend_length)
+                        logvar = self.blend_t(logvar_prev, logvar, blend_length)
+
+                    if i_idx > 0:
+                        mu_up, logvar_up = self._split_moments(rows[i_idx - 1][j_idx])
+                        mu     = self.blend_v(mu_up,     mu,     blend_height)
+                        logvar = self.blend_v(logvar_up, logvar, blend_height)
+
+                    if j_idx > 0:
+                        mu_left, logvar_left = self._split_moments(row[j_idx - 1])
+                        mu     = self.blend_h(mu_left,     mu,     blend_width)
+                        logvar = self.blend_h(logvar_left, logvar, blend_width)
+
+                    h_blended = self._cat_moments(mu, logvar)
+
+                    # Keep the stride "core" to avoid duplicate coverage
+                    h_core = h_blended[
+                        :,
+                        :,
+                        :tile_latent_stride_length,
+                        :tile_latent_stride_height,
+                        :tile_latent_stride_width,
+                    ]
+                    result_row.append(h_core)
+                # Stitch across width
+                result_rows.append(torch.cat(result_row, dim=4))
+            # Stitch across height
+            stitched_per_time.append(torch.cat(result_rows, dim=3))
+
+        # Stitch across time and crop to exact latent size
+        h_full = torch.cat(stitched_per_time, dim=2)[:, :, :latent_length, :latent_height, :latent_width]
+
+        # Ensure dtype matches inputs (bf16-safe)
+        return h_full
+
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
