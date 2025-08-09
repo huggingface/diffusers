@@ -128,37 +128,22 @@ class StableDiffusion3Img2ImgPipelineFastTests(PipelineLatentTesterMixin, unitte
         }
         return inputs
 
-    def test_stable_diffusion_3_img2img_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+    def test_inference(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
 
         inputs = self.get_dummy_inputs(torch_device)
-        output_same_prompt = pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
+        generated_slice = image.flatten()
+        generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
 
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt_2"] = "a different prompt"
-        inputs["prompt_3"] = "another different prompt"
-        output_different_prompts = pipe(**inputs).images[0]
+        # fmt: off
+        expected_slice = np.array([0.4564, 0.5486, 0.4868, 0.5923, 0.3775, 0.5543, 0.4807, 0.4177, 0.3778, 0.5957, 0.5726, 0.4333, 0.6312, 0.5062, 0.4838, 0.5984])
+        # fmt: on
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
-
-        # Outputs should be different here
-        assert max_diff > 1e-2
-
-    def test_stable_diffusion_3_img2img_different_negative_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_same_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["negative_prompt_2"] = "deformed"
-        inputs["negative_prompt_3"] = "blurry"
-        output_different_prompts = pipe(**inputs).images[0]
-
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
-
-        # Outputs should be different here
-        assert max_diff > 1e-2
+        self.assertTrue(
+            np.allclose(generated_slice, expected_slice, atol=1e-3), "Output does not match expected slice."
+        )
 
     @unittest.skip("Skip for now.")
     def test_multi_vae(self):
