@@ -2,14 +2,29 @@
   sections:
   - local: index
     title: Diffusers
+  - local: installation
+    title: 安装
   - local: quicktour
     title: 快速入门
   - local: stable_diffusion
     title: 有效和高效的扩散
-  - local: consisid 
-    title: 身份保持的文本到视频生成
-  - local: installation
-    title: 安装
+
+- title: DiffusionPipeline
+  isExpanded: false
+  sections:
+  - local: using-diffusers/schedulers
+    title: Load schedulers and models
+
+- title: Inference optimization
+  isExpanded: false
+  sections:
+  - local: optimization/fp16
+    title: Accelerate inference
+  - title: Community optimizations
+    sections:
+    - local: optimization/xformers
+      title: xFormers
+
 
 - title: Training
   isExpanded: false
@@ -31,31 +46,23 @@
     - local: training/lora
       title: LoRA
 
-- title: Inference optimization
-  isExpanded: false
-  sections:
-  - local: optimization/fp16
-    title: Accelerate inference
-  - title: Community optimizations
-    sections:
-    - local: optimization/xformers
-      title: xFormers
-
 - title: Model accelerators and hardware
   isExpanded: false
   sections:
   - local: optimization/onnx
     title: ONNX
 
-- title: DiffusionPipeline
+- title: Specific pipeline examples
   isExpanded: false
   sections:
-  - local: using-diffusers/schedulers
-    title: Load schedulers and models
+  - local: using-diffusers/consisid
+    title: ConsisID
 
 - title: Resources
   isExpanded: false
   sections:
+  - title: Task recipes
+    sections:
     - local: conceptual/philosophy
       title: Philosophy
     - local: conceptual/contribution
