@@ -142,31 +142,37 @@ class StableDiffusionXLInputStep(PipelineBlock):
                 "prompt_embeds",
                 required=True,
                 type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
                 description="Pre-generated text embeddings. Can be generated from text_encoder step.",
             ),
             InputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
                 description="Pre-generated negative text embeddings. Can be generated from text_encoder step.",
             ),
             InputParam(
                 "pooled_prompt_embeds",
                 required=True,
                 type_hint=torch.Tensor,
+                kwargs_type="guider_input_fields",
                 description="Pre-generated pooled text embeddings. Can be generated from text_encoder step.",
             ),
             InputParam(
                 "negative_pooled_prompt_embeds",
+                kwargs_type="guider_input_fields",
                 description="Pre-generated negative pooled text embeddings. Can be generated from text_encoder step.",
             ),
             InputParam(
                 "ip_adapter_embeds",
                 type_hint=List[torch.Tensor],
+                kwargs_type="guider_input_fields",
                 description="Pre-generated image embeddings for IP-Adapter. Can be generated from ip_adapter step.",
             ),
             InputParam(
                 "negative_ip_adapter_embeds",
                 type_hint=List[torch.Tensor],
+                kwargs_type="guider_input_fields",
                 description="Pre-generated negative image embeddings for IP-Adapter. Can be generated from ip_adapter step.",
             ),
         ]
@@ -183,42 +189,6 @@ class StableDiffusionXLInputStep(PipelineBlock):
                 "dtype",
                 type_hint=torch.dtype,
                 description="Data type of model tensor inputs (determined by `prompt_embeds`)",
-            ),
-            OutputParam(
-                "prompt_embeds",
-                type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
-                description="text embeddings used to guide the image generation",
-            ),
-            OutputParam(
-                "negative_prompt_embeds",
-                type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
-                description="negative text embeddings used to guide the image generation",
-            ),
-            OutputParam(
-                "pooled_prompt_embeds",
-                type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
-                description="pooled text embeddings used to guide the image generation",
-            ),
-            OutputParam(
-                "negative_pooled_prompt_embeds",
-                type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
-                description="negative pooled text embeddings used to guide the image generation",
-            ),
-            OutputParam(
-                "ip_adapter_embeds",
-                type_hint=List[torch.Tensor],
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
-                description="image embeddings for IP-Adapter",
-            ),
-            OutputParam(
-                "negative_ip_adapter_embeds",
-                type_hint=List[torch.Tensor],
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
-                description="negative image embeddings for IP-Adapter",
             ),
         ]
 

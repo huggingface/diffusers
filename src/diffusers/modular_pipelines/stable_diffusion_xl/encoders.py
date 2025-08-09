@@ -190,10 +190,16 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam("ip_adapter_embeds", type_hint=List[torch.Tensor], description="IP adapter image embeddings"),
+            OutputParam(
+                "ip_adapter_embeds",
+                type_hint=List[torch.Tensor],
+                kwargs_type="guider_input_fields",
+                description="IP adapter image embeddings",
+            ),
             OutputParam(
                 "negative_ip_adapter_embeds",
                 type_hint=List[torch.Tensor],
+                kwargs_type="guider_input_fields",
                 description="Negative IP adapter image embeddings",
             ),
         ]
