@@ -642,34 +642,23 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             )
         return b
 
-    def _split_moments(self, h: torch.Tensor):
-        # h: [B, 2C, T, H, W] -> (mu, logvar) each [B, C, T, H, W]
-        B, C2, T, H, W = h.shape
-        C = C2 // 2
-        mu = h[:, :C]
-        logvar = h[:, C:]
-        return mu, logvar
-
-    def _cat_moments(self, mu: torch.Tensor, logvar: torch.Tensor):
-        return torch.cat([mu, logvar], dim=1)
 
     def _encode_tile_moments(self, x: torch.Tensor) -> torch.Tensor:
         """
         Return encoder moments [mu | logvar] for a single tile.
         """
         N, C, T, H, W = x.shape
-        x_dtype = x.dtype
 
         if T == 1 and self.temporal_compression_ratio > 1:
             # replicate to 4 frames, run encoder, slice back to first latent frame
-            x4 = x.expand(-1, -1, 4, -1, -1)
-            h4 = self.encoder(x4)  # [B, 2C, T', H', W']
+            x = x.expand(-1, -1, 4, -1, -1)
+            h = self.encoder(x)  # [B, 2C, T', H', W']
             # Keep the first latent frame
-            h4 = h4[:, :, :1]      # [B, 2C, 1, H', W']
-            return h4.to(x_dtype)
+            h = h[:, :, :1]      # [B, 2C, 1, H', W']
+            return h
         else:
             h = self.encoder(x)     # [B, 2C, T', H', W']
-            return h.to(x_dtype)
+            return h
 
 
     def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
@@ -683,7 +672,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 The latent representation of the encoded videos.
         """
         B, C, num_frames, height, width = x.shape
-        x_dtype = x.dtype
 
         # Latent sizes after compression
         latent_height = height // self.spatial_compression_ratio
@@ -724,30 +712,34 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             times.append(rows)
 
         # 2) Blend neighbors in moments space (apply same weights separately to mu and logvar)
-        stitched_per_time = []
+        result_times = []
         for t_idx, rows in enumerate(times):
             result_rows = []
             for i_idx, row in enumerate(rows):
                 result_row = []
                 for j_idx, h in enumerate(row):
-                    mu, logvar = self._split_moments(h)
+                    latentC = h.shape[1] // 2
+                    mu, logvar = h[:, :latentC], h[:, latentC:]
 
                     if t_idx > 0:
-                        mu_prev, logvar_prev = self._split_moments(times[t_idx - 1][i_idx][j_idx])
+                        h_tile = times[t_idx - 1][i_idx][j_idx]
+                        mu_prev, logvar_prev = h_tile[:, :latentC], h_tile[:, latentC:]
                         mu     = self.blend_t(mu_prev,     mu,     blend_length)
                         logvar = self.blend_t(logvar_prev, logvar, blend_length)
 
                     if i_idx > 0:
-                        mu_up, logvar_up = self._split_moments(rows[i_idx - 1][j_idx])
+                        h_tile = rows[i_idx - 1][j_idx]
+                        mu_up, logvar_up = h_tile[:, :latentC], h_tile[:, latentC:]
                         mu     = self.blend_v(mu_up,     mu,     blend_height)
                         logvar = self.blend_v(logvar_up, logvar, blend_height)
 
                     if j_idx > 0:
-                        mu_left, logvar_left = self._split_moments(row[j_idx - 1])
+                        h_tile = row[j_idx - 1]
+                        mu_left, logvar_left = h_tile[:, :latentC], h_tile[:, latentC:]
                         mu     = self.blend_h(mu_left,     mu,     blend_width)
                         logvar = self.blend_h(logvar_left, logvar, blend_width)
 
-                    h_blended = self._cat_moments(mu, logvar)
+                    h_blended = torch.cat([mu, logvar], dim=1)
 
                     # Keep the stride "core" to avoid duplicate coverage
                     h_core = h_blended[
@@ -761,12 +753,10 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 # Stitch across width
                 result_rows.append(torch.cat(result_row, dim=4))
             # Stitch across height
-            stitched_per_time.append(torch.cat(result_rows, dim=3))
+            result_times.append(torch.cat(result_rows, dim=3))
 
         # Stitch across time and crop to exact latent size
-        h_full = torch.cat(stitched_per_time, dim=2)[:, :, :latent_length, :latent_height, :latent_width]
-
-        # Ensure dtype matches inputs (bf16-safe)
+        h_full = torch.cat(result_times, dim=2)[:, :, :latent_length, :latent_height, :latent_width]
         return h_full
 
 
