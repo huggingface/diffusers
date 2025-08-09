@@ -125,6 +125,9 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = load_image(validation_image)
+        # Convert RGB to BGR for OpenPose validation images
+        validation_image_np = np.array(validation_image)[:, :, ::-1]
+        validation_image = Image.fromarray(validation_image_np)
         # maybe need to inference on 1024 to get a good image
         validation_image = validation_image.resize((args.resolution, args.resolution))
 
