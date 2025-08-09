@@ -153,7 +153,15 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "QwenImageTransformer2DModel": {
+        "checkpoint_mapping_fn": lambda x: x,
+        "default_subfolder": "transformer",
+    },
 }
+
+
+def _should_convert_state_dict_to_diffusers(model_state_dict, checkpoint_state_dict):
+    return not set(model_state_dict.keys()).issubset(set(checkpoint_state_dict.keys()))
 
 
 def _get_single_file_loadable_mapping_class(cls):
@@ -381,19 +389,23 @@ class FromOriginalModelMixin:
             model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
             diffusers_model_config.update(model_kwargs)
 
-        checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
-        diffusers_format_checkpoint = checkpoint_mapping_fn(
-            config=diffusers_model_config, checkpoint=checkpoint, **checkpoint_mapping_kwargs
-        )
-        if not diffusers_format_checkpoint:
-            raise SingleFileComponentError(
-                f"Failed to load {mapping_class_name}. Weights for this component appear to be missing in the checkpoint."
-            )
-
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():
             model = cls.from_config(diffusers_model_config)
 
+        checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
+
+        if _should_convert_state_dict_to_diffusers(model.state_dict(), checkpoint):
+            diffusers_format_checkpoint = checkpoint_mapping_fn(
+                config=diffusers_model_config, checkpoint=checkpoint, **checkpoint_mapping_kwargs
+            )
+        else:
+            diffusers_format_checkpoint = checkpoint
+
+        if not diffusers_format_checkpoint:
+            raise SingleFileComponentError(
+                f"Failed to load {mapping_class_name}. Weights for this component appear to be missing in the checkpoint."
+            )
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
             (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
