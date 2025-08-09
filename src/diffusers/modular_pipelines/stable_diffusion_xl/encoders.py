@@ -35,7 +35,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusionXLModularPipeline
 
@@ -57,7 +57,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class StableDiffusionXLIPAdapterStep(PipelineBlock):
+class StableDiffusionXLIPAdapterStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -215,7 +215,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLTextEncoderStep(PipelineBlock):
+class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -576,7 +576,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLVaeEncoderStep(PipelineBlock):
+class StableDiffusionXLVaeEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -601,11 +601,6 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
             InputParam("image", required=True),
             InputParam("height"),
             InputParam("width"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("generator"),
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
             InputParam(
@@ -668,12 +663,11 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         block_state.device = components._execution_device
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
 
-        block_state.image = components.image_processor.preprocess(
+        image = components.image_processor.preprocess(
             block_state.image, height=block_state.height, width=block_state.width, **block_state.preprocess_kwargs
         )
-        block_state.image = block_state.image.to(device=block_state.device, dtype=block_state.dtype)
-
-        block_state.batch_size = block_state.image.shape[0]
+        image = image.to(device=block_state.device, dtype=block_state.dtype)
+        block_state.batch_size = image.shape[0]
 
         # if generator is a list, make sure the length of it matches the length of images (both should be batch_size)
         if isinstance(block_state.generator, list) and len(block_state.generator) != block_state.batch_size:
@@ -682,16 +676,14 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
                 f" size of {block_state.batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        block_state.image_latents = self._encode_vae_image(
-            components, image=block_state.image, generator=block_state.generator
-        )
+        block_state.image_latents = self._encode_vae_image(components, image=image, generator=block_state.generator)
 
         self.set_block_state(state, block_state)
 
         return components, state
 
 
-class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
+class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -726,11 +718,6 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
             InputParam("image", required=True),
             InputParam("mask_image", required=True),
             InputParam("padding_mask_crop"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
             InputParam("generator"),
         ]
@@ -860,34 +847,32 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
             block_state.crops_coords = None
             block_state.resize_mode = "default"
 
-        block_state.image = components.image_processor.preprocess(
+        image = components.image_processor.preprocess(
             block_state.image,
             height=block_state.height,
             width=block_state.width,
             crops_coords=block_state.crops_coords,
             resize_mode=block_state.resize_mode,
         )
-        block_state.image = block_state.image.to(dtype=torch.float32)
+        image = image.to(dtype=torch.float32)
 
-        block_state.mask = components.mask_processor.preprocess(
+        mask = components.mask_processor.preprocess(
             block_state.mask_image,
             height=block_state.height,
             width=block_state.width,
             resize_mode=block_state.resize_mode,
             crops_coords=block_state.crops_coords,
         )
-        block_state.masked_image = block_state.image * (block_state.mask < 0.5)
+        block_state.masked_image = image * (mask < 0.5)
 
-        block_state.batch_size = block_state.image.shape[0]
-        block_state.image = block_state.image.to(device=block_state.device, dtype=block_state.dtype)
-        block_state.image_latents = self._encode_vae_image(
-            components, image=block_state.image, generator=block_state.generator
-        )
+        block_state.batch_size = image.shape[0]
+        image = image.to(device=block_state.device, dtype=block_state.dtype)
+        block_state.image_latents = self._encode_vae_image(components, image=image, generator=block_state.generator)
 
         # 7. Prepare mask latent variables
         block_state.mask, block_state.masked_image_latents = self.prepare_mask_latents(
             components,
-            block_state.mask,
+            mask,
             block_state.masked_image,
             block_state.batch_size,
             block_state.height,

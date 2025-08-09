@@ -139,7 +139,6 @@ class ModularPipelineTesterMixin:
     def test_pipeline_call_signature(self):
         pipe = self.get_pipeline()
         input_parameters = pipe.blocks.input_names
-        intermediate_parameters = pipe.blocks.intermediate_input_names
         optional_parameters = pipe.default_call_parameters
 
         def _check_for_parameters(parameters, expected_parameters, param_type):
@@ -149,7 +148,6 @@ class ModularPipelineTesterMixin:
             )
 
         _check_for_parameters(self.params, input_parameters, "input")
-        _check_for_parameters(self.intermediate_params, intermediate_parameters, "intermediate")
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):

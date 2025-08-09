@@ -25,7 +25,6 @@ else:
     _import_structure["modular_pipeline"] = [
         "ModularPipelineBlocks",
         "ModularPipeline",
-        "PipelineBlock",
         "AutoPipelineBlocks",
         "SequentialPipelineBlocks",
         "LoopSequentialPipelineBlocks",
@@ -59,7 +58,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LoopSequentialPipelineBlocks,
             ModularPipeline,
             ModularPipelineBlocks,
-            PipelineBlock,
             PipelineState,
             SequentialPipelineBlocks,
         )
