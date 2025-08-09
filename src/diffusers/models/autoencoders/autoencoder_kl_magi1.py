@@ -680,19 +680,20 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         # Tile latent sizes / strides
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width  = self.tile_sample_min_width  // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
         tile_latent_min_length = self.tile_sample_min_length // self.temporal_compression_ratio
 
         tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-        tile_latent_stride_width  = self.tile_sample_stride_width  // self.spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
         tile_latent_stride_length = self.tile_sample_stride_length // self.temporal_compression_ratio
 
         # Overlap (blend) sizes in latent space
         blend_height = tile_latent_min_height - tile_latent_stride_height
-        blend_width  = tile_latent_min_width  - tile_latent_stride_width
+        blend_width = tile_latent_min_width - tile_latent_stride_width
         blend_length = tile_latent_min_length - tile_latent_stride_length
 
-        # 1) Encode tiles to moments (no sampling)
+        # Split x into overlapping tiles and encode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
         times = []
         for t in range(0, num_frames, self.tile_sample_stride_length):
             rows = []
@@ -720,23 +721,24 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 for j_idx, h in enumerate(row):
                     latentC = h.shape[1] // 2
                     mu, logvar = h[:, :latentC], h[:, latentC:]
-
+                    # blend the prev tile, the above tile and the left tile
+                    # to the current tile and add the current tile to the result row
                     if t_idx > 0:
                         h_tile = times[t_idx - 1][i_idx][j_idx]
                         mu_prev, logvar_prev = h_tile[:, :latentC], h_tile[:, latentC:]
-                        mu     = self.blend_t(mu_prev,     mu,     blend_length)
+                        mu = self.blend_t(mu_prev, mu, blend_length)
                         logvar = self.blend_t(logvar_prev, logvar, blend_length)
 
                     if i_idx > 0:
                         h_tile = rows[i_idx - 1][j_idx]
                         mu_up, logvar_up = h_tile[:, :latentC], h_tile[:, latentC:]
-                        mu     = self.blend_v(mu_up,     mu,     blend_height)
+                        mu = self.blend_v(mu_up, mu, blend_height)
                         logvar = self.blend_v(logvar_up, logvar, blend_height)
 
                     if j_idx > 0:
                         h_tile = row[j_idx - 1]
                         mu_left, logvar_left = h_tile[:, :latentC], h_tile[:, latentC:]
-                        mu     = self.blend_h(mu_left,     mu,     blend_width)
+                        mu = self.blend_h(mu_left, mu, blend_width)
                         logvar = self.blend_h(logvar_left, logvar, blend_width)
 
                     h_blended = torch.cat([mu, logvar], dim=1)
