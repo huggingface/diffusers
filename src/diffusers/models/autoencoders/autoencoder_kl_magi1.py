@@ -643,21 +643,19 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return b
 
 
-    def _encode_tile_moments(self, x: torch.Tensor) -> torch.Tensor:
+    def _encode_tile(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Return encoder moments [mu | logvar] for a single tile.
+        Encode a single tile.
         """
         N, C, T, H, W = x.shape
 
         if T == 1 and self.temporal_compression_ratio > 1:
-            # replicate to 4 frames, run encoder, slice back to first latent frame
             x = x.expand(-1, -1, 4, -1, -1)
-            h = self.encoder(x)  # [B, 2C, T', H', W']
-            # Keep the first latent frame
-            h = h[:, :, :1]      # [B, 2C, 1, H', W']
+            h = self.encoder(x)
+            h = h[:, :, :1]
             return h
         else:
-            h = self.encoder(x)     # [B, 2C, T', H', W']
+            h = self.encoder(x)
             return h
 
 
@@ -707,7 +705,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                         i : i + self.tile_sample_min_height,
                         j : j + self.tile_sample_min_width,
                     ]
-                    h_tile = self._encode_tile_moments(tile)  # [B, 2C_lat, t', h', w']
+                    h_tile = self._encode_tile(tile)
                     row.append(h_tile)
                 rows.append(row)
             times.append(rows)
@@ -742,8 +740,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                         logvar = self.blend_h(logvar_left, logvar, blend_width)
 
                     h_blended = torch.cat([mu, logvar], dim=1)
-
-                    # Keep the stride "core" to avoid duplicate coverage
                     h_core = h_blended[
                         :,
                         :,
@@ -756,7 +752,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 result_rows.append(torch.cat(result_row, dim=4))
             # Stitch across height
             result_times.append(torch.cat(result_rows, dim=3))
-
         # Stitch across time and crop to exact latent size
         h_full = torch.cat(result_times, dim=2)[:, :, :latent_length, :latent_height, :latent_width]
         return h_full
