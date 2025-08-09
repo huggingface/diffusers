@@ -800,7 +800,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def model_name(self):
-        return next(iter(self.sub_blocks.values())).model_name
+        return next((block.model_name for block in self.sub_blocks.values() if block.model_name is not None), None)
 
     @property
     def expected_components(self):
