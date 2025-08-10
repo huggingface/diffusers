@@ -209,6 +209,22 @@ def get_pos_embed_indices(start, length, max_pos, scale=1.0):
     return pos
 
 
+# TODO match this with diffusers
+
+class GRN(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.zeros(1, 1, dim))
+        self.beta = nn.Parameter(torch.zeros(1, 1, dim))
+
+    def forward(self, x):
+        # print('x in grn:', x, x.shape)
+        Gx = torch.norm(x, p=2, dim=1, keepdim=True)
+        # print('Gx:', Gx)
+        Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
+        # print('NX:', Nx)
+        # print('gamma: ', self.gamma, ' beta: ', self.beta)
+        return self.gamma * (x * Nx) + self.beta + x
 
 class ConvNeXtV2Block(nn.Module):
     def __init__(
@@ -225,7 +241,7 @@ class ConvNeXtV2Block(nn.Module):
         self.norm = nn.LayerNorm(dim, eps=1e-6)
         self.pwconv1 = nn.Linear(dim, intermediate_dim)  # pointwise/1x1 convs, implemented with linear layers
         self.act = nn.GELU()
-        self.grn = GlobalResponseNorm(intermediate_dim)
+        self.grn = GRN(intermediate_dim)
         self.pwconv2 = nn.Linear(intermediate_dim, dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -289,7 +305,6 @@ class TextEmbedding(nn.Module):
                 text = text.masked_fill(text_mask.unsqueeze(-1).expand(-1, -1, text.size(-1)), 0.0)
                 for block in self.text_blocks:
                     text = block(text)
-                    text = text.squeeze(0) # TODO for some reason an extra dimension is added
                     text = text.masked_fill(text_mask.unsqueeze(-1).expand(-1, -1, text.size(-1)), 0.0)
             else:
                 text = self.text_blocks(text)
@@ -357,6 +372,23 @@ class ConditioningEncoder(nn.Module):
         return x
 
 
+class AdaLayerNorm_Final(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(dim, dim * 2)
+
+        self.norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+
+    def forward(self, x, emb):
+        emb = self.linear(self.silu(emb))
+        scale, shift = torch.chunk(emb, 2, dim=1)
+
+        x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
+        return x
+
+
 class DiT(nn.Module):
     def __init__(
         self,
@@ -386,6 +418,7 @@ class DiT(nn.Module):
             text_dim = mel_dim
         self.dim = dim
         self.depth = depth
+        self.dim_head = dim_head
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -405,7 +438,7 @@ class DiT(nn.Module):
         )
         self.long_skip_connection = nn.Linear(dim * 2, dim, bias=False) if long_skip_connection else None
 
-        self.norm_out = AdaLayerNorm(dim, chunk_dim=1)  # final modulation
+        self.norm_out = AdaLayerNorm_Final(dim)  # final modulation
         self.proj_out = nn.Linear(dim, mel_dim)
 
 
@@ -419,15 +452,12 @@ class DiT(nn.Module):
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
             time = time.repeat(batch)
-        print('time:', time)
         temb = self.time_embed(time)  # b d
-        print('temb:', temb)
-        rope = get_1d_rotary_pos_embed(pos=seq_len, dim=self.dim, use_real=True)
-        print('x:', x)
+        rope = get_1d_rotary_pos_embed(pos=seq_len, dim=self.dim_head, use_real=True)
         for block in self.transformer_blocks:
                 x = block(x, temb, mask=mask, rope=rope)
 
-        x = self.norm_out(x, temb=temb)
+        x = self.norm_out(x, emb=temb)
         output = self.proj_out(x)
 
         return output

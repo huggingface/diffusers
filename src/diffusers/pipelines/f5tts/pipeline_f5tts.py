@@ -168,10 +168,10 @@ class F5FlowPipeline(DiffusionPipeline):
 
         # Prepare the text
         
-        final_text_list = self.convert_char_to_pinyin(text_list)
+        # final_text_list = self.convert_char_to_pinyin(text_list)
         ref_audio_len = ref_audio.shape[-1] // self.mel_spec.hop_length
         if fix_duration is not None:
-            duration = int(fix_duration * self.mel_spec.target_sample_rate / self.mel_spec.hop_length)
+            duration = fix_duration
         else:
             # Calculate duration
             ref_text_len = len(ref_text.encode("utf-8"))
@@ -189,11 +189,11 @@ class F5FlowPipeline(DiffusionPipeline):
         batch, cond_seq_len, device = *cond.shape[:2], cond.device
         lens = torch.full((batch,), cond_seq_len, device=device, dtype=torch.long)
 
-        if isinstance(final_text_list, list):
+        if isinstance(text_list, list):
             if self.vocab_char_map is not None:
-                text = self.list_str_to_idx(final_text_list, self.vocab_char_map).to(device)
+                text = self.list_str_to_idx(text_list, self.vocab_char_map).to(device)
             else:
-                text = self.list_str_to_tensor(final_text_list).to(device)
+                text = self.list_str_to_tensor(text_list).to(device)
             assert text.shape[0] == batch
 
         # duration
@@ -237,8 +237,8 @@ class F5FlowPipeline(DiffusionPipeline):
                 return pred
 
             # predict flow (cond and uncond), for classifier-free guidance
-            step_uncond = self.conditioning_encoder(x, step_cond_input, text, drop_audio_cond=False, drop_text=False)
-            step_cond = torch.cat((step_cond, step_uncond), dim=0)
+            step_uncond = self.conditioning_encoder(x, step_cond_input, text, drop_audio_cond=True, drop_text=True)
+            step_cond = torch.cat((step_cond, step_uncond), dim=0)            
             pred_cfg = self.transformer(
                 x=step_cond,
                 time=t,
@@ -272,7 +272,6 @@ class F5FlowPipeline(DiffusionPipeline):
         out = torch.where(cond_mask, cond, out)
 
         out = out.to(torch.float32)  # generated mel spectrogram
-        out = out[:, ref_audio_len:, :]
         out = out.permute(0, 2, 1)
         generated_cpu = out[0]
 

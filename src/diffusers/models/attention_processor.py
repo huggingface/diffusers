@@ -3201,16 +3201,21 @@ class F5TTSAttnProcessor2_0:
 
             if self.pe_attn_head is not None:
                 query_rotated = apply_rotary_emb(
-                    query[..., :self.pe_attn_head, :], rotary_emb, use_real=True, use_real_unbind_dim=-2
+                    query[..., :self.pe_attn_head, :], rotary_emb, use_real=True, use_real_unbind_dim=-1
                 )
 
                 query_unrotated = query[..., self.pe_attn_head:, :]
-                query = torch.cat((query_rotated, query_unrotated), dim=-2)
+                query = torch.cat((query_rotated, query_unrotated), dim=-1)
+            else:
+                query = apply_rotary_emb(query, rotary_emb, use_real=True, use_real_unbind_dim=-1)
 
-            if not attn.is_cross_attention and self.pe_attn_head is not None:
-                key_to_rotate, key_unrotated = key[..., :self.pe_attn_head, :], key[..., self.pe_attn_head:, :]
-                key_rotated = apply_rotary_emb(key_to_rotate, rotary_emb, use_real=True, use_real_unbind_dim=-2)
-                key = torch.cat((key_rotated, key_unrotated), dim=-2)
+            if not attn.is_cross_attention :
+                if self.pe_attn_head is not None:
+                    key_to_rotate, key_unrotated = key[..., :self.pe_attn_head, :], key[..., self.pe_attn_head:, :]
+                    key_rotated = apply_rotary_emb(key_to_rotate, rotary_emb, use_real=True, use_real_unbind_dim=-1)
+                    key = torch.cat((key_rotated, key_unrotated), dim=-1)
+                else:
+                    key = apply_rotary_emb(key, rotary_emb, use_real=True, use_real_unbind_dim=-1)
 
             query = query.to(query_dtype)
             key = key.to(key_dtype)
@@ -3223,7 +3228,6 @@ class F5TTSAttnProcessor2_0:
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
-
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
