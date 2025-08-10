@@ -579,11 +579,12 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def _decode(self, z: torch.Tensor, return_dict: bool = True):
-        _, _, num_frame, height, width = z.shape
+        _, _, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_min_length = self.tile_sample_min_length // self.temporal_compression_ratio
 
-        if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
+        if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height or num_frames > tile_latent_min_length):
             return self.tiled_decode(z, return_dict=return_dict)
 
         out = self.decoder(z)
