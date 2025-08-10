@@ -1972,6 +1972,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         """
         if state is None:
             state = PipelineState()
+        else:
+            state = deepcopy(state)
 
         # Make a copy of the input kwargs
         passed_kwargs = kwargs.copy()
