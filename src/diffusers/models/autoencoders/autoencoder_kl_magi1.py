@@ -828,7 +828,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             for i in range(len(times[t])):
                 result_row = []
                 for j in range(len(times[t][i])):
-                    # clone the current decoded tile to blend into to use use UNBLENDED neighbors
+                    # Clone the current decoded tile to ensure blending uses an unmodified copy of the tile.
                     tile = times[t][i][j].clone()
 
                     if t > 0:
