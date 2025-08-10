@@ -22,7 +22,7 @@ from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, ControlNetModel, ControlNetUnionModel, UNet2DConditionModel
-from ...pipelines.controlnet.multicontrolnet import MultiControlNetModel
+from ...models.controlnets.multicontrolnet import MultiControlNetModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor, unwrap_module
