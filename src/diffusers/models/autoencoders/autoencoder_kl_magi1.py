@@ -664,14 +664,8 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         """
         N, C, T, H, W = x.shape
 
-        if T == 1:
-            x = x.expand(-1, -1, 1, -1, -1)
-            x = self.decoder(x)
-            x = x[:, :, :1, :, :]
-            return x
-        else:
-            x = self.decoder(x)
-            return x
+        x = self.decoder(x)
+        return x[:, :, 1, :, :] if T == 1 else x
 
     def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
