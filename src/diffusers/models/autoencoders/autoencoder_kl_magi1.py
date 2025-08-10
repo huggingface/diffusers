@@ -619,27 +619,30 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return (decoded,)
         return DecoderOutput(sample=decoded)
 
-    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int, power: int) -> torch.Tensor:
         blend_extent = min(a.shape[-2], b.shape[-2], blend_extent)
         for y in range(blend_extent):
-            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (
-                y / blend_extent
+            w_a, w_b = 1 - y / blend_extent, y / blend_extent
+            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (w_a ** power) + b[:, :, :, y, :] * (
+                w_b ** power
             )
         return b
 
-    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int, power: int) -> torch.Tensor:
         blend_extent = min(a.shape[-1], b.shape[-1], blend_extent)
         for x in range(blend_extent):
-            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (
-                x / blend_extent
+            w_a, w_b = 1.0 - x / blend_extent, x / blend_extent
+            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (w_a ** power) + b[:, :, :, :, x] * (
+                w_b ** power
             )
         return b
-
-    def blend_t(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+    
+    def blend_t(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int, power: int) -> torch.Tensor:
         blend_extent = min(a.shape[-3], b.shape[-3], blend_extent)
         for t in range(blend_extent):
-            b[:, :, t, :, :] = a[:, :, -blend_extent + t, :, :] * (1 - t / blend_extent) + b[:, :, t, :, :] * (
-                t / blend_extent
+            w_a, w_b = 1.0 - t / blend_extent, t / blend_extent
+            b[:, :, t, :, :] = a[:, :, -blend_extent + t, :, :] * (w_a ** power) + b[:, :, t, :, :] * (
+                w_b ** power
             )
         return b
 
@@ -714,56 +717,84 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                         j : j + self.tile_sample_min_width,
                     ]
                     h_tile = self._encode_tile(tile)
+                    # Original implementation samples here and blends the latents.
+                    # Instead we're keeping moments (mu and logvar) and blend them.
                     row.append(h_tile)
                 rows.append(row)
             times.append(rows)
 
-        # 2) Blend neighbors in moments space (apply same weights separately to mu and logvar)
+        # Calculate global blending order because blending is not commutative here.
+        nT = len(times)
+        nH = len(times[0]) if nT else 0
+        nW = len(times[0][0]) if nH else 0
+        idx_numel = []
+        for tt in range(nT):
+            for ii in range(nH):
+                for jj in range(nW):
+                    idx_numel.append(((tt, ii, jj), times[tt][ii][jj].numel()))
+        global_order = [idx for (idx, _) in sorted(idx_numel, key=lambda kv: kv[1], reverse=True)]
+
+
+        result_grid = [[[None for _ in range(nW)] for _ in range(nH)] for _ in range(nT)]
+        for (t_idx, i_idx, j_idx) in global_order:
+            rows = times[t_idx]
+            row  = rows[i_idx]
+            h    = row[j_idx]
+
+            latentC = h.shape[1] // 2
+            # Separate the mu and the logvar because mu needs to be blended linearly
+            # but logvar needs to be blended quadratically to obtain numerical equivalence
+            # so that the overall distribution is preserved
+            mu, logvar = h[:, :latentC], h[:, latentC:]
+            var = logvar.exp()
+
+            # Blend the prev tile, the above tile and the left tile
+            # to the current tile and add the current tile to the result grid
+            if t_idx > 0:
+                h_tile = times[t_idx - 1][i_idx][j_idx]
+                mu_prev, logvar_prev = h_tile[:, :latentC], h_tile[:, latentC:]
+                var_prev = logvar_prev.exp()
+                mu = self.blend_t(mu_prev, mu, blend_length, power=1)
+                var = self.blend_t(var_prev, var, blend_length, power=2)
+
+            if i_idx > 0:
+                h_tile = rows[i_idx - 1][j_idx]
+                mu_up, logvar_up = h_tile[:, :latentC], h_tile[:, latentC:]
+                var_up = logvar_up.exp()
+                mu = self.blend_v(mu_up, mu, blend_height, power=1)
+                var = self.blend_v(var_up, var, blend_height, power=2)
+
+            if j_idx > 0:
+                h_tile = row[j_idx - 1]
+                mu_left, logvar_left = h_tile[:, :latentC], h_tile[:, latentC:]
+                var_left = logvar_left.exp()
+                mu = self.blend_h(mu_left, mu, blend_width, power=1)
+                var = self.blend_h(var_left, var, blend_width, power=2)
+
+            logvar = var.clamp_min(1e-12).log()
+            h_blended = torch.cat([mu, logvar], dim=1)
+            h_core = h_blended[
+                :,
+                :,
+                :tile_latent_stride_length,
+                :tile_latent_stride_height,
+                :tile_latent_stride_width,
+            ]
+            result_grid[t_idx][i_idx][j_idx] = h_core
+
+        # Stitch blended tiles to spatially correct places
         result_times = []
-        for t_idx, rows in enumerate(times):
+        for t_idx in range(nT):
             result_rows = []
-            for i_idx, row in enumerate(rows):
+            for i_idx in range(nH):
                 result_row = []
-                for j_idx, h in enumerate(row):
-                    latentC = h.shape[1] // 2
-                    mu, logvar = h[:, :latentC], h[:, latentC:]
-                    # blend the prev tile, the above tile and the left tile
-                    # to the current tile and add the current tile to the result row
-                    if t_idx > 0:
-                        h_tile = times[t_idx - 1][i_idx][j_idx]
-                        mu_prev, logvar_prev = h_tile[:, :latentC], h_tile[:, latentC:]
-                        mu = self.blend_t(mu_prev, mu, blend_length)
-                        logvar = self.blend_t(logvar_prev, logvar, blend_length)
-
-                    if i_idx > 0:
-                        h_tile = rows[i_idx - 1][j_idx]
-                        mu_up, logvar_up = h_tile[:, :latentC], h_tile[:, latentC:]
-                        mu = self.blend_v(mu_up, mu, blend_height)
-                        logvar = self.blend_v(logvar_up, logvar, blend_height)
-
-                    if j_idx > 0:
-                        h_tile = row[j_idx - 1]
-                        mu_left, logvar_left = h_tile[:, :latentC], h_tile[:, latentC:]
-                        mu = self.blend_h(mu_left, mu, blend_width)
-                        logvar = self.blend_h(logvar_left, logvar, blend_width)
-
-                    h_blended = torch.cat([mu, logvar], dim=1)
-                    h_core = h_blended[
-                        :,
-                        :,
-                        :tile_latent_stride_length,
-                        :tile_latent_stride_height,
-                        :tile_latent_stride_width,
-                    ]
-                    result_row.append(h_core)
-                # Stitch across width
+                for j_idx in range(nW):
+                    result_row.append(result_grid[t_idx][i_idx][j_idx])
                 result_rows.append(torch.cat(result_row, dim=4))
-            # Stitch across height
             result_times.append(torch.cat(result_rows, dim=3))
-        # Stitch across time and crop to exact latent size
+
         h_full = torch.cat(result_times, dim=2)[:, :, :latent_length, :latent_height, :latent_width]
         return h_full
-
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
@@ -826,11 +857,11 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     tile = times[t][i][j].clone()
 
                     if t > 0:
-                        tile = self.blend_t(times[t - 1][i][j], tile, blend_length)
+                        tile = self.blend_t(times[t - 1][i][j], tile, blend_length, power=1)
                     if i > 0:
-                        tile = self.blend_v(times[t][i - 1][j], tile, blend_height)
+                        tile = self.blend_v(times[t][i - 1][j], tile, blend_height, power=1)
                     if j > 0:
-                        tile = self.blend_h(times[t][i][j - 1], tile, blend_width)
+                        tile = self.blend_h(times[t][i][j - 1], tile, blend_width, power=1)
 
                     result_row.append(
                         tile[
