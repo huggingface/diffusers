@@ -23,7 +23,7 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, logging
+from ..utils import deprecate, is_accelerate_available, logging, is_torch_version
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
@@ -64,6 +64,10 @@ if is_accelerate_available():
 
     from ..models.modeling_utils import load_model_dict_into_meta
 
+if is_torch_version(">=", "1.9.0") and is_accelerate_available():
+    _LOW_CPU_MEM_USAGE_DEFAULT = True
+else:
+    _LOW_CPU_MEM_USAGE_DEFAULT = False
 
 SINGLE_FILE_LOADABLE_CLASSES = {
     "StableCascadeUNet": {
@@ -285,6 +289,7 @@ class FromOriginalModelMixin:
         config_revision = kwargs.pop("config_revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         quantization_config = kwargs.pop("quantization_config", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         device = kwargs.pop("device", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
@@ -389,7 +394,7 @@ class FromOriginalModelMixin:
             model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
             diffusers_model_config.update(model_kwargs)
 
-        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
         with ctx():
             model = cls.from_config(diffusers_model_config)
 
@@ -427,7 +432,7 @@ class FromOriginalModelMixin:
             )
 
         device_map = None
-        if is_accelerate_available():
+        if low_cpu_mem_usage:
             param_device = torch.device(device) if device else torch.device("cpu")
             empty_state_dict = model.state_dict()
             unexpected_keys = [
