@@ -211,7 +211,7 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
-        self.assertTrue([dtype == torch.float32 for dtype in model_dtypes] == [False, True, True])
+        self.assertTrue([dtype == torch.float32 for dtype in model_dtypes] == [True, True, True])
 
     def test_torch_dtype_dict(self):
         components = self.get_dummy_components()

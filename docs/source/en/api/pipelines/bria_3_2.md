@@ -35,22 +35,6 @@ Use the command below to log in:
 hf auth login
 ```
 
-## Inference
-
-
-```python
-import torch
-from diffusers import BriaPipeline
-
-pipe = BriaPipeline.from_pretrained("briaai/BRIA-3.2",revision="bria_3_2_diffusers", torch_dtype=torch.bfloat16)
-pipe.enable_model_cpu_offload()
-
-prompt = "A high-fashion close-up portrait of a blonde woman in clear sunglasses. The image uses a bold teal and red color split for dramatic lighting. The background is a simple teal-green. The photo is sharp and well-composed, and is designed for viewing with anaglyph 3D glasses for optimal effect. It looks professionally done."
-
-image = pipe(prompt).images[0]
-image.save("bria.png")
-```
-
 
 ## BriaPipeline
 

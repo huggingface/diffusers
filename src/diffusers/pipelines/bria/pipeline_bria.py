@@ -66,8 +66,6 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-T5_PRECISION = torch.float16
-
 
 def is_ng_none(negative_prompt):
     return (
@@ -134,18 +132,11 @@ class BriaPipeline(FluxPipeline):
             feature_extractor=feature_extractor,
         )
 
-        # TODO - why different than offical flux (-1)
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels)) if hasattr(self, "vae") and self.vae is not None else 16
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.default_sample_size = 64  # due to patchify=> 128,128 => res of 1k,1k
-
-        # T5 is senstive to precision so we use the precision used for precompute and cast as needed
-        if self.text_encoder is not None:
-            self.text_encoder = self.text_encoder.to(dtype=T5_PRECISION)
-            for block in self.text_encoder.encoder.block:
-                block.layer[-1].DenseReluDense.wo.to(dtype=torch.float32)
 
         if self.vae.config.shift_factor is None:
             self.vae.config.shift_factor = 0
@@ -260,8 +251,12 @@ class BriaPipeline(FluxPipeline):
         return self._guidance_scale > 1
 
     @property
-    def joint_attention_kwargs(self):
-        return self.attention_kwargs
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @attention_kwargs.setter
+    def attention_kwargs(self, value):
+        self._attention_kwargs = value
 
     @property
     def num_timesteps(self):
@@ -345,7 +340,7 @@ class BriaPipeline(FluxPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.bria.BriaPipelineOutput`] instead of a plain tuple.
-            joint_attention_kwargs (`dict`, *optional*):
+            attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -395,9 +390,7 @@ class BriaPipeline(FluxPipeline):
 
         device = self._execution_device
 
-        lora_scale = (
-            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
-        )
+        lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
 
         (prompt_embeds, negative_prompt_embeds, text_ids) = self.encode_prompt(
             prompt=prompt,
@@ -432,8 +425,7 @@ class BriaPipeline(FluxPipeline):
             and self.scheduler.config["use_dynamic_shifting"]
         ):
             sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-            image_seq_len = latents.shape[1]  # Shift by height - Why just height?
-            print(f"Using dynamic shift in pipeline with sequence length {image_seq_len}")
+            image_seq_len = latents.shape[1]
 
             mu = calculate_shift(
                 image_seq_len,
@@ -495,7 +487,7 @@ class BriaPipeline(FluxPipeline):
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    attention_kwargs=self.attention_kwargs,
                     return_dict=False,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
