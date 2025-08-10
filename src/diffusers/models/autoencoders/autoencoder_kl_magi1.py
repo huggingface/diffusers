@@ -643,7 +643,6 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             )
         return b
 
-
     def _encode_tile(self, x: torch.Tensor) -> torch.Tensor:
         """
         Encode a single tile.
