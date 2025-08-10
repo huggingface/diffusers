@@ -650,7 +650,7 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         N, C, T, H, W = x.shape
 
         if T == 1 and self.temporal_compression_ratio > 1:
-            x = x.expand(-1, -1, 4, -1, -1)
+            x = x.expand(-1, -1, self.temporal_compression_ratio, -1, -1)
             x = self.encoder(x)
             x = x[:, :, :1]
             return x
