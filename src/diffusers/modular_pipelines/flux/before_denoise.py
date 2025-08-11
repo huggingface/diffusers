@@ -22,7 +22,7 @@ from ...models import AutoencoderKL
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import FluxModularPipeline
 
@@ -231,7 +231,7 @@ def _get_initial_timesteps_and_optionals(
     return timesteps, num_inference_steps, sigmas, guidance
 
 
-class FluxInputStep(PipelineBlock):
+class FluxInputStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -249,11 +249,6 @@ class FluxInputStep(PipelineBlock):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "prompt_embeds",
                 required=True,
@@ -322,7 +317,7 @@ class FluxInputStep(PipelineBlock):
         return components, state
 
 
-class FluxSetTimestepsStep(PipelineBlock):
+class FluxSetTimestepsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -340,14 +335,10 @@ class FluxSetTimestepsStep(PipelineBlock):
             InputParam("timesteps"),
             InputParam("sigmas"),
             InputParam("guidance_scale", default=3.5),
+            InputParam("latents", type_hint=torch.Tensor),
             InputParam("num_images_per_prompt", default=1),
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "batch_size",
                 required=True,
@@ -398,7 +389,7 @@ class FluxSetTimestepsStep(PipelineBlock):
         return components, state
 
 
-class FluxImg2ImgSetTimestepsStep(PipelineBlock):
+class FluxImg2ImgSetTimestepsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -420,11 +411,6 @@ class FluxImg2ImgSetTimestepsStep(PipelineBlock):
             InputParam("num_images_per_prompt", default=1),
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "batch_size",
                 required=True,
@@ -497,7 +483,7 @@ class FluxImg2ImgSetTimestepsStep(PipelineBlock):
         return components, state
 
 
-class FluxPrepareLatentsStep(PipelineBlock):
+class FluxPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -515,11 +501,6 @@ class FluxPrepareLatentsStep(PipelineBlock):
             InputParam("width", type_hint=int),
             InputParam("latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_images_per_prompt", type_hint=int, default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("generator"),
             InputParam(
                 "batch_size",
@@ -621,7 +602,7 @@ class FluxPrepareLatentsStep(PipelineBlock):
         return components, state
 
 
-class FluxImg2ImgPrepareLatentsStep(PipelineBlock):
+class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -639,11 +620,6 @@ class FluxImg2ImgPrepareLatentsStep(PipelineBlock):
             InputParam("width", type_hint=int),
             InputParam("latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_images_per_prompt", type_hint=int, default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("generator"),
             InputParam(
                 "image_latents",
