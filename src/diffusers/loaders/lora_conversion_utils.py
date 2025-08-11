@@ -1844,7 +1844,6 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             scale_up /= 2
         return scale_down, scale_up
 
-
     for key in list(original_state_dict.keys()):
         if key.endswith((".diff", ".diff_b")) and "norm" in key:
             # NOTE: we don't support this because norm layer diff keys are just zeroed values. We can support it

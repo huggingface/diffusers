@@ -5289,8 +5289,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         else:
             self.load_lora_into_transformer(
                 state_dict,
-                transformer=getattr(self, self.transformer_name) if not hasattr(self,
-                                                                                "transformer") else self.transformer,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
                 adapter_name=adapter_name,
                 metadata=metadata,
                 _pipeline=self,
