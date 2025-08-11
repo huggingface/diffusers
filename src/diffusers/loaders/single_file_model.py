@@ -23,7 +23,7 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, logging, is_torch_version
+from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
@@ -241,8 +241,8 @@ class FromOriginalModelMixin:
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 and
-                is_accelerate_available() else `False`): Speed up model loading only loading the pretrained weights
-                and not initializing the weights. This also tries to not use more than 1x model size in CPU memory
+                is_accelerate_available() else `False`): Speed up model loading only loading the pretrained weights and
+                not initializing the weights. This also tries to not use more than 1x model size in CPU memory
                 (including peak memory) while loading the model. Only supported for PyTorch >= 1.9.0. If you are using
                 an older version of PyTorch, setting this argument to `True` will raise an error.
             disable_mmap ('bool', *optional*, defaults to 'False'):
