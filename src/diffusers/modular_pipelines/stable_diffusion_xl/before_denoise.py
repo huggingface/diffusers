@@ -744,8 +744,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         timestep=None,
         is_strength_max=True,
         add_noise=True,
-        return_noise=False,
-        return_image_latents=False,
     ):
         shape = (
             batch_size,
@@ -768,7 +766,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         if image.shape[1] == 4:
             image_latents = image.to(device=device, dtype=dtype)
             image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
-        elif return_image_latents or (latents is None and not is_strength_max):
+        elif latents is None and not is_strength_max:
             image = image.to(device=device, dtype=dtype)
             image_latents = self._encode_vae_image(components, image=image, generator=generator)
             image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
@@ -786,13 +784,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             latents = image_latents.to(device)
 
-        outputs = (latents,)
-
-        if return_noise:
-            outputs += (noise,)
-
-        if return_image_latents:
-            outputs += (image_latents,)
+        outputs = (latents, noise, image_latents)
 
         return outputs
 
@@ -864,7 +856,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         block_state.height = block_state.image_latents.shape[-2] * components.vae_scale_factor
         block_state.width = block_state.image_latents.shape[-1] * components.vae_scale_factor
 
-        block_state.latents, block_state.noise = self.prepare_latents_inpaint(
+        block_state.latents, block_state.noise, block_state.image_latents = self.prepare_latents_inpaint(
             components,
             block_state.batch_size * block_state.num_images_per_prompt,
             components.num_channels_latents,
@@ -878,8 +870,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             timestep=block_state.latent_timestep,
             is_strength_max=block_state.is_strength_max,
             add_noise=block_state.add_noise,
-            return_noise=True,
-            return_image_latents=False,
         )
 
         # 7. Prepare mask latent variables
