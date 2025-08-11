@@ -112,10 +112,10 @@ def sample_tokens(
     if margin_confidence:
         sorted_probs, _ = torch.sort(probs, dim=-1, descending=True)
         # Extract top1 and top2 probabilities
-        top1_probs = sorted_probs[:, 0] 
-        top2_probs = sorted_probs[:, 1] 
+        top1_probs = sorted_probs[:, 0]
+        top2_probs = sorted_probs[:, 1]
         # Calculate confidence as top1 - top2
-        confidence = top1_probs - top2_probs 
+        confidence = top1_probs - top2_probs
 
     if neg_entropy:
         epsilon = 1e-10
@@ -261,7 +261,7 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
-    
+
         if self.config.timestep_discretization == "linear":
             timesteps = torch.linspace(1.0, self.config.final_timestep, num_inference_steps + 1, device=device)
         elif self.config.timestep_discretization == "cosine":
@@ -378,7 +378,7 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
                     neg_entropy=True,
                     generator=generator,
                 )
-            
+
             # Unmask a fixed number of tokens at each timestep depending on unmask_prob
             num_masked_tokens = mask_map.sum() / mask_map.shape[0]
             num_tokens_to_unmask = int(num_masked_tokens * unmask_prob)
@@ -392,7 +392,7 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
                     full_confidence = full_confidence / self.config.alg_temperature
                     full_confidence = F.softmax(full_confidence, dim=-1)
                     unmask_index = torch.multinomial(full_confidence, num_samples=num_tokens_to_unmask)
-                
+
                 prev_sample = torch.zeros_like(sample, device=sample.device)
                 prev_sample = torch.where(unmask_index, pred_original_sample, sample)
 
@@ -419,7 +419,7 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
         else:
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
-    
+
         step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
 
         mask_probs = 1.0 - alphas[step_indices].flatten()
