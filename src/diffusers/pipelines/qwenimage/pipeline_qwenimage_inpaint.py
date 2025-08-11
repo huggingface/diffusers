@@ -45,6 +45,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
 ):
@@ -57,6 +58,7 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
+# Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -188,6 +190,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         self.prompt_template_encode_start_idx = 34
         self.default_sample_size = 128
 
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage._extract_masked_hidden
     def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor):
         bool_mask = mask.bool()
         valid_lengths = bool_mask.sum(dim=1)
@@ -195,7 +198,8 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         split_result = torch.split(selected, valid_lengths.tolist(), dim=0)
 
         return split_result
-
+    
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage._get_qwen_prompt_embeds
     def _get_qwen_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -234,6 +238,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return prompt_embeds, encoder_attention_mask
 
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_img2img._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
@@ -257,6 +262,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return image_latents
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
@@ -268,6 +274,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return timesteps, num_inference_steps - t_start
 
+    # Copied fromCopied from diffusers.pipelines.qwenimage.pipeline_qwenimage.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -306,6 +313,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return prompt_embeds, prompt_embeds_mask
 
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -382,6 +390,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
 
     @staticmethod
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage._prepare_latent_image_ids
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
         latent_image_ids = torch.zeros(height, width, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
@@ -396,6 +405,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         return latent_image_ids.to(device=device, dtype=dtype)
 
     @staticmethod
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
@@ -404,6 +414,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage._unpack_latents
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 

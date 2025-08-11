@@ -33,3 +33,15 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 ## QwenImagePipelineOutput
 
 [[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
+
+## QwenImageImg2ImgPipeline
+
+[[autodoc]] QwenImageImg2ImgPipeline
+  - all
+  - __call__
+
+## QwenImageInpaintPipeline
+
+[[autodoc]] QwenImageInpaintPipeline
+  - all
+  - __call__
