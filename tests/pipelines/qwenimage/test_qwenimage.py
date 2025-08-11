@@ -24,7 +24,7 @@ from diffusers import (
     QwenImagePipeline,
     QwenImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -234,3 +234,79 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
+
+    def test_long_prompt_no_error(self):
+        # Test for issue #12083: long prompts should not cause dimension mismatch errors
+        device = torch_device
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+
+        # Create a long prompt that approaches but stays within limits
+        # This tests the original issue fix without triggering the warning
+        phrase = "A beautiful, detailed, high-resolution, photorealistic image showing "
+        long_prompt = phrase * 40  # Generates ~800 tokens, well within limits
+
+        # Verify token count for test clarity
+        tokenizer = components["tokenizer"]
+        token_count = len(tokenizer.encode(long_prompt))
+        required_len = 32 + token_count  # height/width + tokens
+        # Should be large enough to test the fix but not trigger expansion warning
+        self.assertGreater(token_count, 500, f"Test prompt should be substantial (got {token_count} tokens)")
+        self.assertLess(required_len, 1024, f"Test should stay within limits (got {required_len})")
+
+        inputs = {
+            "prompt": long_prompt,
+            "generator": torch.Generator(device=device).manual_seed(0),
+            "num_inference_steps": 2,
+            "guidance_scale": 3.0,
+            "true_cfg_scale": 1.0,
+            "height": 32,  # Small size for fast test
+            "width": 32,  # Small size for fast test
+            "max_sequence_length": 1024,  # Allow long sequence (max allowed)
+            "output_type": "pt",
+        }
+
+        # This should not raise a RuntimeError about tensor dimension mismatch
+        _ = pipe(**inputs)
+
+    def test_long_prompt_warning(self):
+        """Test that long prompts trigger appropriate warning about training limitation"""
+        from diffusers.utils import logging
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+
+        # Create a long prompt that will exceed the RoPE expansion threshold
+        # The warning is triggered when required_len = max(height, width) + text_tokens > _current_max_len
+        # Since _current_max_len is 1024 and height=width=32, we need > 992 tokens
+        phrase = "A detailed photorealistic image showing many beautiful elements and complex artistic creative features with intricate designs."
+        long_prompt = phrase * 58  # Generates ~1045 tokens, ensuring required_len > 1024
+
+        # Verify we exceed the threshold (for test robustness)
+        tokenizer = components["tokenizer"]
+        token_count = len(tokenizer.encode(long_prompt))
+        required_len = 32 + token_count  # height/width + tokens
+        self.assertGreater(required_len, 1024, f"Test prompt must exceed threshold (got {required_len})")
+
+        # Capture transformer logging
+        logger = logging.get_logger("diffusers.models.transformers.transformer_qwenimage")
+        logger.setLevel(logging.WARNING)
+
+        with CaptureLogger(logger) as cap_logger:
+            _ = pipe(
+                prompt=long_prompt,
+                generator=torch.Generator(device=torch_device).manual_seed(0),
+                num_inference_steps=2,
+                guidance_scale=3.0,
+                true_cfg_scale=1.0,
+                height=32,  # Small size for fast test
+                width=32,  # Small size for fast test
+                max_sequence_length=1024,  # Allow long sequence
+                output_type="pt",
+            )
+
+        # Verify warning was logged about the 512-token training limitation
+        self.assertTrue("512 tokens" in cap_logger.out)
+        self.assertTrue("unpredictable behavior" in cap_logger.out)

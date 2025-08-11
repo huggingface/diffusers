@@ -160,23 +160,31 @@ class QwenEmbedRope(nn.Module):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
-        pos_index = torch.arange(1024)
-        neg_index = torch.arange(1024).flip(0) * -1 - 1
-        self.pos_freqs = torch.cat(
-            [
-                self.rope_params(pos_index, self.axes_dim[0], self.theta),
-                self.rope_params(pos_index, self.axes_dim[1], self.theta),
-                self.rope_params(pos_index, self.axes_dim[2], self.theta),
-            ],
-            dim=1,
+        # Initialize with default size 1024, but allow dynamic expansion
+        self._current_max_len = 1024
+        pos_index = torch.arange(self._current_max_len)
+        neg_index = torch.arange(self._current_max_len).flip(0) * -1 - 1
+        self.register_buffer(
+            "pos_freqs",
+            torch.cat(
+                [
+                    self.rope_params(pos_index, self.axes_dim[0], self.theta),
+                    self.rope_params(pos_index, self.axes_dim[1], self.theta),
+                    self.rope_params(pos_index, self.axes_dim[2], self.theta),
+                ],
+                dim=1,
+            ),
         )
-        self.neg_freqs = torch.cat(
-            [
-                self.rope_params(neg_index, self.axes_dim[0], self.theta),
-                self.rope_params(neg_index, self.axes_dim[1], self.theta),
-                self.rope_params(neg_index, self.axes_dim[2], self.theta),
-            ],
-            dim=1,
+        self.register_buffer(
+            "neg_freqs",
+            torch.cat(
+                [
+                    self.rope_params(neg_index, self.axes_dim[0], self.theta),
+                    self.rope_params(neg_index, self.axes_dim[1], self.theta),
+                    self.rope_params(neg_index, self.axes_dim[2], self.theta),
+                ],
+                dim=1,
+            ),
         )
         self.rope_cache = {}
 
@@ -192,6 +200,53 @@ class QwenEmbedRope(nn.Module):
         freqs = torch.outer(index, 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim)))
         freqs = torch.polar(torch.ones_like(freqs), freqs)
         return freqs
+
+    def _expand_pos_freqs_if_needed(self, required_len):
+        """Expand pos_freqs and neg_freqs if required length exceeds current size"""
+        if required_len <= self._current_max_len:
+            return
+
+        # Calculate new size (use next power of 2 or round to nearest 512 for efficiency)
+        new_max_len = max(required_len, int((required_len + 511) // 512) * 512)
+
+        # Log warning about potential quality degradation for long prompts
+        if required_len > 512:
+            logger.warning(
+                f"QwenImage model was trained on prompts up to 512 tokens. "
+                f"Current prompt requires {required_len} tokens, which may lead to unpredictable behavior. "
+                f"Consider using shorter prompts for better results."
+            )
+
+        # Generate expanded indices
+        pos_index = torch.arange(new_max_len, device=self.pos_freqs.device)
+        neg_index = torch.arange(new_max_len, device=self.neg_freqs.device).flip(0) * -1 - 1
+
+        # Generate expanded frequency embeddings
+        new_pos_freqs = torch.cat(
+            [
+                self.rope_params(pos_index, self.axes_dim[0], self.theta),
+                self.rope_params(pos_index, self.axes_dim[1], self.theta),
+                self.rope_params(pos_index, self.axes_dim[2], self.theta),
+            ],
+            dim=1,
+        ).to(device=self.pos_freqs.device, dtype=self.pos_freqs.dtype)
+
+        new_neg_freqs = torch.cat(
+            [
+                self.rope_params(neg_index, self.axes_dim[0], self.theta),
+                self.rope_params(neg_index, self.axes_dim[1], self.theta),
+                self.rope_params(neg_index, self.axes_dim[2], self.theta),
+            ],
+            dim=1,
+        ).to(device=self.neg_freqs.device, dtype=self.neg_freqs.dtype)
+
+        # Update buffers
+        self.register_buffer("pos_freqs", new_pos_freqs)
+        self.register_buffer("neg_freqs", new_neg_freqs)
+        self._current_max_len = new_max_len
+
+        # Clear cache since dimensions changed
+        self.rope_cache = {}
 
     def forward(self, video_fhw, txt_seq_lens, device):
         """
@@ -232,6 +287,11 @@ class QwenEmbedRope(nn.Module):
             max_vid_index = max(height, width)
 
         max_len = max(txt_seq_lens)
+
+        # Expand pos_freqs if needed to accommodate max_vid_index + max_len
+        required_len = max_vid_index + max_len
+        self._expand_pos_freqs_if_needed(required_len)
+
         txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + max_len, ...]
 
         return vid_freqs, txt_freqs
