@@ -94,8 +94,13 @@ class Magi1VAEAttnProcessor:
         value = value.squeeze(2)
 
         hidden_states = dispatch_attention_fn(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False,
-            backend=self._attention_backend
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
