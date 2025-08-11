@@ -149,7 +149,6 @@ class Magi1VAEAttention(torch.nn.Module, AttentionModuleMixin):
         self.cross_attention_dim_head = cross_attention_dim_head
         self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
 
-
         self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
         self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
         self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
@@ -192,7 +191,7 @@ class Magi1VAEAttention(torch.nn.Module, AttentionModuleMixin):
             self.to_kv.load_state_dict(
                 {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
             )
-        
+
         if self.added_kv_proj_dim is not None:
             concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
             concatenated_bias = torch.cat([self.add_k_proj.bias.data, self.add_v_proj.bias.data])
@@ -486,8 +485,7 @@ class Magi1Decoder3d(nn.Module):
         return x
 
 
-class AutoencoderKLMagi1(
-    ModelMixin, ConfigMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin):
+class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
     Introduced in [Magi1](https://arxiv.org/abs/2505.13211).
