@@ -23,6 +23,7 @@ from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..attention import FeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
@@ -57,10 +58,12 @@ class Magi1VAELayerNorm(nn.Module):
         return x_normalized
 
 
-class Magi1VAEAttnProcessor2_0:
+class Magi1VAEAttnProcessor:
+    _attention_backend = None
+
     def __init__(self, dim, num_heads=8):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("Magi1VAEAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
         self.qkv_norm = Magi1VAELayerNorm(dim // num_heads, elementwise_affine=False)
 
@@ -84,17 +87,18 @@ class Magi1VAEAttnProcessor2_0:
         qkv = self.qkv_norm(qkv)
         query, key, value = qkv.chunk(3, dim=2)
 
-        # Remove the extra dimension from chunking and transpose for scaled dot product attention
-        # Shape: (batch_size, num_heads, time_height_width, head_dim)
-        query = query.squeeze(2).transpose(1, 2)
-        key = key.squeeze(2).transpose(1, 2)
-        value = value.squeeze(2).transpose(1, 2)
+        # Remove the extra dimension from chunking
+        # Shape: (batch_size, time_height_width, num_heads, head_dim)
+        query = query.squeeze(2)
+        key = key.squeeze(2)
+        value = value.squeeze(2)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )  # the output of sdpa = (batch_size, num_heads, seq_len, head_dim)
-        # Reshape hidden_states to (batch_size, time_height_width, channels)
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = dispatch_attention_fn(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False,
+            backend=self._attention_backend
+        )
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
 
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
@@ -121,7 +125,7 @@ class Magi1VAETransformerBlock(nn.Module):
             bias=True,
             cross_attention_dim=None,
             out_bias=True,
-            processor=Magi1VAEAttnProcessor2_0(dim, num_heads),
+            processor=Magi1VAEAttnProcessor(dim, num_heads),
         )
 
         self.drop_path = nn.Identity()
