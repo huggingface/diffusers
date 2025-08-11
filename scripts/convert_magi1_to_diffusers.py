@@ -181,8 +181,8 @@ def convert_vae_state_dict(checkpoint):
         state_dict[f"encoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[f"encoder.blocks.{i}.attn.proj.weight"]
         state_dict[f"encoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[f"encoder.blocks.{i}.attn.proj.bias"]
 
-        state_dict[f"encoder.blocks.{i}.norm2.weight"] = checkpoint[f"encoder.blocks.{i}.norm2.weight"]
-        state_dict[f"encoder.blocks.{i}.norm2.bias"] = checkpoint[f"encoder.blocks.{i}.norm2.bias"]
+        state_dict[f"encoder.blocks.{i}.norm.weight"] = checkpoint[f"encoder.blocks.{i}.norm2.weight"]
+        state_dict[f"encoder.blocks.{i}.norm.bias"] = checkpoint[f"encoder.blocks.{i}.norm2.bias"]
 
         state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[f"encoder.blocks.{i}.mlp.fc1.weight"]
         state_dict[f"encoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[f"encoder.blocks.{i}.mlp.fc1.bias"]
@@ -220,8 +220,8 @@ def convert_vae_state_dict(checkpoint):
         state_dict[f"decoder.blocks.{i}.attn.to_out.0.weight"] = checkpoint[f"decoder.blocks.{i}.attn.proj.weight"]
         state_dict[f"decoder.blocks.{i}.attn.to_out.0.bias"] = checkpoint[f"decoder.blocks.{i}.attn.proj.bias"]
 
-        state_dict[f"decoder.blocks.{i}.norm2.weight"] = checkpoint[f"decoder.blocks.{i}.norm2.weight"]
-        state_dict[f"decoder.blocks.{i}.norm2.bias"] = checkpoint[f"decoder.blocks.{i}.norm2.bias"]
+        state_dict[f"decoder.blocks.{i}.norm.weight"] = checkpoint[f"decoder.blocks.{i}.norm2.weight"]
+        state_dict[f"decoder.blocks.{i}.norm.bias"] = checkpoint[f"decoder.blocks.{i}.norm2.bias"]
 
         state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.weight"] = checkpoint[f"decoder.blocks.{i}.mlp.fc1.weight"]
         state_dict[f"decoder.blocks.{i}.proj_out.net.0.proj.bias"] = checkpoint[f"decoder.blocks.{i}.mlp.fc1.bias"]
