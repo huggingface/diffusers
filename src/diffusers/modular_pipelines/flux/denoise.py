@@ -223,5 +223,5 @@ class FluxDenoiseStep(FluxDenoiseLoopWrapper):
             "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
             " - `FluxLoopDenoiser`\n"
             " - `FluxLoopAfterDenoiser`\n"
-            "This block supports text2image tasks."
+            "This block supports both text2image and img2img tasks."
         )

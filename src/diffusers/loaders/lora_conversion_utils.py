@@ -2077,3 +2077,39 @@ def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_pref
     converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
     converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
     return converted_state_dict
+
+
+def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
+    converted_state_dict = {}
+    all_keys = list(state_dict.keys())
+    down_key = ".lora_down.weight"
+    up_key = ".lora_up.weight"
+
+    def get_alpha_scales(down_weight, alpha_key):
+        rank = down_weight.shape[0]
+        alpha = state_dict.pop(alpha_key).item()
+        scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+        return scale_down, scale_up
+
+    for k in all_keys:
+        if k.endswith(down_key):
+            diffusers_down_key = k.replace(down_key, ".lora_A.weight")
+            diffusers_up_key = k.replace(down_key, up_key).replace(up_key, ".lora_B.weight")
+            alpha_key = k.replace(down_key, ".alpha")
+
+            down_weight = state_dict.pop(k)
+            up_weight = state_dict.pop(k.replace(down_key, up_key))
+            scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+            converted_state_dict[diffusers_down_key] = down_weight * scale_down
+            converted_state_dict[diffusers_up_key] = up_weight * scale_up
+
+    if len(state_dict) > 0:
+        raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
+
+    converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+    return converted_state_dict
