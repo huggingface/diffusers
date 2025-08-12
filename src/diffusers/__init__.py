@@ -36,7 +36,6 @@ _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "guiders": [],
     "hooks": [],
-    "image_processor": ["VaeImageProcessor"],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "modular_pipelines": [],
@@ -62,7 +61,6 @@ _import_structure = {
         "is_unidecode_available",
         "logging",
     ],
-    "video_processor": ["VideoProcessor"],
 }
 
 try:
@@ -907,12 +905,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanVACETransformer3DModel,
             attention_backend,
         )
-        from .modular_pipelines import (
-            ComponentsManager,
-            ComponentSpec,
-            ModularPipeline,
-            ModularPipelineBlocks,
-        )
+        from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
         from .optimization import (
             get_constant_schedule,
             get_constant_schedule_with_warmup,
