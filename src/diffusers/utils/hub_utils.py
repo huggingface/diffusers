@@ -402,23 +402,25 @@ def _get_checkpoint_shard_files(
         allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
 
     ignore_patterns = ["*.json", "*.md"]
-    # `model_info` call must guarded with the above condition.
-    model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
-    for shard_file in original_shard_filenames:
-        shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
-        if not shard_file_present:
-            raise EnvironmentError(
-                f"{shards_path} does not appear to have a file named {shard_file} which is "
-                "required according to the checkpoint index."
-            )
+
+    # Only call model_info when not offline/local-only
+    use_local_only = local_files_only or HF_HUB_OFFLINE or HF_HUB_DISABLE_TELEMETRY
+    if not use_local_only:
+        model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
+        for shard_file in original_shard_filenames:
+            shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
+            if not shard_file_present:
+                raise EnvironmentError(
+                    f"{shards_path} does not appear to have a file named {shard_file} which is "
+                    f"required according to the checkpoint index."
+                )
 
     try:
-        # Load from URL
         cached_folder = snapshot_download(
             pretrained_model_name_or_path,
             cache_dir=cache_dir,
             proxies=proxies,
-            local_files_only=local_files_only,
+            local_files_only=use_local_only,
             token=token,
             revision=revision,
             allow_patterns=allow_patterns,
@@ -437,6 +439,20 @@ def _get_checkpoint_shard_files(
         ) from e
 
     cached_filenames = [os.path.join(cached_folder, f) for f in original_shard_filenames]
+
+    # Validate cached files exist
+    for cached_file in cached_filenames:
+        if not os.path.exists(cached_file):
+            if use_local_only:
+                raise FileNotFoundError(
+                    f"Shard file {os.path.basename(cached_file)} is missing from the local cache "
+                    f"({cached_folder}) and cannot be downloaded in offline mode. "
+                    f"Please ensure all required checkpoint files are cached locally."
+                )
+            else:
+                raise FileNotFoundError(
+                    f"Shard file {cached_file} was not properly downloaded or is missing from cache."
+                )
 
     return cached_filenames, sharded_metadata
 
