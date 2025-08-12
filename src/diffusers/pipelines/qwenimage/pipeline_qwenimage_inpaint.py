@@ -407,7 +407,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         return latent_image_ids.to(device=device, dtype=dtype)
 
     @staticmethod
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage._pack_latents
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
