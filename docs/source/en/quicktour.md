@@ -21,21 +21,23 @@ This Quickstart will give you an overview of Diffusers and get you up and genera
 > [!TIP]
 > Before you begin, make sure you have a Hugging Face [account](https://huggingface.co/join) in order to use models like [Flux](https://huggingface.co/black-forest-labs/FLUX.1-dev).
 
-Follow the [Installation](./installation) guide to install Diffusers if you haven't already installed it.
+Follow the [Installation](./installation) guide to install Diffusers if it's not already installed.
 
 ## DiffusionPipeline
 
-A diffusion model is actually comprised of several components that work together to generate an image or video that matches your prompt.
+A diffusion model combines multiple components to generate outputs in any modality based on an input, such as a text description or image.
 
-1. A text encoder turns your prompt into embeddings which steers the denoising process.
-2. A scheduler contains the *denoising* specifics such as how much noise to remove at each step and the step size. Schedulers affect denoising speed and generation quality.
-3. A UNet or diffusion transformer is the workhorse of a diffusion model.
+For a standard text-to-image model:
 
-  At each step, it takes the noisy input and predicts the noise based on the step and embeddings. The scheduler uses this prediction to subtract the appropriate amount of noise to produce a slightly cleaner image.
+1. A text encoder turns a prompt into embeddings that guide the denoising process.
+2. A scheduler contains the algorithmic specifics for gradually denoising initial random noise into clean outputs. Different schedulers affect generation speed and quality.
+3. A UNet or diffusion transformer (DiT) is the workhorse of a diffusion model.
+
+  At each step, it performs the denoising predictions, such as how much noise to remove or the general direction in which to steer the noise to generate better quality outputs.
+
+  The UNet or DiT repeats this loop for a set amount of steps to generate the final output.
   
-  The UNet or diffusion transformer repeats this loop for a set amount of steps to produce the final latent output.
-
-4. A decoder (variational autoencoder) converts the *latents* into the actual image or video. Latents are a compressed representation of the input, making it more efficient to work with than the actual pixels.
+4. A variational autoencoder (VAE) encodes and decodes pixels to a spatially compressed latent-space. *Latents* are compressed representations of an image and are more efficient to work with. The UNet or DiT operates on latents, and the clean latents at the end are decoded back into images.
 
 The [`DiffusionPipeline`] packages all these components into a single class for inference. There are several arguments in [`DiffusionPipeline`] you can change, such as `num_inference_steps`, that affect the diffusion process. Try different values and arguments to see how they change generation quality or speed.
 
@@ -115,7 +117,7 @@ export_to_video(video, "output.mp4", fps=15)
 
 Adapters insert a small number of trainable parameters to the original base model. Only the inserted parameters are fine-tuned while the rest of the model weights remain frozen. This makes it fast and cheap to fine-tune a model on a new style. Among adapters, [LoRA's](./tutorials/using_peft_for_inference) are the most popular.
 
-Add a LoRA to your pipeline with the [`~loaders.FluxLoraLoaderMixin.load_lora_weights`] method. Some LoRA's require a special word to trigger it, such as `GHIBSKY style`, in the example below. Check a LoRA's model card to see if it requires a trigger word.
+Add a LoRA to a pipeline with the [`~loaders.FluxLoraLoaderMixin.load_lora_weights`] method. Some LoRA's require a special word to trigger it, such as `GHIBSKY style`, in the example below. Check a LoRA's model card to see if it requires a trigger word.
 
 ```py
 import torch
@@ -145,7 +147,7 @@ Check out the [LoRA](./tutorials/using_peft_for_inference) docs or Adapters sect
 
 [Quantization](./quantization/overview) stores data in fewer bits to reduce memory usage. It may also speed up inference because it takes less time to perform calculations with fewer bits.
 
-Diffusers provides several quantization backends, and picking one depends on your use case. For example, [bitsandbytes](./quantization/bitsandbytes) and [torchao](./quantization/torchao) are both simple and easy to use for inference, but torchao supports more [quantization types](./quantization/torchao#supported-quantization-types) like fp8.
+Diffusers provides several quantization backends and picking one depends on your use case. For example, [bitsandbytes](./quantization/bitsandbytes) and [torchao](./quantization/torchao) are both simple and easy to use for inference, but torchao supports more [quantization types](./quantization/torchao#supported-quantization-types) like fp8.
 
 Configure [`PipelineQuantizationConfig`] with the backend to use, the specific arguments (refer to the [API](./api/quantization) reference for available arguments) for that backend, and which components to quantize. The example below quantizes the model to 4-bits and only uses 14.93GB of memory.
 
@@ -177,15 +179,15 @@ Take a look at the [Quantization](./quantization/overview) section for more deta
 
 ## Optimizations
 
-Modern diffusion models are very large and have billions of parameters. The iterative denoising process is also computationally intensive and slow. Diffusers provides techniques for reducing memory usage and boosting inference speed. These techniques can be used together and with quantization to optimize for both memory and inference speed.
+Modern diffusion models are very large and have billions of parameters. The iterative denoising process is also computationally intensive and slow. Diffusers provides techniques for reducing memory usage and boosting inference speed. These techniques can be combined with quantization to optimize for both memory usage and inference speed.
 
-### Memory
+### Memory usage
 
-The text encoders and UNet or diffusion transformer can use up as much as ~30GB of memory, exceeding the amount available on many free-tier or consumer GPUs.
+The text encoders and UNet or DiT can use up as much as ~30GB of memory, exceeding the amount available on many free-tier or consumer GPUs.
 
-Offloading stores weights that aren't currently used on the CPU and only moves them to the GPU when they're needed. There are a few offloading types and the example below uses [model offloading](./optimization/memory#model-offloading) to move an entire model, like a text encoder or transformer, to the CPU when it isn't being used.
+Offloading stores weights that aren't currently used on the CPU and only moves them to the GPU when they're needed. There are a few offloading types and the example below uses [model offloading](./optimization/memory#model-offloading). This moves an entire model, like a text encoder or transformer, to the CPU when it isn't actively being used.
 
-Call [`~DiffusionPipeline.enable_model_cpu_offload`] to activate it on your pipeline. By combining quantization and offloading, the following example only requires ~12.54GB of memory.
+Call [`~DiffusionPipeline.enable_model_cpu_offload`] to activate it. By combining quantization and offloading, the following example only requires ~12.54GB of memory.
 
 ```py
 import torch
@@ -216,7 +218,7 @@ Refer to the [Reduce memory usage](./optimization/memory) docs to learn more abo
 
 ### Inference speed
 
-The denoising loop performs a lot of computations and can be slow. Methods like [torch.compile](./optimization/fp16#torchcompile) increases inference speed by compiling the computations into an optimized kernel. Compilation is slow at first but it should be much faster the next time as long as the input remains the same.
+The denoising loop performs a lot of computations and can be slow. Methods like [torch.compile](./optimization/fp16#torchcompile) increases inference speed by compiling the computations into an optimized kernel. Compilation is slow for the first generation but successive generations should be much faster.
 
 The example below uses [regional compilation](./optimization/fp16#regional-compilation) to only compile small regions of a model. It reduces cold-start latency while also providing a runtime speed up.
 
