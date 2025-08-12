@@ -339,7 +339,25 @@ def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefi
     return False
 
 
-def load_shard_file(args):
+def load_shard_file(
+    shard_file,
+    model,
+    model_state_dict,
+    device_map=None,
+    dtype=None,
+    hf_quantizer=None,
+    keep_in_fp32_modules=None,
+    dduf_entries=None,
+    loaded_keys=None,
+    unexpected_keys=None,
+    offload_index=None,
+    offload_folder=None,
+    state_dict_index=None,
+    state_dict_folder=None,
+    ignore_mismatched_sizes=False,
+    low_cpu_mem_usage=False,
+):
+
     (
         model,
         model_state_dict,
@@ -389,7 +407,24 @@ def load_shard_file(args):
     return offload_index, state_dict_index, mismatched_keys, error_msgs
 
 
-def load_shard_files_with_threadpool(args_list):
+def _load_shard_files_with_threadpool(
+    shard_files,
+    model,
+    model_state_dict,
+    device_map=None,
+    dtype=None,
+    hf_quantizer=None,
+    keep_in_fp32_modules=None,
+    dduf_entries=None,
+    loaded_keys=None,
+    unexpected_keys=None,
+    offload_index=None,
+    offload_folder=None,
+    state_dict_index=None,
+    state_dict_folder=None,
+    ignore_mismatched_sizes=False,
+    low_cpu_mem_usage=False,
+):
     num_workers = int(os.environ.get("HF_PARALLEL_LOADING_WORKERS", "8"))
 
     # Do not spawn anymore workers than you need
