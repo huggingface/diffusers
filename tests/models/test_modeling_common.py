@@ -1460,6 +1460,8 @@ class ModelTesterMixin:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+            # set to no.
+            os.environ["HF_ENABLE_PARALLEL_LOADING"] = "no"
 
     @require_torch_accelerator
     def test_sharded_checkpoints_device_map(self):
