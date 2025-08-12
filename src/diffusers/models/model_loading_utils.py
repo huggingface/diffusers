@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import importlib
 import inspect
 import math
@@ -32,6 +33,7 @@ from huggingface_hub.utils import EntryNotFoundError
 
 from ..quantizers import DiffusersQuantizer
 from ..utils import (
+    DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     GGUF_FILE_EXTENSION,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
@@ -339,7 +341,7 @@ def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefi
     return False
 
 
-def load_shard_file(
+def _load_shard_file(
     shard_file,
     model,
     model_state_dict,
@@ -357,25 +359,6 @@ def load_shard_file(
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
 ):
-
-    (
-        model,
-        model_state_dict,
-        shard_file,
-        device_map,
-        dtype,
-        hf_quantizer,
-        keep_in_fp32_modules,
-        dduf_entries,
-        loaded_keys,
-        unexpected_keys,
-        offload_index,
-        offload_folder,
-        state_dict_index,
-        state_dict_folder,
-        ignore_mismatched_sizes,
-        low_cpu_mem_usage,
-    ) = args
     assign_to_params_buffers = None
     state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
     mismatched_keys = _find_mismatched_keys(
@@ -425,19 +408,38 @@ def _load_shard_files_with_threadpool(
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
 ):
-    num_workers = int(os.environ.get("HF_PARALLEL_LOADING_WORKERS", "8"))
+    num_workers = int(os.environ.get("HF_PARALLEL_LOADING_WORKERS", str(DEFAULT_HF_PARALLEL_LOADING_WORKERS)))
 
     # Do not spawn anymore workers than you need
-    num_workers = min(len(args_list), num_workers)
+    num_workers = min(len(shard_files), num_workers)
 
     logger.info(f"Loading model weights in parallel with {num_workers} workers...")
 
     error_msgs = []
     mismatched_keys = []
 
+    load_one = functools.partial(
+        _load_shard_file,
+        model=model,
+        model_state_dict=model_state_dict,
+        device_map=device_map,
+        dtype=dtype,
+        hf_quantizer=hf_quantizer,
+        keep_in_fp32_modules=keep_in_fp32_modules,
+        dduf_entries=dduf_entries,
+        loaded_keys=loaded_keys,
+        unexpected_keys=unexpected_keys,
+        offload_index=offload_index,
+        offload_folder=offload_folder,
+        state_dict_index=state_dict_index,
+        state_dict_folder=state_dict_folder,
+        ignore_mismatched_sizes=ignore_mismatched_sizes,
+        low_cpu_mem_usage=low_cpu_mem_usage,
+    )
+
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        with logging.tqdm(total=len(args_list), desc="Loading checkpoint shards") as pbar:
-            futures = [executor.submit(load_shard_file, arg) for arg in args_list]
+        with logging.tqdm(total=len(shard_files), desc="Loading checkpoint shards") as pbar:
+            futures = [executor.submit(load_one, shard_file) for shard_file in shard_files]
             for future in as_completed(futures):
                 result = future.result()
                 offload_index, state_dict_index, _mismatched_keys, _error_msgs = result

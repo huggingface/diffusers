@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import copy
+import functools
 import inspect
 import itertools
 import json
@@ -70,8 +71,8 @@ from .model_loading_utils import (
     _expand_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
-    load_shard_file,
-    load_shard_files_with_threadpool,
+    _load_shard_file,
+    _load_shard_files_with_threadpool,
     load_state_dict,
 )
 
@@ -1547,41 +1548,37 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             # if state dict is not None, it means that we don't need to read the files from resolved_model_file also
             resolved_model_file = [state_dict]
 
-        # prepare the arguments.
-        args_list = [
-            (
-                model,
-                model_state_dict,
-                shard_file,
-                device_map,
-                dtype,
-                hf_quantizer,
-                keep_in_fp32_modules,
-                dduf_entries,
-                loaded_keys,
-                unexpected_keys,
-                offload_index,
-                offload_folder,
-                state_dict_index,
-                state_dict_folder,
-                ignore_mismatched_sizes,
-                low_cpu_mem_usage,
-            )
-            for shard_file in resolved_model_file
-        ]
+        # Prepare the loading function sharing the attributes shared between them.
+        load_fn = functools.partial(
+            _load_shard_files_with_threadpool if is_parallel_loading_enabled else _load_shard_file,
+            model=model,
+            model_state_dict=model_state_dict,
+            device_map=device_map,
+            dtype=dtype,
+            hf_quantizer=hf_quantizer,
+            keep_in_fp32_modules=keep_in_fp32_modules,
+            dduf_entries=dduf_entries,
+            loaded_keys=loaded_keys,
+            unexpected_keys=unexpected_keys,
+            offload_index=offload_index,
+            offload_folder=offload_folder,
+            state_dict_index=state_dict_index,
+            state_dict_folder=state_dict_folder,
+            ignore_mismatched_sizes=ignore_mismatched_sizes,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
         if is_parallel_loading_enabled:
-            offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_shard_files_with_threadpool(
-                args_list
-            )
+            offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(resolved_model_file)
             error_msgs += _error_msgs
             mismatched_keys += _mismatched_keys
         else:
-            if len(args_list) > 1:
-                args_list = logging.tqdm(args_list, desc="Loading checkpoint shards")
+            shard_files = resolved_model_file
+            if len(resolved_model_file) > 1:
+                shard_files = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
 
-            for args in args_list:
-                offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_shard_file(args)
+            for shard_file in shard_files:
+                offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)
                 error_msgs += _error_msgs
                 mismatched_keys += _mismatched_keys
 
