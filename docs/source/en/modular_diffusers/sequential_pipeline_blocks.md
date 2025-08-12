@@ -34,10 +34,6 @@ class InputBlock(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_inputs(self):
-        return []
-
-    @property
     def intermediate_outputs(self):
         return [
             OutputParam(name="batch_size", description="calculated batch size"),
@@ -68,11 +64,6 @@ class ImageEncoderBlock(ModularPipelineBlocks):
     def inputs(self):
         return [
             InputParam(name="image", type_hint="PIL.Image", description="raw input image to process"),
-        ]
-
-    @property
-    def intermediate_inputs(self):
-        return [
             InputParam(name="batch_size", type_hint=int),
         ]
 
@@ -89,6 +80,7 @@ class ImageEncoderBlock(ModularPipelineBlocks):
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
         # Simulate processing the image
+        # This will change the state of the image from a PIL image to a tensor for all blocks
         block_state.image = torch.randn(1, 3, 512, 512)
         block_state.batch_size = block_state.batch_size * 2
         block_state.image_latents = torch.randn(1, 4, 64, 64)

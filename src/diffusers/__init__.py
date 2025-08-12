@@ -36,9 +36,7 @@ _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "guiders": [],
     "hooks": [],
-    "image_processor": [
-        "VaeImageProcessor"
-    ],
+    "image_processor": ["VaeImageProcessor"],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "modular_pipelines": [],
@@ -64,9 +62,7 @@ _import_structure = {
         "is_unidecode_available",
         "logging",
     ],
-    "video_processor": [
-        "VideoProcessor"
-    ],
+    "video_processor": ["VideoProcessor"],
 }
 
 try:
