@@ -359,7 +359,6 @@ def _load_shard_file(
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
 ):
-    assign_to_params_buffers = None
     state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
     mismatched_keys = _find_mismatched_keys(
         state_dict,
@@ -383,8 +382,7 @@ def _load_shard_file(
             state_dict_folder=state_dict_folder,
         )
     else:
-        if assign_to_params_buffers is None:
-            assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
+        assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
 
         error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
     return offload_index, state_dict_index, mismatched_keys, error_msgs
@@ -408,9 +406,8 @@ def _load_shard_files_with_threadpool(
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
 ):
-    num_workers = int(os.environ.get("HF_PARALLEL_LOADING_WORKERS", str(DEFAULT_HF_PARALLEL_LOADING_WORKERS)))
-
     # Do not spawn anymore workers than you need
+    num_workers = int(os.environ.get("HF_PARALLEL_LOADING_WORKERS", str(DEFAULT_HF_PARALLEL_LOADING_WORKERS)))
     num_workers = min(len(shard_files), num_workers)
 
     logger.info(f"Loading model weights in parallel with {num_workers} workers...")
