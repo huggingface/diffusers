@@ -198,7 +198,7 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         split_result = torch.split(selected, valid_lengths.tolist(), dim=0)
 
         return split_result
-    
+
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage._get_qwen_prompt_embeds
     def _get_qwen_prompt_embeds(
         self,
