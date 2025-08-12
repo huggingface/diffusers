@@ -36,6 +36,15 @@ _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "guiders": [],
     "hooks": [],
+    "image_processor": [
+        "VaeImageProcessor",
+        "VaeImageProcessorLDM3D", 
+        "PixArtImageProcessor",
+        "IPAdapterMaskProcessor",
+    ],
+    "video_processor": [
+        "VideoProcessor",
+    ],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "modular_pipelines": [],
@@ -938,6 +947,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
+        from .image_processor import (
+            VaeImageProcessor,
+            VaeImageProcessorLDM3D,
+            PixArtImageProcessor,
+            IPAdapterMaskProcessor,
+        )
+        from .video_processor import VideoProcessor
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
