@@ -10,22 +10,22 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# PipelineBlock
+# ModularPipelineBlocks
 
-[`~modular_pipelines.PipelineBlock`] is the basic block for building a [`ModularPipeline`]. It defines what components, inputs/outputs, and computation a block should perform for a specific step in a pipeline. A [`~modular_pipelines.PipelineBlock`] connects with other blocks, using [state](./modular_diffusers_states), to enable the modular construction of workflows.
+[`~modular_pipelines.ModularPipelineBlocks`] is the basic block for building a [`ModularPipeline`]. It defines what components, inputs/outputs, and computation a block should perform for a specific step in a pipeline. A [`~modular_pipelines.ModularPipelineBlocks`] connects with other blocks, using [state](./modular_diffusers_states), to enable the modular construction of workflows.
 
-A [`~modular_pipelines.PipelineBlock`] on it's own can't be executed. It is a blueprint for what a step should do in a pipeline. To actually run and execute a pipeline, the [`~modular_pipelines.PipelineBlock`] needs to be converted into a [`ModularPipeline`].
+A [`~modular_pipelines.ModularPipelineBlocks`] on it's own can't be executed. It is a blueprint for what a step should do in a pipeline. To actually run and execute a pipeline, the [`~modular_pipelines.ModularPipelineBlocks`] needs to be converted into a [`ModularPipeline`].
 
-This guide will show you how to create a [`~modular_pipelines.PipelineBlock`].
+This guide will show you how to create a [`~modular_pipelines.ModularPipelineBlocks`].
 
 ## Inputs and outputs
 
 > [!TIP]
 > Refer to the [States](./modular_diffusers_states) guide if you aren't familiar with how state works in Modular Diffusers.
 
-A [`~modular_pipelines.PipelineBlock`] requires `inputs`, `intermediate_inputs`, and `intermediate_outputs`.
+A [`~modular_pipelines.ModularPipelineBlocks`] requires `inputs`, and `intermediate_outputs`.
 
-- `inputs` are values provided by a user and retrieved from the [`~modular_pipelines.PipelineState`], which means `inputs` can't be modified. This is useful because some workflows resize an image, but the original image is still required. The [`~modular_pipelines.PipelineState`] maintains the original image.
+- `inputs` are values provided by a user and retrieved from the [`~modular_pipelines.PipelineState`]. This is useful because some workflows resize an image, but the original image is still required. The [`~modular_pipelines.PipelineState`] maintains the original image.
 
     Use `InputParam` to define `inputs`.
 
@@ -74,11 +74,11 @@ The computation a block performs is defined in the `__call__` method and it foll
 def __call__(self, components, state):
     # Get a local view of the state variables this block needs
     block_state = self.get_block_state(state)
-    
+
     # Your computation logic here
     # block_state contains all your inputs and intermediate_inputs
     # Access them like: block_state.image, block_state.processed_image
-    
+
     # Update the pipeline state with your updated block_states
     self.set_block_state(state, block_state)
     return components, state

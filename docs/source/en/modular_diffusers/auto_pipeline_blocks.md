@@ -16,34 +16,30 @@ specific language governing permissions and limitations under the License.
 
 This guide shows how to create [`~modular_pipelines.AutoPipelineBlocks`].
 
-Create three [`~modular_pipelines.PipelineBlock`] for text-to-image, image-to-image, and inpainting. These represent the different workflows available in the pipeline.
+Create three [`~modular_pipelines.ModularPipelineBlocks`] for text-to-image, image-to-image, and inpainting. These represent the different workflows available in the pipeline.
 
 <hfoptions id="auto">
 <hfoption id="text-to-image">
 
 ```py
 import torch
-from diffusers.modular_pipelines import PipelineBlock, InputParam, OutputParam
+from diffusers.modular_pipelines import ModularPipelineBlocks, InputParam, OutputParam
 
-class TextToImageBlock(PipelineBlock):
+class TextToImageBlock(ModularPipelineBlocks):
     model_name = "text2img"
-    
+
     @property
     def inputs(self):
         return [InputParam(name="prompt")]
-    
-    @property
-    def intermediate_inputs(self):
-        return []
-    
+
     @property
     def intermediate_outputs(self):
         return []
-    
+
     @property
     def description(self):
         return "I'm a text-to-image workflow!"
-    
+
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
         print("running the text-to-image workflow")
@@ -58,25 +54,21 @@ class TextToImageBlock(PipelineBlock):
 <hfoption id="image-to-image">
 
 ```py
-class ImageToImageBlock(PipelineBlock):
+class ImageToImageBlock(ModularPipelineBlocks):
     model_name = "img2img"
-    
+
     @property
     def inputs(self):
         return [InputParam(name="prompt"), InputParam(name="image")]
-    
-    @property
-    def intermediate_inputs(self):
-        return []
-    
+
     @property
     def intermediate_outputs(self):
         return []
-    
+
     @property
     def description(self):
         return "I'm an image-to-image workflow!"
-    
+
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
         print("running the image-to-image workflow")
@@ -91,25 +83,21 @@ class ImageToImageBlock(PipelineBlock):
 <hfoption id="inpaint">
 
 ```py
-class InpaintBlock(PipelineBlock):
+class InpaintBlock(ModularPipelineBlocks):
     model_name = "inpaint"
-    
+
     @property
     def inputs(self):
         return [InputParam(name="prompt"), InputParam(name="image"), InputParam(name="mask")]
-    
-    @property
-    def intermediate_inputs(self):
-        return []
-    
+
     @property
     def intermediate_outputs(self):
         return []
-    
+
     @property
     def description(self):
         return "I'm an inpaint workflow!"
-    
+
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
         print("running the inpaint workflow")
@@ -129,7 +117,7 @@ You also need to include `block_trigger_inputs`, a list of input names that trig
 Lastly, it is important to include a `description` that clearly explains which inputs trigger which workflow. This helps users understand how to run specific workflows.
 
 ```py
-from diffusers.modular_pipelines import AutoPipelineBlocks 
+from diffusers.modular_pipelines import AutoPipelineBlocks
 
 class AutoImageBlocks(AutoPipelineBlocks):
     # List of sub-block classes to choose from
@@ -138,7 +126,7 @@ class AutoImageBlocks(AutoPipelineBlocks):
     block_names = ["inpaint", "img2img", "text2img"]
     # Trigger inputs that determine which block to run
     # - "mask" triggers inpaint workflow
-    # - "image" triggers img2img workflow (but only if mask is not provided) 
+    # - "image" triggers img2img workflow (but only if mask is not provided)
     # - if none of above, runs the text2img workflow (default)
     block_trigger_inputs = ["mask", "image", None]
     # Description is extremely important for AutoPipelineBlocks

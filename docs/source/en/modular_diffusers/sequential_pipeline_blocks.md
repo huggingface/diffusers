@@ -12,19 +12,19 @@ specific language governing permissions and limitations under the License.
 
 # SequentialPipelineBlocks
 
-[`~modular_pipelines.SequentialPipelineBlocks`] are a multi-block type that composes other [`~modular_pipelines.PipelineBlock`] together in a sequence. Data flows linearly from one block to the next using `intermediate_inputs` and `intermediate_outputs`. Each block in [`~modular_pipelines.SequentialPipelineBlocks`] usually represents a step in the pipeline, and by combining them, you gradually build a pipeline.
+[`~modular_pipelines.SequentialPipelineBlocks`] are a multi-block type that composes other [`~modular_pipelines.ModularPipelineBlocks`] together in a sequence. Data flows linearly from one block to the next using `intermediate_inputs` and `intermediate_outputs`. Each block in [`~modular_pipelines.SequentialPipelineBlocks`] usually represents a step in the pipeline, and by combining them, you gradually build a pipeline.
 
 This guide shows you how to connect two blocks into a [`~modular_pipelines.SequentialPipelineBlocks`].
 
-Create two [`~modular_pipelines.PipelineBlock`]. The first block, `InputBlock`, outputs a `batch_size` value and the second block, `ImageEncoderBlock` uses `batch_size` as `intermediate_inputs`.
+Create two [`~modular_pipelines.ModularPipelineBlocks`]. The first block, `InputBlock`, outputs a `batch_size` value and the second block, `ImageEncoderBlock` uses `batch_size` as `intermediate_inputs`.
 
 <hfoptions id="sequential">
 <hfoption id="InputBlock">
 
 ```py
-from diffusers.modular_pipelines import PipelineBlock, InputParam, OutputParam
+from diffusers.modular_pipelines import ModularPipelineBlocks, InputParam, OutputParam
 
-class InputBlock(PipelineBlock):
+class InputBlock(ModularPipelineBlocks):
 
     @property
     def inputs(self):
@@ -60,9 +60,9 @@ class InputBlock(PipelineBlock):
 
 ```py
 import torch
-from diffusers.modular_pipelines import PipelineBlock, InputParam, OutputParam
+from diffusers.modular_pipelines import ModularPipelineBlocks, InputParam, OutputParam
 
-class ImageEncoderBlock(PipelineBlock):
+class ImageEncoderBlock(ModularPipelineBlocks):
 
     @property
     def inputs(self):

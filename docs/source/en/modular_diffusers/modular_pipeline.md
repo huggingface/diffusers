@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # ModularPipeline
 
-[`ModularPipeline`] converts [`~modular_pipelines.PipelineBlock`]'s into an executable pipeline that loads models and performs the computation steps defined in the block. It is the main interface for running a pipeline and it is very similar to the [`DiffusionPipeline`] API.
+[`ModularPipeline`] converts [`~modular_pipelines.ModularPipelineBlocks`]'s into an executable pipeline that loads models and performs the computation steps defined in the block. It is the main interface for running a pipeline and it is very similar to the [`DiffusionPipeline`] API.
 
 The main difference is to include an expected `output` argument in the pipeline.
 
@@ -125,7 +125,7 @@ t2i_blocks.sub_blocks["prepare_latents"] = CustomPrepareLatents()
 
 ## Creating a pipeline
 
-There are two ways to create a [`ModularPipeline`]. Assemble and create a pipeline from [`PipelineBlocks`] or load an existing pipeline with [`~ModularPipeline.from_pretrained`].
+There are two ways to create a [`ModularPipeline`]. Assemble and create a pipeline from [`ModularPipelineBlocks`] or load an existing pipeline with [`~ModularPipeline.from_pretrained`].
 
 You should also initialize a [`ComponentsManager`] to handle device placement and memory and component management.
 
@@ -133,7 +133,7 @@ You should also initialize a [`ComponentsManager`] to handle device placement an
 > Refer to the [ComponentsManager](./components_manager) doc for more details about how it can help manage components across different workflows.
 
 <hfoptions id="create">
-<hfoption id="PipelineBlocks">
+<hfoption id="ModularPipelineBlocks">
 
 Use the [`~ModularPipelineBlocks.init_pipeline`] method to create a [`ModularPipeline`] from the component and configuration specifications. This method loads the *specifications* from a `modular_model_index.json` file, but it doesn't load the *models* yet.
 
@@ -228,7 +228,7 @@ To modify where components are loaded from, edit the `modular_model_index.json` 
   null, null,
   {
     "repo": "RunDiffusion/Juggernaut-XL-v9",
-    "subfolder": "unet", 
+    "subfolder": "unet",
     "variant": "fp16"
   }
 ]
@@ -311,11 +311,11 @@ The [`~ModularPipeline.get_component_spec`] method gets a copy of the current co
 unet_spec = t2i_pipeline.get_component_spec("unet")
 unet_spec
 ComponentSpec(
-    name='unet', 
-    type_hint=<class 'diffusers.models.unets.unet_2d_condition.UNet2DConditionModel'>, 
-    repo='RunDiffusion/Juggernaut-XL-v9', 
-    subfolder='unet', 
-    variant='fp16', 
+    name='unet',
+    type_hint=<class 'diffusers.models.unets.unet_2d_condition.UNet2DConditionModel'>,
+    repo='RunDiffusion/Juggernaut-XL-v9',
+    subfolder='unet',
+    variant='fp16',
     default_creation_method='from_pretrained'
 )
 

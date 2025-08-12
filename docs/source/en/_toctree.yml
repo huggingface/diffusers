@@ -117,7 +117,7 @@
   - local: modular_diffusers/modular_diffusers_states
     title: States
   - local: modular_diffusers/pipeline_block
-    title: PipelineBlock
+    title: ModularPipelineBlocks
   - local: modular_diffusers/sequential_pipeline_blocks
     title: SequentialPipelineBlocks
   - local: modular_diffusers/loop_sequential_pipeline_blocks

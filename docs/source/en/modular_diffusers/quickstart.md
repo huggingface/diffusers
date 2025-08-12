@@ -20,7 +20,7 @@ This doc will show you how to implement a [Differential Diffusion](https://diffe
 
 [`ModularPipelineBlocks`] are *definitions* that specify the components, inputs, outputs, and computation logic for a single step in a pipeline. There are four types of blocks.
 
-- [`PipelineBlock`] is the most basic block for a single step.
+- [`ModularPipelineBlocks`] is the most basic block for a single step.
 - [`SequentialPipelineBlocks`] is a multi-block that composes other blocks linearly. The outputs of one block are the inputs to the next block.
 - [`LoopSequentialPipelineBlocks`] is a multi-block that runs iteratively and is designed for iterative workflows.
 - [`AutoPipelineBlocks`] is a collection of blocks for different workflows and it selects which block to run based on the input. It is designed to conveniently package multiple workflows into a single pipeline.
@@ -45,14 +45,14 @@ IMAGE2IMAGE_BLOCKS = InsertableDict([
 
 Modular Diffusers uses *state* to communicate data between blocks. There are two types of states.
 
-- [`PipelineState`] is a global state with `inputs` provided by the user and `intermediates` (inputs and outputs). The `intermediates` are passed between blocks and can change whereas the `inputs` can't.
+- [`PipelineState`] is a global state that can be used to track all inputs and outputs across all blocks.
 - [`BlockState`] is a local view of relevant variables from [`PipelineState`] for an individual block.
 
 ## Customizing blocks
 
 [Differential Diffusion](https://differential-diffusion.github.io/) differs from standard image-to-image in its `prepare_latents` and `denoise` blocks. All the other blocks can be reused, but you'll need to modify these two.
 
-Create placeholder `PipelineBlocks` for `prepare_latents` and `denoise` by copying and modifying the existing ones.
+Create placeholder `ModularPipelineBlocks` for `prepare_latents` and `denoise` by copying and modifying the existing ones.
 
 Print the `denoise` block to see that it is composed of [`LoopSequentialPipelineBlocks`] with three sub-blocks, `before_denoiser`, `denoiser`, and `after_denoiser`. Only the `before_denoiser` sub-block needs to be modified to prepare the latent input for the denoiser based on the change map.
 
@@ -65,7 +65,7 @@ Replace the `StableDiffusionXLLoopBeforeDenoiser` sub-block with the new `SDXLDi
 
 ```py
 # Copy existing blocks as placeholders
-class SDXLDiffDiffPrepareLatentsStep(PipelineBlock):
+class SDXLDiffDiffPrepareLatentsStep(ModularPipelineBlocks):
     """Copied from StableDiffusionXLImg2ImgPrepareLatentsStep - will modify later"""
     # ... same implementation as StableDiffusionXLImg2ImgPrepareLatentsStep
 
@@ -79,12 +79,11 @@ class SDXLDiffDiffDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
 The `prepare_latents` block requires the following changes.
 
 - a processor to process the change map
-- a new `inputs` to accept the user-provided change map
-- two new `intermediate_inputs`, `timestep` for precomputing all the latents and `num_inference_steps` to create the mask for updating the image regions
+- a new `inputs` to accept the user-provided change map, `timestep` for precomputing all the latents and `num_inference_steps` to create the mask for updating the image regions
 - update the computation in the `__call__` method for processing the change map and creating the masks, and storing it in the [`BlockState`]
 
 ```diff
-class SDXLDiffDiffPrepareLatentsStep(PipelineBlock):
+class SDXLDiffDiffPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
@@ -95,13 +94,8 @@ class SDXLDiffDiffPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-+           InputParam("diffdiff_map", required=True),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("generator"),
++           InputParam("diffdiff_map", required=True),
 -           InputParam("latent_timestep", required=True, type_hint=torch.Tensor),
 +           InputParam("timesteps", type_hint=torch.Tensor),
 +           InputParam("num_inference_steps", type_hint=int),
@@ -126,28 +120,22 @@ class SDXLDiffDiffPrepareLatentsStep(PipelineBlock):
 
 The `before_denoiser` sub-block requires the following changes.
 
-- a new `inputs` to accept a `denoising_start` parameter
-- two new `intermediate_inputs` to accept the `original_latents` and `diffdiff_masks` from the `prepare_latents` block
+- a new `inputs` to accept a `denoising_start` parameter,  `original_latents` and `diffdiff_masks` from the `prepare_latents` block
 - update the computation in the `__call__` method for applying Differential Diffusion
 
 ```diff
-class SDXLDiffDiffLoopBeforeDenoiser(PipelineBlock):
+class SDXLDiffDiffLoopBeforeDenoiser(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
             "Step within the denoising loop for differential diffusion that prepare the latent input for the denoiser"
         )
 
-+   @property
-+   def inputs(self) -> List[Tuple[str, Any]]:
-+       return [
-+           InputParam("denoising_start"),
-+       ]
-
     @property
-    def intermediate_inputs(self) -> List[str]:
+    def inputs(self) -> List[str]:
         return [
             InputParam("latents", required=True, type_hint=torch.Tensor),
++           InputParam("denoising_start"),
 +           InputParam("original_latents", type_hint=torch.Tensor),
 +           InputParam("diffdiff_masks", type_hint=torch.Tensor),
         ]
@@ -159,7 +147,7 @@ class SDXLDiffDiffLoopBeforeDenoiser(PipelineBlock):
 +       else:
 +           block_state.mask = block_state.diffdiff_masks[i].unsqueeze(0).unsqueeze(1)
 +           block_state.latents = block_state.original_latents[i] * block_state.mask + block_state.latents * (1 - block_state.mask)
-        
+
         # ... rest of existing logic ...
 ```
 
@@ -232,7 +220,7 @@ dd_pipeline = dd_pipeline.to(device)
 
 ip_adapter_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_orange.jpeg")
 image = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png?download=true")
-mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true") 
+mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true")
 
 prompt = "a green pear"
 negative_prompt = "blurry"
@@ -284,7 +272,7 @@ dd_pipeline = dd_pipeline.to(device)
 
 control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_tomato_canny.jpeg")
 image = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png?download=true")
-mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true") 
+mask = load_image("https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask.png?download=true")
 
 prompt = "a green pear"
 negative_prompt = "blurry"
