@@ -119,7 +119,7 @@ export_to_video(output, "output.mp4", fps=16)
 </hfoption>
 <hfoption id="T2V inference speed">
 
-[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
+[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster. [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 ```py
 # pip install ftfy
