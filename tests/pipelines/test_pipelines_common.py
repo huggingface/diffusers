@@ -2354,7 +2354,10 @@ class PipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map=torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+            for component in loaded_pipe.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+        inputs["generator"] = torch.manual_seed(0)
         loaded_out = loaded_pipe(**inputs)[0]
         max_diff = np.abs(to_np(out) - to_np(loaded_out)).max()
         self.assertLess(max_diff, expected_max_difference)
