@@ -346,7 +346,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
-        prompt_2: Union[str, List[str]],
+        prompt_2: Optional[Union[str, List[str]]] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,

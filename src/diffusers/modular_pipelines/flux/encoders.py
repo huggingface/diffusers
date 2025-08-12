@@ -19,9 +19,12 @@ import regex as re
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
+from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL
 from ...utils import USE_PEFT_BACKEND, is_ftfy_available, logging, scale_lora_layers, unscale_lora_layers
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import FluxModularPipeline
 
@@ -50,7 +53,110 @@ def prompt_clean(text):
     return text
 
 
-class FluxTextEncoderStep(PipelineBlock):
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+class FluxVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "flux"
+
+    @property
+    def description(self) -> str:
+        return "Vae Encoder step that encode the input image into a latent representation"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKL),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("image", required=True),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam("generator"),
+            InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
+            InputParam(
+                "preprocess_kwargs",
+                type_hint=Optional[dict],
+                description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="The latents representing the reference image for image-to-image/inpainting generation",
+            )
+        ]
+
+    @staticmethod
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_inpaint.StableDiffusion3InpaintPipeline._encode_vae_image with self.vae->vae
+    def _encode_vae_image(vae, image: torch.Tensor, generator: torch.Generator):
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i]) for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = retrieve_latents(vae.encode(image), generator=generator)
+
+        image_latents = (image_latents - vae.config.shift_factor) * vae.config.scaling_factor
+
+        return image_latents
+
+    @torch.no_grad()
+    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.preprocess_kwargs = block_state.preprocess_kwargs or {}
+        block_state.device = components._execution_device
+        block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
+
+        block_state.image = components.image_processor.preprocess(
+            block_state.image, height=block_state.height, width=block_state.width, **block_state.preprocess_kwargs
+        )
+        block_state.image = block_state.image.to(device=block_state.device, dtype=block_state.dtype)
+
+        block_state.batch_size = block_state.image.shape[0]
+
+        # if generator is a list, make sure the length of it matches the length of images (both should be batch_size)
+        if isinstance(block_state.generator, list) and len(block_state.generator) != block_state.batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(block_state.generator)}, but requested an effective batch"
+                f" size of {block_state.batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        block_state.image_latents = self._encode_vae_image(
+            components.vae, image=block_state.image, generator=block_state.generator
+        )
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class FluxTextEncoderStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -297,7 +403,7 @@ class FluxTextEncoderStep(PipelineBlock):
             prompt_embeds=None,
             pooled_prompt_embeds=None,
             device=block_state.device,
-            num_images_per_prompt=1,  # hardcoded for now.
+            num_images_per_prompt=1,  # TODO: hardcoded for now.
             lora_scale=block_state.text_encoder_lora_scale,
         )
 

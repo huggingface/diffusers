@@ -88,7 +88,7 @@ export_to_video(video, "output.mp4", fps=24)
 </hfoption>
 <hfoption id="inference speed">
 
-[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
+[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster. [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 ```py
 import torch

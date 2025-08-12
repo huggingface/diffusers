@@ -22,14 +22,14 @@ from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLWan
 from ...utils import logging
 from ...video_processor import VideoProcessor
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanDecodeStep(PipelineBlock):
+class WanDecodeStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property

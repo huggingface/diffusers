@@ -60,6 +60,7 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 CHECKPOINT_KEY_NAMES = {
+    "v1": "model.diffusion_model.output_blocks.11.0.skip_connection.weight",
     "v2": "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight",
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",

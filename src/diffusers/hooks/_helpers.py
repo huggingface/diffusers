@@ -133,6 +133,7 @@ def _register_attention_processors_metadata():
             skip_processor_output_fn=_skip_proc_output_fn_Attention_WanAttnProcessor2_0,
         ),
     )
+
     # FluxAttnProcessor
     AttentionProcessorRegistry.register(
         model_class=FluxAttnProcessor,
