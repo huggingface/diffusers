@@ -24,7 +24,7 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL
 from ...utils import USE_PEFT_BACKEND, is_ftfy_available, logging, scale_lora_layers, unscale_lora_layers
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import FluxModularPipeline
 
@@ -67,7 +67,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class FluxVaeEncoderStep(PipelineBlock):
+class FluxVaeEncoderStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -88,11 +88,10 @@ class FluxVaeEncoderStep(PipelineBlock):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [InputParam("image", required=True), InputParam("height"), InputParam("width")]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
         return [
+            InputParam("image", required=True),
+            InputParam("height"),
+            InputParam("width"),
             InputParam("generator"),
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
             InputParam(
@@ -157,7 +156,7 @@ class FluxVaeEncoderStep(PipelineBlock):
         return components, state
 
 
-class FluxTextEncoderStep(PipelineBlock):
+class FluxTextEncoderStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
