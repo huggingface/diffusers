@@ -42,6 +42,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -54,6 +55,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
 def calculate_shift(
@@ -469,7 +471,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         image = image.to(device=device, dtype=dtype)
         if image.shape[1] != self.latent_channels:
-            image_latents = self._encode_vae_image(image=image, generator=generator)   # [B,z,1,H',W']
+            image_latents = self._encode_vae_image(image=image, generator=generator)  # [B,z,1,H',W']
         else:
             image_latents = image
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:

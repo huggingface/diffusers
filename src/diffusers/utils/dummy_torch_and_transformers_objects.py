@@ -1756,6 +1756,7 @@ class QwenImagePipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
+
 class QwenImageImg2ImgPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -1769,6 +1770,7 @@ class QwenImageImg2ImgPipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
+
 
 class QwenImageInpaintPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
