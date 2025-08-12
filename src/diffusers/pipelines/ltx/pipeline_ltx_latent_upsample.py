@@ -93,7 +93,8 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         init_latents = self._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
         return init_latents
 
-    def adain_filter_latent(self, latents: torch.Tensor, reference_latents: torch.Tensor, factor: float = 1.0):
+    @staticmethod
+    def adain_filter_latent(latents: torch.Tensor, reference_latents: torch.Tensor, factor: float = 1.0):
         """
         Applies Adaptive Instance Normalization (AdaIN) to a latent tensor based on statistics from a reference latent
         tensor.
