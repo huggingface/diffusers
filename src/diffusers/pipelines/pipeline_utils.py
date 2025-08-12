@@ -67,6 +67,7 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
+from ..utils.testing_utils import torch_device
 from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
 
 
@@ -109,7 +110,7 @@ for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
 
 # TODO: support single-device namings
-SUPPORTED_DEVICE_MAP = ["balanced", "cuda"]
+SUPPORTED_DEVICE_MAP = ["balanced"] + [torch_device]
 
 logger = logging.get_logger(__name__)
 
