@@ -19,7 +19,6 @@ import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PipelineImageInput
 from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTXVideo
 from ...models.transformers import LTXVideoTransformer3DModel
@@ -559,7 +558,7 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
         """Extract spatial tiles from all inputs for a given spatial region."""
         tile_latents = latents[:, :, :, v_start:v_end, h_start:h_end]
         return tile_latents
-    
+
     def _select_latents(self, latents: torch.Tensor, start_index: int, end_index: int) -> torch.Tensor:
         num_frames = latents.shape[2]
         start_idx = num_frames + start_index if start_index < 0 else start_index
@@ -570,11 +569,9 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
             start_idx = min(start_idx, end_idx)
         latents = latents[:, :, start_idx : end_idx + 1, :, :].clone()
         return latents
-    
+
     @staticmethod
-    def _create_spatial_weights(
-        latents, v, h, horizontal_tiles, vertical_tiles, spatial_overlap
-    ):
+    def _create_spatial_weights(latents, v, h, horizontal_tiles, vertical_tiles, spatial_overlap):
         """Create blending weights for spatial tiles."""
         tile_weights = torch.ones_like(latents)
 
@@ -658,7 +655,7 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
         latent_width = width // self.vae_spatial_compression_ratio
         shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        
+
         if latents is not None:
             if latents.shape != shape:
                 raise ValueError(
@@ -678,11 +675,7 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
             device=device,
         )
         video_ids = self._scale_video_ids(
-            video_ids,
-            self.vae_spatial_compression_ratio,
-            self.vae_temporal_compression_ratio,
-            0,
-            device
+            video_ids, self.vae_spatial_compression_ratio, self.vae_temporal_compression_ratio, 0, device
         )
 
         return latents, video_ids
@@ -857,7 +850,9 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if horizontal_tiles > 1 or vertical_tiles > 1:
-            raise ValueError("Setting `horizontal_tiles` or `vertical_tiles` to a value greater than 0 is not supported yet.")
+            raise ValueError(
+                "Setting `horizontal_tiles` or `vertical_tiles` to a value greater than 0 is not supported yet."
+            )
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -967,11 +962,14 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                 first_tile_out_latents = None
 
                 for index_temporal_tile, (start_index, end_index) in enumerate(
-                    zip(range(0, temporal_range_max, temporal_range_step),
-                        range(temporal_tile_size, temporal_range_max, temporal_range_step)
+                    zip(
+                        range(0, temporal_range_max, temporal_range_step),
+                        range(temporal_tile_size, temporal_range_max, temporal_range_step),
                     )
                 ):
-                    latent_chunk = self._select_latents(tile_latents, start_index, min(end_index - 1, tile_latents.shape[2] - 1))
+                    latent_chunk = self._select_latents(
+                        tile_latents, start_index, min(end_index - 1, tile_latents.shape[2] - 1)
+                    )
                     latent_tile_num_frames = latent_chunk.shape[2]
 
                     if start_index > 0:
@@ -981,12 +979,14 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                         total_latent_num_frames = last_latent_tile_num_frames + latent_tile_num_frames
 
                         conditioning_mask = torch.zeros(
-                            (batch_size, total_latent_num_frames), dtype=torch.float32, device=device,
+                            (batch_size, total_latent_num_frames),
+                            dtype=torch.float32,
+                            device=device,
                         )
                         conditioning_mask[:, :last_latent_tile_num_frames] = 1.0
                     else:
                         total_latent_num_frames = latent_tile_num_frames
-                    
+
                     latent_chunk = self._pack_latents(
                         latent_chunk,
                         self.transformer_spatial_patch_size,
@@ -1002,7 +1002,7 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                         patch_size=self.transformer_spatial_patch_size,
                         device=device,
                     )
-                    
+
                     if start_index > 0:
                         conditioning_mask = conditioning_mask.gather(1, video_ids[:, 0])
                         conditioning_mask_model_input = (
@@ -1010,13 +1010,13 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                             if self.do_classifier_free_guidance
                             else conditioning_mask
                         )
-                    
+
                     video_ids = self._scale_video_ids(
                         video_ids,
                         scale_factor=self.vae_spatial_compression_ratio,
                         scale_factor_t=self.vae_temporal_compression_ratio,
                         frame_index=0,
-                        device=device
+                        device=device,
                     )
                     video_ids = video_ids.float()
                     video_ids[:, 0] = video_ids[:, 0] * (1.0 / frame_rate)
@@ -1024,7 +1024,9 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                         video_ids = torch.cat([video_ids, video_ids], dim=0)
 
                     # Set timesteps
-                    inner_timesteps, inner_num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+                    inner_timesteps, inner_num_inference_steps = retrieve_timesteps(
+                        self.scheduler, num_inference_steps, device, timesteps
+                    )
                     sigmas = self.scheduler.sigmas
                     num_warmup_steps = max(len(inner_timesteps) - inner_num_inference_steps * self.scheduler.order, 0)
                     self._num_timesteps = len(inner_timesteps)
@@ -1035,7 +1037,9 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                                 continue
 
                             self._current_timestep = t
-                            latent_model_input = torch.cat([latent_chunk] * 2) if self.do_classifier_free_guidance else latent_chunk
+                            latent_model_input = (
+                                torch.cat([latent_chunk] * 2) if self.do_classifier_free_guidance else latent_chunk
+                            )
                             latent_model_input = latent_model_input.to(prompt_embeds.dtype)
                             timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1).float()
                             if start_index > 0:
@@ -1054,7 +1058,9 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
 
                             if self.do_classifier_free_guidance:
                                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                                noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                                noise_pred = noise_pred_uncond + self.guidance_scale * (
+                                    noise_pred_text - noise_pred_uncond
+                                )
                                 timestep, _ = timestep.chunk(2)
 
                                 if self.guidance_rescale > 0:
@@ -1082,7 +1088,9 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                                 prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
 
                             # call the callback, if provided
-                            if i == len(inner_timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                            if i == len(inner_timesteps) - 1 or (
+                                (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                            ):
                                 progress_bar.update()
 
                             if XLA_AVAILABLE:
@@ -1096,13 +1104,15 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                         self.transformer_spatial_patch_size,
                         self.transformer_temporal_patch_size,
                     )
-                    
+
                     if start_index == 0:
                         first_tile_out_latents = latent_chunk.clone()
                     else:
                         # We drop the first latent frame as it's a reinterpreted 8-frame latent understood as 1-frame latent
-                        latent_chunk = latent_chunk[:, :, last_latent_tile_num_frames + 1:, :, :]
-                        latent_chunk = LTXLatentUpsamplePipeline.adain_filter_latent(latent_chunk, first_tile_out_latents, adain_factor)
+                        latent_chunk = latent_chunk[:, :, last_latent_tile_num_frames + 1 :, :, :]
+                        latent_chunk = LTXLatentUpsamplePipeline.adain_filter_latent(
+                            latent_chunk, first_tile_out_latents, adain_factor
+                        )
 
                         alpha = torch.linspace(1, 0, temporal_overlap + 1, device=latent_chunk.device)[1:-1]
                         alpha = alpha.view(1, 1, -1, 1, 1)
@@ -1111,14 +1121,17 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                         t_minus_one = temporal_overlap - 1
                         parts = [
                             tile_out_latents[:, :, :-t_minus_one],
-                            alpha * tile_out_latents[:, :, -t_minus_one:] + (1 - alpha) * latent_chunk[:, :, :t_minus_one],
+                            alpha * tile_out_latents[:, :, -t_minus_one:]
+                            + (1 - alpha) * latent_chunk[:, :, :t_minus_one],
                             latent_chunk[:, :, t_minus_one:],
                         ]
                         latent_chunk = torch.cat(parts, dim=2)
 
                     tile_out_latents = latent_chunk.clone()
 
-                tile_weights = self._create_spatial_weights(tile_out_latents, v, h, horizontal_tiles, vertical_tiles, spatial_overlap)
+                tile_weights = self._create_spatial_weights(
+                    tile_out_latents, v, h, horizontal_tiles, vertical_tiles, spatial_overlap
+                )
                 final_latents[:, :, :, v_start:v_end, h_start:h_end] += latent_chunk * tile_weights
                 weights[:, :, :, v_start:v_end, h_start:h_end] += tile_weights
 

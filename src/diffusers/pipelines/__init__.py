@@ -672,7 +672,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
-        from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline, LTXConditionInfinitePipeline
+        from .ltx import (
+            LTXConditionInfinitePipeline,
+            LTXConditionPipeline,
+            LTXImageToVideoPipeline,
+            LTXLatentUpsamplePipeline,
+            LTXPipeline,
+        )
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
         from .marigold import (
