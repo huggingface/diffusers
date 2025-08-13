@@ -9,11 +9,11 @@
   - local: stable_diffusion
     title: Basic performance
 
-- title: DiffusionPipeline
+- title: Pipelines
   isExpanded: false
   sections:
   - local: using-diffusers/loading
-    title: Load pipelines
+    title: DiffusionPipeline
   - local: tutorials/autopipeline
     title: AutoPipeline
   - local: using-diffusers/custom_pipeline_overview

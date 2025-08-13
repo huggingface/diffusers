@@ -10,25 +10,17 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Load pipelines
-
 [[open-in-colab]]
 
-Diffusion systems consist of multiple components like parameterized models and schedulers that interact in complex ways. That is why we designed the [`DiffusionPipeline`] to wrap the complexity of the entire diffusion system into an easy-to-use API. At the same time, the [`DiffusionPipeline`] is entirely customizable so you can modify each component to build a diffusion system for your use case.
+# DiffusionPipeline
 
-This guide will show you how to load:
+Diffusion models consists of multiple components like UNets or diffusion transformers (DiTs), text encoders, variational autoencoders (VAEs), and schedulers. The [`DiffusionPipeline`] wraps all of these components into a single easy-to-use API without giving up the flexibility to modify it's components.
 
-- pipelines from the Hub and locally
-- different components into a pipeline
-- multiple pipelines without increasing memory usage
-- checkpoint variants such as different floating point types or non-exponential mean averaged (EMA) weights
+This guide will show you how to load a [`DiffusionPipeline`].
 
-## Load a pipeline
+## Loading a pipeline
 
-> [!TIP]
-> Skip to the [DiffusionPipeline explained](#diffusionpipeline-explained) section if you're interested in an explanation about how the [`DiffusionPipeline`] class works.
-
-There are two ways to load a pipeline for a task:
+There are two ways to load a pipeline.
 
 1. Load the generic [`DiffusionPipeline`] class and allow it to automatically detect the correct pipeline class from the checkpoint.
 2. Load a specific pipeline class for a specific task.
@@ -79,21 +71,6 @@ pipeline = StableDiffusionImg2ImgPipeline.from_pretrained("stable-diffusion-v1-5
 </hfoptions>
 
 Use the Space below to gauge a pipeline's memory requirements before you download and load it to see if it runs on your hardware.
-
-<div class="block dark:hidden">
-	<iframe
-        src="https://diffusers-compute-pipeline-size.hf.space?__theme=light"
-        width="850"
-        height="1600"
-    ></iframe>
-</div>
-<div class="hidden dark:block">
-    <iframe
-        src="https://diffusers-compute-pipeline-size.hf.space?__theme=dark"
-        width="850"
-        height="1600"
-    ></iframe>
-</div>
 
 ### Specifying Component-Specific Data Types
 
