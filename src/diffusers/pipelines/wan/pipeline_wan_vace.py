@@ -526,17 +526,11 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents = ((latents.float() - latents_mean) * latents_std).to(vae_dtype)
         else:
             mask = mask.to(dtype=vae_dtype)
-            mask = torch.where(mask > 0.5, 1.0, 0.0)
-            
-            inactive: torch.Tensor = video * (1 - mask)
-            reactive: torch.Tensor = video * mask
-
-            inactive = inactive.to(dtype=vae_dtype)
-            reactive = reactive.to(dtype=vae_dtype)
-
+            mask = torch.where(mask > 0.5, 1.0, 0.0).to(dtype=vae_dtype)     
+            inactive = video * (1 - mask)
+            reactive = video * mask
             inactive = retrieve_latents(self.vae.encode(inactive), generator, sample_mode="argmax")
             reactive = retrieve_latents(self.vae.encode(reactive), generator, sample_mode="argmax")
-
             inactive = ((inactive.float() - latents_mean) * latents_std).to(vae_dtype)
             reactive = ((reactive.float() - latents_mean) * latents_std).to(vae_dtype)
             latents = torch.cat([inactive, reactive], dim=1)
