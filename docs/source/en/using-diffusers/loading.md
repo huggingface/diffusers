@@ -112,7 +112,7 @@ print(pipe.transformer.dtype, pipe.vae.dtype)  # (torch.bfloat16, torch.float16)
 
 If a component is not explicitly specified in the dictionary and no `default` is provided, it will be loaded with `torch.float32`.
 
-#### Parallel loading
+### Parallel loading
 
 Large models are often [sharded](../training/distributed_inference#model-sharding) into smaller files so that they are easier to load. Diffusers supports loading shards in parallel to speed up the loading process.
 
@@ -120,6 +120,8 @@ Set the environment variables below to enable parallel loading.
 
 - Set `HF_ENABLE_PARALLEL_LOADING` to `"YES"` to enable parallel loading of shards.
 - Set `HF_PARALLEL_LOADING_WORKERS` to configure the number of parallel threads to use when loading shards. More workers loads a model faster but uses more memory.
+
+The `device_map` argument should be set to `"cuda"` to pre-allocate a large chunk of memory based on the model size. This substantially reduces model load time because warming up the memory allocator now avoids many smaller calls to the allocator later.
 
 ```py
 import os
