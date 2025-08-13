@@ -30,7 +30,6 @@ from huggingface_hub import (
     ModelCardData,
     create_repo,
     hf_hub_download,
-    model_info,
     snapshot_download,
     upload_folder,
 )
@@ -403,28 +402,19 @@ def _get_checkpoint_shard_files(
         allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
 
     ignore_patterns = ["*.json", "*.md"]
-    # `model_info` call must guarded with the above condition.
-    local = False
-    if local_files_only:
+    try:
         temp_dir = snapshot_download(
             repo_id=pretrained_model_name_or_path, cache_dir=cache_dir, local_files_only=local_files_only
         )
-        model_files_info = _get_filepaths_for_folder(temp_dir)
-        local = True
-    else:
-        try:
-            model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
-        except ConnectionError as e:
-            raise EnvironmentError(
-                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
-                " again after checking your internet connection."
-            ) from e
+    except ConnectionError as e:
+        raise EnvironmentError(
+            f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+            " again after checking your internet connection."
+        ) from e
 
+    model_files_info = _get_filepaths_for_folder(temp_dir)
     for shard_file in original_shard_filenames:
-        if local:
-            shard_file_present = any(shard_file in k for k in model_files_info)
-        else:
-            shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
+        shard_file_present = any(shard_file in k for k in model_files_info)
         if not shard_file_present:
             raise EnvironmentError(
                 f"{shards_path} does not appear to have a file named {shard_file} which is "
