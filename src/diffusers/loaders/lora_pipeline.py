@@ -5065,7 +5065,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`WanTransformer3DModel`]. Specific to [`WanPipeline`] and `[WanImageToVideoPipeline`].
     """
 
-    _lora_loadable_modules = ["transformer", "transformer_2"]
+    _lora_loadable_modules = ["transformer"]
     transformer_name = TRANSFORMER_NAME
 
     @classmethod
@@ -5273,10 +5273,13 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
         if load_into_transformer_2:
             if not hasattr(self, "transformer_2"):
-                raise ValueError(
-                    "Cannot load LoRA into transformer_2: transformer_2 is not available for this model"
+                raise AttributeError(
+                    f"'{type(self).__name__}' object has no attribute transformer_2"
+                    "Note that Wan2.1 models do not have a transformer_2 component."
                     "Ensure the model has a transformer_2 component before setting load_into_transformer_2=True."
                 )
+            if "transformer_2" not in self._lora_loadable_modules:
+                self._lora_loadable_modules.append("transformer_2")
             self.load_lora_into_transformer(
                 state_dict,
                 transformer=self.transformer_2,
