@@ -436,6 +436,7 @@ def _get_checkpoint_shard_files(
         if subfolder is not None:
             cached_folder = os.path.join(cached_folder, subfolder)
 
+        # Check again after downloading/loading from the cache.
         model_files_info = _get_filepaths_for_folder(cached_folder)
         for shard_file in original_shard_filenames:
             shard_file_present = any(shard_file in k for k in model_files_info)
