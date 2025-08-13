@@ -1005,6 +1005,11 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                     
                     if start_index > 0:
                         conditioning_mask = conditioning_mask.gather(1, video_ids[:, 0])
+                        conditioning_mask_model_input = (
+                            torch.cat([conditioning_mask, conditioning_mask])
+                            if self.do_classifier_free_guidance
+                            else conditioning_mask
+                        )
                     
                     video_ids = self._scale_video_ids(
                         video_ids,
@@ -1024,137 +1029,77 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                     num_warmup_steps = max(len(inner_timesteps) - inner_num_inference_steps * self.scheduler.order, 0)
                     self._num_timesteps = len(inner_timesteps)
 
-                    if start_index == 0:
-                        with self.progress_bar(total=inner_num_inference_steps) as progress_bar:
-                            for i, t in enumerate(inner_timesteps):
-                                if self.interrupt:
-                                    continue
+                    with self.progress_bar(total=inner_num_inference_steps) as progress_bar:
+                        for i, t in enumerate(inner_timesteps):
+                            if self.interrupt:
+                                continue
 
-                                self._current_timestep = t
-                                latent_model_input = torch.cat([latent_chunk] * 2) if self.do_classifier_free_guidance else latent_chunk
-                                latent_model_input = latent_model_input.to(prompt_embeds.dtype)
-                                timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1).float()
-
-                                with self.transformer.cache_context("cond_uncond"):
-                                    noise_pred = self.transformer(
-                                        hidden_states=latent_model_input,
-                                        encoder_hidden_states=prompt_embeds,
-                                        timestep=timestep,
-                                        encoder_attention_mask=prompt_attention_mask,
-                                        video_coords=video_ids,
-                                        attention_kwargs=attention_kwargs,
-                                        return_dict=False,
-                                    )[0]
-
-                                if self.do_classifier_free_guidance:
-                                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-                                    timestep, _ = timestep.chunk(2)
-
-                                    if self.guidance_rescale > 0:
-                                        # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                                        noise_pred = rescale_noise_cfg(
-                                            noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale
-                                        )
-
-                                latent_chunk = self.scheduler.step(
-                                    -noise_pred, t, latent_chunk, per_token_timesteps=timestep, return_dict=False
-                                )[0]
-
-                                if callback_on_step_end is not None:
-                                    callback_kwargs = {}
-                                    for k in callback_on_step_end_tensor_inputs:
-                                        callback_kwargs[k] = locals()[k]
-                                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                                    latent_chunk = callback_outputs.pop("latents", latent_chunk)
-                                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-
-                                # call the callback, if provided
-                                if i == len(inner_timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                                    progress_bar.update()
-
-                                if XLA_AVAILABLE:
-                                    xm.mark_step()
-
-                        tile_out_latents = self._unpack_latents(
-                            latent_chunk,
-                            latent_tile_num_frames,
-                            latent_tile_height,
-                            latent_tile_width,
-                            self.transformer_spatial_patch_size,
-                            self.transformer_temporal_patch_size,
-                        )
-                        first_tile_out_latents = tile_out_latents.clone()
-                    else:
-                        with self.progress_bar(total=inner_num_inference_steps) as progress_bar:
-                            for i, t in enumerate(inner_timesteps):
-                                if self.interrupt:
-                                    continue
-
-                                self._current_timestep = t
-                                latent_model_input = torch.cat([latent_chunk] * 2) if self.do_classifier_free_guidance else latent_chunk
-                                latent_model_input = latent_model_input.to(prompt_embeds.dtype)
-                                conditioning_mask_model_input = (
-                                    torch.cat([conditioning_mask, conditioning_mask])
-                                    if self.do_classifier_free_guidance
-                                    else conditioning_mask
-                                )
-                                timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1).float()
+                            self._current_timestep = t
+                            latent_model_input = torch.cat([latent_chunk] * 2) if self.do_classifier_free_guidance else latent_chunk
+                            latent_model_input = latent_model_input.to(prompt_embeds.dtype)
+                            timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1).float()
+                            if start_index > 0:
                                 timestep = torch.min(timestep, (1 - conditioning_mask_model_input) * 1000.0)
 
-                                with self.transformer.cache_context("cond_uncond"):
-                                    noise_pred = self.transformer(
-                                        hidden_states=latent_model_input,
-                                        encoder_hidden_states=prompt_embeds,
-                                        timestep=timestep,
-                                        encoder_attention_mask=prompt_attention_mask,
-                                        video_coords=video_ids,
-                                        attention_kwargs=attention_kwargs,
-                                        return_dict=False,
-                                    )[0]
-
-                                if self.do_classifier_free_guidance:
-                                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-                                    timestep, _ = timestep.chunk(2)
-
-                                    if self.guidance_rescale > 0:
-                                        # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                                        noise_pred = rescale_noise_cfg(
-                                            noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale
-                                        )
-
-                                denoised_latent_chunk = self.scheduler.step(
-                                    -noise_pred, t, latent_chunk, per_token_timesteps=timestep, return_dict=False
+                            with self.transformer.cache_context("cond_uncond"):
+                                noise_pred = self.transformer(
+                                    hidden_states=latent_model_input,
+                                    encoder_hidden_states=prompt_embeds,
+                                    timestep=timestep,
+                                    encoder_attention_mask=prompt_attention_mask,
+                                    video_coords=video_ids,
+                                    attention_kwargs=attention_kwargs,
+                                    return_dict=False,
                                 )[0]
+
+                            if self.do_classifier_free_guidance:
+                                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                                noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                                timestep, _ = timestep.chunk(2)
+
+                                if self.guidance_rescale > 0:
+                                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                                    noise_pred = rescale_noise_cfg(
+                                        noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale
+                                    )
+
+                            denoised_latent_chunk = self.scheduler.step(
+                                -noise_pred, t, latent_chunk, per_token_timesteps=timestep, return_dict=False
+                            )[0]
+                            if start_index == 0:
+                                latent_chunk = denoised_latent_chunk
+                            else:
                                 tokens_to_denoise_mask = (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1)
                                 latent_chunk = torch.where(tokens_to_denoise_mask, denoised_latent_chunk, latent_chunk)
 
-                                if callback_on_step_end is not None:
-                                    callback_kwargs = {}
-                                    for k in callback_on_step_end_tensor_inputs:
-                                        callback_kwargs[k] = locals()[k]
-                                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                            if callback_on_step_end is not None:
+                                callback_kwargs = {}
+                                for k in callback_on_step_end_tensor_inputs:
+                                    callback_kwargs[k] = locals()[k]
+                                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                                    latent_chunk = callback_outputs.pop("latents", latent_chunk)
-                                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                                latent_chunk = callback_outputs.pop("latents", latent_chunk)
+                                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
 
-                                # call the callback, if provided
-                                if i == len(inner_timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                                    progress_bar.update()
+                            # call the callback, if provided
+                            if i == len(inner_timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                                progress_bar.update()
 
-                                if XLA_AVAILABLE:
-                                    xm.mark_step()
+                            if XLA_AVAILABLE:
+                                xm.mark_step()
 
-                        latent_chunk = self._unpack_latents(
-                            latent_chunk,
-                            total_latent_num_frames,
-                            latent_tile_height,
-                            latent_tile_width,
-                            self.transformer_spatial_patch_size,
-                            self.transformer_temporal_patch_size,
-                        )
+                    latent_chunk = self._unpack_latents(
+                        latent_chunk,
+                        total_latent_num_frames,
+                        latent_tile_height,
+                        latent_tile_width,
+                        self.transformer_spatial_patch_size,
+                        self.transformer_temporal_patch_size,
+                    )
+                    
+                    if start_index == 0:
+                        first_tile_out_latents = latent_chunk.clone()
+                    else:
                         # We drop the first latent frame as it's a reinterpreted 8-frame latent understood as 1-frame latent
                         latent_chunk = latent_chunk[:, :, last_latent_tile_num_frames + 1:, :, :]
                         latent_chunk = LTXLatentUpsamplePipeline.adain_filter_latent(latent_chunk, first_tile_out_latents, adain_factor)
@@ -1171,7 +1116,7 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                         ]
                         latent_chunk = torch.cat(parts, dim=2)
 
-                        tile_out_latents = latent_chunk.clone()
+                    tile_out_latents = latent_chunk.clone()
 
                 tile_weights = self._create_spatial_weights(tile_out_latents, v, h, horizontal_tiles, vertical_tiles, spatial_overlap)
                 final_latents[:, :, :, v_start:v_end, h_start:h_end] += latent_chunk * tile_weights
