@@ -407,8 +407,7 @@ def _load_shard_files_with_threadpool(
     low_cpu_mem_usage=False,
 ):
     # Do not spawn anymore workers than you need
-    num_workers = int(os.environ.get("HF_PARALLEL_LOADING_WORKERS", str(DEFAULT_HF_PARALLEL_LOADING_WORKERS)))
-    num_workers = min(len(shard_files), num_workers)
+    num_workers = min(len(shard_files), DEFAULT_HF_PARALLEL_LOADING_WORKERS)
 
     logger.info(f"Loading model weights in parallel with {num_workers} workers...")
 
