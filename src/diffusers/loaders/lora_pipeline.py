@@ -5687,15 +5687,34 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_transformer(
-            state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
+        if load_into_transformer_2:
+            if not hasattr(self, "transformer_2"):
+                raise ValueError(
+                    "Cannot load LoRA into transformer_2: transformer_2 is not available for this model"
+                    "Ensure the model has a transformer_2 component before setting load_into_transformer_2=True."
+                )
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=self.transformer_2,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+        else:
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->SkyReelsV2Transformer3DModel
