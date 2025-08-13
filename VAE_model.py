@@ -1,261 +1,353 @@
+# video_vae_modular_final.py
+
+# ==============================================================================
+# 1. IMPORTS & CONFIGURATION
+# ==============================================================================
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from transformers import AutoModel, AutoProcessor, AutoModelForCausalLM
+from typing import List, Dict
+from dataclasses import dataclass
 
-# === Projected LFQ Quantizer ===
+@dataclass
+class VideoVAEConfig:
+    in_channels: int = 3
+    base_ch: int = 64
+    num_blocks: int = 4
+    quant_emb_dim: int = 16
+    alignment_dim: int = 256
+    quant_align_loss_weight: float = 0.1
+    likelihood_loss_weight: float = 0.2
+    dino_loss_weight: float = 0.25
+
+# ==============================================================================
+# 2. PERCEPTUAL & TEXT MODULES
+# ==============================================================================
+
+class DINOv2Extractor(nn.Module):
+    """
+    A frozen DINOv2 model to extract perceptual features from video frames.
+    """
+    def __init__(self, device="cuda"):
+        super().__init__()
+        self.device = device
+        model_name = "facebook/dinov2-base"
+        print("Loading DINOv2 model and processor...")
+        self.processor = AutoProcessor.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).to(self.device).eval()
+        for param in self.model.parameters():
+            param.requires_grad = False
+        print("DINOv2 loaded and frozen successfully. 🦖")
+
+    def forward(self, video_tensor: torch.Tensor) -> torch.Tensor:
+        b, c, t, h, w = video_tensor.shape
+        video_tensor = video_tensor.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+        inputs = self.processor(images=video_tensor, return_tensors="pt", do_rescale=False).to(self.device)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        # Return the features of the [CLS] token
+        return outputs.last_hidden_state[:, 0].view(b, t, -1)
+
+class QwenVLTextEncoder(nn.Module):
+    """A frozen Qwen-VL model to extract text embeddings."""
+    def __init__(self, device="cuda"):
+        super().__init__()
+        model_id = "Qwen/Qwen2.5-VL-Instruct"
+        self.device = device
+        print("Loading Qwen-VL model and processor...")
+        self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        self.model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype="auto", device_map="auto", trust_remote_code=True).eval()
+        for param in self.model.parameters(): param.requires_grad = False
+        print("Qwen-VL loaded and frozen successfully. 🥶")
+
+    def forward(self, text_prompts: list[str]):
+        messages = [[{"role": "user", "content": [{"type": "text", "text": prompt}]}] for prompt in text_prompts]
+        text_inputs = self.processor(conversations=messages, return_tensors="pt", padding=True).to(self.model.device)
+        with torch.no_grad():
+            outputs = self.model(**text_inputs, output_hidden_states=True)
+        return outputs.hidden_states[-1].to(self.device)
+
+class TextVideoCrossAttention(nn.Module):
+    """Performs cross-attention between video features (Q) and text features (K,V)."""
+    def __init__(self, video_channels, text_embed_dim):
+        super().__init__()
+        self.q_proj, self.k_proj, self.v_proj = nn.Linear(video_channels, video_channels), nn.Linear(text_embed_dim, video_channels), nn.Linear(text_embed_dim, video_channels)
+        self.out_proj = nn.Linear(video_channels, video_channels)
+
+    def forward(self, video_feat, text_embedding):
+        B, C, T, H, W = video_feat.shape
+        video_seq = video_feat.permute(0, 2, 3, 4, 1).reshape(B, T * H * W, C)
+        q, k, v = self.q_proj(video_seq), self.k_proj(text_embedding), self.v_proj(text_embedding)
+        attn_output = F.scaled_dot_product_attention(q.unsqueeze(1), k, v).squeeze(1)
+        return self.out_proj(attn_output).reshape(B, T, H, W, C).permute(0, 4, 1, 2, 3)
+
+# ==============================================================================
+# 3. CORE ARCHITECTURAL BLOCKS
+# ==============================================================================
+
 class ProjectedLFQ(nn.Module):
-    def __init__(self, in_channels, quant_channels=16, entropy_loss_weight=0.1):
+    """Projects features and quantizes them, returning an entropy loss."""
+    def __init__(self, in_channels, quant_channels, entropy_loss_weight=0.1):
         super().__init__()
         self.project = nn.Conv3d(in_channels, quant_channels, 1)
         self.entropy_loss_weight = entropy_loss_weight
 
     def forward(self, x):
         x_proj = self.project(x)
-        quantized_x = torch.where(x_proj > 0, torch.ones_like(x_proj), -torch.ones_like(x_proj))
+        quantized_x_hard = torch.where(x_proj > 0, 1.0, -1.0)
+        quantized_x = x_proj + (quantized_x_hard - x_proj).detach()
         indices = (quantized_x > 0).long()
-        probs = indices.float().mean(dim=(0,2,3,4))
-        entropy = - (probs * torch.log(probs.clamp(min=1e-8)) +
-                     (1 - probs) * torch.log((1 - probs).clamp(min=1e-8)))
+        probs = indices.float().mean(dim=(0, 2, 3, 4))
+        entropy = - (probs * torch.log(probs.clamp(min=1e-8)) + (1 - probs) * torch.log((1 - probs).clamp(min=1e-8)))
         entropy_loss = -entropy.mean() * self.entropy_loss_weight
         return quantized_x, indices, entropy_loss
 
-# === Efficient Cross Attention (memory-safe) ===
-class EfficientCrossAttention3D(nn.Module):
-    def __init__(self, channels, mode="channel"):
-        super().__init__()
-        self.mode = mode
-        self.q_proj = nn.Conv3d(channels, channels, 1)
-        self.k_proj = nn.Conv3d(channels, channels, 1)
-        self.v_proj = nn.Conv3d(channels, channels, 1)
-        self.out_proj = nn.Conv3d(channels, channels, 1)
-
-    def forward(self, q, kv):
-        B, C, T, H, W = q.shape
-        q_proj = self.q_proj(q)
-        k_proj = self.k_proj(kv)
-        v_proj = self.v_proj(kv)
-        if self.mode == "channel":
-            q_ = q_proj.permute(0,2,3,4,1).reshape(-1, C).unsqueeze(1)
-            k_ = k_proj.permute(0,2,3,4,1).reshape(-1, C).unsqueeze(2)
-            attn_scores = torch.softmax(torch.bmm(q_, k_), dim=-1)
-            v_ = v_proj.permute(0,2,3,4,1).reshape(-1, C).unsqueeze(1)
-            out = (attn_scores * v_).reshape(B, T, H, W, C).permute(0,4,1,2,3)
-        else:
-            q_ = q_proj.permute(0,1,3,4,2).reshape(-1, T)
-            k_ = k_proj.permute(0,1,3,4,2).reshape(-1, T)
-            v_ = v_proj.permute(0,1,3,4,2).reshape(-1, T)
-            attn_scores = torch.softmax(q_ * k_, dim=-1)
-            out = (attn_scores * v_).reshape(B, C, H, W, T).permute(0,1,4,2,3)
-        return self.out_proj(out) + q
-
-# === FFT and Wavelet Branches ===
-class FFTBranch(nn.Module):
+class VideoVAEEncoderBlock(nn.Module):
+    """Standard VAE encoder block for downsampling."""
     def __init__(self, in_ch, out_ch):
         super().__init__()
-        self.conv2d = nn.Conv2d(in_ch, out_ch, 3, padding=1)
-        self.temporal_convs = nn.Sequential(
-            nn.Conv1d(out_ch, out_ch, 3, padding=1),
-            nn.GELU(),
-            nn.Conv1d(out_ch, out_ch, 3, padding=1),
-            nn.GELU(),
-            nn.Conv1d(out_ch, out_ch, 3, padding=1),
-        )
-        self.conv3d = nn.Conv3d(out_ch, out_ch, 3, padding=1)
-    def forward(self, x):
-        B, C, T, H, W = x.shape
-        x2d = x.permute(0,2,1,3,4).reshape(B*T, C, H, W)
-        x2d = self.conv2d(x2d)
-        x2d_fft = torch.fft.fft2(x2d.float()).real
-        x2d_fft = x2d_fft.reshape(B, T, -1, H, W).permute(0,2,1,3,4)
-        x1d = x2d_fft.permute(0,3,4,1,2).reshape(B*H*W, -1, T)
-        x1d = self.temporal_convs(x1d)
-        x1d = x1d.reshape(B, H, W, -1, T).permute(0, 3, 4, 1, 2)
-        x3d = torch.fft.ifft2(x1d.float()).real
-        return x1d, self.conv3d(x3d)
-
-class WaveletBranch(nn.Module):
-    def __init__(self, in_ch, out_ch):
-        super().__init__()
-        self.conv2d = nn.Conv2d(in_ch, out_ch, 3, padding=1)
-        self.conv1d = nn.Conv1d(out_ch, out_ch, 3, padding=1)
-        self.conv3d = nn.Conv3d(out_ch, out_ch, 3, padding=1)
-    def forward(self, x):
-        B, C, T, H, W = x.shape
-        x2d = x.permute(0,2,1,3,4).reshape(B*T, C, H, W)
-        x2d = self.conv2d(x2d)
-        x2d = x2d.reshape(B, T, -1, H, W).permute(0,2,1,3,4)
-        x1d = x2d.permute(0,3,4,1,2).reshape(B*H*W, -1, T)
-        x1d = self.conv1d(x1d)
-        x1d = x1d.reshape(B, H, W, -1, T).permute(0, 3, 4, 1, 2)
-        x3d = x1d
-        return x1d, self.conv3d(x3d)
-
-# === VAE Blocks (Encoder/Decoder) ===
-import torch
-import torch.nn as nn
-
-class LearnableTanh(nn.Module):
-    """
-    y = a * tanh(b * x), with a,b > 0 (enforced via softplus)
-    """
-    def __init__(self, a_init=1.0, b_init=1.0):
-        super().__init__()
-        self._a = nn.Parameter(torch.tensor(float(a_init)))
-        self._b = nn.Parameter(torch.tensor(float(b_init)))
-        self.softplus = nn.Softplus()
-
-    def forward(self, x):
-        a = self.softplus(self._a)
-        b = self.softplus(self._b)
-        return a * torch.tanh(b * x)
-
-class VideoVAEBlock(nn.Module):
-    def __init__(self, in_ch, out_ch):
-        super().__init__()
-        self.fft_branch = FFTBranch(in_ch, out_ch)
-        self.wavelet_branch = WaveletBranch(in_ch, out_ch)
-
-        # Used to get q,k,v from conv features for channel attn (as you had)
-        self.conv3d_branch = nn.Conv3d(in_ch, out_ch, 3, padding=1)
-
-        self.channel_cross_attn  = EfficientCrossAttention3D(out_ch, mode="channel")
-        self.temporal_cross_attn = EfficientCrossAttention3D(out_ch, mode="temporal")
-
-        # Per-branch Conv3D before fusion (matches the two Conv3D boxes in the figure)
-        self.conv3d_fft = nn.Conv3d(out_ch, out_ch, 3, padding=1)
-        self.conv3d_wav = nn.Conv3d(out_ch, out_ch, 3, padding=1)
-
-        # Post-fusion: Norm → Learnable tanh → MaxPool → Conv3D
-        self.fuse_norm = nn.BatchNorm3d(out_ch)
-        self.ltan = LearnableTanh()
+        self.conv1 = nn.Conv3d(in_ch, out_ch, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv3d(out_ch, out_ch, kernel_size=3, padding=1)
         self.pool = nn.MaxPool3d(kernel_size=2, stride=2)
-        self.out_conv = nn.Conv3d(out_ch, out_ch, 3, padding=1)
-
-    def forward(self, x):
-        # Branches
-        fft_1d, fft_out = self.fft_branch(x)      # shapes: (B,C_out,T,H,W)
-        wav_1d, wav_out = self.wavelet_branch(x)
-
-        # Channel then temporal cross-attention path
-        conv3d_out = self.conv3d_branch(x)
-        chan_attn  = self.channel_cross_attn(conv3d_out, fft_1d)
-        temp_attn  = self.temporal_cross_attn(chan_attn, wav_1d)
-
-        # Conv3D on each frequency branch before fusion (as in figure)
-        fft_feat = self.conv3d_fft(fft_out)
-        wav_feat = self.conv3d_wav(wav_out)
-
-        # ⊕ elementwise fusion of three paths
-        fused = fft_feat + wav_feat + temp_attn
-
-        # Learnable tanh → MaxPool → Conv3D (final)
-        fused = self.fuse_norm(fused)
-        fused = self.ltan(fused)       # Learnable tanh
-        fused = self.pool(fused)       # MaxPool3d
-        out   = self.out_conv(fused)   # Conv3D
-
-        return out
-
-
-class VideoVAEBlockTranspose(nn.Module):
-    def __init__(self, in_ch, out_ch):
-        super().__init__()
-        self.fft_branch = FFTBranch(in_ch, out_ch)
-        self.wavelet_branch = WaveletBranch(in_ch, out_ch)
-        self.conv3d_branch = nn.Conv3d(in_ch, out_ch, 3, padding=1)
-        self.channel_cross_attn = EfficientCrossAttention3D(out_ch, mode="channel")
-        self.temporal_cross_attn = EfficientCrossAttention3D(out_ch, mode="temporal")
-        self.post_conv = nn.Conv3d(out_ch * 3, out_ch, 1)
         self.norm = nn.BatchNorm3d(out_ch)
         self.act = nn.GELU()
-        self.upsample = nn.ConvTranspose3d(out_ch, out_ch, 4, 2, 1, output_padding=0)
-    def forward(self, x):
-        fft_out = self.fft_branch(x)
-        wav_out = self.wavelet_branch(x)
-        conv3d_out = self.conv3d_branch(x)
-        spectral_kv = fft_out + wav_out
-        chan_attn = self.channel_cross_attn(conv3d_out, spectral_kv)
-        temp_attn = self.temporal_cross_attn(chan_attn, spectral_kv)
-        merged = torch.cat([fft_out, wav_out, temp_attn], dim=1)
-        out = self.post_conv(merged)
-        out = self.norm(out)
-        out = self.act(out)
-        out = self.upsample(out)
-        return out
 
-class RVQFusionBlock(nn.Module):
-    def __init__(self, prev_fused_dim, quant_emb_dim, out_ch):
+    def forward(self, x):
+        h = self.act(self.norm(self.conv1(x)))
+        h = self.act(self.norm(self.conv2(h)))
+        return self.pool(h)
+
+class PyramidalLFQBlock(nn.Module):
+    """A block in the pyramidal upsampler: upsample -> fuse -> text-attend -> quantize."""
+    def __init__(self, in_ch, skip_ch, out_ch, text_embed_dim, quant_emb_dim):
         super().__init__()
-        self.tconv3d = nn.ConvTranspose3d(quant_emb_dim, quant_emb_dim, 3, padding=1)
-        self.conv3d = nn.Conv3d(prev_fused_dim + quant_emb_dim, out_ch, 3, padding=1)
+        self.upsample = nn.ConvTranspose3d(in_ch, out_ch, kernel_size=4, stride=2, padding=1)
+        self.conv = nn.Conv3d(out_ch + skip_ch, out_ch, kernel_size=3, padding=1)
+        self.text_cross_attn = TextVideoCrossAttention(out_ch, text_embed_dim)
+        self.lfq = ProjectedLFQ(out_ch, quant_channels=quant_emb_dim)
+        self.norm = nn.BatchNorm3d(out_ch)
         self.act = nn.GELU()
-    def forward(self, x_prev, x_qi):
-        x_qi_up = F.interpolate(x_qi, size=x_prev.shape[-3:], mode='trilinear', align_corners=False)
-        x_qi_up = self.tconv3d(x_qi_up)
-        x_cat = torch.cat([x_prev, x_qi_up], dim=1)
-        out = self.act(self.conv3d(x_cat))
-        return out
+
+    def forward(self, x, skip, text_embedding):
+        x_up = self.upsample(x)
+        x_fused = self.act(self.norm(self.conv(torch.cat([x_up, skip], dim=1))))
+        h_attn = x_fused + self.text_cross_attn(x_fused, text_embedding)
+        q, indices, entropy_loss = self.lfq(h_attn)
+        return h_attn, q, indices, entropy_loss
+
+class VideoVAEDecoderBlock(nn.Module):
+    """Standard VAE decoder block for upsampling."""
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.upsample = nn.ConvTranspose3d(in_ch, out_ch, kernel_size=4, stride=2, padding=1)
+        self.conv = nn.Conv3d(out_ch, out_ch, kernel_size=3, padding=1)
+        self.norm = nn.BatchNorm3d(out_ch)
+        self.act = nn.GELU()
+
+    def forward(self, x):
+        h = self.act(self.norm(self.upsample(x)))
+        return self.act(self.norm(self.conv(h)))
+
+# ==============================================================================
+# 4. PRIMARY VideoVAE MODEL
+# ==============================================================================
 
 class VideoVAE(nn.Module):
-    def __init__(self, in_channels=3, base_ch=64, quant_emb_dim=16, num_blocks=4):
+    """
+    A modular, text-conditioned Video VAE with a Pyramidal LFQ structure
+    and multiple perception-based losses for high-quality synthesis.
+    """
+    def __init__(self, cfg: VideoVAEConfig, device="cuda"):
         super().__init__()
-        chs = [base_ch, base_ch*2, base_ch*4, base_ch*8]  # [64, 128, 256, 512]
+        self.cfg = cfg
+        self.device = device
+
+        # --- Sub-models (Text, Perception) ---
+        self.text_encoder = QwenVLTextEncoder(device=device)
+        text_embed_dim = self.text_encoder.model.config.hidden_size
+        if self.training: # Only load DINOv2 if we are in training mode
+            self.dino_extractor = DINOv2Extractor(device=device)
+
+        # --- VAE Encoder ---
         self.enc_blocks = nn.ModuleList()
-        self.lfqs = nn.ModuleList()
-        for i, ch in enumerate(chs):
-            self.enc_blocks.append(VideoVAEBlock(in_channels if i == 0 else chs[i-1], ch))
-            self.lfqs.append(ProjectedLFQ(ch, quant_emb_dim))
-        self.rvq_blocks = nn.ModuleList()
-        self.rvq_blocks.append(RVQFusionBlock(chs[0], quant_emb_dim, chs[1]))
-        self.rvq_blocks.append(RVQFusionBlock(chs[1], quant_emb_dim, chs[2]))
-        self.rvq_blocks.append(RVQFusionBlock(chs[2], quant_emb_dim, chs[3]))
-        self.rvq_blocks.append(RVQFusionBlock(chs[3], quant_emb_dim, chs[3]))
-        rev_chs = list(reversed(chs))
+        chs = [cfg.base_ch * (2**i) for i in range(cfg.num_blocks)]
+        current_ch = cfg.in_channels
+        for ch in chs:
+            self.enc_blocks.append(VideoVAEEncoderBlock(current_ch, ch))
+            current_ch = ch
+
+        # --- Pyramidal LFQ Upsampler ---
+        rev_channels = list(reversed(chs))
+        self.pyramid_blocks = nn.ModuleList()
+        for i in range(2): # 2 stages for 4x total upscaling
+            self.pyramid_blocks.append(
+                PyramidalLFQBlock(rev_channels[i], rev_channels[i+1], rev_channels[i+1], text_embed_dim, cfg.quant_emb_dim)
+            )
+
+        # --- VAE Decoder ---
         self.dec_blocks = nn.ModuleList()
-        # Use the deepest 2 decoder blocks (from largest channel to in_channels)
-        for i in range(1):
-            ch = rev_chs[i]
-            out_ch = rev_chs[i+1] if i+1 < len(rev_chs) else in_channels
-            self.dec_blocks.append(VideoVAEBlockTranspose(ch, out_ch))
+        decoder_channels = [chs[1], chs[0]]
+        for i in range(len(decoder_channels)):
+            in_ch = decoder_channels[i]
+            out_ch = decoder_channels[i+1] if i + 1 < len(decoder_channels) else cfg.base_ch
+            self.dec_blocks.append(VideoVAEDecoderBlock(in_ch, out_ch))
+        self.out_conv = nn.Conv3d(cfg.base_ch, cfg.in_channels, 1)
+
+        # --- Loss-specific Modules ---
+        codebook_size = 2**cfg.quant_emb_dim
+        self.quant_embedding = nn.Embedding(codebook_size, text_embed_dim)
+        self.to_quant_logits = nn.Linear(text_embed_dim, codebook_size)
+        quant_pooled_dim = chs[2] + chs[1]
+        self.quant_proj = nn.Linear(quant_pooled_dim, cfg.alignment_dim)
+        self.text_proj_for_quant = nn.Linear(text_embed_dim, cfg.alignment_dim)
+
+    def forward(self, x: torch.Tensor, text_prompts: List[str]) -> Dict[str, torch.Tensor]:
+        """
+        Core inference path. Encodes, quantizes via pyramid, and decodes.
+        Returns all intermediate products needed for loss calculation.
+        """
+        text_embedding = self.text_encoder(text_prompts)
         
-        self.out_conv = nn.Conv3d(out_ch, in_channels, 1, 1)
-
-    def forward(self, x):
-        # Strict: only allow shapes divisible by 16 (N=4 stages)
-        B, C, T, H, W = x.shape
-        for d in (T, H, W):
-            if d % 16 != 0:
-                raise ValueError(f"Input T/H/W must be divisible by 16, got {(T,H,W)}")
-        hs, quantizeds, indices, entropies = [], [], [], []
+        encoder_features = []
         h = x
-        out_for_transformer = []
-        for enc_blk, lfq in zip(self.enc_blocks, self.lfqs):
-            h = enc_blk(h)
-            hs.append(h)
-            q, idx, ent_loss = lfq(h)
-            quantizeds.append(q)
-            indices.append(idx)
-            entropies.append(ent_loss)
-        fused = self.rvq_blocks[0](hs[-1], quantizeds[0])
-        out_for_transformer.append(fused)
-        fused = self.rvq_blocks[1](fused, quantizeds[1])
-        out_for_transformer.append(fused)
-        fused = self.rvq_blocks[2](fused, quantizeds[2])
-        out_for_transformer.append(fused)
-        fused = self.rvq_blocks[3](fused, quantizeds[3])
-        out_for_transformer.append(fused)
-        dec_in = fused
-        for dec_blk in self.dec_blocks:
-            dec_in = dec_blk(dec_in)
-        total_entropy_loss = sum(entropies)
-        return self.out_conv(dec_in), indices, total_entropy_loss, out_for_transformer, hs[-1]
+        for block in self.enc_blocks:
+            h = block(h)
+            encoder_features.append(h)
 
-# ==== TEST ====
-if __name__ == "__main__":
-    # Input shape: must be (B, 3, T, H, W) with T, H, W divisible by 16 (e.g., 32, 64, 128, etc.)
-    x = torch.randn(1, 3, 32, 64, 64)
-    vae = VideoVAE()
-    out, indices, entropy_loss = vae(x)
-    print("Input shape:", x.shape)
-    print("Output shape:", out.shape)
-    print("Entropy loss:", entropy_loss.item())
+        rev_features = list(reversed(encoder_features))
+        h = rev_features[0]
+        pyramid_outputs = {'q': [], 'indices': [], 'entropies': []}
+        for i, block in enumerate(self.pyramid_blocks):
+            h, q, indices, entropy = block(h, rev_features[i + 1], text_embedding)
+            pyramid_outputs['q'].append(q)
+            pyramid_outputs['indices'].append(indices)
+            pyramid_outputs['entropies'].append(entropy)
+        
+        dec_in = h
+        for block in self.dec_blocks:
+            dec_in = block(dec_in)
+        reconstruction = torch.tanh(self.out_conv(dec_in))
+
+        return {
+            "reconstruction": reconstruction,
+            "text_embedding": text_embedding,
+            "pyramid_outputs": pyramid_outputs
+        }
+
+    def calculate_losses(self, original_video: torch.Tensor, forward_outputs: Dict) -> Dict:
+        """
+        Calculates all training-specific losses. This method should only be
+        called during the training loop.
+        """
+        if not self.training:
+            raise RuntimeError("calculate_losses() should only be called in training mode.")
+            
+        # Unpack forward pass results
+        recon = forward_outputs["reconstruction"]
+        text_emb = forward_outputs["text_embedding"]
+        pyramid_out = forward_outputs["pyramid_outputs"]
+        all_q, all_indices, all_entropies = pyramid_out['q'], pyramid_out['indices'], pyramid_out['entropies']
+
+        # 1. Reconstruction Loss
+        recon_loss = F.mse_loss(recon, original_video)
+
+        # 2. Entropy Loss
+        entropy_loss = sum(all_entropies)
+        
+        # 3. P(Q|text) Likelihood Loss
+        B = text_emb.size(0)
+        seqs = [idx.view(B, self.cfg.quant_emb_dim, -1) for idx in all_indices]
+        full_seq_bits = torch.cat(seqs, dim=2).permute(0, 2, 1)
+        powers_of_2 = (2**torch.arange(self.cfg.quant_emb_dim, device=self.device)).float()
+        quant_token_ids = (full_seq_bits * powers_of_2).sum(dim=2).long()
+        quant_embeds = self.quant_embedding(quant_token_ids)
+        combined_embeds = torch.cat([text_emb, quant_embeds], dim=1)
+        with torch.no_grad():
+            qwen_outputs = self.text_encoder.model(inputs_embeds=combined_embeds, output_hidden_states=True)
+        last_hidden = qwen_outputs.hidden_states[-1][:, text_emb.shape[1] - 1:-1, :]
+        pred_logits = self.to_quant_logits(last_hidden)
+        likelihood_loss = F.cross_entropy(pred_logits.reshape(-1, pred_logits.size(-1)), quant_token_ids.reshape(-1))
+        
+        # 4. Quantized Vector-Text Alignment Loss
+        q_pooled = [F.adaptive_avg_pool3d(q, 1).view(B, -1) for q in all_q]
+        q_pooled_cat = torch.cat(q_pooled, dim=1)
+        text_pooled = text_emb.mean(dim=1)
+        q_aligned = self.quant_proj(q_pooled_cat)
+        text_aligned = self.text_proj_for_quant(text_pooled)
+        quant_align_loss = F.cosine_embedding_loss(q_aligned, text_aligned, torch.ones(B, device=self.device))
+        
+        # 5. DINOv2 Perceptual Loss (KL Divergence)
+        orig_dino_feats = self.dino_extractor(original_video)
+        recon_dino_feats = self.dino_extractor(recon)
+        p = F.softmax(orig_dino_feats, dim=-1)
+        q = F.log_softmax(recon_dino_feats, dim=-1)
+        dino_loss = F.kl_div(q, p, reduction='batchmean')
+
+        # --- Final Weighted Sum ---
+        total_loss = (recon_loss + entropy_loss +
+                      self.cfg.likelihood_loss_weight * likelihood_loss +
+                      self.cfg.quant_align_loss_weight * quant_align_loss +
+                      self.cfg.dino_loss_weight * dino_loss)
+
+        return {
+            "total_loss": total_loss, "reconstruction_loss": recon_loss,
+            "entropy_loss": entropy_loss, "likelihood_loss": likelihood_loss,
+            "quant_alignment_loss": quant_align_loss, "dino_perceptual_loss": dino_loss
+        }
+
+# ==============================================================================
+# 5. EXAMPLE USAGE
+# ==============================================================================
+if __name__ == '__main__':
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu": print("WARNING: Running on CPU. This will be extremely slow.")
+
+    try:
+        config = VideoVAEConfig(quant_emb_dim=16) # Set LFQ size to 16
+        model = VideoVAE(config, device=device).to(device)
+
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print("-" * 40)
+        print(f"Trainable model parameters: {trainable_params:,}")
+        print("(This should NOT include frozen DINOv2 or Qwen-VL models)")
+        print("-" * 40)
+
+        # --- SIMULATED TRAINING STEP ---
+        print("\n--- 1. Simulating Training Step ---")
+        model.train() # Set model to training mode
+        batch_size = 2
+        video_input = torch.randn(batch_size, 3, 16, 64, 64).to(device)
+        prompts = ["A stunning sunrise over a calm ocean.", "A busy city street at night with neon lights."]
+        
+        # In a real training loop, this would be inside the loop
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+        optimizer.zero_grad()
+        
+        forward_outputs = model(video_input, text_prompts=prompts)
+        losses = model.calculate_losses(video_input, forward_outputs)
+        
+        # Backpropagation
+        losses["total_loss"].backward()
+        optimizer.step()
+        
+        print("Training step successful. Losses calculated:")
+        for name, value in losses.items(): print(f"  - {name:<25}: {value.item():.4f}")
+
+        # --- SIMULATED INFERENCE STEP ---
+        print("\n--- 2. Simulating Inference Step ---")
+        model.eval() # Set model to evaluation mode
+        with torch.no_grad():
+            # Notice we only call the forward pass and don't need the loss function
+            inference_outputs = model(video_input, text_prompts=prompts)
+            reconstructed_video = inference_outputs["reconstruction"]
+
+        print("Inference step successful.")
+        print("Input Video Shape:         ", video_input.shape)
+        print("Reconstructed Video Shape: ", reconstructed_video.shape)
+
+    except Exception as e:
+        print(f"\n--- ❌ An Error Occurred ---")
+        print(f"Error: {e}")
+        if "out of memory" in str(e).lower():
+            print("\n💡 Suggestion: CUDA Out-of-Memory. Try reducing `base_ch`, `num_blocks`, or input resolution.")
