@@ -29,6 +29,7 @@ from ..embeddings import TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
+from ...utils import is_kernels_available
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -93,6 +94,10 @@ def range_mod_pytorch(x, c_mapping, gatings):
     
     return y
 
+if is_kernels_available():
+    from kernels import use_kernel_forward_from_hub
+    range_mod_pytorch = use_kernel_forward_from_hub("range_mod_triton")(range_mod_pytorch)
+
 
 class Magi1AttnProcessor:
     _attention_backend = None
@@ -116,16 +121,47 @@ class Magi1AttnProcessor:
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
             encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
 
-        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+
+        # Attention heads [sq, b, h] --> [sq, b, q + qx + k + v]
+        mixed_qqkv = attn.layer_norm(hidden_states.transpose(0, 1))#.transpose(0, 1)
+        query, key, value = _get_qkv_projections(attn, mixed_qqkv, encoder_hidden_states)
+        query = query.reshape(query.size(0), query.size(1), -1, attn.kv_inner_dim)
+        key = key.reshape(key.size(0), key.size(1), -1, attn.kv_inner_dim)
+        original_dtype_query = query.dtype
+        original_dtype_key = key.dtype
+        query = query.float()
+        key = key.float()
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)
+        query = query.transpose(0, 1).contiguous()
+        query = flash_apply_rotary_emb(query, cos_emb, sin_emb)
+        query = query.to(original_dtype_query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
+        key = key.transpose(0, 1).contiguous()
+        key = flash_apply_rotary_emb(key, cos_emb, sin_emb)
+        key = key.to(original_dtype_key)
 
-        query = query.unflatten(2, (attn.heads, -1))
-        key = key.unflatten(2, (attn.heads, -1))
-        value = value.unflatten(2, (attn.heads, -1))
+        query = query.transpose(0, 1).reshape(-1, query.shape[-2], query.shape[-1]).contiguous()
+        key = key.transpose(0, 1).reshape(-1, key.shape[-2], key.shape[-1]).contiguous()
+        value = value.unflatten(2, (-1, attn.kv_inner_dim)).reshape(-1, value.shape[-2], value.shape[-1]).contiguous()
+        key_and_value = torch.cat([key, value], dim=-1)
+
+        # Only update kvcache when necessary, include 3 conditions:
+        # 1. extract prefix video clean feature
+        # 2. the first chunk of current kv is clean, we need to save their feature
+        # 3. previous chunk is clean and we need to save/load their feature
+        if meta_args.extract_prefix_video_feature or meta_args.fwd_extra_1st_chunk or meta_args.slice_point > 0:
+            key_and_value = self._full_adjust_key_and_value(inference_params, key_and_value, meta_args)
+        key, value = torch.chunk(key_and_value, 2, dim=-1)
+        key, value  = key.contiguous(), value.contiguous()
+
+        # Perform Grouped-query Attention (GQA)
+        n_rep = attn.heads // kv_heads
+        if n_rep >= 1:
+            key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+            value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
 
         if rotary_emb is not None:
 
@@ -137,12 +173,6 @@ class Magi1AttnProcessor:
 
             query = apply_rotary_emb(query, rotary_emb)
             key = apply_rotary_emb(key, rotary_emb)
-
-        # Perform Grouped-query Attention (GQA)
-        n_rep = attn.heads // kv_heads
-        if n_rep >= 1:
-            key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-            value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
 
         # I2V task
         hidden_states_img = None
@@ -159,6 +189,7 @@ class Magi1AttnProcessor:
                 attn_mask=None,
                 dropout_p=0.0,
                 is_causal=False,
+                enable_gqa=True,
                 backend=self._attention_backend,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
@@ -171,6 +202,7 @@ class Magi1AttnProcessor:
             attn_mask=attention_mask,
             dropout_p=0.0,
             is_causal=False,
+            enable_gqa=True,
             backend=self._attention_backend,
         )
         hidden_states = hidden_states.flatten(2, 3)
@@ -208,17 +240,18 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         self.cross_attention_dim_head = cross_attention_dim_head
         self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
 
-        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
-        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
-        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
+        self.layer_norm = torch.nn.LayerNorm(dim, eps)
+        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=False)
+        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
+        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
         self.to_out = torch.nn.ModuleList(
             [
                 torch.nn.Linear(self.inner_dim, dim, bias=True),
                 torch.nn.Dropout(dropout),
             ]
         )
-        self.norm_q = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
-        self.norm_k = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
+        self.norm_q = torch.nn.LayerNorm(dim_head * heads, eps)
+        self.norm_k = torch.nn.LayerNorm(dim_head * heads, eps)
 
         self.add_k_proj = self.add_v_proj = None
         if added_kv_proj_dim is not None:
