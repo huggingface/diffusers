@@ -20,11 +20,13 @@ from packaging import version
 from .. import __version__
 from .constants import (
     CONFIG_NAME,
+    DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
     FLAX_WEIGHTS_NAME,
     GGUF_FILE_EXTENSION,
     HF_MODULES_CACHE,
+    HF_PARALLEL_LOADING_FLAG,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     MIN_PEFT_VERSION,
     ONNX_EXTERNAL_WEIGHTS_NAME,
@@ -81,6 +83,8 @@ from .import_utils import (
     is_invisible_watermark_available,
     is_k_diffusion_available,
     is_k_diffusion_version,
+    is_kernels_available,
+    is_kornia_available,
     is_librosa_available,
     is_matplotlib_available,
     is_nltk_available,
