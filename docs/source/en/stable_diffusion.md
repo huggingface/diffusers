@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 Diffusion is a random process that is computationally demanding. You may need to run the [`DiffusionPipeline`] several times before getting a desired output. That's why it's important to carefully balance generation speed and memory usage in order to iterate faster,
 
-This guide recommends some basic performance tips for using the [`DiffusionPipeline`]. Refer to the Inference Optimization section for more detailed performance guides.
+This guide recommends some basic performance tips for using the [`DiffusionPipeline`]. Refer to the Inference Optimization section docs such as [Accelerate inference](./optimization/fp16) or [Reduce memory usage](./optimization/memory) for more detailed performance guides.
 
 ## Memory usage
 
