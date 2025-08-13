@@ -122,7 +122,8 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         result = torch.lerp(latents, result, factor)
         return result
 
-    def tone_map_latents(self, latents: torch.Tensor, compression: float) -> torch.Tensor:
+    @staticmethod
+    def tone_map_latents(latents: torch.Tensor, compression: float) -> torch.Tensor:
         """
         Applies a non-linear tone-mapping function to latent values to reduce their dynamic range in a perceptually
         smooth way using a sigmoid-based compression.

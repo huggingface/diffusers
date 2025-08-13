@@ -856,6 +856,8 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if horizontal_tiles > 1 or vertical_tiles > 1:
+            raise ValueError("Setting `horizontal_tiles` or `vertical_tiles` to a value greater than 0 is not supported yet.")
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -1175,25 +1177,14 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                         latent_chunk = LTXLatentUpsamplePipeline.adain_filter_latent(latent_chunk, first_tile_out_latents, adain_factor)
 
                         alpha = torch.linspace(1, 0, temporal_overlap + 1, device=latent_chunk.device)[1:-1]
-                        shape = [1] * latent_chunk.dim()
-                        shape[2] = alpha.size(0)
-                        alpha = alpha.reshape(shape)
-                        
-                        slice_all = [slice(None)] * latent_chunk.dim()
-                        slice_overlap1 = slice_all.copy()
-                        slice_overlap1[2] = slice(-(temporal_overlap - 1), None)
-                        slice_overlap2 = slice_all.copy()
-                        slice_overlap2[2] = slice(0, temporal_overlap - 1)
-                        slice_rest1 = slice_all.copy()
-                        slice_rest1[2] = slice(None, -(temporal_overlap - 1))
-                        slice_rest2 = slice_all.copy()
-                        slice_rest2[2] = slice(temporal_overlap - 1, None)
+                        alpha = alpha.view(1, 1, -1, 1, 1)
 
                         # Combine samples
+                        t_minus_one = temporal_overlap - 1
                         parts = [
-                            tile_out_latents[tuple(slice_rest1)],
-                            alpha * tile_out_latents[tuple(slice_overlap1)] + (1 - alpha) * latent_chunk[tuple(slice_overlap2)],
-                            latent_chunk[tuple(slice_rest2)],
+                            tile_out_latents[:, :, :-t_minus_one],
+                            alpha * tile_out_latents[:, :, -t_minus_one:] + (1 - alpha) * latent_chunk[:, :, :t_minus_one],
+                            latent_chunk[:, :, t_minus_one:],
                         ]
                         latent_chunk = torch.cat(parts, dim=2)
 
@@ -1205,6 +1196,7 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
 
         eps = 1e-8
         latents = final_latents / (weights + eps)
+        latents = LTXLatentUpsamplePipeline.tone_map_latents(latents, tone_map_compression_ratio)
 
         if output_type == "latent":
             video = latents
