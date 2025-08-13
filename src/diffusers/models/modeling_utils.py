@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import copy
+import functools
 import inspect
 import itertools
 import json
@@ -41,7 +42,9 @@ from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
+    ENV_VARS_TRUE_VALUES,
     FLAX_WEIGHTS_NAME,
+    HF_PARALLEL_LOADING_FLAG,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
@@ -69,9 +72,8 @@ from .model_loading_utils import (
     _expand_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
-    _find_mismatched_keys,
-    _load_state_dict_into_model,
-    load_model_dict_into_meta,
+    _load_shard_file,
+    _load_shard_files_with_threadpool,
     load_state_dict,
 )
 
@@ -206,34 +208,6 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     if last_tuple is not None:
         # fallback to the last dtype
         return last_tuple[1].dtype
-
-
-def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefix=""):
-    """
-    Checks if `model_to_load` supports param buffer assignment (such as when loading in empty weights) by first
-    checking if the model explicitly disables it, then by ensuring that the state dict keys are a subset of the model's
-    parameters.
-
-    """
-    if model_to_load.device.type == "meta":
-        return False
-
-    if len([key for key in state_dict if key.startswith(start_prefix)]) == 0:
-        return False
-
-    # Some models explicitly do not support param buffer assignment
-    if not getattr(model_to_load, "_supports_param_buffer_assignment", True):
-        logger.debug(
-            f"{model_to_load.__class__.__name__} does not support param buffer assignment, loading will be slower"
-        )
-        return False
-
-    # If the model does, the incoming `state_dict` and the `model_to_load` must be the same dtype
-    first_key = next(iter(model_to_load.state_dict().keys()))
-    if start_prefix + first_key in state_dict:
-        return state_dict[start_prefix + first_key].dtype == model_to_load.state_dict()[first_key].dtype
-
-    return False
 
 
 @contextmanager
@@ -988,6 +962,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
+        is_parallel_loading_enabled = os.environ.get(HF_PARALLEL_LOADING_FLAG, "").upper() in ENV_VARS_TRUE_VALUES
+        if is_parallel_loading_enabled and not low_cpu_mem_usage:
+            raise NotImplementedError("Parallel loading is not supported when not using `low_cpu_mem_usage`.")
+
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
             logger.warning(
@@ -1323,6 +1301,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer=hf_quantizer,
             keep_in_fp32_modules=keep_in_fp32_modules,
             dduf_entries=dduf_entries,
+            is_parallel_loading_enabled=is_parallel_loading_enabled,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1518,6 +1497,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         offload_state_dict: Optional[bool] = None,
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+        is_parallel_loading_enabled: Optional[bool] = False,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1530,6 +1510,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if cls._keys_to_ignore_on_load_unexpected is not None:
             for pat in cls._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        mismatched_keys = []
+        error_msgs = []
 
         # Deal with offload
         if device_map is not None and "disk" in device_map.values():
@@ -1566,37 +1549,39 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             # if state dict is not None, it means that we don't need to read the files from resolved_model_file also
             resolved_model_file = [state_dict]
 
-        if len(resolved_model_file) > 1:
-            resolved_model_file = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
+        # Prepare the loading function sharing the attributes shared between them.
+        load_fn = functools.partial(
+            _load_shard_files_with_threadpool if is_parallel_loading_enabled else _load_shard_file,
+            model=model,
+            model_state_dict=model_state_dict,
+            device_map=device_map,
+            dtype=dtype,
+            hf_quantizer=hf_quantizer,
+            keep_in_fp32_modules=keep_in_fp32_modules,
+            dduf_entries=dduf_entries,
+            loaded_keys=loaded_keys,
+            unexpected_keys=unexpected_keys,
+            offload_index=offload_index,
+            offload_folder=offload_folder,
+            state_dict_index=state_dict_index,
+            state_dict_folder=state_dict_folder,
+            ignore_mismatched_sizes=ignore_mismatched_sizes,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
-        mismatched_keys = []
-        assign_to_params_buffers = None
-        error_msgs = []
+        if is_parallel_loading_enabled:
+            offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(resolved_model_file)
+            error_msgs += _error_msgs
+            mismatched_keys += _mismatched_keys
+        else:
+            shard_files = resolved_model_file
+            if len(resolved_model_file) > 1:
+                shard_files = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
 
-        for shard_file in resolved_model_file:
-            state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
-            mismatched_keys += _find_mismatched_keys(
-                state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes
-            )
-
-            if low_cpu_mem_usage:
-                offload_index, state_dict_index = load_model_dict_into_meta(
-                    model,
-                    state_dict,
-                    device_map=device_map,
-                    dtype=dtype,
-                    hf_quantizer=hf_quantizer,
-                    keep_in_fp32_modules=keep_in_fp32_modules,
-                    unexpected_keys=unexpected_keys,
-                    offload_folder=offload_folder,
-                    offload_index=offload_index,
-                    state_dict_index=state_dict_index,
-                    state_dict_folder=state_dict_folder,
-                )
-            else:
-                if assign_to_params_buffers is None:
-                    assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
-                error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
+            for shard_file in shard_files:
+                offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)
+                error_msgs += _error_msgs
+                mismatched_keys += _mismatched_keys
 
         empty_device_cache()
 
