@@ -12,24 +12,24 @@ specific language governing permissions and limitations under the License.
 
 # Quickstart
 
-Diffusers is a library for developers and researchers that provides an easy inference API for generating images and videos as well as the building blocks for implementing new workflows.
+Diffusers is a library for developers and researchers that provides an easy inference API for generating images, videos and audio, as well as the building blocks for implementing new workflows.
 
 Diffusers provides many optimizations out-of-the-box that makes it possible to load and run large models on setups with limited memory or to accelerate inference.
 
 This Quickstart will give you an overview of Diffusers and get you up and generating quickly.
 
 > [!TIP]
-> Before you begin, make sure you have a Hugging Face [account](https://huggingface.co/join) in order to use models like [Flux](https://huggingface.co/black-forest-labs/FLUX.1-dev).
+> Before you begin, make sure you have a Hugging Face [account](https://huggingface.co/join) in order to use gated models like [Flux](https://huggingface.co/black-forest-labs/FLUX.1-dev).
 
 Follow the [Installation](./installation) guide to install Diffusers if it's not already installed.
 
 ## DiffusionPipeline
 
-A diffusion model combines multiple components to generate outputs in any modality based on an input, such as a text description or image.
+A diffusion model combines multiple components to generate outputs in any modality based on an input, such as a text description, image or both.
 
 For a standard text-to-image model:
 
-1. A text encoder turns a prompt into embeddings that guide the denoising process.
+1. A text encoder turns a prompt into embeddings that guide the denoising process. Some models have more than one text encoder.
 2. A scheduler contains the algorithmic specifics for gradually denoising initial random noise into clean outputs. Different schedulers affect generation speed and quality.
 3. A UNet or diffusion transformer (DiT) is the workhorse of a diffusion model.
 
@@ -39,7 +39,7 @@ For a standard text-to-image model:
   
 4. A variational autoencoder (VAE) encodes and decodes pixels to a spatially compressed latent-space. *Latents* are compressed representations of an image and are more efficient to work with. The UNet or DiT operates on latents, and the clean latents at the end are decoded back into images.
 
-The [`DiffusionPipeline`] packages all these components into a single class for inference. There are several arguments in [`DiffusionPipeline`] you can change, such as `num_inference_steps`, that affect the diffusion process. Try different values and arguments to see how they change generation quality or speed.
+The [`DiffusionPipeline`] packages all these components into a single class for inference. There are several arguments in [`~DiffusionPipeline.__call__`] you can change, such as `num_inference_steps`, that affect the diffusion process. Try different values and arguments to see how they change generation quality or speed.
 
 Load a model with [`~DiffusionPipeline.from_pretrained`] and describe what you'd like to generate. The example below uses the default argument values.
 
@@ -53,7 +53,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "black-forest-labs/FLUX.1-dev",
+  "Qwen/Qwen-Image",
   torch_dtype=torch.bfloat16
 ).to("cuda")
 
@@ -64,10 +64,6 @@ highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous
 pipeline(prompt).images[0]
 ```
 
-<div class="flex justify-center">
-  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quicktour-diffusion-pipeline.png">
-</div>
-
 </hfoption>
 <hfoption id="text-to-video">
 
@@ -75,26 +71,20 @@ Use `.frames[0]` to access the generated video output and [`~utils.export_to_vid
 
 ```py
 import torch
-from diffusers import AutoModel, DiffusionPipeline
+from diffusers import AutoencoderKLWan, DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
 
-pipeline_quant_config = PipelineQuantizationConfig(
-    quant_backend="bitsandbytes_4bit",
-    quant_kwargs={
-      "load_in_4bit": True,
-      "bnb_4bit_quant_type": "nf4",
-      "bnb_4bit_compute_dtype": torch.bfloat16
-      },
-    components_to_quantize=["transformer"]
+vae = AutoencoderKLWan.from_pretrained(
+  "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+  subfolder="vae",
+  torch_dtype=torch.float32
 )
 pipeline = DiffusionPipeline.from_pretrained(
-    "hunyuanvideo-community/HunyuanVideo",
-    quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+  "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+  vae=vae
+  torch_dtype=torch.bfloat16,
 ).to("cuda")
-pipeline.enable_model_cpu_offload()
-pipeline.vae.enable_tiling()
 
 prompt = """
 Cinematic video of a sleek cat lounging on a colorful inflatable in a crystal-clear turquoise pool in Palm Springs, 
@@ -102,13 +92,9 @@ sipping a salt-rimmed margarita through a straw. Golden-hour sunlight glows over
 Shot in rich Sony a7S III: with moody, glamorous color grading, subtle lens flares, and soft vintage film grain. 
 Ripples shimmer as a warm desert breeze stirs the water, blending luxury and playful charm in an epic, gorgeously composed frame.
 """
-video = pipeline(prompt=prompt, num_frames=61, num_inference_steps=30).frames[0]
-export_to_video(video, "output.mp4", fps=15)
+video = pipeline(prompt=prompt, num_frames=81, num_inference_steps=40).frames[0]
+export_to_video(video, "output.mp4", fps=16)
 ```
-
-<div class="flex justify-center">
-  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quicktour-diffusion-pipeline-video.gif">
-</div>
 
 </hfoption>
 </hfoptions>
@@ -117,29 +103,27 @@ export_to_video(video, "output.mp4", fps=15)
 
 Adapters insert a small number of trainable parameters to the original base model. Only the inserted parameters are fine-tuned while the rest of the model weights remain frozen. This makes it fast and cheap to fine-tune a model on a new style. Among adapters, [LoRA's](./tutorials/using_peft_for_inference) are the most popular.
 
-Add a LoRA to a pipeline with the [`~loaders.FluxLoraLoaderMixin.load_lora_weights`] method. Some LoRA's require a special word to trigger it, such as `GHIBSKY style`, in the example below. Check a LoRA's model card to see if it requires a trigger word.
+Add a LoRA to a pipeline with the [`~loaders.QwenImageLoraLoaderMixin.load_lora_weights`] method. Some LoRA's require a special word to trigger it, such as `Realism`, in the example below. Check a LoRA's model card to see if it requires a trigger word.
 
 ```py
 import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "black-forest-labs/FLUX.1-dev",
+  "Qwen/Qwen-Image",
   torch_dtype=torch.bfloat16
 )
-pipeline.load_lora_weights("aleksa-codes/flux-ghibsky-illustration")
+pipeline.load_lora_weights(
+  "flymy-ai/qwen-image-realism-lora",
+)
 pipeline.to("cuda")
 
 prompt = """
-GHIBSKY style cinematic film still of a cat sipping a margarita in a pool in Palm Springs in the style of umempart, California
+super Realism cinematic film still of a cat sipping a margarita in a pool in Palm Springs in the style of umempart, California
 highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
 """
 pipeline(prompt).images[0]
 ```
-
-<div class="flex justify-center">
-  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quicktour-diffusion-pipeline-lora.png">
-</div>
 
 Check out the [LoRA](./tutorials/using_peft_for_inference) docs or Adapters section to learn more.
 
@@ -157,12 +141,12 @@ from diffusers import DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 
 quant_config = PipelineQuantizationConfig(
-    quant_backend="bitsandbytes_4bit",
-    quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
-    components_to_quantize=["transformer", "text_encoder_2"],
+  quant_backend="bitsandbytes_4bit",
+  quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
+  components_to_quantize=["transformer", "text_encoder"],
 )
 pipeline = DiffusionPipeline.from_pretrained(
-  "black-forest-labs/FLUX.1-dev",
+  "Qwen/Qwen-Image",
   torch_dtype=torch.bfloat16,
   quantization_config=quant_config,
 ).to("cuda")
@@ -195,12 +179,12 @@ from diffusers import DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 
 quant_config = PipelineQuantizationConfig(
-    quant_backend="bitsandbytes_4bit",
-    quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
-    components_to_quantize=["transformer", "text_encoder_2"],
+  quant_backend="bitsandbytes_4bit",
+  quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
+  components_to_quantize=["transformer", "text_encoder"],
 )
 pipeline = DiffusionPipeline.from_pretrained(
-  "black-forest-labs/FLUX.1-dev",
+  "Qwen/Qwen-Image",
   torch_dtype=torch.bfloat16,
   quantization_config=quant_config,
 ).to("cuda")
@@ -229,12 +213,12 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "black-forest-labs/FLUX.1-dev",
+  "Qwen/Qwen-Image",
   torch_dtype=torch.bfloat16
 ).to("cuda")
 
 pipeline.transformer.compile_repeated_blocks(
-    fullgraph=True, dynamic=True
+    fullgraph=True,
 )
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
