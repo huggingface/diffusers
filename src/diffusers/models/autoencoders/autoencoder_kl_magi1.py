@@ -22,8 +22,9 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
-from ..attention import FeedForward
-from ..attention_processor import Attention
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
+from ..attention_dispatch import dispatch_attention_fn
+from ..cache_utils import CacheMixin
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
@@ -39,6 +40,27 @@ def resize_pos_embed(posemb, src_shape, target_shape):
     posemb = posemb.permute(0, 2, 3, 4, 1)
     posemb = posemb.reshape(1, target_shape[0] * target_shape[1] * target_shape[2], -1)
     return posemb
+
+
+# Copied from diffusers.models.transformers.transformer_wan._get_qkv_projections
+def _get_qkv_projections(attn: "Magi1VAEAttention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
+    # encoder_hidden_states is only passed for cross-attention
+    if encoder_hidden_states is None:
+        encoder_hidden_states = hidden_states
+
+    if attn.fused_projections:
+        if attn.cross_attention_dim_head is None:
+            # In self-attention layers, we can fuse the entire QKV projection into a single linear
+            query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+        else:
+            # In cross-attention layers, we can only fuse the KV projections into a single linear
+            query = attn.to_q(hidden_states)
+            key, value = attn.to_kv(encoder_hidden_states).chunk(2, dim=-1)
+    else:
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+    return query, key, value
 
 
 class Magi1VAELayerNorm(nn.Module):
@@ -57,49 +79,154 @@ class Magi1VAELayerNorm(nn.Module):
         return x_normalized
 
 
-class Magi1VAEAttnProcessor2_0:
-    def __init__(self, dim, num_heads=8):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
+class Magi1VAEAttnProcessor:
+    _attention_backend = None
 
-        self.qkv_norm = Magi1VAELayerNorm(dim // num_heads, elementwise_affine=False)
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("Magi1VAEAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "Magi1VAEAttention",
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         batch_size, time_height_width, channels = hidden_states.size()
 
-        # compute query, key, value
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
+        query, key, value = _get_qkv_projections(attn, hidden_states, None)
 
         qkv = torch.cat((query, key, value), dim=2)
         qkv = qkv.reshape(batch_size, time_height_width, 3, attn.heads, channels // attn.heads)
-        qkv = self.qkv_norm(qkv)
+        qkv = attn.qkv_norm(qkv)
         query, key, value = qkv.chunk(3, dim=2)
 
-        # Remove the extra dimension from chunking and transpose for scaled dot product attention
-        # Shape: (batch_size, num_heads, time_height_width, head_dim)
-        query = query.squeeze(2).transpose(1, 2)
-        key = key.squeeze(2).transpose(1, 2)
-        value = value.squeeze(2).transpose(1, 2)
+        # Remove the extra dimension from chunking
+        # Shape: (batch_size, time_height_width, num_heads, head_dim)
+        query = query.squeeze(2)
+        key = key.squeeze(2)
+        value = value.squeeze(2)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )  # the output of sdpa = (batch_size, num_heads, seq_len, head_dim)
-        # Reshape hidden_states to (batch_size, time_height_width, channels)
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+        )
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
 
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
 
         return hidden_states
+
+
+class Magi1VAEAttention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = Magi1VAEAttnProcessor
+    _available_processors = [Magi1VAEAttnProcessor]
+
+    def __init__(
+        self,
+        dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        eps: float = 1e-5,
+        dropout: float = 0.0,
+        added_kv_proj_dim: Optional[int] = None,
+        cross_attention_dim_head: Optional[int] = None,
+        processor=None,
+    ):
+        super().__init__()
+
+        self.inner_dim = dim_head * heads
+        self.heads = heads
+        self.added_kv_proj_dim = added_kv_proj_dim
+        self.cross_attention_dim_head = cross_attention_dim_head
+        self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
+
+        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
+        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
+        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
+        self.to_out = torch.nn.ModuleList(
+            [
+                torch.nn.Linear(self.inner_dim, dim, bias=True),
+                torch.nn.Dropout(dropout),
+            ]
+        )
+        self.qkv_norm = Magi1VAELayerNorm(dim // heads, elementwise_affine=False)
+
+        self.add_k_proj = self.add_v_proj = None
+        if added_kv_proj_dim is not None:
+            self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
+            self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
+            self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
+
+        self.set_processor(processor)
+
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.fuse_projections
+    def fuse_projections(self):
+        if getattr(self, "fused_projections", False):
+            return
+
+        if self.cross_attention_dim_head is None:
+            concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
+            concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_qkv = nn.Linear(in_features, out_features, bias=True)
+            self.to_qkv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+        else:
+            concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
+            concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_kv = nn.Linear(in_features, out_features, bias=True)
+            self.to_kv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+
+        if self.added_kv_proj_dim is not None:
+            concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
+            concatenated_bias = torch.cat([self.add_k_proj.bias.data, self.add_v_proj.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_added_kv = nn.Linear(in_features, out_features, bias=True)
+            self.to_added_kv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+
+        self.fused_projections = True
+
+    @torch.no_grad()
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.unfuse_projections
+    def unfuse_projections(self):
+        if not getattr(self, "fused_projections", False):
+            return
+
+        if hasattr(self, "to_qkv"):
+            delattr(self, "to_qkv")
+        if hasattr(self, "to_kv"):
+            delattr(self, "to_kv")
+        if hasattr(self, "to_added_kv"):
+            delattr(self, "to_added_kv")
+
+        self.fused_projections = False
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.processor(self, hidden_states, attention_mask, rotary_emb, **kwargs)
 
 
 class Magi1VAETransformerBlock(nn.Module):
@@ -111,30 +238,24 @@ class Magi1VAETransformerBlock(nn.Module):
         eps: float = 1e-6,
     ):
         super().__init__()
-        self.norm1 = nn.Identity()
-        self.attn = Attention(
-            query_dim=dim,
+        self.attn = Magi1VAEAttention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
-            processor=Magi1VAEAttnProcessor2_0(dim, num_heads),
+            cross_attention_dim_head=None,
+            processor=Magi1VAEAttnProcessor(),
         )
 
-        self.drop_path = nn.Identity()
-        self.norm2 = nn.LayerNorm(dim)
-
+        self.norm = nn.LayerNorm(dim)
         self.proj_out = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu")
 
         self.gradient_checkpointing = False
 
-    def forward(self, x):
-        x = x + self.drop_path(self.attn(self.norm1(x)))
-        x = x + self.drop_path(self.proj_out(self.norm2(x)))
-        return x
+    def forward(self, hidden_states: torch.Tensor):
+        hidden_states = hidden_states + self.attn(hidden_states)
+        hidden_states = hidden_states + self.proj_out(self.norm(hidden_states))
+        return hidden_states
 
 
 class Magi1Encoder3d(nn.Module):
@@ -364,7 +485,7 @@ class Magi1Decoder3d(nn.Module):
         return x
 
 
-class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
     Introduced in [Magi1](https://arxiv.org/abs/2505.13211).

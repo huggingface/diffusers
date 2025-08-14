@@ -25,7 +25,7 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
+from ..embeddings import TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import AdaLayerNorm, FP32LayerNorm
@@ -165,11 +165,10 @@ class Magi1TextProjection(nn.Module):
     """
     Projects caption embeddings.
     """
+
     def __init__(self, in_features, hidden_size):
         super().__init__()
-        self.y_proj_xattn = nn.Sequential(
-            nn.Linear(in_features, hidden_size, bias=True), nn.SiLU()
-        )
+        self.y_proj_xattn = nn.Sequential(nn.Linear(in_features, hidden_size, bias=True), nn.SiLU())
         self.y_proj_adaln = nn.Linear(in_features, hidden_size, bias=True)
 
     def forward(self, caption):
@@ -457,9 +456,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         # 1. Patch & position embedding
         self.rope = Magi1RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
 
-        self.patch_embedding = nn.Conv3d(
-            in_channels, inner_dim, kernel_size=patch_size, stride=patch_size, bias=False
-        )
+        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size, bias=False)
 
         # 2. Condition embeddings
         self.condition_embedder = Magi1TimeTextImageEmbedding(

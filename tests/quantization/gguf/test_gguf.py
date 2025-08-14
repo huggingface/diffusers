@@ -212,6 +212,7 @@ class GGUFSingleFileTesterMixin:
 
 class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     ckpt_path = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
+    diffusers_ckpt_path = "https://huggingface.co/sayakpaul/flux-diffusers-gguf/blob/main/model-Q4_0.gguf"
     torch_dtype = torch.bfloat16
     model_cls = FluxTransformer2DModel
     expected_memory_use_in_gb = 5
@@ -295,6 +296,16 @@ class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
         )
         max_diff = numpy_cosine_similarity_distance(expected_slice, output_slice)
         assert max_diff < 1e-4
+
+    def test_loading_gguf_diffusers_format(self):
+        model = self.model_cls.from_single_file(
+            self.diffusers_ckpt_path,
+            subfolder="transformer",
+            quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+            config="black-forest-labs/FLUX.1-dev",
+        )
+        model.to("cuda")
+        model(**self.get_dummy_inputs())
 
 
 class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
