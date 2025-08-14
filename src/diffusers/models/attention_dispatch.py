@@ -602,250 +602,248 @@ def _(
     return torch.empty_like(q), q.new_empty(lse_shape)
 
 
-# ===== Autograd functions =====
+# ===== Helper functions to use attention backends with templated CP autograd functions =====
 
 
-class _cudnn_attention_af(torch.autograd.Function):
-    # https://github.com/pytorch/pytorch/blob/8904ba638726f8c9a5aff5977c4aa76c9d2edfa6/aten/src/ATen/native/native_functions.yaml#L14958
-    # forward declaration:
-    #   aten::_scaled_dot_product_cudnn_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_bias, bool compute_log_sumexp, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor philox_seed, Tensor philox_offset, Tensor debug_attn_mask)
-    # backward declaration:
-    #   aten::_scaled_dot_product_cudnn_attention_backward(Tensor grad_out, Tensor query, Tensor key, Tensor value, Tensor out, Tensor logsumexp, Tensor philox_seed, Tensor philox_offset, Tensor attn_bias, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, *, float? scale=None) -> (Tensor, Tensor, Tensor)
+# https://github.com/pytorch/pytorch/blob/8904ba638726f8c9a5aff5977c4aa76c9d2edfa6/aten/src/ATen/native/native_functions.yaml#L14958
+# forward declaration:
+#   aten::_scaled_dot_product_cudnn_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_bias, bool compute_log_sumexp, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor philox_seed, Tensor philox_offset, Tensor debug_attn_mask)
+def _cudnn_attention_forward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+):
+    if enable_gqa:
+        raise ValueError("`enable_gqa` is not yet supported for cuDNN attention.")
 
-    @staticmethod
-    def forward(
-        ctx: torch.autograd.function.FunctionCtx,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        dropout_p: float = 0.0,
-        is_causal: bool = False,
-        scale: Optional[float] = None,
-        enable_gqa: bool = False,
-        return_lse: bool = False,
-    ):
-        if enable_gqa:
-            raise ValueError("`enable_gqa` is not yet supported for cuDNN attention.")
+    tensors_to_save = ()
 
-        tensors_to_save = ()
+    # Contiguous is a must here! Calling cuDNN backend with aten ops produces incorrect results
+    # if the input tensors are not contiguous.
+    query = query.transpose(1, 2).contiguous()
+    tensors_to_save += (query, key, value)
+    key = key.transpose(1, 2).contiguous()
+    value = value.transpose(1, 2).contiguous()
 
-        # Contiguous is a must here! Calling cuDNN backend with aten ops produces incorrect results
-        # if the input tensors are not contiguous.
-        query = query.transpose(1, 2).contiguous()
-        tensors_to_save += (query, key, value)
-        key = key.transpose(1, 2).contiguous()
-        value = value.transpose(1, 2).contiguous()
-
-        out, lse, cum_seq_q, cum_seq_k, max_q, max_k, philox_seed, philox_offset, debug_attn_mask = (
-            torch.ops.aten._scaled_dot_product_cudnn_attention(
-                query=query,
-                key=key,
-                value=value,
-                attn_bias=attn_mask,
-                compute_log_sumexp=return_lse,
-                dropout_p=dropout_p,
-                is_causal=is_causal,
-                return_debug_mask=False,
-                scale=scale,
-            )
+    out, lse, cum_seq_q, cum_seq_k, max_q, max_k, philox_seed, philox_offset, debug_attn_mask = (
+        torch.ops.aten._scaled_dot_product_cudnn_attention(
+            query=query,
+            key=key,
+            value=value,
+            attn_bias=attn_mask,
+            compute_log_sumexp=return_lse,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            return_debug_mask=False,
+            scale=scale,
         )
+    )
 
-        tensors_to_save += (out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
-        ctx.save_for_backward(*tensors_to_save)
-        ctx.dropout_p = dropout_p
-        ctx.is_causal = is_causal
-        ctx.scale = scale
-        ctx.attn_mask = attn_mask
-        ctx.max_q = max_q
-        ctx.max_k = max_k
+    tensors_to_save += (out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
+    ctx.save_for_backward(*tensors_to_save)
+    ctx.dropout_p = dropout_p
+    ctx.is_causal = is_causal
+    ctx.scale = scale
+    ctx.attn_mask = attn_mask
+    ctx.max_q = max_q
+    ctx.max_k = max_k
 
-        out = out.transpose(1, 2).contiguous()
-        if lse is not None:
-            lse = lse.transpose(1, 2).contiguous()
-        return (out, lse) if return_lse else out
+    out = out.transpose(1, 2).contiguous()
+    if lse is not None:
+        lse = lse.transpose(1, 2).contiguous()
+    return (out, lse) if return_lse else out
 
-    @staticmethod
-    def backward(
-        ctx: torch.autograd.function.FunctionCtx,
-        grad_out: torch.Tensor,
-        *args,
-    ):
-        saved_tensors = ctx.saved_tensors if hasattr(ctx, "saved_tensors") else ctx.to_save
-        query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = saved_tensors
 
-        grad_out = grad_out.transpose(1, 2).contiguous()
-        key = key.transpose(1, 2).contiguous()
-        value = value.transpose(1, 2).contiguous()
+# backward declaration:
+#   aten::_scaled_dot_product_cudnn_attention_backward(Tensor grad_out, Tensor query, Tensor key, Tensor value, Tensor out, Tensor logsumexp, Tensor philox_seed, Tensor philox_offset, Tensor attn_bias, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, *, float? scale=None) -> (Tensor, Tensor, Tensor)
+def _cudnn_attention_backward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    grad_out: torch.Tensor,
+    *args,
+    **kwargs,
+):
+    saved_tensors = ctx.to_save
+    query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = saved_tensors
 
-        # Cannot pass first 5 arguments as kwargs because: https://github.com/pytorch/pytorch/blob/d26ca5de058dbcf56ac52bb43e84dd98df2ace97/torch/_dynamo/variables/torch.py#L1341
-        grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
-            grad_out,
-            query,
-            key,
-            value,
-            out,
-            logsumexp=lse,
-            philox_seed=philox_seed,
-            philox_offset=philox_offset,
-            attn_bias=ctx.attn_mask,
-            cum_seq_q=cum_seq_q,
-            cum_seq_k=cum_seq_k,
-            max_q=ctx.max_q,
-            max_k=ctx.max_k,
-            dropout_p=ctx.dropout_p,
-            is_causal=ctx.is_causal,
-            scale=ctx.scale,
-        )
-        grad_query, grad_key, grad_value = (x.transpose(1, 2).contiguous() for x in (grad_query, grad_key, grad_value))
+    grad_out = grad_out.transpose(1, 2).contiguous()
+    key = key.transpose(1, 2).contiguous()
+    value = value.transpose(1, 2).contiguous()
 
-        return grad_query, grad_key, grad_value, None, None, None, None, None
+    # Cannot pass first 5 arguments as kwargs because: https://github.com/pytorch/pytorch/blob/d26ca5de058dbcf56ac52bb43e84dd98df2ace97/torch/_dynamo/variables/torch.py#L1341
+    grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
+        grad_out,
+        query,
+        key,
+        value,
+        out,
+        logsumexp=lse,
+        philox_seed=philox_seed,
+        philox_offset=philox_offset,
+        attn_bias=ctx.attn_mask,
+        cum_seq_q=cum_seq_q,
+        cum_seq_k=cum_seq_k,
+        max_q=ctx.max_q,
+        max_k=ctx.max_k,
+        dropout_p=ctx.dropout_p,
+        is_causal=ctx.is_causal,
+        scale=ctx.scale,
+    )
+    grad_query, grad_key, grad_value = (x.transpose(1, 2).contiguous() for x in (grad_query, grad_key, grad_value))
+
+    return grad_query, grad_key, grad_value
 
 
 # Adapted from: https://github.com/Dao-AILab/flash-attention/blob/fd2fc9d85c8e54e5c20436465bca709bc1a6c5a1/flash_attn/flash_attn_interface.py#L807
-class _flash_attention_2_af(torch.autograd.Function):
-    @staticmethod
-    def forward(
-        ctx: torch.autograd.function.FunctionCtx,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        dropout_p: float = 0.0,
-        is_causal: bool = False,
-        scale: Optional[float] = None,
-        enable_gqa: bool = False,
-        return_lse: bool = False,
-    ):
-        if attn_mask is not None:
-            raise ValueError("`attn_mask` is not yet supported for flash-attn 2.")
-        if enable_gqa:
-            raise ValueError("`enable_gqa` is not yet supported for flash-attn 2.")
+def _flash_attention_forward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+):
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not yet supported for flash-attn 2.")
+    if enable_gqa:
+        raise ValueError("`enable_gqa` is not yet supported for flash-attn 2.")
 
-        # Hardcoded for now
-        window_size = (-1, -1)
-        softcap = 0.0
-        alibi_slopes = None
-        deterministic = False
-        grad_enabled = any(x.requires_grad for x in (query, key, value))
+    # Hardcoded for now
+    window_size = (-1, -1)
+    softcap = 0.0
+    alibi_slopes = None
+    deterministic = False
+    grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-        if scale is None:
-            scale = query.shape[-1] ** (-0.5)
+    if scale is None:
+        scale = query.shape[-1] ** (-0.5)
 
-        # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
-        parallel_config = _AttentionBackendRegistry._parallel_config
-        if grad_enabled or (parallel_config is not None and parallel_config.world_size > 1):
-            dropout_p = dropout_p if dropout_p > 0 else 1e-30
+    # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
+    parallel_config = _AttentionBackendRegistry._parallel_config
+    if grad_enabled or (parallel_config is not None and parallel_config.world_size > 1):
+        dropout_p = dropout_p if dropout_p > 0 else 1e-30
 
-        with torch.set_grad_enabled(grad_enabled):
-            out, lse, S_dmask, rng_state = _wrapped_flash_attn_forward(
-                query,
-                key,
-                value,
-                dropout_p,
-                scale,
-                is_causal,
-                window_size[0],
-                window_size[1],
-                softcap,
-                alibi_slopes,
-                return_lse,
-            )
-            lse = lse.permute(0, 2, 1)
-
-        ctx.save_for_backward(query, key, value, out, lse, rng_state)
-        ctx.dropout_p = dropout_p
-        ctx.scale = scale
-        ctx.is_causal = is_causal
-        ctx.window_size = window_size
-        ctx.softcap = softcap
-        ctx.alibi_slopes = alibi_slopes
-        ctx.deterministic = deterministic
-
-        return (out, lse) if return_lse else out
-
-    @staticmethod
-    def backward(
-        ctx: torch.autograd.function.FunctionCtx,
-        grad_out: torch.Tensor,
-        *args,
-    ):
-        saved_tensors = ctx.saved_tensors if hasattr(ctx, "saved_tensors") else ctx.to_save
-        query, key, value, out, lse, rng_state = saved_tensors
-        grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
-
-        lse_d = _wrapped_flash_attn_backward(  # noqa: F841
-            grad_out,
+    with torch.set_grad_enabled(grad_enabled):
+        out, lse, S_dmask, rng_state = _wrapped_flash_attn_forward(
             query,
             key,
             value,
-            out,
-            lse,
-            grad_query,
-            grad_key,
-            grad_value,
-            ctx.dropout_p,
-            ctx.scale,
-            ctx.is_causal,
-            ctx.window_size[0],
-            ctx.window_size[1],
-            ctx.softcap,
-            ctx.alibi_slopes,
-            ctx.deterministic,
-            rng_state,
+            dropout_p,
+            scale,
+            is_causal,
+            window_size[0],
+            window_size[1],
+            softcap,
+            alibi_slopes,
+            return_lse,
         )
+        lse = lse.permute(0, 2, 1)
 
-        # Head dimension may have been padded
-        grad_query = grad_query[..., : grad_out.shape[-1]]
-        grad_key = grad_key[..., : grad_out.shape[-1]]
-        grad_value = grad_value[..., : grad_out.shape[-1]]
+    ctx.save_for_backward(query, key, value, out, lse, rng_state)
+    ctx.dropout_p = dropout_p
+    ctx.scale = scale
+    ctx.is_causal = is_causal
+    ctx.window_size = window_size
+    ctx.softcap = softcap
+    ctx.alibi_slopes = alibi_slopes
+    ctx.deterministic = deterministic
 
-        return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
+    return (out, lse) if return_lse else out
 
 
-class _sage_attention_af(torch.autograd.Function):
-    @staticmethod
-    def forward(
-        ctx: torch.autograd.function.FunctionCtx,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        dropout_p: float = 0.0,
-        is_causal: bool = False,
-        scale: Optional[float] = None,
-        enable_gqa: bool = False,
-        return_lse: bool = False,
-    ):
-        if attn_mask is not None:
-            raise ValueError("`attn_mask` is not yet supported for Sage attention.")
-        if dropout_p > 0.0:
-            raise ValueError("`dropout_p` is not yet supported for Sage attention.")
-        if enable_gqa:
-            raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
+def _flash_attention_backward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    grad_out: torch.Tensor,
+    *args,
+    **kwargs,
+):
+    saved_tensors = ctx.to_save
+    query, key, value, out, lse, rng_state = saved_tensors
+    grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
-        out = sageattn(
-            q=query,
-            k=key,
-            v=value,
-            tensor_layout="NHD",
-            is_causal=is_causal,
-            sm_scale=scale,
-            return_lse=return_lse,
-        )
-        lse = None
-        if return_lse:
-            out, lse, *_ = out
+    lse_d = _wrapped_flash_attn_backward(  # noqa: F841
+        grad_out,
+        query,
+        key,
+        value,
+        out,
+        lse,
+        grad_query,
+        grad_key,
+        grad_value,
+        ctx.dropout_p,
+        ctx.scale,
+        ctx.is_causal,
+        ctx.window_size[0],
+        ctx.window_size[1],
+        ctx.softcap,
+        ctx.alibi_slopes,
+        ctx.deterministic,
+        rng_state,
+    )
 
-        return (out, lse) if return_lse else out
+    # Head dimension may have been padded
+    grad_query = grad_query[..., : grad_out.shape[-1]]
+    grad_key = grad_key[..., : grad_out.shape[-1]]
+    grad_value = grad_value[..., : grad_out.shape[-1]]
 
-    @staticmethod
-    def backward(
-        ctx: torch.autograd.function.FunctionCtx,
-        grad_out: torch.Tensor,
-        *args,
-    ):
-        raise NotImplementedError("Backward pass is not implemented for Sage attention.")
+    return grad_query, grad_key, grad_value
+
+
+def _sage_attention_forward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+):
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not yet supported for Sage attention.")
+    if dropout_p > 0.0:
+        raise ValueError("`dropout_p` is not yet supported for Sage attention.")
+    if enable_gqa:
+        raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
+
+    out = sageattn(
+        q=query,
+        k=key,
+        v=value,
+        tensor_layout="NHD",
+        is_causal=is_causal,
+        sm_scale=scale,
+        return_lse=return_lse,
+    )
+    lse = None
+    if return_lse:
+        out, lse, *_ = out
+        lse = lse.permute(0, 2, 1)
+
+    ctx.save_for_backward(query, key, value, out, lse)
+
+    return (out, lse) if return_lse else out
+
+
+def _sage_attention_backward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    grad_out: torch.Tensor,
+    *args,
+):
+    raise NotImplementedError("Backward pass is not implemented for Sage attention.")
 
 
 # ===== Context parallel =====
@@ -874,7 +872,8 @@ class TemplatedRingAttention(torch.autograd.Function):
         scale: Optional[float],
         enable_gqa: bool,
         return_lse: bool,
-        op: torch.autograd.Function,
+        forward_op,
+        backward_op,
     ):
         parallel_config = _AttentionBackendRegistry._parallel_config
         ring_mesh = parallel_config._ring_mesh
@@ -889,7 +888,8 @@ class TemplatedRingAttention(torch.autograd.Function):
         ctx.scale = scale
         ctx.enable_gqa = enable_gqa
         ctx.return_lse = return_lse
-        ctx.op = op
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
         ctx.op_ctx = torch.autograd.function.FunctionCtx()
 
         kv_buffer = torch.cat([key.flatten(), value.flatten()]).contiguous()
@@ -904,7 +904,7 @@ class TemplatedRingAttention(torch.autograd.Function):
                 value = kv[key_numel:].reshape_as(value)
                 next_rank = (next_rank + 1) % world_size
 
-            out, lse = op.forward(
+            out, lse = forward_op(
                 ctx.op_ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, True
             )
 
@@ -962,7 +962,7 @@ class TemplatedRingAttention(torch.autograd.Function):
             saved_tensors[2] = value
             ctx.op_ctx.to_save = tuple(saved_tensors)
 
-            grad_query_op, grad_key_op, grad_value_op, *_ = ctx.op.backward(ctx.op_ctx, grad_out)
+            grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(ctx.op_ctx, grad_out)
 
             if i > 0:
                 grad_kv_buffer = _wait_tensor(next_grad_kv)
@@ -978,7 +978,7 @@ class TemplatedRingAttention(torch.autograd.Function):
                 grad_kv_buffer = torch.cat([grad_key.flatten(), grad_value.flatten()]).contiguous()
                 next_grad_kv = funcol.permute_tensor(grad_kv_buffer, next_ranks, group=ring_mesh.get_group())
 
-        return grad_query, grad_key, grad_value, None, None, None, None, None, None, None
+        return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
 
 
 class TemplatedUlyssesAttention(torch.autograd.Function):
@@ -994,13 +994,16 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         scale: Optional[float],
         enable_gqa: bool,
         return_lse: bool,
-        op: torch.autograd.Function,
+        forward_op,
+        backward_op,
     ):
         parallel_config = _AttentionBackendRegistry._parallel_config
         ulysses_mesh = parallel_config._ulysses_mesh
         world_size = parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
 
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
         ctx.op_ctx = torch.autograd.function.FunctionCtx()
 
         B, S_LOCAL, H, D = query.shape
@@ -1014,7 +1017,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         )
         query, key, value = (x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
-        out = op.forward(ctx.op_ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse)
+        out = forward_op(ctx.op_ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse)
         if return_lse:
             out, lse, *_ = out
 
@@ -1051,7 +1054,8 @@ def _templated_context_parallel_attention(
     enable_gqa: bool = False,
     return_lse: bool = False,
     *,
-    op: torch.autograd.Function,
+    forward_op,
+    backward_op,
 ):
     if attn_mask is not None:
         raise ValueError("Attention mask is not yet supported for templated attention.")
@@ -1064,14 +1068,14 @@ def _templated_context_parallel_attention(
     # TODO: add support for unified attention with ring/ulysses degree both being > 1
     if parallel_config.ring_degree > 1:
         return TemplatedRingAttention.apply(
-            query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, op
+            query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, forward_op, backward_op
         )
     elif parallel_config.ulysses_degree > 1:
         return TemplatedUlyssesAttention.apply(
-            query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, op
+            query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, forward_op, backward_op
         )
     else:
-        return op.apply(query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse)
+        raise ValueError("Reaching this branch of code is unexpected. Please report a bug.")
 
 
 # ===== Attention backends =====
@@ -1108,7 +1112,17 @@ def _flash_attention(
             out, lse, *_ = out
     else:
         out = _templated_context_parallel_attention(
-            query, key, value, None, dropout_p, is_causal, scale, False, return_lse, op=_flash_attention_2_af
+            query,
+            key,
+            value,
+            None,
+            dropout_p,
+            is_causal,
+            scale,
+            False,
+            return_lse,
+            forward_op=_flash_attention_forward_op,
+            backward_op=_flash_attention_backward_op,
         )
         if return_lse:
             out, lse = out
@@ -1372,7 +1386,17 @@ def _native_cudnn_attention(
         out = out.permute(0, 2, 1, 3)
     else:
         out = _templated_context_parallel_attention(
-            query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, op=_cudnn_attention_af
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            forward_op=_cudnn_attention_forward_op,
+            backward_op=_cudnn_attention_backward_op,
         )
         if return_lse:
             out, lse = out
@@ -1564,7 +1588,17 @@ def _sage_attention(
             out, lse, *_ = out
     else:
         out = _templated_context_parallel_attention(
-            query, key, value, None, 0.0, is_causal, scale, False, return_lse, op=_sage_attention_af
+            query,
+            key,
+            value,
+            None,
+            0.0,
+            is_causal,
+            scale,
+            False,
+            return_lse,
+            forward_op=_sage_attention_forward_op,
+            backward_op=_sage_attention_backward_op,
         )
         if return_lse:
             out, lse = out
