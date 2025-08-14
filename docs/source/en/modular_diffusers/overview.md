@@ -10,33 +10,32 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Getting Started with Modular Diffusers
+# Overview
 
-<Tip warning={true}>
+> [!WARNING]
+> Modular Diffusers is under active development and it's API may change.
 
-🧪 **Experimental Feature**: Modular Diffusers is an experimental feature we are actively developing. The API may be subject to breaking changes.
+Modular Diffusers is a unified pipeline system that simplifies your workflow with *pipeline blocks*.
 
-</Tip>
+- Blocks are reusable and you only need to create new blocks that are unique to your pipeline.
+- Blocks can be mixed and matched to adapt to or create a pipeline for a specific workflow or multiple workflows.
 
-With Modular Diffusers, we introduce a unified pipeline system that simplifies how you work with diffusion models. Instead of creating separate pipelines for each task, Modular Diffusers lets you:
+The Modular Diffusers docs are organized as shown below.
 
-**Write Only What's New**: You won't need to write an entire pipeline from scratch every time you have a new use case. You can create pipeline blocks just for your new workflow's unique aspects and reuse existing blocks for existing functionalities. 
+## Quickstart
 
-**Assemble Like LEGO®**: You can mix and match between blocks in flexible ways. This allows you to write dedicated blocks unique to specific workflows, and then assemble different blocks into a pipeline that can be used more conveniently for multiple workflows. 
+- A [quickstart](./quickstart) demonstrating how to implement an example workflow with Modular Diffusers.
 
+## ModularPipelineBlocks
 
-Here's how our guides are organized to help you navigate the Modular Diffusers documentation:
+- [States](./modular_diffusers_states) explains how data is shared and communicated between blocks and [`ModularPipeline`].
+- [ModularPipelineBlocks](./pipeline_block) is the most basic unit of a [`ModularPipeline`] and this guide shows you how to create one.
+- [SequentialPipelineBlocks](./sequential_pipeline_blocks) is a type of block that chains multiple blocks so they run one after another, passing data along the chain. This guide shows you how to create [`~modular_pipelines.SequentialPipelineBlocks`] and how they connect and work together.
+- [LoopSequentialPipelineBlocks](./loop_sequential_pipeline_blocks) is a type of block that runs a series of blocks in a loop. This guide shows you how to create [`~modular_pipelines.LoopSequentialPipelineBlocks`].
+- [AutoPipelineBlocks](./auto_pipeline_blocks) is a type of block that automatically chooses which blocks to run based on the input. This guide shows you how to create [`~modular_pipelines.AutoPipelineBlocks`].
 
-### 🚀 Running Pipelines
-- **[Modular Pipeline Guide](./modular_pipeline.md)** - How to use predefined blocks to build a pipeline and run it
-- **[Components Manager Guide](./components_manager.md)** - How to manage and reuse components across multiple pipelines
+## ModularPipeline
 
-### 📚 Creating PipelineBlocks
-- **[Pipeline and Block States](./modular_diffusers_states.md)** - Understanding PipelineState and BlockState
-- **[Pipeline Block](./pipeline_block.md)** - How to write custom PipelineBlocks
-- **[SequentialPipelineBlocks](sequential_pipeline_blocks.md)** - Connecting blocks in sequence
-- **[LoopSequentialPipelineBlocks](./loop_sequential_pipeline_blocks.md)** - Creating iterative workflows
-- **[AutoPipelineBlocks](./auto_pipeline_blocks.md)** - Conditional block selection
-
-### 🎯 Practical Examples
-- **[End-to-End Example](./end_to_end_guide.md)** - Complete end-to-end examples including sharing your workflow in huggingface hub and deplying UI nodes
+- [ModularPipeline](./modular_pipeline) shows you how to create and convert pipeline blocks into an executable [`ModularPipeline`].
+- [ComponentsManager](./components_manager) shows you how to manage and reuse components across multiple pipelines.
+- [Guiders](./guiders) shows you how to use different guidance methods in the pipeline.

@@ -2339,6 +2339,29 @@ class PipelineTesterMixin:
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
 
+    @require_torch_accelerator
+    def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        torch.manual_seed(0)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["generator"] = torch.manual_seed(0)
+        out = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map=torch_device)
+            for component in loaded_pipe.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+        inputs["generator"] = torch.manual_seed(0)
+        loaded_out = loaded_pipe(**inputs)[0]
+        max_diff = np.abs(to_np(out) - to_np(loaded_out)).max()
+        self.assertLess(max_diff, expected_max_difference)
+
 
 @is_staging_test
 class PipelinePushToHubTester(unittest.TestCase):

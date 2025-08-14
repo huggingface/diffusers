@@ -18,7 +18,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import pytest
 import safetensors.torch
 import torch
 from PIL import Image
@@ -160,11 +159,6 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
-    @pytest.mark.xfail(
-        condition=True,
-        reason="RuntimeError: Input type (float) and bias type (c10::BFloat16) should be the same",
-        strict=True,
-    )
     def test_layerwise_casting_inference_denoiser(self):
         super().test_layerwise_casting_inference_denoiser()
 

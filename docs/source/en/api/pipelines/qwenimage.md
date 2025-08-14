@@ -90,3 +90,15 @@ image.save("qwen_fewsteps.png")
 ## QwenImagePipelineOutput
 
 [[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
+
+## QwenImageImg2ImgPipeline
+
+[[autodoc]] QwenImageImg2ImgPipeline
+  - all
+  - __call__
+
+## QwenImageInpaintPipeline
+
+[[autodoc]] QwenImageInpaintPipeline
+  - all
+  - __call__
