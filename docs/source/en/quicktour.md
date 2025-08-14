@@ -53,9 +53,8 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image",
-  torch_dtype=torch.bfloat16
-).to("cuda")
+  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
+)
 
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
@@ -84,7 +83,8 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
   vae=vae
   torch_dtype=torch.bfloat16,
-).to("cuda")
+  device_map="cuda"
+)
 
 prompt = """
 Cinematic video of a sleek cat lounging on a colorful inflatable in a crystal-clear turquoise pool in Palm Springs, 
@@ -110,13 +110,11 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image",
-  torch_dtype=torch.bfloat16
+  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 pipeline.load_lora_weights(
   "flymy-ai/qwen-image-realism-lora",
 )
-pipeline.to("cuda")
 
 prompt = """
 super Realism cinematic film still of a cat sipping a margarita in a pool in Palm Springs in the style of umempart, California
@@ -149,7 +147,8 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image",
   torch_dtype=torch.bfloat16,
   quantization_config=quant_config,
-).to("cuda")
+  device_map="cuda"
+)
 
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
@@ -187,7 +186,8 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image",
   torch_dtype=torch.bfloat16,
   quantization_config=quant_config,
-).to("cuda")
+  device_map="cuda"
+)
 pipeline.enable_model_cpu_offload()
 
 prompt = """
@@ -213,9 +213,8 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image",
-  torch_dtype=torch.bfloat16
-).to("cuda")
+  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
+)
 
 pipeline.transformer.compile_repeated_blocks(
     fullgraph=True,
