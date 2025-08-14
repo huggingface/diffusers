@@ -7,7 +7,7 @@
   - local: quicktour
     title: Quicktour
   - local: stable_diffusion
-    title: Effective and efficient diffusion
+    title: Basic performance
 
 - title: DiffusionPipeline
   isExpanded: false
