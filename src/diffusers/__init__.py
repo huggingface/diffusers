@@ -36,12 +36,6 @@ _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "guiders": [],
     "hooks": [],
-    "image_processor": [
-        "VaeImageProcessor",
-        "VaeImageProcessorLDM3D", 
-        "PixArtImageProcessor",
-        "IPAdapterMaskProcessor",
-    ],
     "video_processor": [
         "VideoProcessor",
     ],
@@ -169,6 +163,12 @@ else:
             "apply_pyramid_attention_broadcast",
         ]
     )
+    _import_structure["image_processor"] = [
+        "IPAdapterMaskProcessor",
+        "PixArtImageProcessor",
+        "VaeImageProcessor",
+        "VaeImageProcessorLDM3D",
+    ]
     _import_structure["models"].extend(
         [
             "AllegroTransformer3DModel",
@@ -840,6 +840,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             apply_layer_skip,
             apply_pyramid_attention_broadcast,
         )
+        from .image_processor import (
+            IPAdapterMaskProcessor,
+            PixArtImageProcessor,
+            VaeImageProcessor,
+            VaeImageProcessorLDM3D,
+        )
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -958,13 +964,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
-        from .image_processor import (
-            VaeImageProcessor,
-            VaeImageProcessorLDM3D,
-            PixArtImageProcessor,
-            IPAdapterMaskProcessor,
-        )
-        from .video_processor import VideoProcessor
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
@@ -1006,6 +1005,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionScheduler,
         )
         from .training_utils import EMAModel
+        from .video_processor import VideoProcessor
 
     try:
         if not (is_torch_available() and is_scipy_available()):
