@@ -249,6 +249,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _skip_layerwise_casting_patterns = None
     _supports_group_offloading = True
     _repeated_blocks = []
+    _internal_parallel_config = None
     _cp_plan = None
 
     def __init__(self):
@@ -1480,10 +1481,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
             )
 
-    @contextmanager
     def parallelize(self, *, config: ParallelConfig, cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None):
-        from ..hooks.context_parallel import apply_context_parallel, remove_context_parallel
-        from .attention_dispatch import _AttentionBackendRegistry
+        from ..hooks.context_parallel import apply_context_parallel
 
         logger.warning(
             "`parallelize` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
@@ -1530,11 +1529,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         cp_plan = cp_plan if cp_plan is not None else self._cp_plan
 
         apply_context_parallel(self, parallel_config, cp_plan)
-        _AttentionBackendRegistry._parallel_config = parallel_config
-
-        yield
-
-        remove_context_parallel(self, cp_plan)
+        self._internal_parallel_config = parallel_config
 
     @classmethod
     def _load_pretrained_model(

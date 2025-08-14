@@ -15,12 +15,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 from dataclasses import dataclass
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 
 from ..utils import get_logger
+
+
+if TYPE_CHECKING:
+    from ..pipelines.pipeline_utils import DiffusionPipeline
+    from .modeling_utils import ModelMixin
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -117,3 +123,53 @@ ContextParallelOutputType = Union[
 # A dictionary where keys denote the module id, and the value denotes how the inputs/outputs of
 # the module should be split/gathered across context parallel region.
 ContextParallelModelPlan = Dict[str, Union[ContextParallelInputType, ContextParallelOutputType]]
+
+
+_ENABLE_PARALLELISM_WARN_ONCE = False
+
+
+@contextlib.contextmanager
+def enable_parallelism(model_or_pipeline: Union["DiffusionPipeline", "ModelMixin"]):
+    from diffusers import DiffusionPipeline, ModelMixin
+
+    from .attention_dispatch import _AttentionBackendRegistry
+
+    global _ENABLE_PARALLELISM_WARN_ONCE
+    if not _ENABLE_PARALLELISM_WARN_ONCE:
+        logger.warning(
+            "Support for `enable_parallelism` is experimental and the API may be subject to change in the future."
+        )
+        _ENABLE_PARALLELISM_WARN_ONCE = True
+
+    if isinstance(model_or_pipeline, DiffusionPipeline):
+        parallelized_components = [
+            (name, component)
+            for name, component in model_or_pipeline.components.items()
+            if getattr(component, "_internal_parallel_config", None) is not None
+        ]
+        if len(parallelized_components) > 1:
+            raise ValueError(
+                "Enabling parallelism on a pipeline is not possible when multiple internal components are parallelized. Please run "
+                "different stages of the pipeline separately with `enable_parallelism` on each component manually."
+            )
+        if len(parallelized_components) == 0:
+            raise ValueError(
+                "No parallelized components found in the pipeline. Please ensure at least one component is parallelized."
+            )
+        _, model_or_pipeline = parallelized_components[0]
+    elif isinstance(model_or_pipeline, ModelMixin):
+        if getattr(model_or_pipeline, "_internal_parallel_config", None) is None:
+            raise ValueError(
+                "The model is not parallelized. Please ensure the model is parallelized with `.parallelize()` before using this context manager."
+            )
+    else:
+        raise TypeError(
+            f"Expected a `DiffusionPipeline` or `ModelMixin` instance, but got {type(model_or_pipeline)}. Please provide a valid model or pipeline."
+        )
+
+    old_parallel_config = _AttentionBackendRegistry._parallel_config
+    _AttentionBackendRegistry._parallel_config = model_or_pipeline._internal_parallel_config
+
+    yield
+
+    _AttentionBackendRegistry._parallel_config = old_parallel_config
