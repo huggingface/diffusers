@@ -666,7 +666,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         )
 
         # 4. Output projection
-        self.norm_out = AdaLayerNormContinuous(inner_dim, time_embed_dim, elementwise_affine=False)
+        self.norm_out = AdaLayerNormContinuous(inner_dim, time_embed_dim, elementwise_affine=False, use_silu=False)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels, bias=True)
 
         self.gradient_checkpointing = False
@@ -714,8 +714,8 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
 
         hidden_states, encoder_hidden_states = self.patch_embed(hidden_states, encoder_hidden_states)
 
-        temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
-        temb = F.silu(temb)
+        temb_raw = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
+        temb_blocks = F.silu(temb_raw)
 
         # 3. Transformer blocks
         for block in self.transformer_blocks:
@@ -724,7 +724,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    temb,
+                    temb_blocks,
                     image_rotary_emb,
                     attention_mask,
                     attention_kwargs,
@@ -733,14 +733,14 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
                 hidden_states, encoder_hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
-                    temb,
+                    temb_blocks,
                     image_rotary_emb,
                     attention_mask,
                     attention_kwargs,
                 )
 
         # 4. Output norm & projection
-        hidden_states = self.norm_out(hidden_states, temb)
+        hidden_states = self.norm_out(hidden_states, temb_raw)
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify

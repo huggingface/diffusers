@@ -333,9 +333,10 @@ class AdaLayerNormContinuous(nn.Module):
         eps=1e-5,
         bias=True,
         norm_type="layer_norm",
+        use_silu: bool = True,
     ):
         super().__init__()
-        self.silu = nn.SiLU()
+        self.act = nn.SiLU() if use_silu else nn.Identity()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
             self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
@@ -346,7 +347,7 @@ class AdaLayerNormContinuous(nn.Module):
 
     def forward(self, x: torch.Tensor, conditioning_embedding: torch.Tensor) -> torch.Tensor:
         # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
-        emb = self.linear(self.silu(conditioning_embedding).to(x.dtype))
+        emb = self.linear(self.act(conditioning_embedding).to(x.dtype))
         scale, shift = torch.chunk(emb, 2, dim=1)
         x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
