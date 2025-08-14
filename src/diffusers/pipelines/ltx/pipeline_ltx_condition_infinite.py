@@ -749,6 +749,7 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
         max_sequence_length: int = 256,
         temporal_tile_size: int = 80,
         temporal_overlap: int = 24,
+        temporal_overlap_cond_strength: float = 0.5,
         horizontal_tiles: int = 1,
         vertical_tiles: int = 1,
         spatial_overlap: int = 1,
@@ -977,12 +978,21 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                         last_latent_tile_num_frames = last_latent_chunk.shape[2]
                         latent_chunk = torch.cat([last_latent_chunk, latent_chunk], dim=2)
                         total_latent_num_frames = last_latent_tile_num_frames + latent_tile_num_frames
+                        last_latent_chunk = self._pack_latents(
+                            last_latent_chunk,
+                            self.transformer_spatial_patch_size,
+                            self.transformer_temporal_patch_size,
+                        )
+                        last_latent_chunk_num_tokens = last_latent_chunk.shape[1]
+                        if self.do_classifier_free_guidance:
+                            last_latent_chunk = torch.cat([last_latent_chunk, last_latent_chunk], dim=0)
 
                         conditioning_mask = torch.zeros(
                             (batch_size, total_latent_num_frames),
                             dtype=torch.float32,
                             device=device,
                         )
+                        # conditioning_mask[:, :last_latent_tile_num_frames] = temporal_overlap_cond_strength
                         conditioning_mask[:, :last_latent_tile_num_frames] = 1.0
                     else:
                         total_latent_num_frames = latent_tile_num_frames
@@ -1041,9 +1051,17 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                                 torch.cat([latent_chunk] * 2) if self.do_classifier_free_guidance else latent_chunk
                             )
                             latent_model_input = latent_model_input.to(prompt_embeds.dtype)
-                            timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1).float()
-                            if start_index > 0:
-                                timestep = torch.min(timestep, (1 - conditioning_mask_model_input) * 1000.0)
+                            # Create timestep tensor that has prod(latent_model_input.shape) elements
+                            if start_index == 0:
+                                timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1)
+                            else:
+                                timestep = t.view(1, 1).expand((latent_model_input.shape[:-1])).clone()
+                                timestep[:, :last_latent_chunk_num_tokens] = 0.0
+
+                            timestep = timestep.float()
+                            # timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1).float()
+                            # if start_index > 0:
+                            #     timestep = torch.min(timestep, (1 - conditioning_mask_model_input) * 1000.0)
 
                             with self.transformer.cache_context("cond_uncond"):
                                 noise_pred = self.transformer(
@@ -1075,8 +1093,11 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                             if start_index == 0:
                                 latent_chunk = denoised_latent_chunk
                             else:
-                                tokens_to_denoise_mask = (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1)
-                                latent_chunk = torch.where(tokens_to_denoise_mask, denoised_latent_chunk, latent_chunk)
+                                latent_chunk = torch.cat(
+                                    [last_latent_chunk, denoised_latent_chunk[:, last_latent_chunk_num_tokens:]], dim=1
+                                )
+                                # tokens_to_denoise_mask = (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1)
+                                # latent_chunk = torch.where(tokens_to_denoise_mask, denoised_latent_chunk, latent_chunk)
 
                             if callback_on_step_end is not None:
                                 callback_kwargs = {}
@@ -1108,8 +1129,7 @@ class LTXConditionInfinitePipeline(DiffusionPipeline, FromSingleFileMixin, LTXVi
                     if start_index == 0:
                         first_tile_out_latents = latent_chunk.clone()
                     else:
-                        # We drop the first latent frame as it's a reinterpreted 8-frame latent understood as 1-frame latent
-                        latent_chunk = latent_chunk[:, :, last_latent_tile_num_frames + 1 :, :, :]
+                        latent_chunk = latent_chunk[:, :, last_latent_tile_num_frames:-1, :, :]
                         latent_chunk = LTXLatentUpsamplePipeline.adain_filter_latent(
                             latent_chunk, first_tile_out_latents, adain_factor
                         )
