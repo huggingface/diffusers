@@ -20,9 +20,66 @@ Check out the model card [here](https://huggingface.co/Qwen/Qwen-Image) to learn
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+[Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 </Tip>
+
+## LoRA for faster inference
+
+Use a LoRA from `lightx2v/Qwen-Image-Lightning` to speed up inference by reducing the
+number of steps. Refer to the code snippet below:
+
+<details>
+<summary>Code</summary>
+
+```py
+from diffusers import DiffusionPipeline, FlowMatchEulerDiscreteScheduler
+import torch 
+import math
+
+ckpt_id = "Qwen/Qwen-Image"
+
+# From
+# https://github.com/ModelTC/Qwen-Image-Lightning/blob/342260e8f5468d2f24d084ce04f55e101007118b/generate_with_diffusers.py#L82C9-L97C10
+scheduler_config = {
+    "base_image_seq_len": 256,
+    "base_shift": math.log(3),  # We use shift=3 in distillation
+    "invert_sigmas": False,
+    "max_image_seq_len": 8192,
+    "max_shift": math.log(3),  # We use shift=3 in distillation
+    "num_train_timesteps": 1000,
+    "shift": 1.0,
+    "shift_terminal": None,  # set shift_terminal to None
+    "stochastic_sampling": False,
+    "time_shift_type": "exponential",
+    "use_beta_sigmas": False,
+    "use_dynamic_shifting": True,
+    "use_exponential_sigmas": False,
+    "use_karras_sigmas": False,
+}
+scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
+pipe = DiffusionPipeline.from_pretrained(
+    ckpt_id, scheduler=scheduler, torch_dtype=torch.bfloat16
+).to("cuda")
+pipe.load_lora_weights(
+    "lightx2v/Qwen-Image-Lightning", weight_name="Qwen-Image-Lightning-8steps-V1.0.safetensors"
+)
+
+prompt = "a tiny astronaut hatching from an egg on the moon, Ultra HD, 4K, cinematic composition."
+negative_prompt = " "
+image = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=1024,
+    height=1024,
+    num_inference_steps=8,
+    true_cfg_scale=1.0,
+    generator=torch.manual_seed(0),
+).images[0]
+image.save("qwen_fewsteps.png")
+```
+
+</details>
 
 ## QwenImagePipeline
 
@@ -33,3 +90,15 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 ## QwenImagePipelineOutput
 
 [[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
+
+## QwenImageImg2ImgPipeline
+
+[[autodoc]] QwenImageImg2ImgPipeline
+  - all
+  - __call__
+
+## QwenImageInpaintPipeline
+
+[[autodoc]] QwenImageInpaintPipeline
+  - all
+  - __call__
