@@ -129,8 +129,6 @@ import torch
 from diffusers import DiffusionPipeline
 
 os.environ["HF_ENABLE_PARALLEL_LOADING"] = "YES"
-os.environ["HF_PARALLEL_LOADING_WORKERS"] = "12"
-
 pipeline = DiffusionPipeline.from_pretrained(
     "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
     torch_dtype=torch.bfloat16,
