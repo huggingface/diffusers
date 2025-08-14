@@ -36,9 +36,6 @@ _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "guiders": [],
     "hooks": [],
-    "video_processor": [
-        "VideoProcessor",
-    ],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "modular_pipelines": [],
@@ -168,6 +165,9 @@ else:
         "PixArtImageProcessor",
         "VaeImageProcessor",
         "VaeImageProcessorLDM3D",
+    ]
+    _import_structure["video_processor"] = [
+        "VideoProcessor",
     ]
     _import_structure["models"].extend(
         [
@@ -1365,3 +1365,4 @@ else:
         module_spec=__spec__,
         extra_objects={"__version__": __version__},
     )
+    
