@@ -99,10 +99,10 @@ class DreamTextPipeline(DiffusionPipeline):
                 return_overflowing_tokens=False,
                 return_tensors="pt",
             )
-        
+
         text_input_ids = text_inputs.input_ids.to(device=device)
         attention_mask = text_inputs.attention_mask.to(device=device)
-        
+
         # duplicate text tokens and attention mask for each generation per prompt, using mps friendly method
         # TODO: this follows e.g. the Flux pipeline's encode_prompts, why do we repeat in the sequence length dim
         # rather than the batch length dim...?
@@ -113,7 +113,7 @@ class DreamTextPipeline(DiffusionPipeline):
         attention_mask = attention_mask.view(batch_size * num_texts_per_prompt, -1)
 
         return text_input_ids, attention_mask
-    
+
     def prepare_latents(
         self,
         batch_size: int,
@@ -291,7 +291,7 @@ class DreamTextPipeline(DiffusionPipeline):
             padding_length = max_sequence_length - prompt_embeds.shape[1]
             if padding_length > 0:
                 padding_mask_tokens = torch.full(
-                    (total_batch_size, padding_length), self.scheduler.config.mask_token_id, device=device 
+                    (total_batch_size, padding_length), self.scheduler.config.mask_token_id, device=device
                 )
                 padding_mask_embedding = self.transformer.embed_tokens(padding_mask_tokens)
                 prompt_embeds = torch.cat([prompt_embeds, padding_mask_embedding], dim=1)
