@@ -17,7 +17,6 @@
 import functools
 import importlib
 import inspect
-import math
 import os
 from array import array
 from collections import OrderedDict, defaultdict
@@ -717,27 +716,33 @@ def _expand_device_map(device_map, param_names):
 
 
 # Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
-def _caching_allocator_warmup(model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype) -> None:
+def _caching_allocator_warmup(
+    model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype, hf_quantizer: Optional[DiffusersQuantizer]
+) -> None:
     """
     This function warm-ups the caching allocator based on the size of the model tensors that will reside on each
     device. It allows to have one large call to Malloc, instead of recursively calling it later when loading the model,
     which is actually the loading speed bottleneck. Calling this function allows to cut the model loading time by a
     very large margin.
     """
+    factor = 2 if hf_quantizer is None else hf_quantizer.get_cuda_warm_up_factor()
     # Remove disk and cpu devices, and cast to proper torch.device
     accelerator_device_map = {
         param: torch.device(device)
         for param, device in expanded_device_map.items()
         if str(device) not in ["cpu", "disk"]
     }
-    parameter_count = defaultdict(lambda: 0)
+    total_byte_count = defaultdict(lambda: 0)
     for param_name, device in accelerator_device_map.items():
         try:
             param = model.get_parameter(param_name)
         except AttributeError:
             param = model.get_buffer(param_name)
-        parameter_count[device] += math.prod(param.shape)
+        # The dtype of different parameters may be different with composite models or `keep_in_fp32_modules`
+        param_byte_count = param.numel() * param.element_size()
+        # TODO: account for TP when needed.
+        total_byte_count[device] += param_byte_count
 
     # This will kick off the caching allocator to avoid having to Malloc afterwards
-    for device, param_count in parameter_count.items():
-        _ = torch.empty(param_count, dtype=dtype, device=device, requires_grad=False)
+    for device, byte_count in total_byte_count.items():
+        _ = torch.empty(byte_count // factor, dtype=dtype, device=device, requires_grad=False)
