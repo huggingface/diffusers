@@ -714,8 +714,8 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
 
         hidden_states, encoder_hidden_states = self.patch_embed(hidden_states, encoder_hidden_states)
 
-        temb_raw = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
-        temb_blocks = F.silu(temb_raw)
+        temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
+        temb = F.silu(temb)
 
         # 3. Transformer blocks
         for block in self.transformer_blocks:
@@ -724,7 +724,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    temb_blocks,
+                    temb,
                     image_rotary_emb,
                     attention_mask,
                     attention_kwargs,
@@ -733,7 +733,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
                 hidden_states, encoder_hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
-                    temb_blocks,
+                    temb,
                     image_rotary_emb,
                     attention_mask,
                     attention_kwargs,
