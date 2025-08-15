@@ -326,7 +326,7 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
-      - local: api/models/bria_transformer2d
+      - local: api/models/transformer_bria
         title: BriaTransformer2DModel
       - local: api/models/chroma_transformer
         title: ChromaTransformer2DModel
