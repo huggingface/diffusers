@@ -740,7 +740,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
                 )
 
         # 4. Output norm & projection
-        hidden_states = self.norm_out(hidden_states, temb_raw)
+        hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
