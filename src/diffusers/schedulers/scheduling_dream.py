@@ -143,7 +143,6 @@ class DreamMaskedDiffusionSchedulerOutput(BaseOutput):
     pred_original_sample: Optional[torch.Tensor] = None
 
 
-
 class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
     """
     Scheduler for the Dream 7B masked diffusion model.
@@ -341,6 +340,8 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.shift:
             # Right shift the logits from the model
+            # Dream models are trained to predict at right-shifted positions, analogous to an autoregressive model,
+            # so we also need to shift the inputs at inference time
             model_output = torch.cat(model_output[:, :1], model_output[:, :-1], dim=1)
 
         # Probability of unmasking each token at time t
