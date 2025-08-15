@@ -20,6 +20,7 @@ import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import QwenImageLoraLoaderMixin
 from ...models import AutoencoderKLQwenImage, QwenImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -44,12 +45,12 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import QwenImagePipeline
 
-        >>> pipe = QwenImagePipeline.from_pretrained("Qwen/QwenImage-20B", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
+        >>> image = pipe(prompt, num_inference_steps=50).images[0]
         >>> image.save("qwenimage.png")
         ```
 """
@@ -128,7 +129,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class QwenImagePipeline(DiffusionPipeline):
+class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     r"""
     The QwenImage pipeline for text-to-image generation.
 
@@ -200,7 +201,7 @@ class QwenImagePipeline(DiffusionPipeline):
         txt = [template.format(e) for e in prompt]
         txt_tokens = self.tokenizer(
             txt, max_length=self.tokenizer_max_length + drop_idx, padding=True, truncation=True, return_tensors="pt"
-        ).to(self.device)
+        ).to(device)
         encoder_hidden_states = self.text_encoder(
             input_ids=txt_tokens.input_ids,
             attention_mask=txt_tokens.attention_mask,
@@ -635,6 +636,11 @@ class QwenImagePipeline(DiffusionPipeline):
         if self.attention_kwargs is None:
             self._attention_kwargs = {}
 
+        txt_seq_lens = prompt_embeds_mask.sum(dim=1).tolist() if prompt_embeds_mask is not None else None
+        negative_txt_seq_lens = (
+            negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
+        )
+
         # 6. Denoising loop
         self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -653,7 +659,7 @@ class QwenImagePipeline(DiffusionPipeline):
                         encoder_hidden_states_mask=prompt_embeds_mask,
                         encoder_hidden_states=prompt_embeds,
                         img_shapes=img_shapes,
-                        txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
+                        txt_seq_lens=txt_seq_lens,
                         attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
@@ -667,7 +673,7 @@ class QwenImagePipeline(DiffusionPipeline):
                             encoder_hidden_states_mask=negative_prompt_embeds_mask,
                             encoder_hidden_states=negative_prompt_embeds,
                             img_shapes=img_shapes,
-                            txt_seq_lens=negative_prompt_embeds_mask.sum(dim=1).tolist(),
+                            txt_seq_lens=negative_txt_seq_lens,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,
                         )[0]

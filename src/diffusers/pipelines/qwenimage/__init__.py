@@ -24,6 +24,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modeling_qwenimage"] = ["ReduxImageEncoder"]
     _import_structure["pipeline_qwenimage"] = ["QwenImagePipeline"]
+    _import_structure["pipeline_qwenimage_img2img"] = ["QwenImageImg2ImgPipeline"]
+    _import_structure["pipeline_qwenimage_inpaint"] = ["QwenImageInpaintPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +35,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipeline_qwenimage import QwenImagePipeline
+        from .pipeline_qwenimage_img2img import QwenImageImg2ImgPipeline
+        from .pipeline_qwenimage_inpaint import QwenImageInpaintPipeline
 else:
     import sys
 
