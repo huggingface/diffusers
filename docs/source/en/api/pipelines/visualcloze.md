@@ -68,9 +68,12 @@ For comprehensive examples covering a wide range of tasks, please refer to the [
 import torch
 from diffusers import VisualClozePipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
@@ -120,9 +123,12 @@ image_result.save("visualcloze.png")
 import torch
 from diffusers import VisualClozePipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
@@ -170,9 +176,12 @@ image_result.save("visualcloze.png")
 import torch
 from diffusers import VisualClozePipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
@@ -226,12 +235,15 @@ image_result.save("visualcloze.png")
 import torch
 from diffusers import VisualClozeGenerationPipeline, FluxFillPipeline as VisualClozeUpsamplingPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 from PIL import Image
+
+device = get_device()
 
 pipe = VisualClozeGenerationPipeline.from_pretrained(
     "VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 image_paths = [
     # in-context examples
@@ -267,7 +279,7 @@ image = pipe(
 
 # Stage 2 (optional): Upsample the generated image
 pipe_upsample = VisualClozeUpsamplingPipeline.from_pipe(pipe)
-pipe_upsample.to("cuda")
+pipe_upsample.to(device)
 
 mask_image = Image.new("RGB", image.size, (255, 255, 255))
 

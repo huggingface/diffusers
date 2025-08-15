@@ -52,11 +52,14 @@ First, load the pipeline:
 
 ```python
 from diffusers import HunyuanDiTPipeline
+from diffusers.utils.torch_utils import get_device
 import torch
+
+device = get_device()
 
 pipeline = HunyuanDiTPipeline.from_pretrained(
 	"Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
-).to("cuda")
+).to(device)
 ```
 
 Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:

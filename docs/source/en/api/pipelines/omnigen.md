@@ -36,9 +36,12 @@ First, load the pipeline:
 ```python
 import torch
 from diffusers import OmniGenPipeline
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 ```
 
 For text-to-image, pass a text prompt. By default, OmniGen generates a 1024x1024 image. 

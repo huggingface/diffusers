@@ -86,10 +86,13 @@ Since text embeddings have been computed, remove the `text_encoder` and `pipe` f
 
 ```python
 import gc
+from diffusers.utils.torch_utils import get_device
 
 def flush():
     gc.collect()
-    torch.cuda.empty_cache()
+    device = get_device
+    device_module = getattr(torch, device, torch.cuda)
+    device_module.empty_cache()
 
 del text_encoder
 del pipe
@@ -99,11 +102,13 @@ flush()
 Then compute the latents with the prompt embeddings as inputs:
 
 ```python
+device = get_device()
+
 pipe = PixArtSigmaPipeline.from_pretrained(
     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     text_encoder=None,
     torch_dtype=torch.float16,
-).to("cuda")
+).to(device)
 
 latents = pipe(
     negative_prompt=None,

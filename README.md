@@ -71,10 +71,13 @@ Generating outputs is super easy with 🤗 Diffusers. To generate an image from 
 
 ```python
 from diffusers import DiffusionPipeline
+from diffusers.utils.torch_utils import get_device
 import torch
 
+device = get_device()
+
 pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to(device)
 pipeline("An image of a squirrel in Picasso style").images[0]
 ```
 
@@ -82,15 +85,18 @@ You can also dig into the models and schedulers toolbox to build your own diffus
 
 ```python
 from diffusers import DDPMScheduler, UNet2DModel
+from diffusers.utils.torch_utils import get_device
 from PIL import Image
 import torch
 
+device = get_device()
+
 scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
-model = UNet2DModel.from_pretrained("google/ddpm-cat-256").to("cuda")
+model = UNet2DModel.from_pretrained("google/ddpm-cat-256").to(device)
 scheduler.set_timesteps(50)
 
 sample_size = model.config.sample_size
-noise = torch.randn((1, 3, sample_size, sample_size), device="cuda")
+noise = torch.randn((1, 3, sample_size, sample_size), device=device)
 input = noise
 
 for t in scheduler.timesteps:

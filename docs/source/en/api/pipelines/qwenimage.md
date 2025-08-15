@@ -34,8 +34,11 @@ number of steps. Refer to the code snippet below:
 
 ```py
 from diffusers import DiffusionPipeline, FlowMatchEulerDiscreteScheduler
-import torch 
+from diffusers.utils.torch_utils import get_device
+import torch
 import math
+
+device = get_device()
 
 ckpt_id = "Qwen/Qwen-Image"
 
@@ -60,7 +63,7 @@ scheduler_config = {
 scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 pipe = DiffusionPipeline.from_pretrained(
     ckpt_id, scheduler=scheduler, torch_dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 pipe.load_lora_weights(
     "lightx2v/Qwen-Image-Lightning", weight_name="Qwen-Image-Lightning-8steps-V1.0.safetensors"
 )

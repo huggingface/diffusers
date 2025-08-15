@@ -47,8 +47,9 @@ Unconditional generation (where we start from only latents sampled from a standa
 import torch
 
 from diffusers import UniDiffuserPipeline
+from diffusers.utils.torch_utils import get_device
 
-device = "cuda"
+device = get_device()
 model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
@@ -96,8 +97,9 @@ Here is an example of sampling from the conditional image distribution (text-to-
 import torch
 
 from diffusers import UniDiffuserPipeline
+from diffusers.utils.torch_utils import get_device
 
-device = "cuda"
+device = get_device()
 model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
@@ -121,8 +123,9 @@ import torch
 
 from diffusers import UniDiffuserPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
-device = "cuda"
+device = get_device()
 model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
@@ -148,8 +151,9 @@ import torch
 
 from diffusers import UniDiffuserPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
-device = "cuda"
+device = get_device()
 model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
@@ -177,8 +181,9 @@ Similarly, text variation can be performed on an input prompt with a text-to-ima
 import torch
 
 from diffusers import UniDiffuserPipeline
+from diffusers.utils.torch_utils import get_device
 
-device = "cuda"
+device = get_device()
 model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
