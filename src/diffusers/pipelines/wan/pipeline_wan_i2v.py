@@ -162,17 +162,17 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     model_cpu_offload_seq = "text_encoder->image_encoder->transformer->transformer_2->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-    _optional_components = ["transformer_2", "image_encoder", "image_processor"]
+    _optional_components = ["transformer", "transformer_2", "image_encoder", "image_processor"]
 
     def __init__(
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchEulerDiscreteScheduler,
         image_processor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModel = None,
+        transformer: WanTransformer3DModel = None,
         transformer_2: WanTransformer3DModel = None,
         boundary_ratio: Optional[float] = None,
         expand_timesteps: bool = False,
@@ -669,12 +669,13 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         # Encode image embedding
-        transformer_dtype = self.transformer.dtype
+        transformer_dtype = self.transformer.dtype if self.transformer is not None else self.transformer_2.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
-        if self.config.boundary_ratio is None and not self.config.expand_timesteps:
+        # only wan 2.1 i2v transformer accepts image_embeds
+        if self.transformer is not None and self.transformer.config.image_dim is not None:
             if image_embeds is None:
                 if last_image is None:
                     image_embeds = self.encode_image(image, device)
@@ -709,6 +710,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             last_image,
         )
         if self.config.expand_timesteps:
+            # wan 2.2 5b i2v use firt_frame_mask to mask timesteps
             latents, condition, first_frame_mask = latents_outputs
         else:
             latents, condition = latents_outputs
