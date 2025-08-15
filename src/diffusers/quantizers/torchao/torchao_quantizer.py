@@ -19,6 +19,7 @@ https://github.com/huggingface/transformers/blob/3a8eb74668e9c2cc563b2f5c62fac17
 
 import importlib
 import types
+from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from packaging import version
@@ -277,6 +278,31 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             # As we perform quantization here, the repr of linear layers is that of AQT, so we don't have to do it ourselves
             module._parameters[tensor_name] = torch.nn.Parameter(param_value).to(device=target_device)
             quantize_(module, self.quantization_config.get_apply_tensor_subclass())
+
+    def get_cuda_warm_up_factor(self):
+        """
+        This factor is used in caching_allocator_warmup to determine how many bytes to pre-allocate for CUDA warmup.
+        - A factor of 2 means we pre-allocate the full memory footprint of the model.
+        - A factor of 4 means we pre-allocate half of that, and so on
+
+        However, when using TorchAO, calculating memory usage with param.numel() * param.element_size() doesn't give
+        the correct size for quantized weights (like int4 or int8) That's because TorchAO internally represents
+        quantized tensors using subtensors and metadata, and the reported element_size() still corresponds to the
+        torch_dtype not the actual bit-width of the quantized data.
+
+        To correct for this:
+        - Use a division factor of 8 for int4 weights
+        - Use a division factor of 4 for int8 weights
+        """
+        # Original mapping for non-AOBaseConfig types
+        # For the uint types, this is a best guess. Once these types become more used
+        # we can look into their nuances.
+        map_to_target_dtype = {"int4_*": 8, "int8_*": 4, "uint*": 8, "float8*": 4}
+        quant_type = self.quantization_config.quant_type
+        for pattern, target_dtype in map_to_target_dtype.items():
+            if fnmatch(quant_type, pattern):
+                return target_dtype
+        raise ValueError(f"Unsupported quant_type: {quant_type!r}")
 
     def _process_model_before_weight_loading(
         self,

@@ -24,7 +24,7 @@ from ...utils import logging
 from ..modular_pipeline import (
     BlockState,
     LoopSequentialPipelineBlocks,
-    PipelineBlock,
+    ModularPipelineBlocks,
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -34,7 +34,7 @@ from .modular_pipeline import WanModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanLoopDenoiser(PipelineBlock):
+class WanLoopDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -132,7 +132,7 @@ class WanLoopDenoiser(PipelineBlock):
         return components, block_state
 
 
-class WanLoopAfterDenoiser(PipelineBlock):
+class WanLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property

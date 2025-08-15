@@ -944,7 +944,7 @@ def _native_npu_attention(
         pse=None,
         scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
         pre_tockens=65536,
-        next_tokens=65536,
+        next_tockens=65536,
         keep_prob=1.0 - dropout_p,
         sync=False,
         inner_precise=0,
