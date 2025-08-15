@@ -913,6 +913,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
+            init_weights ('bool', *optional*, defaults to 'False'):
+                Whether to skip initializing model weights to speed up. If the model defines additional parameters that
+                are not included in the pre-trained weights, this should be set to True.
 
         <Tip>
 
@@ -960,6 +963,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+        init_weights = kwargs.pop("init_weights", False)
 
         is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
@@ -1243,8 +1247,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
             dtype_orig = cls._set_default_torch_dtype(torch_dtype)
 
-        init_contexts = [no_init_weights()]
-
+        init_contexts = []
+        if not init_weights:
+            init_contexts.append(no_init_weights())
         if low_cpu_mem_usage:
             init_contexts.append(accelerate.init_empty_weights())
 
@@ -1301,6 +1306,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             keep_in_fp32_modules=keep_in_fp32_modules,
             dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
+            init_weights=init_weights,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1497,6 +1503,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
         is_parallel_loading_enabled: Optional[bool] = False,
+        init_weights: Optional[bool] = False,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1607,11 +1614,19 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             logger.info(f"All model checkpoint weights were used when initializing {model.__class__.__name__}.\n")
 
         if len(missing_keys) > 0:
-            logger.warning(
-                f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
-                f" {pretrained_model_name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
-                " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
-            )
+            if init_weights:
+                logger.warning(
+                    f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
+                    f" {pretrained_model_name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
+                    " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
+                )
+            else:
+                logger.warning(
+                    f"Some weights of {model.__class__.__name__} were not in the model checkpoint at"
+                    f" {pretrained_model_name_or_path} and are not initialized: {missing_keys}\nThese weights are "
+                    "not initialized and may contain NaNs. If you need to train this model on a downstream task, "
+                    "please set 'init_weights=True.'"
+                )
         elif len(mismatched_keys) == 0:
             logger.info(
                 f"All the weights of {model.__class__.__name__} were initialized from the model checkpoint at"
