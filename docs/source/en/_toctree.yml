@@ -5,7 +5,7 @@
   - local: installation
     title: Installation
   - local: quicktour
-    title: Quicktour
+    title: Quickstart
   - local: stable_diffusion
     title: Basic performance
 
