@@ -47,10 +47,13 @@ To generate a video from prompt, run the following Python code:
 ```python
 import torch
 from diffusers import TextToVideoZeroPipeline
+from diffusers.utils.torch_utils import get_device
 import imageio
 
+device = get_device()
+
 model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to(device)
 
 prompt = "A panda is playing guitar on times square"
 result = pipe(prompt=prompt).images
@@ -69,10 +72,13 @@ We can also generate longer videos by doing the processing in a chunk-by-chunk m
 ```python
 import torch
 from diffusers import TextToVideoZeroPipeline
+from diffusers.utils.torch_utils import get_device
 import numpy as np
 
+device = get_device()
+
 model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to(device)
 seed = 0
 video_length = 24  #24 ÷ 4fps = 6 seconds
 chunk_size = 8
@@ -81,7 +87,7 @@ prompt = "A panda is playing guitar on times square"
 # Generate the video chunk-by-chunk
 result = []
 chunk_ids = np.arange(0, video_length, chunk_size - 1)
-generator = torch.Generator(device="cuda")
+generator = torch.Generator(device=device)
 for i in range(len(chunk_ids)):
     print(f"Processing chunk {i + 1} / {len(chunk_ids)}")
     ch_start = chunk_ids[i]
@@ -106,11 +112,14 @@ In order to use the SDXL model when generating a video from prompt, use the `Tex
 ```python
 import torch
 from diffusers import TextToVideoZeroSDXLPipeline
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 model_id = "stabilityai/stable-diffusion-xl-base-1.0"
 pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
     model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+).to(device)
 ```
 
 ### Text-To-Video with Pose Control
@@ -144,19 +153,22 @@ To generate a video from prompt with additional pose control
     import torch
     from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
+    from diffusers.utils.torch_utils import get_device
+
+    device = get_device()
 
     model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
     controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=torch.float16)
     pipe = StableDiffusionControlNetPipeline.from_pretrained(
         model_id, controlnet=controlnet, torch_dtype=torch.float16
-    ).to("cuda")
+    ).to(device)
 
     # Set the attention processor
     pipe.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
     pipe.controlnet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
 
     # fix latents for all frames
-    latents = torch.randn((1, 4, 64, 64), device="cuda", dtype=torch.float16).repeat(len(pose_images), 1, 1, 1)
+    latents = torch.randn((1, 4, 64, 64), device=device, dtype=torch.float16).repeat(len(pose_images), 1, 1, 1)
 
     prompt = "Darth Vader dancing in a desert"
     result = pipe(prompt=[prompt] * len(pose_images), image=pose_images, latents=latents).images
@@ -169,6 +181,9 @@ To generate a video from prompt with additional pose control
 	import torch
 	from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
 	from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
+    from diffusers.utils.torch_utils import get_device
+
+    device = get_device()
 
 	controlnet_model_id = 'thibaud/controlnet-openpose-sdxl-1.0'
 	model_id = 'stabilityai/stable-diffusion-xl-base-1.0'
@@ -176,14 +191,14 @@ To generate a video from prompt with additional pose control
 	controlnet = ControlNetModel.from_pretrained(controlnet_model_id, torch_dtype=torch.float16)
 	pipe = StableDiffusionControlNetPipeline.from_pretrained(
 		model_id, controlnet=controlnet, torch_dtype=torch.float16
-	).to('cuda')
+	).to(device)
 
 	# Set the attention processor
 	pipe.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
 	pipe.controlnet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
 
 	# fix latents for all frames
-	latents = torch.randn((1, 4, 128, 128), device="cuda", dtype=torch.float16).repeat(len(pose_images), 1, 1, 1)
+	latents = torch.randn((1, 4, 128, 128), device=device, dtype=torch.float16).repeat(len(pose_images), 1, 1, 1)
 
 	prompt = "Darth Vader dancing in a desert"
 	result = pipe(prompt=[prompt] * len(pose_images), image=pose_images, latents=latents).images
@@ -224,9 +239,12 @@ To perform text-guided video editing (with [InstructPix2Pix](pix2pix)):
     import torch
     from diffusers import StableDiffusionInstructPix2PixPipeline
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
+    from diffusers.utils.torch_utils import get_device
+
+    device = get_device()
 
     model_id = "timbrooks/instruct-pix2pix"
-    pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+    pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to(device)
     pipe.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=3))
 
     prompt = "make it Van Gogh Starry Night style"
@@ -267,20 +285,23 @@ can run with custom [DreamBooth](../../training/dreambooth) models, as shown bel
     import torch
     from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
+    from diffusers.utils.torch_utils import get_device
+
+    device = get_device()
 
     # set model id to custom model
     model_id = "PAIR/text2video-zero-controlnet-canny-avatar"
     controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
     pipe = StableDiffusionControlNetPipeline.from_pretrained(
         model_id, controlnet=controlnet, torch_dtype=torch.float16
-    ).to("cuda")
+    ).to(device)
 
     # Set the attention processor
     pipe.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
     pipe.controlnet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
 
     # fix latents for all frames
-    latents = torch.randn((1, 4, 64, 64), device="cuda", dtype=torch.float16).repeat(len(canny_edges), 1, 1, 1)
+    latents = torch.randn((1, 4, 64, 64), device=device, dtype=torch.float16).repeat(len(canny_edges), 1, 1, 1)
 
     prompt = "oil painting of a beautiful girl avatar style"
     result = pipe(prompt=[prompt] * len(canny_edges), image=canny_edges, latents=latents).images
