@@ -304,7 +304,7 @@ class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
             quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
             config="black-forest-labs/FLUX.1-dev",
         )
-        model.to("cuda")
+        model.to(torch_device)
         model(**self.get_dummy_inputs())
 
 
@@ -360,33 +360,33 @@ class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase)
             {
                 ("xpu", 3): np.array(
                     [
-                        0.16210938,
-                        0.2734375,
-                        0.27734375,
-                        0.109375,
-                        0.27148438,
-                        0.2578125,
-                        0.1015625,
-                        0.2578125,
-                        0.2578125,
-                        0.14453125,
-                        0.26953125,
-                        0.29492188,
-                        0.12890625,
-                        0.28710938,
-                        0.30078125,
-                        0.11132812,
-                        0.27734375,
-                        0.27929688,
-                        0.15625,
-                        0.31054688,
-                        0.296875,
-                        0.15234375,
-                        0.3203125,
-                        0.29492188,
-                        0.140625,
+                        0.1953125,
+                        0.3125,
+                        0.31445312,
+                        0.13085938,
+                        0.30664062,
+                        0.29296875,
+                        0.11523438,
+                        0.2890625,
+                        0.28320312,
+                        0.16601562,
                         0.3046875,
-                        0.28515625,
+                        0.328125,
+                        0.140625,
+                        0.31640625,
+                        0.32421875,
+                        0.12304688,
+                        0.3046875,
+                        0.3046875,
+                        0.17578125,
+                        0.3359375,
+                        0.3203125,
+                        0.16601562,
+                        0.34375,
+                        0.31640625,
+                        0.15429688,
+                        0.328125,
+                        0.31054688,
                     ]
                 ),
                 ("cuda", 7): np.array(
