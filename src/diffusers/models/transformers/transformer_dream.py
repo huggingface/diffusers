@@ -470,22 +470,57 @@ class DreamTransformer1DModel(
         self.norm_out = DreamRMSNorm(self.inner_dim, eps=rms_norm_eps)
         self.lm_head = nn.Linear(self.inner_dim, vocab_size, bias=False)
 
+    def embed_tokens(self, text_ids: torch.Tensor) -> torch.Tensor:
+        return self.token_embedding(text_ids)
+
     def forward(
         self,
         text_ids: torch.Tensor = None,
+        hidden_states: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         timestep: Optional[torch.LongTensor] = None,  # not used by Dream (time-invariant model)
+        attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+        """
+        The [`DreamTransformer1DModel`] forward method.
+
+        Args:
+            text_ids (`torch.Tensor` of shape `(batch_size, sequence_length)`):
+                The indices of the input text tokens.
+            hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
+                The already embedded hidden states for the transformer. This is analogous to `inputs_embeds` for a
+                transformers model.
+            position_ids (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
+                The indices of the positions of each token within the input. Will be created if not supplied.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step. Not used currently as Dream is a time-invariant model.
+            attention_mask (`torch.Tensor`, *optional*):
+                An optional attention mask. This is mainly useful for training, as Dream is trained with an attention
+                mask annealing strategy.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         # text_ids shape: [B, L]
-        # Embed text tokens
-        hidden_states = self.token_embedding(text_ids)  # [B, L] --> [B, L, D]
+        if hidden_states is None:
+            # Embed text tokens
+            hidden_states = self.token_embedding(text_ids)  # [B, L] --> [B, L, D]
+
+        # Create position_ids if not supplied
+        if position_ids is None:
+            position_ids = torch.arange(hidden_states.shape[1], device=hidden_states.device)
+            position_ids = position_ids.unsqueeze(0)  # [L] --> [1, L]
         # Get RoPE embeddings (shared across all layers)
         rotary_emb = self.rotary_embedding(position_ids)
 
         # Transformer decoder layers
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, rotary_emb=rotary_emb)
+            hidden_states = block(hidden_states, attention_mask=attention_mask, rotary_emb=rotary_emb)
 
         hidden_states = self.norm_out(hidden_states)
         logits = self.lm_head(hidden_states)
