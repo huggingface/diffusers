@@ -31,7 +31,7 @@ from diffusers.models.transformers.f5tts_transformer import   DiT, MelSpec, Cond
 # helpers
 import jieba
 from pypinyin import lazy_pinyin, Style
-
+from typing import Optional, Union, List
 
 
 
@@ -61,12 +61,6 @@ class F5FlowPipeline(DiffusionPipeline):
         self.vocab_char_map = vocab_char_map
 
 
-    # simple utf-8 tokenizer, since paper went character based
-    def list_str_to_tensor(self, text: list[str], padding_value=-1) -> int["b nt"]:  # noqa: F722
-        list_tensors = [torch.tensor([*bytes(t, "UTF-8")]) for t in text]  # ByT5 style
-        text = pad_sequence(list_tensors, padding_value=padding_value, batch_first=True)
-        return text
-
 
     # char tokenizer, based on custom dataset's extracted .txt file
     def list_str_to_idx(
@@ -89,95 +83,50 @@ class F5FlowPipeline(DiffusionPipeline):
         seq = torch.arange(length, device=t.device)
         return seq[None, :] < t[:, None]
     
+    
+    def check_inputs(self, ref_audio: torch.Tensor | None, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], duration: Optional[torch.Tensor] = None): 
+        if ref_audio is None:
+            raise ValueError("`ref_audio` must be provided.")
+        if not isinstance(ref_text, (str, list)):
+            raise ValueError("`ref_text` must be a string or a list of strings.")
+        if not isinstance(gen_text, (str, list)):
+            raise ValueError("`gen_text` must be a string or a list of strings.")
 
-    def get_epss_timesteps(self, n, device, dtype):
-        dt = 1 / 32
-        predefined_timesteps = {
-            5: [0, 2, 4, 8, 16, 32],
-            6: [0, 2, 4, 6, 8, 16, 32],
-            7: [0, 2, 4, 6, 8, 16, 24, 32],
-            10: [0, 2, 4, 6, 8, 12, 16, 20, 24, 28, 32],
-            12: [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32],
-            16: [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32],
-        }
-        t = predefined_timesteps.get(n, [])
-        if not t:
-            return torch.linspace(0, 1, n + 1, device=device, dtype=dtype)
-        return dt * torch.tensor(t, device=device, dtype=dtype)
+        if len(ref_text) != len(gen_text):
+            raise ValueError("`ref_text` and `gen_text` must have the same length.")
 
-
-    def convert_char_to_pinyin(self, text_list, polyphone=True):
-        if jieba.dt.initialized is False:
-            jieba.default_logger.setLevel(50)  # CRITICAL
-            jieba.initialize()
-
-        final_text_list = []
-        custom_trans = str.maketrans(
-            {";": ",", "“": '"', "”": '"', "‘": "'", "’": "'"}
-        )  # add custom trans here, to address oov
-
-        def is_chinese(c):
-            return (
-                "\u3100" <= c <= "\u9fff"  # common chinese characters
-            )
-
-        for text in text_list:
-            char_list = []
-            text = text.translate(custom_trans)
-            for seg in jieba.cut(text):
-                seg_byte_len = len(bytes(seg, "UTF-8"))
-                if seg_byte_len == len(seg):  # if pure alphabets and symbols
-                    if char_list and seg_byte_len > 1 and char_list[-1] not in " :'\"":
-                        char_list.append(" ")
-                    char_list.extend(seg)
-                elif polyphone and seg_byte_len == 3 * len(seg):  # if pure east asian characters
-                    seg_ = lazy_pinyin(seg, style=Style.TONE3, tone_sandhi=True)
-                    for i, c in enumerate(seg):
-                        if is_chinese(c):
-                            char_list.append(" ")
-                        char_list.append(seg_[i])
-                else:  # if mixed characters, alphabets and symbols
-                    for c in seg:
-                        if ord(c) < 256:
-                            char_list.extend(c)
-                        elif is_chinese(c):
-                            char_list.append(" ")
-                            char_list.extend(lazy_pinyin(c, style=Style.TONE3, tone_sandhi=True))
-                        else:
-                            char_list.append(c)
-            final_text_list.append(char_list)
-
-        return final_text_list
-
-
-    def __call__(
-        self,
-        ref_audio,
-        text_list,
-        nfe_step=32,
-        cfg_strength=2.0,
-        sway_sampling_coef=-1,
-        speed=1,
-        max_duration=4096,
-        fix_duration=None,
-        seed=None,
-        device="cuda",
-        steps=32,
-    ):
-
-
-        # Prepare the text
-        
-        # final_text_list = self.convert_char_to_pinyin(text_list)
+        # check if duration is non negative
+        if duration is not None:
+            if not isinstance(duration, torch.Tensor):
+                raise ValueError("`duration` must be a torch.Tensor.")
+            if (duration < 0).any():
+                raise ValueError("`duration` must be non-negative.")
+            if duration.ndim != 1:
+                raise ValueError("`duration` must be a 1D tensor.")
+            if duration.shape[0] != len(ref_text):
+                raise ValueError("`duration` must have the same length as `ref_text` and `gen_text`.")
+            
+    def prepare_latents(self, ref_audio: torch.Tensor, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], duration: Optional[torch.Tensor] = None, guidance_scale=2.0, generator: Optional[torch.Generator] = None):
+        # each text in text_list is a combination of ref_text and gen_text
+        if isinstance(ref_text, str):
+            ref_text = [ref_text]
+        if isinstance(gen_text, str):
+            gen_text = [gen_text]
+        text_list = [f"{r} {g}" for r, g in zip(ref_text, gen_text)]
         ref_audio_len = ref_audio.shape[-1] // self.mel_spec.hop_length
-        if fix_duration is not None:
-            duration = fix_duration
-        else:
-            # Calculate duration
-            ref_text_len = len(ref_text.encode("utf-8"))
-            gen_text_len = len(gen_text.encode("utf-8"))
-            duration = ref_audio_len + int(ref_audio_len / ref_text_len * gen_text_len / local_speed)
 
+        if duration is None:
+            # Calculate duration
+
+            
+            duration_list = []
+            
+            for i in range(len(ref_text)):
+                ref_text_len = len(ref_text[i].encode("utf-8"))
+                gen_text_len = len(gen_text[i].encode("utf-8"))
+                duration = ref_audio_len + int(ref_audio_len / ref_text_len * gen_text_len)
+                duration_list.append(duration)
+            duration = torch.tensor(duration_list, dtype=torch.long, device=ref_audio.device)
 
         cond = ref_audio
 
@@ -189,12 +138,8 @@ class F5FlowPipeline(DiffusionPipeline):
         batch, cond_seq_len, device = *cond.shape[:2], cond.device
         lens = torch.full((batch,), cond_seq_len, device=device, dtype=torch.long)
 
-        if isinstance(text_list, list):
-            if self.vocab_char_map is not None:
-                text = self.list_str_to_idx(text_list, self.vocab_char_map).to(device)
-            else:
-                text = self.list_str_to_tensor(text_list).to(device)
-            assert text.shape[0] == batch
+        text = self.list_str_to_idx(text_list, self.vocab_char_map).to(device)
+        assert text.shape[0] == batch
 
         # duration
         cond_mask = self.lens_to_mask(lens)
@@ -204,9 +149,7 @@ class F5FlowPipeline(DiffusionPipeline):
         duration = torch.maximum(
             torch.maximum((text != -1).sum(dim=-1), lens) + 1, duration
         )  # duration at least text/audio prompt length plus one token, so something is generated
-        duration = duration.clamp(max=max_duration)
         max_duration = duration.amax()
-
         cond = F.pad(cond, (0, 0, 0, max_duration - cond_seq_len), value=0.0)
         cond_mask = F.pad(cond_mask, (0, max_duration - cond_mask.shape[-1]), value=False)
         cond_mask = cond_mask.unsqueeze(-1)
@@ -218,15 +161,55 @@ class F5FlowPipeline(DiffusionPipeline):
         else:  # save memory and speed up, as single inference need no mask currently
             mask = None
             
-        if cfg_strength >= 1e-5 and mask is not None:
+        if guidance_scale >= 1e-5 and mask is not None:
             mask = torch.cat((mask, mask), dim=0)  # for classifier-free guidance, we need to double the batch size
+            
+        # noise input
+        # to make sure batch inference result is same with different batch size, and for sure single inference
+        # still some difference maybe due to convolutional layers
+        y0 = []
+        for dur in duration:
+            y0.append(torch.randn(dur, self.num_channels, device=device, dtype=step_cond_input.dtype, generator=generator))
+        y0 = pad_sequence(y0, padding_value=0, batch_first=True)
+
+        return y0, step_cond_input, text, cond, cond_mask, mask
+
+
+
+    def __call__(
+        self,
+        ref_audio: torch.Tensor | None = None,
+        ref_text: Union[str, List[str]] = None,
+        gen_text: Union[str, List[str]] = None,
+        num_inference_steps=32,
+        guidance_scale=2.0,
+        sway_sampling_coef=-1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        duration: Optional[torch.Tensor] = None,
+        seed=None,
+        device="cuda"
+    ):
+
+
+        # Check inputs
+        self.check_inputs(ref_audio, ref_text, gen_text, duration)
+
+        y0, step_cond_input, text, cond, cond_mask, mask = self.prepare_latents(
+            ref_audio=ref_audio,
+            ref_text=ref_text,
+            gen_text=gen_text,
+            duration=duration,
+            guidance_scale=guidance_scale
+        )
+            
+            
         # neural ode
         def fn(t, x):
             # at each step, conditioning is fixed
             # step_cond = torch.where(cond_mask, cond, torch.zeros_like(cond))
             step_cond = self.conditioning_encoder(x, step_cond_input, text, drop_audio_cond=False, drop_text=False)
             # predict flow (cond)
-            if cfg_strength < 1e-5:
+            if guidance_scale < 1e-5:
                 pred = self.transformer(
                     x=x,
                     cond=step_cond,
@@ -246,26 +229,17 @@ class F5FlowPipeline(DiffusionPipeline):
                 cache=True,
             )
             pred, null_pred = torch.chunk(pred_cfg, 2, dim=0)
-            return pred + (pred - null_pred) * cfg_strength
-
-        # noise input
-        # to make sure batch inference result is same with different batch size, and for sure single inference
-        # still some difference maybe due to convolutional layers
-        y0 = []
-        for dur in duration:
-            if seed is not None:
-                torch.manual_seed(seed)
-            y0.append(torch.randn(dur, self.num_channels, device=device, dtype=step_cond_input.dtype))
-        y0 = pad_sequence(y0, padding_value=0, batch_first=True)
+            return pred + (pred - null_pred) * guidance_scale
+        
+        
         t_start = 0
-
         # TODO Add Empirically Pruned Step Sampling for low NFE
-        t = torch.linspace(t_start, 1, steps + 1, device=device, dtype=step_cond_input.dtype)
+        t = torch.linspace(t_start, 1, num_inference_steps + 1, device=device, dtype=step_cond_input.dtype)
         if sway_sampling_coef is not None:
             t = t + sway_sampling_coef * (torch.cos(torch.pi / 2 * t) - 1 + t)
 
         trajectory = odeint(fn, y0, t, **self.odeint_kwargs)
-        # self.transformer.clear_cache()
+
 
         sampled = trajectory[-1]
         out = sampled
@@ -347,12 +321,12 @@ if __name__ == "__main__":
     ref_text = "This is a test sentence."  # Dummy reference text
     gen_text = "This is a generated sentence."  # Dummy generated text
 
-    text = [ref_text+gen_text]  # Combine reference and generated text
-    text_list = text * 2 
+    ref_text = [ref_text]*2
+    gen_text = [gen_text]*2
 
     x = f5_pipeline(ref_audio=ref_audio,
-                    text_list=text_list,
-                    fix_duration=4,
-                        max_duration=4096, device='cpu', steps=2)
+                    ref_text=ref_text,
+                     gen_text=gen_text,
+                     device='cpu', num_inference_steps=2)
     print("Generated output shape:", x.shape)
                             
