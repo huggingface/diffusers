@@ -162,6 +162,7 @@ class UNet2DConditionModel(
             `only_cross_attention` is given as a single boolean and `mid_block_only_cross_attention` is `None`, the
             `only_cross_attention` value is used as the value for `mid_block_only_cross_attention`. Default to `False`
             otherwise.
+        qk_norm: Normalization to apply to attention Q/K.
     """
 
     _supports_gradient_checkpointing = True
@@ -225,6 +226,7 @@ class UNet2DConditionModel(
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
         addition_embed_type_num_heads: int = 64,
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
 
@@ -380,6 +382,7 @@ class UNet2DConditionModel(
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
                 dropout=dropout,
+                qk_norm=qk_norm,
             )
             self.down_blocks.append(down_block)
 
@@ -405,6 +408,7 @@ class UNet2DConditionModel(
             cross_attention_norm=cross_attention_norm,
             attention_head_dim=attention_head_dim[-1],
             dropout=dropout,
+            qk_norm=qk_norm,
         )
 
         # count how many layers upsample the images
@@ -463,6 +467,7 @@ class UNet2DConditionModel(
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
                 dropout=dropout,
+                qk_norm=qk_norm,
             )
             self.up_blocks.append(up_block)
 
