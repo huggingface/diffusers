@@ -28,6 +28,7 @@ from torch.nn.utils.rnn import pad_sequence
 from diffusers.pipelines.pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from vocos import Vocos
 from diffusers.models.transformers.f5tts_transformer import   DiT, MelSpec, ConditioningEncoder
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 # helpers
 import jieba
 from pypinyin import lazy_pinyin, Style
@@ -43,6 +44,7 @@ class F5FlowPipeline(DiffusionPipeline):
         self,
         transformer: DiT,
         conditioning_encoder: ConditioningEncoder,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         odeint_kwargs: dict = dict(
             method="euler" 
         ),
@@ -59,6 +61,7 @@ class F5FlowPipeline(DiffusionPipeline):
         self.odeint_kwargs = odeint_kwargs
         # vocab map for tokenization
         self.vocab_char_map = vocab_char_map
+        self.scheduler = scheduler
 
 
 
@@ -92,7 +95,13 @@ class F5FlowPipeline(DiffusionPipeline):
         if not isinstance(gen_text, (str, list)):
             raise ValueError("`gen_text` must be a string or a list of strings.")
 
-        if len(ref_text) != len(gen_text):
+        if not isinstance(ref_text, List):
+            ref_text = [ref_text]
+        
+        if not isinstance(gen_text, List):
+            gen_text = [gen_text]
+        
+        if  len(ref_text) != len(gen_text):
             raise ValueError("`ref_text` and `gen_text` must have the same length.")
 
         # check if duration is non negative
@@ -203,45 +212,53 @@ class F5FlowPipeline(DiffusionPipeline):
         )
             
             
-        # neural ode
-        def fn(t, x):
-            # at each step, conditioning is fixed
-            # step_cond = torch.where(cond_mask, cond, torch.zeros_like(cond))
-            step_cond = self.conditioning_encoder(x, step_cond_input, text, drop_audio_cond=False, drop_text=False)
-            # predict flow (cond)
-            if guidance_scale < 1e-5:
-                pred = self.transformer(
-                    x=x,
-                    cond=step_cond,
+        sigmas = torch.linspace(0, 1, num_inference_steps + 1, device=device, dtype=step_cond_input.dtype)
+        if sway_sampling_coef is not None:
+            sigmas = sigmas + sway_sampling_coef * (torch.cos(torch.pi / 2 * sigmas) - 1 + sigmas)
+        timesteps = sigmas * (self.scheduler.num_train_timesteps - 1)
+        timesteps = timesteps.round().long()
+        self.scheduler.set_timesteps(num_inference_steps+1, device=device, sigmas=sigmas, timesteps=timesteps)
+        timesteps = self.scheduler.timesteps.to(device)
+        
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(sigmas[:-1]):
+                step_cond = self.conditioning_encoder(y0, step_cond_input, text, drop_audio_cond=False, drop_text=False)
+                # predict flow (cond)
+                if guidance_scale < 1e-5:
+                    pred = self.transformer(
+                        x=x,
+                        cond=step_cond,
+                        time=t,
+                        mask=mask,
+                        cache=True,
+                    )
+                    return pred
+
+                # predict flow (cond and uncond), for classifier-free guidance
+                step_uncond = self.conditioning_encoder(y0, step_cond_input, text, drop_audio_cond=True, drop_text=True)
+                step_cond = torch.cat((step_cond, step_uncond), dim=0)            
+                pred_cfg = self.transformer(
+                    x=step_cond,
                     time=t,
                     mask=mask,
                     cache=True,
                 )
-                return pred
+                pred, null_pred = torch.chunk(pred_cfg, 2, dim=0)
+                pred = pred + (pred - null_pred) * guidance_scale
+                
+                y0 = self.scheduler.step(
+                    pred,
+                    t,
+                    y0,
+                ).prev_sample
+                
+                progress_bar.update()
+                
 
-            # predict flow (cond and uncond), for classifier-free guidance
-            step_uncond = self.conditioning_encoder(x, step_cond_input, text, drop_audio_cond=True, drop_text=True)
-            step_cond = torch.cat((step_cond, step_uncond), dim=0)            
-            pred_cfg = self.transformer(
-                x=step_cond,
-                time=t,
-                mask=mask,
-                cache=True,
-            )
-            pred, null_pred = torch.chunk(pred_cfg, 2, dim=0)
-            return pred + (pred - null_pred) * guidance_scale
-        
-        
-        t_start = 0
+
+
         # TODO Add Empirically Pruned Step Sampling for low NFE
-        t = torch.linspace(t_start, 1, num_inference_steps + 1, device=device, dtype=step_cond_input.dtype)
-        if sway_sampling_coef is not None:
-            t = t + sway_sampling_coef * (torch.cos(torch.pi / 2 * t) - 1 + t)
-
-        trajectory = odeint(fn, y0, t, **self.odeint_kwargs)
-
-
-        sampled = trajectory[-1]
+        sampled = y0
         out = sampled
         out = torch.where(cond_mask, cond, out)
 
@@ -305,12 +322,15 @@ if __name__ == "__main__":
     conditioning_encoder = ConditioningEncoder(**conditioning_encoder_config)
     print("Conditioning Encoder initialized with config:", conditioning_encoder_config)
     
+    scheduler = FlowMatchEulerDiscreteScheduler()
+    
     f5_pipeline = F5FlowPipeline(
         transformer=dit,
         conditioning_encoder=conditioning_encoder,
         odeint_kwargs={"method": "euler"},
         mel_spec_kwargs=mel_spec_config,
         vocab_char_map=vocab_char_map,
+        scheduler=scheduler
     )
     print("F5FlowPipeline initialized with DiT and Conditioning Encoder.")
 
