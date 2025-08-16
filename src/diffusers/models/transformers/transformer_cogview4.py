@@ -583,7 +583,7 @@ class CogView4RotaryPosEmbed(nn.Module):
         return (freqs.cos(), freqs.sin())
 
 
-class _CogViewFinalAdaLayerNormContinuous(nn.Module):
+class CogView4AdaLayerNormContinuous(nn.Module):
     """
     CogView4-only final AdaLN: LN(x) -> Linear(cond) -> chunk -> affine.
     Matches Megatron: **no activation** before the Linear on conditioning embedding.
@@ -696,7 +696,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         )
 
         # 4. Output projection
-        self.norm_out = _CogViewFinalAdaLayerNormContinuous(inner_dim, time_embed_dim, elementwise_affine=False)
+        self.norm_out = CogView4AdaLayerNormContinuous(inner_dim, time_embed_dim, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels, bias=True)
 
         self.gradient_checkpointing = False
