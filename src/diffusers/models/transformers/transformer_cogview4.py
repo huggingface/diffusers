@@ -30,6 +30,7 @@ from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import LayerNorm, RMSNorm
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -585,9 +586,10 @@ class CogView4RotaryPosEmbed(nn.Module):
 
 class CogView4AdaLayerNormContinuous(nn.Module):
     """
-    CogView4-only final AdaLN: LN(x) -> Linear(cond) -> chunk -> affine.
-    Matches Megatron: **no activation** before the Linear on conditioning embedding.
+    CogView4-only final AdaLN: LN(x) -> Linear(cond) -> chunk -> affine. Matches Megatron: **no activation** before the
+    Linear on conditioning embedding.
     """
+
     def __init__(
         self,
         embedding_dim: int,
