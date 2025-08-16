@@ -5,9 +5,9 @@
   - local: installation
     title: Installation
   - local: quicktour
-    title: Quicktour
+    title: Quickstart
   - local: stable_diffusion
-    title: Effective and efficient diffusion
+    title: Basic performance
 
 - title: DiffusionPipeline
   isExpanded: false
@@ -112,22 +112,24 @@
   sections:
   - local: modular_diffusers/overview
     title: Overview
-  - local: modular_diffusers/modular_pipeline
-    title: Modular Pipeline
-  - local: modular_diffusers/components_manager
-    title: Components Manager
+  - local: modular_diffusers/quickstart
+    title: Quickstart
   - local: modular_diffusers/modular_diffusers_states
-    title: Modular Diffusers States
+    title: States
   - local: modular_diffusers/pipeline_block
-    title: Pipeline Block
+    title: ModularPipelineBlocks
   - local: modular_diffusers/sequential_pipeline_blocks
-    title: Sequential Pipeline Blocks
+    title: SequentialPipelineBlocks
   - local: modular_diffusers/loop_sequential_pipeline_blocks
-    title: Loop Sequential Pipeline Blocks
+    title: LoopSequentialPipelineBlocks
   - local: modular_diffusers/auto_pipeline_blocks
-    title: Auto Pipeline Blocks
-  - local: modular_diffusers/end_to_end_guide
-    title: End-to-End Example
+    title: AutoPipelineBlocks
+  - local: modular_diffusers/modular_pipeline
+    title: ModularPipeline
+  - local: modular_diffusers/components_manager
+    title: ComponentsManager
+  - local: modular_diffusers/guiders
+    title: Guiders
 
 - title: Training
   isExpanded: false
@@ -282,6 +284,18 @@
       title: Outputs
     - local: api/quantization
       title: Quantization
+  - title: Modular
+    sections:
+    - local: api/modular_diffusers/pipeline
+      title: Pipeline
+    - local: api/modular_diffusers/pipeline_blocks
+      title: Blocks
+    - local: api/modular_diffusers/pipeline_states
+      title: States
+    - local: api/modular_diffusers/pipeline_components
+      title: Components and configs
+    - local: api/modular_diffusers/guiders
+      title: Guiders
   - title: Loaders
     sections:
     - local: api/loaders/ip_adapter

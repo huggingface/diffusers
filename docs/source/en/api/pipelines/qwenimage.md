@@ -20,7 +20,7 @@ Check out the model card [here](https://huggingface.co/Qwen/Qwen-Image) to learn
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+[Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 </Tip>
 
@@ -90,3 +90,15 @@ image.save("qwen_fewsteps.png")
 ## QwenImagePipelineOutput
 
 [[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
+
+## QwenImageImg2ImgPipeline
+
+[[autodoc]] QwenImageImg2ImgPipeline
+  - all
+  - __call__
+
+## QwenImageInpaintPipeline
+
+[[autodoc]] QwenImageInpaintPipeline
+  - all
+  - __call__
