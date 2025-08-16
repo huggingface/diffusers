@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, is_kernels_available, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -29,7 +29,6 @@ from ..embeddings import TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
-from ...utils import is_kernels_available
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -55,6 +54,7 @@ def _get_qkv_projections(attn: "Magi1Attention", hidden_states: torch.Tensor, en
         value = attn.to_v(encoder_hidden_states)
     return query, key, value
 
+
 # Copied from diffusers.models.transformers.transformer_wan._get_added_kv_projections
 def _get_added_kv_projections(attn: "Magi1Attention", encoder_hidden_states_img: torch.Tensor):
     if attn.fused_projections:
@@ -67,13 +67,12 @@ def _get_added_kv_projections(attn: "Magi1Attention", encoder_hidden_states_img:
 
 def range_mod_pytorch(x, c_mapping, gatings):
     """
-    PyTorch implementation of range_mod_triton.
-    # TODO: Ensure that this implementation is correct and matches the range_mod_triton implementation.
+    PyTorch implementation of range_mod_triton. # TODO: Ensure that this implementation is correct and matches the
+    range_mod_triton implementation.
 
     Inputs:
-        x: (s, b, h). Tensor of inputs embedding (images or latent representations of images)
-        c_mapping: (s, b). Tensor of condition map
-        gatings: (b, denoising_range_num, h). Tensor of condition embedding
+        x: (s, b, h). Tensor of inputs embedding (images or latent representations of images) c_mapping: (s, b). Tensor
+        of condition map gatings: (b, denoising_range_num, h). Tensor of condition embedding
     """
     s, b, h = x.shape
 
@@ -94,8 +93,10 @@ def range_mod_pytorch(x, c_mapping, gatings):
 
     return y
 
+
 if is_kernels_available():
     from kernels import use_kernel_forward_from_hub
+
     range_mod_pytorch = use_kernel_forward_from_hub("range_mod_triton")(range_mod_pytorch)
 
 
@@ -147,6 +148,7 @@ class Magi1AttnProcessor:
         value = value.unflatten(2, (-1, attn.kv_inner_dim)).reshape(-1, value.shape[-2], value.shape[-1]).contiguous()
 
         # Perform Grouped-query Attention (GQA)
+        kv_heads = attn.kv_heads if attn.kv_heads is not None else attn.heads
         n_rep = attn.heads // kv_heads
         if n_rep >= 1:
             key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
@@ -215,6 +217,7 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         self,
         dim: int,
         heads: int = 8,
+        kv_heads: Optional[int] = None,
         dim_head: int = 64,
         eps: float = 1e-5,
         dropout: float = 0.0,
@@ -227,6 +230,7 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
 
         self.inner_dim = dim_head * heads
         self.heads = heads
+        self.kv_heads = kv_heads if kv_heads is not None else heads
         self.added_kv_proj_dim = added_kv_proj_dim
         self.cross_attention_dim_head = cross_attention_dim_head
         self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
@@ -537,7 +541,7 @@ class Magi1TransformerBlock(nn.Module):
             nn.Linear(
                 int(dim * 0.25),
                 int(dim * 2),
-            )
+            ),
         )
         self.self_attn_post_norm = FP32LayerNorm(dim, eps)
         self.self_attn_post_norm.weight += 1
@@ -593,7 +597,9 @@ class Magi1TransformerBlock(nn.Module):
         return hidden_states
 
 
-class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class Magi1Transformer3DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     r"""
     A Transformer model for video-like data used in the Magi1 model.
 
@@ -649,6 +655,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         patch_size: Tuple[int] = (1, 2, 2),
         num_attention_heads: int = 16,
         attention_head_dim: int = 64,
+        num_kv_heads: int = 8,
         in_channels: int = 16,
         out_channels: int = 16,
         cross_attention_dim: int = 4096,
@@ -689,7 +696,14 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         self.blocks = nn.ModuleList(
             [
                 Magi1TransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, num_kv_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
+                    inner_dim,
+                    ffn_dim,
+                    num_attention_heads,
+                    num_kv_heads,
+                    qk_norm,
+                    cross_attn_norm,
+                    eps,
+                    added_kv_proj_dim,
                 )
                 for _ in range(num_layers)
             ]
