@@ -209,22 +209,7 @@ def get_pos_embed_indices(start, length, max_pos, scale=1.0):
     return pos
 
 
-# TODO match this with diffusers
 
-class GRN(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.gamma = nn.Parameter(torch.zeros(1, 1, dim))
-        self.beta = nn.Parameter(torch.zeros(1, 1, dim))
-
-    def forward(self, x):
-        # print('x in grn:', x, x.shape)
-        Gx = torch.norm(x, p=2, dim=1, keepdim=True)
-        # print('Gx:', Gx)
-        Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
-        # print('NX:', Nx)
-        # print('gamma: ', self.gamma, ' beta: ', self.beta)
-        return self.gamma * (x * Nx) + self.beta + x
 
 class ConvNeXtV2Block(nn.Module):
     def __init__(
@@ -241,7 +226,7 @@ class ConvNeXtV2Block(nn.Module):
         self.norm = nn.LayerNorm(dim, eps=1e-6)
         self.pwconv1 = nn.Linear(dim, intermediate_dim)  # pointwise/1x1 convs, implemented with linear layers
         self.act = nn.GELU()
-        self.grn = GRN(intermediate_dim)
+        self.grn = GlobalResponseNorm(intermediate_dim)
         self.pwconv2 = nn.Linear(intermediate_dim, dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -252,7 +237,7 @@ class ConvNeXtV2Block(nn.Module):
         x = self.norm(x)
         x = self.pwconv1(x)
         x = self.act(x)
-        x = self.grn(x)
+        x = self.grn(x.unsqueeze(0)).squeeze(0)  
         x = self.pwconv2(x)
         return residual + x
 
@@ -437,7 +422,9 @@ class DiT(nn.Module):
             ]
         )
         self.long_skip_connection = nn.Linear(dim * 2, dim, bias=False) if long_skip_connection else None
-
+        
+        # can't use diffusers AdaLayerNorm here, because for chunk_dim = 1, it has shift, scale instead of scale, shift
+        # better to have this as a separate class than hackily using diffusers AdaLayerNorm 
         self.norm_out = AdaLayerNorm_Final(dim)  # final modulation
         self.proj_out = nn.Linear(dim, mel_dim)
 
