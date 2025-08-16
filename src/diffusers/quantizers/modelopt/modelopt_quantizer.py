@@ -42,11 +42,6 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             raise ImportError(
                 "Loading an nvidia-modelopt quantized model requires nvidia-modelopt library (`pip install nvidia-modelopt`)"
             )
-        if not is_nvidia_modelopt_version(">=", "0.25.0"):
-            raise ImportError(
-                "Loading an nvidia-modelopt quantized model requires `nvidia-modelopt>=0.25.0`. "
-                "Please upgrade your installation with `pip install --upgrade nvidia-modelopt"
-            )
 
         self.offload = False
 
