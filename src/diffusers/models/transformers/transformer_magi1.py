@@ -69,29 +69,29 @@ def range_mod_pytorch(x, c_mapping, gatings):
     """
     PyTorch implementation of range_mod_triton.
     # TODO: Ensure that this implementation is correct and matches the range_mod_triton implementation.
-    
+
     Inputs:
         x: (s, b, h). Tensor of inputs embedding (images or latent representations of images)
         c_mapping: (s, b). Tensor of condition map
         gatings: (b, denoising_range_num, h). Tensor of condition embedding
     """
     s, b, h = x.shape
-    
+
     # Flatten x and c_mapping to 2D for easier indexing
     x_flat = x.transpose(0, 1).flatten(0, 1)  # (s*b, h)
     c_mapping_flat = c_mapping.transpose(0, 1).flatten(0, 1)  # (s*b,)
     gatings_flat = gatings.flatten(0, 1)  # (b*denoising_range_num, h)
-    
+
     # Use advanced indexing to select the appropriate gating for each row
     # c_mapping_flat contains indices into gatings_flat
     selected_gatings = gatings_flat[c_mapping_flat]  # (s*b, h)
-    
+
     # Element-wise multiplication
     y_flat = x_flat * selected_gatings  # (s*b, h)
-    
+
     # Reshape back to original dimensions
     y = y_flat.reshape(b, s, h).transpose(0, 1)  # (s, b, h)
-    
+
     return y
 
 if is_kernels_available():
@@ -121,7 +121,6 @@ class Magi1AttnProcessor:
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
             encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
 
-
         # Attention heads [sq, b, h] --> [sq, b, q + qx + k + v]
         mixed_qqkv = attn.layer_norm(hidden_states.transpose(0, 1))#.transpose(0, 1)
         query, key, value = _get_qkv_projections(attn, mixed_qqkv, encoder_hidden_states)
@@ -146,16 +145,6 @@ class Magi1AttnProcessor:
         query = query.transpose(0, 1).reshape(-1, query.shape[-2], query.shape[-1]).contiguous()
         key = key.transpose(0, 1).reshape(-1, key.shape[-2], key.shape[-1]).contiguous()
         value = value.unflatten(2, (-1, attn.kv_inner_dim)).reshape(-1, value.shape[-2], value.shape[-1]).contiguous()
-        key_and_value = torch.cat([key, value], dim=-1)
-
-        # Only update kvcache when necessary, include 3 conditions:
-        # 1. extract prefix video clean feature
-        # 2. the first chunk of current kv is clean, we need to save their feature
-        # 3. previous chunk is clean and we need to save/load their feature
-        if meta_args.extract_prefix_video_feature or meta_args.fwd_extra_1st_chunk or meta_args.slice_point > 0:
-            key_and_value = self._full_adjust_key_and_value(inference_params, key_and_value, meta_args)
-        key, value = torch.chunk(key_and_value, 2, dim=-1)
-        key, value  = key.contiguous(), value.contiguous()
 
         # Perform Grouped-query Attention (GQA)
         n_rep = attn.heads // kv_heads
@@ -205,6 +194,8 @@ class Magi1AttnProcessor:
             enable_gqa=True,
             backend=self._attention_backend,
         )
+        # Convert [b, nh, sq, hd] -> [sq, b, (hn hd)]
+        hidden_states = hidden_states.permute(2, 0, 1, 3)
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
 
