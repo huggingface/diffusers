@@ -33,7 +33,7 @@ from ..embeddings import (
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
-from ..normalization import FP32LayerNorm
+from ..normalization import AdaLayerNorm, FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -386,7 +386,7 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
-    _no_split_modules = ["SkyReelsV2TransformerBlock"]
+    _no_split_modules = ["SkyReelsV2TransformerBlock", "norm_out"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
@@ -443,9 +443,15 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         )
 
         # 4. Output norm & projection
-        self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
+        self.norm_out = AdaLayerNorm(
+            embedding_dim=inner_dim,
+            output_dim=2 * inner_dim,
+            norm_elementwise_affine=False,
+            norm_eps=eps,
+            chunk_dim=1,
+            use_silu=False,
+        )
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
-        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         if inject_sample_info:
             self.fps_embedding = nn.Embedding(2, inner_dim)
@@ -558,7 +564,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                     causal_mask,
                 )
 
-        if temb.dim() == 2:
             # If temb is 2D, we assume it has time 1-D time embedding values for each batch.
             # For models:
             # - Skywork/SkyReels-V2-T2V-14B-540P-Diffusers
@@ -566,26 +571,15 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             # - Skywork/SkyReels-V2-I2V-1.3B-540P-Diffusers
             # - Skywork/SkyReels-V2-I2V-14B-540P-Diffusers
             # - Skywork/SkyReels-V2-I2V-14B-720P-Diffusers
-            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
-        elif temb.dim() == 3:
+
             # If temb is 3D, we assume it has 2-D time embedding values for each batch.
             # Each time embedding tensor includes values for each latent frame; thus Diffusion Forcing.
             # For models:
             # - Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers
             # - Skywork/SkyReels-V2-DF-14B-540P-Diffusers
             # - Skywork/SkyReels-V2-DF-14B-720P-Diffusers
-            shift, scale = (self.scale_shift_table.unsqueeze(2) + temb.unsqueeze(1)).chunk(2, dim=1)
-            shift, scale = shift.squeeze(1), scale.squeeze(1)
 
-        # Move the shift and scale tensors to the same device as hidden_states.
-        # When using multi-GPU inference via accelerate these will be on the
-        # first device rather than the last device, which hidden_states ends up
-        # on.
-        shift = shift.to(hidden_states.device)
-        scale = scale.to(hidden_states.device)
-
-        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
-
+        hidden_states = self.norm_out(hidden_states, temb=temb)
         hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(
