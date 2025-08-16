@@ -226,6 +226,14 @@ _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
 _kornia_available, _kornia_version = _is_package_available("kornia")
 
+_nvidia_modelopt_available = importlib.util.find_spec("modelopt") is not None
+if _nvidia_modelopt_available:
+    try:
+        _nvidia_modelopt_version = importlib_metadata.version("nvidia_modelopt")
+        logger.debug(f"Successfully import nvidia_modelopt version {_nvidia_modelopt_version}")
+    except importlib_metadata.PackageNotFoundError:
+        _nvidia_modelopt_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -361,6 +369,10 @@ def is_torchao_available():
 
 def is_optimum_quanto_available():
     return _optimum_quanto_available
+
+
+def is_nvidia_modelopt_available():
+    return _nvidia_modelopt_available
 
 
 def is_timm_available():
@@ -827,6 +839,22 @@ def is_optimum_quanto_version(operation: str, version: str):
     if not _optimum_quanto_available:
         return False
     return compare_versions(parse(_optimum_quanto_version), operation, version)
+
+
+
+def is_nvidia_modelopt_version(operation: str, version: str):
+    """
+    Compares the current Nvidia ModelOpt version to a given reference with an operation.
+    
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _nvidia_modelopt_available:
+        return False
+    return compare_versions(parse(_nvidia_modelopt_version), operation, version)
 
 
 def is_xformers_version(operation: str, version: str):
