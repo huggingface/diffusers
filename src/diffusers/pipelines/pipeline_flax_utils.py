@@ -312,6 +312,11 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> dpm_params["scheduler"] = dpmpp_state
         ```
         """
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         cache_dir = kwargs.pop("cache_dir", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
