@@ -139,6 +139,7 @@ else:
             "AutoGuidance",
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
+            "FrequencyDecoupledGuidance",
             "PerturbedAttentionGuidance",
             "SkipLayerGuidance",
             "SmoothedEnergyGuidance",
@@ -174,6 +175,7 @@ else:
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMagvit",
             "AutoencoderKLMochi",
+            "AutoencoderKLQwenImage",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderKLWan",
             "AutoencoderOobleck",
@@ -215,6 +217,7 @@ else:
             "OmniGenTransformer2DModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
+            "QwenImageTransformer2DModel",
             "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SD3ControlNetModel",
@@ -364,8 +367,12 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "FluxAutoBlocks",
+            "FluxModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
+            "WanAutoBlocks",
+            "WanModularPipeline",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -482,6 +489,9 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
+            "QwenImageImg2ImgPipeline",
+            "QwenImageInpaintPipeline",
+            "QwenImagePipeline",
             "ReduxImageEncoder",
             "SanaControlNetPipeline",
             "SanaPAGPipeline",
@@ -797,6 +807,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoGuidance,
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
+            FrequencyDecoupledGuidance,
             PerturbedAttentionGuidance,
             SkipLayerGuidance,
             SmoothedEnergyGuidance,
@@ -828,6 +839,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
+            AutoencoderKLQwenImage,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
@@ -869,6 +881,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            QwenImageTransformer2DModel,
             SanaControlNetModel,
             SanaTransformer2DModel,
             SD3ControlNetModel,
@@ -894,12 +907,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanVACETransformer3DModel,
             attention_backend,
         )
-        from .modular_pipelines import (
-            ComponentsManager,
-            ComponentSpec,
-            ModularPipeline,
-            ModularPipelineBlocks,
-        )
+        from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
         from .optimization import (
             get_constant_schedule,
             get_constant_schedule_with_warmup,
@@ -997,8 +1005,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            FluxAutoBlocks,
+            FluxModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
+            WanAutoBlocks,
+            WanModularPipeline,
         )
         from .pipelines import (
             AllegroPipeline,
@@ -1111,6 +1123,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
+            QwenImageImg2ImgPipeline,
+            QwenImageInpaintPipeline,
+            QwenImagePipeline,
             ReduxImageEncoder,
             SanaControlNetPipeline,
             SanaPAGPipeline,

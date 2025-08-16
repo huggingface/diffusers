@@ -312,15 +312,14 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 The sequence of generated hidden-states.
         """
         cache_position_kwargs = {}
-        if is_transformers_version("<", "4.52.0.dev0"):
+        if is_transformers_version("<", "4.52.1"):
             cache_position_kwargs["input_ids"] = inputs_embeds
-            cache_position_kwargs["model_kwargs"] = model_kwargs
         else:
             cache_position_kwargs["seq_length"] = inputs_embeds.shape[0]
             cache_position_kwargs["device"] = (
                 self.language_model.device if getattr(self, "language_model", None) is not None else self.device
             )
-            cache_position_kwargs["model_kwargs"] = model_kwargs
+        cache_position_kwargs["model_kwargs"] = model_kwargs
         max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
         model_kwargs = self.language_model._get_initial_cache_position(**cache_position_kwargs)
 

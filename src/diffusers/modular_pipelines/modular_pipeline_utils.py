@@ -93,7 +93,7 @@ class ComponentSpec:
     config: Optional[FrozenDict] = None
     # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
     repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
-    subfolder: Optional[str] = field(default=None, metadata={"loading": True})
+    subfolder: Optional[str] = field(default="", metadata={"loading": True})
     variant: Optional[str] = field(default=None, metadata={"loading": True})
     revision: Optional[str] = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
@@ -185,6 +185,8 @@ class ComponentSpec:
         Unique identifier for this spec's pretrained load, composed of repo|subfolder|variant|revision (no empty
         segments).
         """
+        if self.default_creation_method == "from_config":
+            return "null"
         parts = [getattr(self, k) for k in self.loading_fields()]
         parts = ["null" if p is None else p for p in parts]
         return "|".join(p for p in parts if p)
@@ -616,7 +618,6 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
 
 def make_doc_string(
     inputs,
-    intermediate_inputs,
     outputs,
     description="",
     class_name=None,
@@ -662,7 +663,7 @@ def make_doc_string(
         output += configs_str + "\n\n"
 
     # Add inputs section
-    output += format_input_params(inputs + intermediate_inputs, indent_level=2)
+    output += format_input_params(inputs, indent_level=2)
 
     # Add outputs section
     output += "\n\n"
