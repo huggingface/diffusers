@@ -250,9 +250,7 @@ class QwenEmbedRope(nn.Module):
             freqs_width = freqs_pos[2][:width].view(1, 1, width, -1).expand(frame, height, width, -1)
 
         freqs = torch.cat([freqs_frame, freqs_height, freqs_width], dim=-1).reshape(seq_lens, -1)
-        freqs = freqs.clone().contiguous()
-
-        return freqs
+        return freqs.clone().contiguous()
 
 
 class QwenDoubleStreamAttnProcessor2_0:
