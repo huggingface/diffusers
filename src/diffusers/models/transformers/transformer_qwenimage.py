@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import functools
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -204,6 +204,8 @@ class QwenEmbedRope(nn.Module):
 
         if isinstance(video_fhw, list):
             video_fhw = video_fhw[0]
+        if not isinstance(video_fhw, list):
+            video_fhw = [video_fhw]
 
         vid_freqs = []
         max_vid_index = 0
@@ -211,26 +213,13 @@ class QwenEmbedRope(nn.Module):
             frame, height, width = fhw
             rope_key = f"{idx}_{height}_{width}"
 
-            if rope_key not in self.rope_cache:
-                seq_lens = frame * height * width
-                freqs_pos = self.pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
-                freqs_neg = self.neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
-                freqs_frame = freqs_pos[0][idx : idx + frame].view(frame, 1, 1, -1).expand(frame, height, width, -1)
-                if self.scale_rope:
-                    freqs_height = torch.cat(
-                        [freqs_neg[1][-(height - height // 2) :], freqs_pos[1][: height // 2]], dim=0
-                    )
-                    freqs_height = freqs_height.view(1, height, 1, -1).expand(frame, height, width, -1)
-                    freqs_width = torch.cat([freqs_neg[2][-(width - width // 2) :], freqs_pos[2][: width // 2]], dim=0)
-                    freqs_width = freqs_width.view(1, 1, width, -1).expand(frame, height, width, -1)
-
-                else:
-                    freqs_height = freqs_pos[1][:height].view(1, height, 1, -1).expand(frame, height, width, -1)
-                    freqs_width = freqs_pos[2][:width].view(1, 1, width, -1).expand(frame, height, width, -1)
-
-                freqs = torch.cat([freqs_frame, freqs_height, freqs_width], dim=-1).reshape(seq_lens, -1)
-                self.rope_cache[rope_key] = freqs.clone().contiguous()
-            vid_freqs.append(self.rope_cache[rope_key])
+            if not torch.compiler.is_compiling():
+                if rope_key not in self.rope_cache:
+                    self.rope_cache[rope_key] = self._compute_video_freqs(frame, height, width, idx)
+                video_freq = self.rope_cache[rope_key]
+            else:
+                video_freq = self._compute_video_freqs(frame, height, width, idx)
+            vid_freqs.append(video_freq)
 
             if self.scale_rope:
                 max_vid_index = max(height // 2, width // 2, max_vid_index)
@@ -242,6 +231,25 @@ class QwenEmbedRope(nn.Module):
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
+
+    @functools.lru_cache(maxsize=None)
+    def _compute_video_freqs(self, frame, height, width, idx=0):
+        seq_lens = frame * height * width
+        freqs_pos = self.pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        freqs_neg = self.neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+
+        freqs_frame = freqs_pos[0][idx : idx + frame].view(frame, 1, 1, -1).expand(frame, height, width, -1)
+        if self.scale_rope:
+            freqs_height = torch.cat([freqs_neg[1][-(height - height // 2) :], freqs_pos[1][: height // 2]], dim=0)
+            freqs_height = freqs_height.view(1, height, 1, -1).expand(frame, height, width, -1)
+            freqs_width = torch.cat([freqs_neg[2][-(width - width // 2) :], freqs_pos[2][: width // 2]], dim=0)
+            freqs_width = freqs_width.view(1, 1, width, -1).expand(frame, height, width, -1)
+        else:
+            freqs_height = freqs_pos[1][:height].view(1, height, 1, -1).expand(frame, height, width, -1)
+            freqs_width = freqs_pos[2][:width].view(1, 1, width, -1).expand(frame, height, width, -1)
+
+        freqs = torch.cat([freqs_frame, freqs_height, freqs_width], dim=-1).reshape(seq_lens, -1)
+        return freqs.clone().contiguous()
 
 
 class QwenDoubleStreamAttnProcessor2_0:
