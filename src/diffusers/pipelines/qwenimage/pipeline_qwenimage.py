@@ -253,6 +253,9 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
 
+        prompt_embeds = prompt_embeds[:, :max_sequence_length]
+        prompt_embeds_mask = prompt_embeds_mask[:, :max_sequence_length]
+
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
@@ -315,20 +318,6 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         if max_sequence_length is not None and max_sequence_length > 1024:
             raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
-
-    @staticmethod
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
-        latent_image_ids = torch.zeros(height, width, 3)
-        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
-        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
-
-        latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
-
-        latent_image_ids = latent_image_ids.reshape(
-            latent_image_id_height * latent_image_id_width, latent_image_id_channels
-        )
-
-        return latent_image_ids.to(device=device, dtype=dtype)
 
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
@@ -402,8 +391,7 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         shape = (batch_size, 1, num_channels_latents, height, width)
 
         if latents is not None:
-            latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-            return latents.to(device=device, dtype=dtype), latent_image_ids
+            return latents.to(device=device, dtype=dtype)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -414,9 +402,7 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-
-        return latents, latent_image_ids
+        return latents
 
     @property
     def guidance_scale(self):
@@ -594,7 +580,7 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
-        latents, latent_image_ids = self.prepare_latents(
+        latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
@@ -604,7 +590,7 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             generator,
             latents,
         )
-        img_shapes = [(1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2)] * batch_size
+        img_shapes = [[(1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2)]] * batch_size
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
