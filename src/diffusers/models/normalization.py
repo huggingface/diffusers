@@ -67,8 +67,7 @@ class AdaLayerNorm(nn.Module):
         if self.emb is not None:
             temb = self.emb(timestep)
 
-        temb = self.silu(temb)
-        temb = self.linear(temb)
+        temb = self.linear(self.silu(temb))
 
         if self.chunk_dim == 1:
             # This is a bit weird why we have the order of "shift, scale" here and "scale, shift" in the
