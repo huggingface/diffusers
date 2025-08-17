@@ -103,4 +103,4 @@ class QwenImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCas
 
     @pytest.mark.xfail(condition=True, reason="RoPE needs to be revisited.", strict=True)
     def test_torch_compile_recompilation_and_graph_break(self):
-        pass
+        super().test_torch_compile_recompilation_and_graph_break()

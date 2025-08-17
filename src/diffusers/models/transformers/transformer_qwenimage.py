@@ -219,6 +219,7 @@ class QwenEmbedRope(nn.Module):
                 video_freq = self.rope_cache[rope_key]
             else:
                 video_freq = self._compute_video_freqs(frame, height, width, idx)
+            video_freq = video_freq.to(device)
             vid_freqs.append(video_freq)
 
             if self.scale_rope:
@@ -249,8 +250,9 @@ class QwenEmbedRope(nn.Module):
             freqs_width = freqs_pos[2][:width].view(1, 1, width, -1).expand(frame, height, width, -1)
 
         freqs = torch.cat([freqs_frame, freqs_height, freqs_width], dim=-1).reshape(seq_lens, -1)
-        return freqs.clone().contiguous()
-
+        freqs = freqs.clone().contiguous()
+        
+        return freqs
 
 class QwenDoubleStreamAttnProcessor2_0:
     """
