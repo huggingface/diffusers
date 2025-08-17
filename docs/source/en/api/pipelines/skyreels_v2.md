@@ -22,7 +22,7 @@
 
 # SkyReels-V2: Infinite-length Film Generative model
 
-[SkyReels-V2](https://huggingface.co/papers/2504.13074) by the SkyReels Team.
+[SkyReels-V2](https://huggingface.co/papers/2504.13074) by the SkyReels Team from Skywork AI.
 
 *Recent advances in video generation have been driven by diffusion models and autoregressive frameworks, yet critical challenges persist in harmonizing prompt adherence, visual quality, motion dynamics, and duration: compromises in motion dynamics to enhance temporal visual quality, constrained video duration (5-10 seconds) to prioritize resolution, and inadequate shot-aware generation stemming from general-purpose MLLMs' inability to interpret cinematic grammar, such as shot composition, actor expressions, and camera motions. These intertwined limitations hinder realistic long-form synthesis and professional film-style generation. To address these limitations, we propose SkyReels-V2, an Infinite-length Film Generative Model, that synergizes Multi-modal Large Language Model (MLLM), Multi-stage Pretraining, Reinforcement Learning, and Diffusion Forcing Framework. Firstly, we design a comprehensive structural representation of video that combines the general descriptions by the Multi-modal LLM and the detailed shot language by sub-expert models. Aided with human annotation, we then train a unified Video Captioner, named SkyCaptioner-V1, to efficiently label the video data. Secondly, we establish progressive-resolution pretraining for the fundamental video generation, followed by a four-stage post-training enhancement: Initial concept-balanced Supervised Fine-Tuning (SFT) improves baseline quality; Motion-specific Reinforcement Learning (RL) training with human-annotated and synthetic distortion data addresses dynamic artifacts; Our diffusion forcing framework with non-decreasing noise schedules enables long-video synthesis in an efficient search space; Final high-quality SFT refines visual fidelity. All the code and models are available at [this https URL](https://github.com/SkyworkAI/SkyReels-V2).*
 
@@ -145,7 +145,6 @@ From the original repo:
 >You can use --ar_step 5 to enable asynchronous inference. When asynchronous inference, --causal_block_size 5 is recommended while it is not supposed to be set for synchronous generation... Asynchronous inference will take more steps to diffuse the whole sequence which means it will be SLOWER than synchronous mode. In our experiments, asynchronous inference may improve the instruction following and visual consistent performance.
 
 ```py
-# pip install ftfy
 import torch
 from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline, UniPCMultistepScheduler
 from diffusers.utils import export_to_video
@@ -177,7 +176,7 @@ output = pipeline(
     overlap_history=None,  # Number of frames to overlap for smooth transitions in long videos; 17 for long video generations
     addnoise_condition=20,  # Improves consistency in long video generation
 ).frames[0]
-export_to_video(output, "T2V.mp4", fps=24, quality=8)
+export_to_video(output, "video.mp4", fps=24, quality=8)
 ```
 
 </hfoption>
@@ -239,7 +238,7 @@ prompt = "CG animation style, a small blue bird takes off from the ground, flapp
 output = pipeline(
     image=first_frame, last_image=last_frame, prompt=prompt, height=height, width=width, guidance_scale=5.0
 ).frames[0]
-export_to_video(output, "output.mp4", fps=24, quality=8)
+export_to_video(output, "video.mp4", fps=24, quality=8)
 ```
 
 </hfoption>
@@ -261,7 +260,7 @@ from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingVideoToVideoPi
 from diffusers.utils import export_to_video, load_video
 
 
-model_id = "Skywork/SkyReels-V2-DF-14B-540P-Diffusers"
+model_id = "Skywork/SkyReels-V2-DF-14B-720P-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipeline = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16
@@ -275,11 +274,11 @@ video = load_video("input_video.mp4")
 prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
 
 output = pipeline(
-    video=video, prompt=prompt, height=544, width=960, guidance_scale=5.0,
-    num_inference_steps=30, num_frames=257, base_num_frames=97#, ar_step=5, causal_block_size=5,
+    video=video, prompt=prompt, height=720, width=1280, guidance_scale=5.0, overlap_history=17,
+    num_inference_steps=30, num_frames=257, base_num_frames=121#, ar_step=5, causal_block_size=5,
 ).frames[0]
-export_to_video(output, "output.mp4", fps=24, quality=8)
-# Total frames will be the number of frames of given video + 257
+export_to_video(output, "video.mp4", fps=24, quality=8)
+# Total frames will be the number of frames of the given video + 257
 ```
 
 </hfoption>
@@ -294,7 +293,6 @@ export_to_video(output, "output.mp4", fps=24, quality=8)
   <summary>Show example code</summary>
 
   ```py
-  # pip install ftfy
   import torch
   from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
   from diffusers.utils import export_to_video
@@ -326,7 +324,7 @@ export_to_video(output, "output.mp4", fps=24, quality=8)
       num_frames=97,
       guidance_scale=6.0,
   ).frames[0]
-  export_to_video(output, "output.mp4", fps=24)
+  export_to_video(output, "video.mp4", fps=24)
   ```
 
   </details>
