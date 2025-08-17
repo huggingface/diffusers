@@ -46,15 +46,20 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from PIL import Image
         >>> from diffusers import QwenImageEditPipeline
+        >>> from diffusers.utils import load_image
 
         >>> pipe = QwenImageEditPipeline.from_pretrained("Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> prompt = "Change the cat to a dog"
-        >>> image = Image.open("cat.png")
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
+        ... ).convert("RGB")
+        >>> prompt = (
+        ...     "Make Pikachu hold a sign that says 'Qwen Edit is awesome', yarn art style, detailed, vibrant colors"
+        ... )
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(image, prompt, num_inference_steps=50).images[0]
-        >>> image.save("qwenimageedit.png")
+        >>> image.save("qwenimage_edit.png")
         ```
 """
 PREFERRED_QWENIMAGE_RESOLUTIONS = [
