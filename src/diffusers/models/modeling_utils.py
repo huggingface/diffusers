@@ -42,9 +42,8 @@ from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
-    ENV_VARS_TRUE_VALUES,
     FLAX_WEIGHTS_NAME,
-    HF_PARALLEL_LOADING_FLAG,
+    HF_ENABLE_PARALLEL_LOADING,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
@@ -962,7 +961,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
-        is_parallel_loading_enabled = os.environ.get(HF_PARALLEL_LOADING_FLAG, "").upper() in ENV_VARS_TRUE_VALUES
+        is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
             raise NotImplementedError("Parallel loading is not supported when not using `low_cpu_mem_usage`.")
 
@@ -1533,10 +1532,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # tensors using their expected shape and not performing any initialization of the memory (empty data).
         # When the actual device allocations happen, the allocator already has a pool of unused device memory
         # that it can re-use for faster loading of the model.
-        # TODO: add support for warmup with hf_quantizer
-        if device_map is not None and hf_quantizer is None:
+        if device_map is not None:
             expanded_device_map = _expand_device_map(device_map, expected_keys)
-            _caching_allocator_warmup(model, expanded_device_map, dtype)
+            _caching_allocator_warmup(model, expanded_device_map, dtype, hf_quantizer)
 
         offload_index = {} if device_map is not None and "disk" in device_map.values() else None
         state_dict_folder, state_dict_index = None, None
