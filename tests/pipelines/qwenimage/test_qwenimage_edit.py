@@ -13,8 +13,9 @@
 # limitations under the License.
 
 import unittest
-import pytest
+
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
@@ -27,7 +28,7 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
@@ -57,7 +58,7 @@ class QwenImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         tiny_ckpt_id = "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
-        
+
         torch.manual_seed(0)
         transformer = QwenImageTransformer2DModel(
             patch_size=2,
@@ -162,8 +163,27 @@ class QwenImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_image.shape, (3, 32, 32))
 
         expected_slice = torch.tensor(
-            [[0.5637, 0.6341, 0.6001, 0.5620, 0.5794, 0.5498, 0.5757, 0.6389, 0.4174,
-        0.3597, 0.5649, 0.4894, 0.4969, 0.5255, 0.4083, 0.4986]])
+            [
+                [
+                    0.5637,
+                    0.6341,
+                    0.6001,
+                    0.5620,
+                    0.5794,
+                    0.5498,
+                    0.5757,
+                    0.6389,
+                    0.4174,
+                    0.3597,
+                    0.5649,
+                    0.4894,
+                    0.4969,
+                    0.5255,
+                    0.4083,
+                    0.4986,
+                ]
+            ]
+        )
         # fmt: on
 
         generated_slice = generated_image.flatten()

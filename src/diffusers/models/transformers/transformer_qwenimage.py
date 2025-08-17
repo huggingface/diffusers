@@ -251,8 +251,9 @@ class QwenEmbedRope(nn.Module):
 
         freqs = torch.cat([freqs_frame, freqs_height, freqs_width], dim=-1).reshape(seq_lens, -1)
         freqs = freqs.clone().contiguous()
-        
+
         return freqs
+
 
 class QwenDoubleStreamAttnProcessor2_0:
     """
