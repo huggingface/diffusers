@@ -44,15 +44,17 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import QwenImagePipeline
+        >>> from PIL import Image
+        >>> from diffusers import QwenImageEditPipeline
 
-        >>> pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImageEditPipeline.from_pretrained("Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
+        >>> prompt = "Change the cat to a dog"
+        >>> image = Image.open("cat.png")
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=50).images[0]
-        >>> image.save("qwenimage.png")
+        >>> image = pipe(image, prompt, num_inference_steps=50).images[0]
+        >>> image.save("qwenimageedit.png")
         ```
 """
 PREFERRED_QWENIMAGE_RESOLUTIONS = [
