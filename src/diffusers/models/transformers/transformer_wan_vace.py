@@ -25,7 +25,7 @@ from ..attention import FeedForward
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import FP32LayerNorm
+from ..normalization import AdaLayerNorm, FP32LayerNorm
 from .transformer_wan import (
     WanAttention,
     WanAttnProcessor,

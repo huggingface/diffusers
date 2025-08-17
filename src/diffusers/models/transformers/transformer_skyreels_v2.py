@@ -66,9 +66,7 @@ class SkyReelsV2AdaLayerNorm(nn.Module):
         self.linear.weight.data[embedding_dim:, :] = torch.eye(embedding_dim)
         self.norm = FP32LayerNorm(embedding_dim, norm_eps, norm_elementwise_affine)
 
-    def forward(
-        self, x: torch.Tensor, temb: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
         if temb.ndim == 2:
             # If temb is 2D, we assume it has 1-D time embedding values for each batch.
             # For models:
@@ -88,7 +86,9 @@ class SkyReelsV2AdaLayerNorm(nn.Module):
             # - Skywork/SkyReels-V2-DF-14B-540P-Diffusers
             # - Skywork/SkyReels-V2-DF-14B-720P-Diffusers
             # 3D temb: (batch, num_latent_frames * post_patch_height * post_patch_width, embedding_dim)
-            temb = self.linear(temb)  # (batch, num_latent_frames * post_patch_height * post_patch_width, embedding_dim * 2)
+            temb = self.linear(
+                temb
+            )  # (batch, num_latent_frames * post_patch_height * post_patch_width, embedding_dim * 2)
             shift, scale = temb.chunk(2, dim=2)
 
         x = self.norm(x) * (1 + scale) + shift
