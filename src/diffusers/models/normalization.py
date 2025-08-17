@@ -36,7 +36,6 @@ class AdaLayerNorm(nn.Module):
         norm_elementwise_affine (`bool`, defaults to `False):
         norm_eps (`bool`, defaults to `False`):
         chunk_dim (`int`, defaults to `0`):
-        use_silu (`bool`, defaults to `True`): Whether to apply SiLU activation before the linear layer.
     """
 
     def __init__(
@@ -47,12 +46,10 @@ class AdaLayerNorm(nn.Module):
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-5,
         chunk_dim: int = 0,
-        use_silu: bool = True,
     ):
         super().__init__()
 
         self.chunk_dim = chunk_dim
-        self.use_silu = use_silu
         output_dim = output_dim or embedding_dim * 2
 
         if num_embeddings is not None:
@@ -60,8 +57,7 @@ class AdaLayerNorm(nn.Module):
         else:
             self.emb = None
 
-        if self.use_silu:
-            self.silu = nn.SiLU()
+        self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, output_dim)
         self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
 
@@ -71,8 +67,7 @@ class AdaLayerNorm(nn.Module):
         if self.emb is not None:
             temb = self.emb(timestep)
 
-        if self.use_silu:
-            temb = self.silu(temb)
+        temb = self.silu(temb)
         temb = self.linear(temb)
 
         if self.chunk_dim == 1:
