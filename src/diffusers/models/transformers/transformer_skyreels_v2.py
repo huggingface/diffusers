@@ -530,15 +530,20 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
             # Create identity matrices for the linear transformation
             # This maintains the original behavior where the linear layer acts as input.dot(identity) + scale_shift_table
-            # Use same device and dtype as the original scale_shift_table to avoid meta tensor issues
-            identity_matrix = torch.eye(inner_dim, device=scale_shift_table.device, dtype=scale_shift_table.dtype)
+            # If scale_shift_table is on meta device, create tensors on CPU to avoid meta tensor issues
+            device = scale_shift_table.device if scale_shift_table.device.type != "meta" else torch.device("cpu")
+            dtype = scale_shift_table.dtype
+
+            identity_matrix = torch.eye(inner_dim, device=device, dtype=dtype)
             linear_weight = torch.cat([identity_matrix, identity_matrix], dim=0)
 
             # Set the linear layer weights and bias
             state_dict[prefix + "norm_out.linear.weight"] = linear_weight.T
             # The bias should contain the original scale_shift_table values
             # scale_shift_table shape: (1, 2, inner_dim) -> flatten to (2 * inner_dim,)
-            state_dict[prefix + "norm_out.linear.bias"] = scale_shift_table.flatten()
+            # Move scale_shift_table to same device as the identity matrix to avoid device mismatch
+            scale_shift_table_flat = scale_shift_table.to(device).flatten()
+            state_dict[prefix + "norm_out.linear.bias"] = scale_shift_table_flat
 
             # Handle FP32LayerNorm parameter renaming: norm_out -> norm_out.norm
             old_norm_weight_key = prefix + "norm_out.weight"
