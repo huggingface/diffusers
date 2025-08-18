@@ -744,7 +744,7 @@ def _caching_allocator_warmup(
             try:
                 p = model.get_buffer(param_name)
             except AttributeError:
-                raise AttributeError(f"Parameter {param_name} not found in model")
+                raise AttributeError(f"Parameter or buffer with name={param_name} not found in model")
         # TODO: account for TP when needed.
         elements_per_device[device] += p.numel()
 
