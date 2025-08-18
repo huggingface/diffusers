@@ -1,4 +1,4 @@
-# Copyright 2025 The SkyReels-V2 Team, The Wan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The SkyReels Team, The Wan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,21 +39,53 @@ from ..normalization import FP32LayerNorm
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+# Copied from diffusers.models.transformers.transformer_wan._get_qkv_projections
+def _get_qkv_projections(attn: "SkyReelsV2Attention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
+    # encoder_hidden_states is only passed for cross-attention
+    if encoder_hidden_states is None:
+        encoder_hidden_states = hidden_states
 
-class SkyReelsV2AttnProcessor2_0:
+    if attn.fused_projections:
+        if attn.cross_attention_dim_head is None:
+            # In self-attention layers, we can fuse the entire QKV projection into a single linear
+            query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+        else:
+            # In cross-attention layers, we can only fuse the KV projections into a single linear
+            query = attn.to_q(hidden_states)
+            key, value = attn.to_kv(encoder_hidden_states).chunk(2, dim=-1)
+    else:
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+    return query, key, value
+
+
+# Copied from diffusers.models.transformers.transformer_wan._get_added_kv_projections
+def _get_added_kv_projections(attn: "SkyReelsV2Attention", encoder_hidden_states_img: torch.Tensor):
+    if attn.fused_projections:
+        key_img, value_img = attn.to_added_kv(encoder_hidden_states_img).chunk(2, dim=-1)
+    else:
+        key_img = attn.add_k_proj(encoder_hidden_states_img)
+        value_img = attn.add_v_proj(encoder_hidden_states_img)
+    return key_img, value_img
+
+
+class SkyReelsV2AttnProcessor:
+    _attention_backend = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "SkyReelsV2AttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
+                "SkyReelsV2AttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "SkyReelsV2Attention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -61,21 +93,15 @@ class SkyReelsV2AttnProcessor2_0:
             image_context_length = encoder_hidden_states.shape[1] - 512
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
             encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
 
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
+        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
 
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
 
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        query = query.unflatten(2, (attn.heads, -1))
+        key = key.unflatten(2, (attn.heads, -1))
+        value = value.unflatten(2, (attn.heads, -1))
 
         if rotary_emb is not None:
 
@@ -90,29 +116,35 @@ class SkyReelsV2AttnProcessor2_0:
         # I2V task
         hidden_states_img = None
         if encoder_hidden_states_img is not None:
-            key_img = attn.add_k_proj(encoder_hidden_states_img)
+            key_img, value_img = _get_added_kv_projections(attn, encoder_hidden_states_img)
             key_img = attn.norm_added_k(key_img)
-            value_img = attn.add_v_proj(encoder_hidden_states_img)
 
-            key_img = key_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-            value_img = value_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+            key_img = key_img.unflatten(2, (attn.heads, -1))
+            value_img = value_img.unflatten(2, (attn.heads, -1))
 
-            hidden_states_img = F.scaled_dot_product_attention(
-                query, key_img, value_img, attn_mask=None, dropout_p=0.0, is_causal=False
+            hidden_states_img = dispatch_attention_fn(
+                query,
+                key_img,
+                value_img,
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
             )
-            hidden_states_img = hidden_states_img.transpose(1, 2).flatten(2, 3)
+            hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
 
-        hidden_states = F.scaled_dot_product_attention(
+        hidden_states = dispatch_attention_fn(
             query,
             key,
             value,
             attn_mask=attention_mask,
             dropout_p=0.0,
             is_causal=False,
+            backend=self._attention_backend,
         )
 
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
 
         if hidden_states_img is not None:
@@ -121,6 +153,115 @@ class SkyReelsV2AttnProcessor2_0:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
+
+class SkyReelsV2Attention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = SkyReelsV2AttnProcessor
+    _available_processors = [SkyReelsV2AttnProcessor]
+
+    def __init__(
+        self,
+        dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        eps: float = 1e-5,
+        dropout: float = 0.0,
+        added_kv_proj_dim: Optional[int] = None,
+        cross_attention_dim_head: Optional[int] = None,
+        processor=None,
+        is_cross_attention=None,
+    ):
+        super().__init__()
+
+        self.inner_dim = dim_head * heads
+        self.heads = heads
+        self.added_kv_proj_dim = added_kv_proj_dim
+        self.cross_attention_dim_head = cross_attention_dim_head
+        self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
+
+        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
+        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
+        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
+        self.to_out = torch.nn.ModuleList(
+            [
+                torch.nn.Linear(self.inner_dim, dim, bias=True),
+                torch.nn.Dropout(dropout),
+            ]
+        )
+        self.norm_q = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
+        self.norm_k = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
+
+        self.add_k_proj = self.add_v_proj = None
+        if added_kv_proj_dim is not None:
+            self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
+            self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
+            self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
+
+        self.is_cross_attention = cross_attention_dim_head is not None
+
+        self.set_processor(processor)
+
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.fuse_projections
+    def fuse_projections(self):
+        if getattr(self, "fused_projections", False):
+            return
+
+        if self.cross_attention_dim_head is None:
+            concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
+            concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_qkv = nn.Linear(in_features, out_features, bias=True)
+            self.to_qkv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+        else:
+            concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
+            concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_kv = nn.Linear(in_features, out_features, bias=True)
+            self.to_kv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+
+        if self.added_kv_proj_dim is not None:
+            concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
+            concatenated_bias = torch.cat([self.add_k_proj.bias.data, self.add_v_proj.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_added_kv = nn.Linear(in_features, out_features, bias=True)
+            self.to_added_kv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+
+        self.fused_projections = True
+
+    @torch.no_grad()
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.unfuse_projections
+    def unfuse_projections(self):
+        if not getattr(self, "fused_projections", False):
+            return
+
+        if hasattr(self, "to_qkv"):
+            delattr(self, "to_qkv")
+        if hasattr(self, "to_kv"):
+            delattr(self, "to_kv")
+        if hasattr(self, "to_added_kv"):
+            delattr(self, "to_added_kv")
+
+        self.fused_projections = False
+
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.forward
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
 
 
 # Copied from diffusers.models.transformers.transformer_wan.WanImageEmbedding with WanImageEmbedding -> SkyReelsV2ImageEmbedding
@@ -255,6 +396,7 @@ class SkyReelsV2RotaryPosEmbed(nn.Module):
         return freqs
 
 
+@maybe_allow_in_graph
 class SkyReelsV2TransformerBlock(nn.Module):
     def __init__(
         self,
@@ -270,33 +412,24 @@ class SkyReelsV2TransformerBlock(nn.Module):
 
         # 1. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-        self.attn1 = Attention(
-            query_dim=dim,
+        self.attn1 = SkyReelsV2Attention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
-            processor=SkyReelsV2AttnProcessor2_0(),
+            cross_attention_dim_head=None,
+            processor=SkyReelsV2AttnProcessor(),
         )
 
         # 2. Cross-attention
-        self.attn2 = Attention(
-            query_dim=dim,
+        self.attn2 = SkyReelsV2Attention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
             added_kv_proj_dim=added_kv_proj_dim,
-            added_proj_bias=True,
-            processor=SkyReelsV2AttnProcessor2_0(),
+            cross_attention_dim_head=dim // num_heads,
+            processor=SkyReelsV2AttnProcessor(),
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
@@ -322,15 +455,15 @@ class SkyReelsV2TransformerBlock(nn.Module):
             # For 4D temb in Diffusion Forcing framework, we assume the shape is  (b, 6, f * pp_h * pp_w, inner_dim)
             e = (self.scale_shift_table.unsqueeze(2) + temb.float()).chunk(6, dim=1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
+        
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(
-            hidden_states=norm_hidden_states, rotary_emb=rotary_emb, attention_mask=attention_mask
-        )
+        attn_output = self.attn1(norm_hidden_states, None, attention_mask, rotary_emb)
         hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
-        attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
+        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
         hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
@@ -339,10 +472,11 @@ class SkyReelsV2TransformerBlock(nn.Module):
         )
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+
         return hidden_states
 
 
-class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin):
     r"""
     A Transformer model for video-like data used in the Wan-based SkyReels-V2 model.
 
