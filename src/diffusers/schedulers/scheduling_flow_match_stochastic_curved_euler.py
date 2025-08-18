@@ -20,8 +20,8 @@ import numpy as np
 import torch
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.utils import BaseOutput, is_scipy_available, logging
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
+from diffusers.utils import BaseOutput, is_scipy_available, logging
 
 
 if is_scipy_available():
@@ -433,25 +433,9 @@ class FlowMatchStochasticCurvedEulerScheduler(SchedulerMixin, ConfigMixin):
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
 
-        if per_token_timesteps is not None:
-            per_token_sigmas = per_token_timesteps / self.config.num_train_timesteps
-
-            sigmas = self.sigmas[:, None, None]
-            lower_mask = sigmas < per_token_sigmas[None] - 1e-6
-            lower_sigmas = lower_mask * sigmas
-            lower_sigmas, _ = lower_sigmas.max(dim=0)
-
-            current_sigma = per_token_sigmas[..., None]
-            next_sigma = lower_sigmas[..., None]
-            dt = current_sigma - next_sigma
-        else:
-            sigma_idx = self.step_index
-            sigma = self.sigmas[sigma_idx]
-            sigma_next = self.sigmas[sigma_idx + 1]
-
-            current_sigma = sigma
-            next_sigma = sigma_next
-            dt = sigma_next - sigma
+        sigma_idx = self.step_index
+        sigma = self.sigmas[sigma_idx]
+        sigma_next = self.sigmas[sigma_idx + 1]
 
         z_t_1 = sample + (1 - sigma) * model_output
         z_t_0 = sample + (0 - sigma) * model_output
@@ -471,9 +455,6 @@ class FlowMatchStochasticCurvedEulerScheduler(SchedulerMixin, ConfigMixin):
 
         # upon completion increase step index by one
         self._step_index += 1
-        if per_token_timesteps is None:
-            # Cast sample back to model compatible dtype
-            prev_sample = prev_sample.to(model_output.dtype)
 
         if not return_dict:
             return (prev_sample,)

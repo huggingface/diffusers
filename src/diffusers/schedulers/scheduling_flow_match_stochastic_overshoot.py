@@ -20,10 +20,9 @@ import numpy as np
 import torch
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.utils import BaseOutput, logging
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
+from diffusers.utils import BaseOutput, logging
 from diffusers.utils.torch_utils import randn_tensor
-
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -174,13 +173,13 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
 
     def set_c(self, c: float):
         self.c = c
-        
-    def set_overshot_func(self, overshot_func): 
+
+    def set_overshot_func(self, overshot_func):
         self.overshot_func = overshot_func
-        
-    def set_attn_map(self, attn_map): 
+
+    def set_attn_map(self, attn_map):
         self.attn_map = attn_map
-        
+
     def set_timesteps(
         self,
         num_inference_steps: int = None,
@@ -297,65 +296,63 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
                     " one of the `scheduler.timesteps` as a timestep."
                 ),
             )
-        
+
         if self.step_index is None:
             self._init_step_index(timestep)
 
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
-        
+
         sigma = self.sigmas[self.step_index]
         sigma_next = self.sigmas[self.step_index + 1]
-        
+
         # convert to t in rectified flow (0 --> 1)
         t = 1 - sigma
         step_size = sigma - sigma_next
 
         # next time step
-        t_next  = min(t + step_size, 1)
+        t_next = min(t + step_size, 1)
 
         # an overshooting step that is larger than t_next
         if self.attn_map is not None:
             step_size_overshoot = step_size * self.c * self.attn_map.float()
-            
+
             t_overshoot = torch.clip(self.overshot_func(t_next, step_size_overshoot), max=1)
-            
+
             # ODE advances to t_overshoot
-            if len(sample.shape) == 4: 
+            if len(sample.shape) == 4:
                 B, C, H, W = sample.shape
                 t_overshoot = t_overshoot.reshape(1, -1, H // 2, W // 2)
-                t_overshoot = torch.nn.functional.interpolate(t_overshoot, size=(H, W), mode='bilinear', align_corners=False)
-                sample_overshoot = sample + (t_overshoot-t) * (-model_output)
+                t_overshoot = torch.nn.functional.interpolate(
+                    t_overshoot, size=(H, W), mode="bilinear", align_corners=False
+                )
+                sample_overshoot = sample + (t_overshoot - t) * (-model_output)
                 a = t_next / t_overshoot
                 b = ((1 - t_next) ** 2 - (a - t_next) ** 2) ** (0.5)
                 a = a.reshape(1, -1, H, W)
                 b = b.reshape(1, -1, H, W)
             else:
-                sample_overshoot = sample + (t_overshoot-t).reshape(1, -1, 1) * (-model_output)
+                sample_overshoot = sample + (t_overshoot - t).reshape(1, -1, 1) * (-model_output)
 
                 # adding some noise so that time effectively goes back to t_next
                 a = t_next / t_overshoot
                 b = ((1 - t_next) ** 2 - (a - t_next) ** 2) ** (0.5)
                 a = a.reshape(1, -1, 1)
                 b = b.reshape(1, -1, 1)
-        else: 
+        else:
             step_size_overshoot = step_size * self.c
-            
+
             t_overshoot = min(self.overshot_func(t_next, step_size_overshoot), 1)
 
             # ODE advances to t_overshoot
-            sample_overshoot = sample + (t_overshoot-t) * (-model_output)
+            sample_overshoot = sample + (t_overshoot - t) * (-model_output)
 
             # adding some noise so that time effectively goes back to t_next
             a = t_next / t_overshoot
             b = ((1 - t_next) ** 2 - (a - t_next) ** 2) ** (0.5)
-            
-        rand_noise = randn_tensor(
-            sample.shape, 
-            generator=generator,
-            device=sample.device, 
-            dtype=sample.dtype)
-    
+
+        rand_noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
+
         prev_sample = sample_overshoot * a + rand_noise * b
 
         # Cast sample back to model compatible dtype
@@ -367,8 +364,7 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
         if not return_dict:
             return (prev_sample, predicted_x1)
 
-        return FlowMatchStochasticOvershootDiscreteSchedulerOutput(
-            prev_sample=prev_sample, predicted_x1=predicted_x1)
+        return FlowMatchStochasticOvershootDiscreteSchedulerOutput(prev_sample=prev_sample, predicted_x1=predicted_x1)
 
     def __len__(self):
         return self.config.num_train_timesteps
