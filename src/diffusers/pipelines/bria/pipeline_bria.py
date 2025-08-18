@@ -13,8 +13,9 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin
 from ...models import AutoencoderKL
 from ...models.transformers.transformer_bria import BriaTransformer2DModel
+from ...pipelines import DiffusionPipeline
 from ...pipelines.bria.pipeline_output import BriaPipelineOutput
-from ...pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
+from ...pipelines.flux.pipeline_flux import calculate_shift, retrieve_timesteps
 from ...schedulers import (
     DDIMScheduler,
     EulerAncestralDiscreteScheduler,
@@ -85,7 +86,7 @@ def get_original_sigmas(num_train_timesteps=1000, num_inference_steps=1000):
     return new_sigmas
 
 
-class BriaPipeline(FluxPipeline):
+class BriaPipeline(DiffusionPipeline):
     r"""
     Based on FluxPipeline with several changes:
     - no pooled embeddings
