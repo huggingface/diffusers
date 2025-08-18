@@ -30,7 +30,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm, AdaLayerNormSingle, RMSNorm
+from ..normalization import AdaLayerNormSingle, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -408,7 +408,6 @@ class LTXVideoTransformer3DModel(
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["norm"]
-    _no_split_modules = ["norm_out"]
     _repeated_blocks = ["LTXVideoTransformerBlock"]
 
     @register_to_config
@@ -437,6 +436,7 @@ class LTXVideoTransformer3DModel(
 
         self.proj_in = nn.Linear(in_channels, inner_dim)
 
+        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
         self.time_embed = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
 
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
@@ -469,39 +469,10 @@ class LTXVideoTransformer3DModel(
             ]
         )
 
-        self.norm_out = AdaLayerNorm(
-            embedding_dim=inner_dim,
-            output_dim=2 * inner_dim,
-            norm_elementwise_affine=False,
-            norm_eps=1e-6,
-            chunk_dim=1,
-        )
+        self.norm_out = nn.LayerNorm(inner_dim, eps=1e-6, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels)
 
         self.gradient_checkpointing = False
-
-    def _load_from_state_dict(
-        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-    ):
-        key = "scale_shift_table"
-        if prefix + key in state_dict:
-            scale_shift_table = state_dict.pop(prefix + key)
-            inner_dim = scale_shift_table.shape[-1]
-
-            weight = torch.eye(inner_dim).repeat(2, 1)
-            bias = scale_shift_table.reshape(2, inner_dim).flatten()
-
-            state_dict[prefix + "norm_out.linear.weight"] = weight
-            state_dict[prefix + "norm_out.linear.bias"] = bias
-
-        if prefix + "norm_out.weight" in state_dict:
-            state_dict.pop(prefix + "norm_out.weight")
-        if prefix + "norm_out.bias" in state_dict:
-            state_dict.pop(prefix + "norm_out.bias")
-
-        return super(LTXVideoTransformer3DModel, self)._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-        )
 
     def forward(
         self,
@@ -573,7 +544,11 @@ class LTXVideoTransformer3DModel(
                     encoder_attention_mask=encoder_attention_mask,
                 )
 
-        hidden_states = self.norm_out(hidden_states, temb=embedded_timestep.squeeze(1))
+        scale_shift_values = self.scale_shift_table[None, None] + embedded_timestep[:, :, None]
+        shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
+
+        hidden_states = self.norm_out(hidden_states)
+        hidden_states = hidden_states * (1 + scale) + shift
         output = self.proj_out(hidden_states)
 
         if USE_PEFT_BACKEND:

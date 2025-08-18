@@ -28,7 +28,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm, AdaLayerNormSingle
+from ..normalization import AdaLayerNormSingle
 
 
 logger = logging.get_logger(__name__)
@@ -175,7 +175,6 @@ class AllegroTransformerBlock(nn.Module):
 
 class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["norm_out"]
 
     """
     A 3D Transformer model for video-like data.
@@ -293,13 +292,8 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         )
 
         # 3. Output projection & norm
-        self.norm_out = AdaLayerNorm(
-            embedding_dim=self.inner_dim,
-            output_dim=2 * self.inner_dim,
-            norm_elementwise_affine=False,
-            norm_eps=1e-6,
-            chunk_dim=1,
-        )
+        self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
+        self.scale_shift_table = nn.Parameter(torch.randn(2, self.inner_dim) / self.inner_dim**0.5)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * out_channels)
 
         # 4. Timestep embeddings
@@ -309,17 +303,6 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=self.inner_dim)
 
         self.gradient_checkpointing = False
-
-    def _load_from_state_dict(
-        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-    ):
-        if "scale_shift_table" in state_dict:
-            scale_shift_table = state_dict.pop("scale_shift_table")
-            state_dict[prefix + "norm_out.linear.weight"] = scale_shift_table[1]
-            state_dict[prefix + "norm_out.linear.bias"] = scale_shift_table[0]
-        return super()._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-        )
 
     def forward(
         self,
@@ -410,7 +393,11 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                 )
 
         # 4. Output normalization & projection
-        hidden_states = self.norm_out(hidden_states, temb=embedded_timestep)
+        shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
+        hidden_states = self.norm_out(hidden_states)
+
+        # Modulation
+        hidden_states = hidden_states * (1 + scale) + shift
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.squeeze(1)
 

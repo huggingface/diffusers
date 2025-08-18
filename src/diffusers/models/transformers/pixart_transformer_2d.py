@@ -23,7 +23,7 @@ from ..attention_processor import Attention, AttentionProcessor, AttnProcessor, 
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm, AdaLayerNormSingle
+from ..normalization import AdaLayerNormSingle
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -78,7 +78,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["BasicTransformerBlock", "PatchEmbed", "norm_out"]
+    _no_split_modules = ["BasicTransformerBlock", "PatchEmbed"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm", "adaln_single"]
 
     @register_to_config
@@ -171,13 +171,8 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         )
 
         # 3. Output blocks.
-        self.norm_out = AdaLayerNorm(
-            embedding_dim=self.inner_dim,
-            output_dim=2 * self.inner_dim,
-            norm_elementwise_affine=False,
-            norm_eps=1e-6,
-            chunk_dim=1,
-        )
+        self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
+        self.scale_shift_table = nn.Parameter(torch.randn(2, self.inner_dim) / self.inner_dim**0.5)
         self.proj_out = nn.Linear(self.inner_dim, self.config.patch_size * self.config.patch_size * self.out_channels)
 
         self.adaln_single = AdaLayerNormSingle(
@@ -188,17 +183,6 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
             self.caption_projection = PixArtAlphaTextProjection(
                 in_features=self.config.caption_channels, hidden_size=self.inner_dim
             )
-
-    def _load_from_state_dict(
-        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-    ):
-        if "scale_shift_table" in state_dict:
-            scale_shift_table = state_dict.pop("scale_shift_table")
-            state_dict[prefix + "norm_out.linear.weight"] = scale_shift_table[1]
-            state_dict[prefix + "norm_out.linear.bias"] = scale_shift_table[0]
-        return super()._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-        )
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -422,7 +406,12 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
                 )
 
         # 3. Output
-        hidden_states = self.norm_out(hidden_states, temb=embedded_timestep)
+        shift, scale = (
+            self.scale_shift_table[None] + embedded_timestep[:, None].to(self.scale_shift_table.device)
+        ).chunk(2, dim=1)
+        hidden_states = self.norm_out(hidden_states)
+        # Modulation
+        hidden_states = hidden_states * (1 + scale.to(hidden_states.device)) + shift.to(hidden_states.device)
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.squeeze(1)
 

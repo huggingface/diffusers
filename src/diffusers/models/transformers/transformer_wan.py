@@ -29,7 +29,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm, FP32LayerNorm
+from ..normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -535,7 +535,7 @@ class WanTransformer3DModel(
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
-    _no_split_modules = ["WanTransformerBlock", "norm_out"]
+    _no_split_modules = ["WanTransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["WanTransformerBlock"]
@@ -591,39 +591,11 @@ class WanTransformer3DModel(
         )
 
         # 4. Output norm & projection
-        self.norm_out = AdaLayerNorm(
-            embedding_dim=inner_dim,
-            output_dim=2 * inner_dim,
-            norm_elementwise_affine=False,
-            norm_eps=eps,
-            chunk_dim=1,
-        )
+        self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
+        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         self.gradient_checkpointing = False
-
-    def _load_from_state_dict(
-        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-    ):
-        key = "scale_shift_table"
-        if prefix + key in state_dict:
-            scale_shift_table = state_dict.pop(prefix + key)
-            inner_dim = scale_shift_table.shape[-1]
-
-            weight = torch.eye(inner_dim).repeat(2, 1)
-            bias = scale_shift_table.reshape(2, inner_dim).flatten()
-
-            state_dict[prefix + "norm_out.linear.weight"] = weight
-            state_dict[prefix + "norm_out.linear.bias"] = bias
-
-        if prefix + "norm_out.weight" in state_dict:
-            state_dict.pop(prefix + "norm_out.weight")
-        if prefix + "norm_out.bias" in state_dict:
-            state_dict.pop(prefix + "norm_out.bias")
-
-        return super(WanTransformer3DModel, self)._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-        )
 
     def forward(
         self,
@@ -691,7 +663,23 @@ class WanTransformer3DModel(
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
 
         # 5. Output norm, projection & unpatchify
-        hidden_states = self.norm_out(hidden_states, temb=temb)
+        if temb.ndim == 3:
+            # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
+            shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
+            shift = shift.squeeze(2)
+            scale = scale.squeeze(2)
+        else:
+            # batch_size, inner_dim
+            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+
+        # Move the shift and scale tensors to the same device as hidden_states.
+        # When using multi-GPU inference via accelerate these will be on the
+        # first device rather than the last device, which hidden_states ends up
+        # on.
+        shift = shift.to(hidden_states.device)
+        scale = scale.to(hidden_states.device)
+
+        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(
