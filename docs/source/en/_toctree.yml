@@ -5,7 +5,7 @@
   - local: installation
     title: Installation
   - local: quicktour
-    title: Quicktour
+    title: Quickstart
   - local: stable_diffusion
     title: Basic performance
 
@@ -340,7 +340,7 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
-      - local: api/models/transformer_bria
+      - local: api/models/bria_transformer
         title: BriaTransformer2DModel
       - local: api/models/chroma_transformer
         title: ChromaTransformer2DModel
