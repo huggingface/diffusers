@@ -170,13 +170,13 @@ def resolve_trust_remote_code(trust_remote_code, model_name, has_remote_code):
     trust_remote_code = trust_remote_code and not DIFFUSERS_DISABLE_REMOTE_CODE
     if DIFFUSERS_DISABLE_REMOTE_CODE:
         logger.warning(
-            "Remote code execution has been disabled globally via DIFFUSERS_DISABLE_REMOTE_CODE environment variable. Ignoring `trust_remote_code`."
+            "Downloading remote code is disabled globally via the DIFFUSERS_DISABLE_REMOTE_CODE environment variable. Ignoring `trust_remote_code`."
         )
 
     if has_remote_code and not trust_remote_code:
         error_msg = f"The repository for {model_name} contains custom code. "
         error_msg += (
-            "Remote code is disabled globally via DIFFUSERS_DISABLE_REMOTE_CODE."
+            "Downloading remote code is disabled globally via the DIFFUSERS_DISABLE_REMOTE_CODE environment variable."
             if DIFFUSERS_DISABLE_REMOTE_CODE
             else "Pass `trust_remote_code=True` to allow loading remote code modules."
         )
