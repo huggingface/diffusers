@@ -168,11 +168,23 @@ def _raise_timeout_error(signum, frame):
 
 def resolve_trust_remote_code(trust_remote_code, model_name, has_remote_code):
     trust_remote_code = trust_remote_code and not DIFFUSERS_DISABLE_REMOTE_CODE
+    if DIFFUSERS_DISABLE_REMOTE_CODE:
+        logger.warning(
+            "Remote code execution has been disabled globally via DIFFUSERS_DISABLE_REMOTE_CODE environment variable. Ignoring `trust_remote_code`."
+        )
+
     if has_remote_code and not trust_remote_code:
-        raise ValueError(
-            f"The repository for {model_name} contains custom code which must be executed to correctly "
-            f"load the model. You can inspect the repository content at https://hf.co/{model_name}.\n"
-            f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
+        error_msg = f"The repository for {model_name} contains custom code. "
+        error_msg += (
+            "Remote code is disabled globally via DIFFUSERS_DISABLE_REMOTE_CODE."
+            if DIFFUSERS_DISABLE_REMOTE_CODE
+            else "Pass `trust_remote_code=True` to allow loading remote code modules."
+        )
+        raise ValueError(error_msg)
+
+    elif has_remote_code and trust_remote_code:
+        logger.warning(
+            f"`trust_remote_code` is enabled. Downloading code from {model_name}. Please ensure you trust the contents of this repository"
         )
 
     return trust_remote_code
