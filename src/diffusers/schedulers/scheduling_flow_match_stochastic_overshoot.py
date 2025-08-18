@@ -69,6 +69,7 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
         num_train_timesteps: int = 1000,
         shift: float = 1.0,
         use_dynamic_shifting=False,
+        c=2.0,
         base_shift: Optional[float] = 0.5,
         max_shift: Optional[float] = 1.15,
         base_image_seq_len: Optional[int] = 256,
@@ -82,6 +83,7 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
             # when use_dynamic_shifting is True, we apply the timestep shifting on the fly based on the image resolution
             sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
 
+        self.c = c
         self.timesteps = sigmas * num_train_timesteps
 
         self._step_index = None
@@ -90,7 +92,6 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
         self.sigmas = sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.sigma_min = self.sigmas[-1].item()
         self.sigma_max = self.sigmas[0].item()
-        self.attn_map = None
 
     @property
     def step_index(self):
@@ -176,9 +177,6 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
 
     def set_overshot_func(self, overshot_func):
         self.overshot_func = overshot_func
-
-    def set_attn_map(self, attn_map):
-        self.attn_map = attn_map
 
     def set_timesteps(
         self,
@@ -313,43 +311,16 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
         # next time step
         t_next = min(t + step_size, 1)
 
-        # an overshooting step that is larger than t_next
-        if self.attn_map is not None:
-            step_size_overshoot = step_size * self.c * self.attn_map.float()
+        step_size_overshoot = step_size * self.c
 
-            t_overshoot = torch.clip(self.overshot_func(t_next, step_size_overshoot), max=1)
+        t_overshoot = min(self.overshot_func(t_next, step_size_overshoot), 1)
 
-            # ODE advances to t_overshoot
-            if len(sample.shape) == 4:
-                B, C, H, W = sample.shape
-                t_overshoot = t_overshoot.reshape(1, -1, H // 2, W // 2)
-                t_overshoot = torch.nn.functional.interpolate(
-                    t_overshoot, size=(H, W), mode="bilinear", align_corners=False
-                )
-                sample_overshoot = sample + (t_overshoot - t) * (-model_output)
-                a = t_next / t_overshoot
-                b = ((1 - t_next) ** 2 - (a - t_next) ** 2) ** (0.5)
-                a = a.reshape(1, -1, H, W)
-                b = b.reshape(1, -1, H, W)
-            else:
-                sample_overshoot = sample + (t_overshoot - t).reshape(1, -1, 1) * (-model_output)
+        # ODE advances to t_overshoot
+        sample_overshoot = sample + (t_overshoot - t) * (-model_output)
 
-                # adding some noise so that time effectively goes back to t_next
-                a = t_next / t_overshoot
-                b = ((1 - t_next) ** 2 - (a - t_next) ** 2) ** (0.5)
-                a = a.reshape(1, -1, 1)
-                b = b.reshape(1, -1, 1)
-        else:
-            step_size_overshoot = step_size * self.c
-
-            t_overshoot = min(self.overshot_func(t_next, step_size_overshoot), 1)
-
-            # ODE advances to t_overshoot
-            sample_overshoot = sample + (t_overshoot - t) * (-model_output)
-
-            # adding some noise so that time effectively goes back to t_next
-            a = t_next / t_overshoot
-            b = ((1 - t_next) ** 2 - (a - t_next) ** 2) ** (0.5)
+        # adding some noise so that time effectively goes back to t_next
+        a = t_next / t_overshoot
+        b = ((1 - t_next) ** 2 - (a - t_next) ** 2) ** (0.5)
 
         rand_noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
 
