@@ -6643,7 +6643,8 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
         has_alphas_in_sd = any(k.endswith(".alpha") for k in state_dict)
-        if has_alphas_in_sd:
+        has_lora_unet = any(k.startswith("lora_unet_") for k in state_dict)
+        if has_alphas_in_sd or has_lora_unet:
             state_dict = _convert_non_diffusers_qwen_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
