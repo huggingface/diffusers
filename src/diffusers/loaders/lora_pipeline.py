@@ -5693,8 +5693,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             if not hasattr(self, "transformer_2"):
                 raise AttributeError(
                     f"'{type(self).__name__}' object has no attribute transformer_2"
-                    "Note that Wan2.1 models do not have a `transformer_2` component."
-                    "Ensure the model has a `transformer_2` component before setting load_into_transformer_2=True."
+                    "Note that Wan2.1 models do not have a transformer_2 component."
+                    "Ensure the model has a transformer_2 component before setting load_into_transformer_2=True."
                 )
             self.load_lora_into_transformer(
                 state_dict,
