@@ -86,6 +86,12 @@ image.save("qwen_fewsteps.png")
 
 </details>
 
+<Tip>
+
+The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
+
+</Tip>
+
 ## QwenImagePipeline
 
 [[autodoc]] QwenImagePipeline
