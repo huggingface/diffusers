@@ -418,7 +418,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         encoder_out_shortcut  (`bool`, defaults to `True`):
             Whether to use shortcut at the end of the encoder.
         decoder_in_shortcut (`bool`, defaults to `True`):
-            Whether to use shortcut at the beginning of the encoder.
+            Whether to use shortcut at the beginning of the decoder.
         decoder_conv_act_fn (`str`, defaults to `"relu"`):
             The activation function to use at the end of the decoder.
         scaling_factor (`float`, defaults to `1.0`):
