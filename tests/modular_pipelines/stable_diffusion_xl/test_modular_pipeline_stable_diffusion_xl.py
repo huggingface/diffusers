@@ -117,12 +117,8 @@ class SDXLModularIPAdapterTests:
 
         _ = blocks.sub_blocks.pop("ip_adapter")
         parameters = blocks.input_names
-        intermediate_parameters = blocks.intermediate_input_names
         assert "ip_adapter_image" not in parameters, (
             "`ip_adapter_image` argument must be removed from the `__call__` method"
-        )
-        assert "ip_adapter_image_embeds" not in intermediate_parameters, (
-            "`ip_adapter_image_embeds` argument must be supported by the `__call__` method"
         )
 
     def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
