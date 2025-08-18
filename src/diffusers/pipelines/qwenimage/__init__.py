@@ -24,7 +24,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modeling_qwenimage"] = ["ReduxImageEncoder"]
     _import_structure["pipeline_qwenimage"] = ["QwenImagePipeline"]
-    _import_structure["pipeline_qwenimage_edit"] = ["QwenImageEditPipeline"]
     _import_structure["pipeline_qwenimage_img2img"] = ["QwenImageImg2ImgPipeline"]
     _import_structure["pipeline_qwenimage_inpaint"] = ["QwenImageInpaintPipeline"]
 
