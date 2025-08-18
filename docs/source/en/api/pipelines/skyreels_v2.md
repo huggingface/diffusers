@@ -44,93 +44,95 @@ The following SkyReels-V2 models are supported in Diffusers:
 
 ### A _Visual_ Demonstration
 
-        An example with these parameters:
-        base_num_frames=97, num_frames=97, num_inference_steps=30, ar_step=5, causal_block_size=5
+```
+An example with these parameters:
+base_num_frames=97, num_frames=97, num_inference_steps=30, ar_step=5, causal_block_size=5
 
-        vae_scale_factor_temporal -> 4
-        num_latent_frames: (97-1)//vae_scale_factor_temporal+1 = 25 frames -> 5 blocks of 5 frames each
+vae_scale_factor_temporal -> 4
+num_latent_frames: (97-1)//vae_scale_factor_temporal+1 = 25 frames -> 5 blocks of 5 frames each
 
-        base_num_latent_frames = (97-1)//vae_scale_factor_temporal+1 = 25 → blocks = 25//5 = 5 blocks
-        This 5 blocks means the maximum context length of the model is 25 frames in the latent space.
+base_num_latent_frames = (97-1)//vae_scale_factor_temporal+1 = 25 → blocks = 25//5 = 5 blocks
+This 5 blocks means the maximum context length of the model is 25 frames in the latent space.
 
-        Asynchronous Processing Timeline:
-        ┌─────────────────────────────────────────────────────────────────┐
-        │ Steps:    1    6   11   16   21   26   31   36   41   46   50   │
-        │ Block 1: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]                       │
-        │ Block 2:      [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]                  │
-        │ Block 3:           [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]             │
-        │ Block 4:                [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]        │
-        │ Block 5:                     [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]   │
-        └─────────────────────────────────────────────────────────────────┘
+Asynchronous Processing Timeline:
+┌─────────────────────────────────────────────────────────────────┐
+│ Steps:    1    6   11   16   21   26   31   36   41   46   50   │
+│ Block 1: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]                       │
+│ Block 2:      [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]                  │
+│ Block 3:           [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]             │
+│ Block 4:                [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]        │
+│ Block 5:                     [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]   │
+└─────────────────────────────────────────────────────────────────┘
 
-        For Long Videos (num_frames > base_num_frames):
-        base_num_frames acts as the "sliding window size" for processing long videos.
+For Long Videos (num_frames > base_num_frames):
+base_num_frames acts as the "sliding window size" for processing long videos.
 
-        Example: 257-frame video with base_num_frames=97, overlap_history=17
-        ┌──── Iteration 1 (frames 1-97) ────┐
-        │ Processing window: 97 frames      │ → 5 blocks, async processing
-        │ Generates: frames 1-97            │
-        └───────────────────────────────────┘
-                    ┌────── Iteration 2 (frames 81-177) ──────┐
-                    │ Processing window: 97 frames            │
-                    │ Overlap: 17 frames (81-97) from prev    │ → 5 blocks, async processing
-                    │ Generates: frames 98-177                │
-                    └─────────────────────────────────────────┘
-                                ┌────── Iteration 3 (frames 161-257) ──────┐
-                                │ Processing window: 97 frames             │
-                                │ Overlap: 17 frames (161-177) from prev   │ → 5 blocks, async processing
-                                │ Generates: frames 178-257                │
-                                └──────────────────────────────────────────┘
+Example: 257-frame video with base_num_frames=97, overlap_history=17
+┌──── Iteration 1 (frames 1-97) ────┐
+│ Processing window: 97 frames      │ → 5 blocks,
+│ Generates: frames 1-97            │   async processing
+└───────────────────────────────────┘
+            ┌────── Iteration 2 (frames 81-177) ──────┐
+            │ Processing window: 97 frames            │
+            │ Overlap: 17 frames (81-97) from prev    │ → 5 blocks,
+            │ Generates: frames 98-177                │   async processing
+            └─────────────────────────────────────────┘
+                        ┌────── Iteration 3 (frames 161-257) ──────┐
+                        │ Processing window: 97 frames             │
+                        │ Overlap: 17 frames (161-177) from prev   │ → 5 blocks,
+                        │ Generates: frames 178-257                │   async processing
+                        └──────────────────────────────────────────┘
 
-        Each iteration independently runs the asynchronous processing with its own 5 blocks.
-        base_num_frames controls:
-        1. Memory usage (larger window = more VRAM)
-        2. Model context length (must match training constraints)
-        3. Number of blocks per iteration (base_num_latent_frames // causal_block_size)
+Each iteration independently runs the asynchronous processing with its own 5 blocks.
+base_num_frames controls:
+1. Memory usage (larger window = more VRAM)
+2. Model context length (must match training constraints)
+3. Number of blocks per iteration (base_num_latent_frames // causal_block_size)
 
-        Each block takes 30 steps to complete denoising.
-        Block N starts at step: 1 + (N-1) x ar_step
-        Total steps: 30 + (5-1) x 5 = 50 steps
-
-
-        Synchronous mode (ar_step=0) would process all blocks/frames simultaneously:
-        ┌──────────────────────────────────────────────┐
-        │ Steps:       1            ...            30  │
-        │ All blocks: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■] │
-        └──────────────────────────────────────────────┘
-        Total steps: 30 steps
+Each block takes 30 steps to complete denoising.
+Block N starts at step: 1 + (N-1) x ar_step
+Total steps: 30 + (5-1) x 5 = 50 steps
 
 
-        An example on how the step matrix is constructed for asynchronous processing:
-        Given the parameters: (num_inference_steps=30, flow_shift=8, num_frames=97, ar_step=5, causal_block_size=5)
-        - num_latent_frames = (97 frames - 1) // (4 temporal downsampling) + 1 = 25
-        - step_template = [999, 995, 991, 986, 980, 975, 969, 963, 956, 948,
-                           941, 932, 922, 912, 901, 888, 874, 859, 841, 822,
-                           799, 773, 743, 708, 666, 615, 551, 470, 363, 216]
+Synchronous mode (ar_step=0) would process all blocks/frames simultaneously:
+┌──────────────────────────────────────────────┐
+│ Steps:       1            ...            30  │
+│ All blocks: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■] │
+└──────────────────────────────────────────────┘
+Total steps: 30 steps
 
-        The algorithm creates a 50x25 step_matrix where:
-        - Row 1:  [999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
-        - Row 2:  [995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
-        - Row 3:  [991, 991, 991, 991, 991, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
-        - ...
-        - Row 7:  [969, 969, 969, 969, 969, 995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
-        - ...
-        - Row 21: [799, 799, 799, 799, 799, 888, 888, 888, 888, 888, 941, 941, 941, 941, 941, 975, 975, 975, 975, 975, 999, 999, 999, 999, 999]
-        - ...
-        - Row 35: [  0,   0,   0,   0,   0, 216, 216, 216, 216, 216, 666, 666, 666, 666, 666, 822, 822, 822, 822, 822, 901, 901, 901, 901, 901]
-        - ...
-        - Row 42: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 551, 551, 551, 551, 551, 773, 773, 773, 773, 773]
-        - ...
-        - Row 50: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 216, 216, 216, 216, 216]
 
-        Detailed Row 6 Analysis:
-        - step_matrix[5]:       [ 975, 975, 975, 975, 975, 999, 999, 999, 999, 999, 999,  ...,  999]
-        - step_index[5]:        [   6,   6,   6,   6,   6,   1,   1,   1,   1,   1,   0,  ...,    0]
-        - step_update_mask[5]:  [True,True,True,True,True,True,True,True,True,True,False, ...,False]
-        - valid_interval[5]:    (0, 25)
+An example on how the step matrix is constructed for asynchronous processing:
+Given the parameters: (num_inference_steps=30, flow_shift=8, num_frames=97, ar_step=5, causal_block_size=5)
+- num_latent_frames = (97 frames - 1) // (4 temporal downsampling) + 1 = 25
+- step_template = [999, 995, 991, 986, 980, 975, 969, 963, 956, 948,
+                   941, 932, 922, 912, 901, 888, 874, 859, 841, 822,
+                   799, 773, 743, 708, 666, 615, 551, 470, 363, 216]
 
-        Key Pattern: Block i lags behind Block i-1 by exactly ar_step=5 timesteps, creating the
-        staggered "diffusion forcing" effect where later blocks condition on cleaner earlier blocks.
+The algorithm creates a 50x25 step_matrix where:
+- Row 1:  [999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+- Row 2:  [995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+- Row 3:  [991, 991, 991, 991, 991, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+- ...
+- Row 7:  [969, 969, 969, 969, 969, 995, 995, 995, 995, 995, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999, 999]
+- ...
+- Row 21: [799, 799, 799, 799, 799, 888, 888, 888, 888, 888, 941, 941, 941, 941, 941, 975, 975, 975, 975, 975, 999, 999, 999, 999, 999]
+- ...
+- Row 35: [  0,   0,   0,   0,   0, 216, 216, 216, 216, 216, 666, 666, 666, 666, 666, 822, 822, 822, 822, 822, 901, 901, 901, 901, 901]
+- ...
+- Row 42: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 551, 551, 551, 551, 551, 773, 773, 773, 773, 773]
+- ...
+- Row 50: [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 216, 216, 216, 216, 216]
+
+Detailed Row 6 Analysis:
+- step_matrix[5]:       [ 975, 975, 975, 975, 975, 999, 999, 999, 999, 999, 999,  ...,  999]
+- step_index[5]:        [   6,   6,   6,   6,   6,   1,   1,   1,   1,   1,   0,  ...,    0]
+- step_update_mask[5]:  [True,True,True,True,True,True,True,True,True,True,False, ...,False]
+- valid_interval[5]:    (0, 25)
+
+Key Pattern: Block i lags behind Block i-1 by exactly ar_step=5 timesteps, creating the
+staggered "diffusion forcing" effect where later blocks condition on cleaner earlier blocks.
+```
 
 ### Text-to-Video Generation
 
