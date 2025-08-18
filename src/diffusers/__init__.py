@@ -489,7 +489,10 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
+            "QwenImageImg2ImgPipeline",
+            "QwenImageInpaintPipeline",
             "QwenImagePipeline",
+            "QwenImageEditPipeline",
             "ReduxImageEncoder",
             "SanaControlNetPipeline",
             "SanaPAGPipeline",
@@ -905,12 +908,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanVACETransformer3DModel,
             attention_backend,
         )
-        from .modular_pipelines import (
-            ComponentsManager,
-            ComponentSpec,
-            ModularPipeline,
-            ModularPipelineBlocks,
-        )
+        from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
         from .optimization import (
             get_constant_schedule,
             get_constant_schedule_with_warmup,
@@ -1126,6 +1124,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
+            QwenImageEditPipeline,
+            QwenImageImg2ImgPipeline,
+            QwenImageInpaintPipeline,
             QwenImagePipeline,
             ReduxImageEncoder,
             SanaControlNetPipeline,
