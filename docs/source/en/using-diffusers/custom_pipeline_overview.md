@@ -33,7 +33,7 @@ There are two types of community pipelines, those stored on the Hugging Face Hub
 <hfoptions id="community">
 <hfoption id="Hub pipelines">
 
-To load a Hugging Face Hub community pipeline, pass the repository id of the community pipeline to the `custom_pipeline` argument and the model repository where you'd like to load the pipeline weights and components from. For example, the example below loads a dummy pipeline from [hf-internal-testing/diffusers-dummy-pipeline](https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py) and the pipeline weights and components from [google/ddpm-cifar10-32](https://huggingface.co/google/ddpm-cifar10-32):
+To load a Hugging Face Hub community pipeline, pass the repository id of the community pipeline to the `custom_pipeline` argument and the model repository where you'd like to load the pipeline weights and components from. For example, the example below loads a dummy pipeline from [hf-internal-testing/diffusers-dummy-pipeline](https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py) (specifically, whatever code is in the file named "pipeline.py" there) and the pipeline weights and components from [google/ddpm-cifar10-32](https://huggingface.co/google/ddpm-cifar10-32):
 
 > [!WARNING]
 > By loading a community pipeline from the Hugging Face Hub, you are trusting that the code you are loading is safe. Make sure to inspect the code online before loading and running it automatically!
