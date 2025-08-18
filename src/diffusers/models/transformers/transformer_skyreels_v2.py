@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import FeedForward
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -39,8 +39,11 @@ from ..normalization import FP32LayerNorm
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 # Copied from diffusers.models.transformers.transformer_wan._get_qkv_projections
-def _get_qkv_projections(attn: "SkyReelsV2Attention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
+def _get_qkv_projections(
+    attn: "SkyReelsV2Attention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor
+):
     # encoder_hidden_states is only passed for cross-attention
     if encoder_hidden_states is None:
         encoder_hidden_states = hidden_states
@@ -455,7 +458,7 @@ class SkyReelsV2TransformerBlock(nn.Module):
             # For 4D temb in Diffusion Forcing framework, we assume the shape is  (b, 6, f * pp_h * pp_w, inner_dim)
             e = (self.scale_shift_table.unsqueeze(2) + temb.float()).chunk(6, dim=1)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in e]
-        
+
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.attn1(norm_hidden_states, None, attention_mask, rotary_emb)
@@ -476,7 +479,9 @@ class SkyReelsV2TransformerBlock(nn.Module):
         return hidden_states
 
 
-class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin):
+class SkyReelsV2Transformer3DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     r"""
     A Transformer model for video-like data used in the Wan-based SkyReels-V2 model.
 
