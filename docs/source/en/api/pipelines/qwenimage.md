@@ -16,7 +16,12 @@
 
 Qwen-Image from the Qwen team is an image generation foundation model in the Qwen series that achieves significant advances in complex text rendering and precise image editing. Experiments show strong general capabilities in both image generation and editing, with exceptional performance in text rendering, especially for Chinese.
 
-Check out the model card [here](https://huggingface.co/Qwen/Qwen-Image) to learn more.
+Qwen-Image comes in the following variants:
+
+| model type | model id |
+|:----------:|:--------:|
+| Qwen-Image | [`Qwen/Qwen-Image`](https://huggingface.co/Qwen/Qwen-Image) |
+| Qwen-Image-Edit | [`Qwen/Qwen-Image-Edit`](https://huggingface.co/Qwen/Qwen-Image-Edit) |
 
 <Tip>
 
@@ -84,15 +89,17 @@ image.save("qwen_fewsteps.png")
 
 </details>
 
+<Tip>
+
+The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
+
+</Tip>
+
 ## QwenImagePipeline
 
 [[autodoc]] QwenImagePipeline
   - all
   - __call__
-
-## QwenImagePipelineOutput
-
-[[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
 
 ## QwenImageImg2ImgPipeline
 
@@ -105,3 +112,13 @@ image.save("qwen_fewsteps.png")
 [[autodoc]] QwenImageInpaintPipeline
   - all
   - __call__
+
+## QwenImageEditPipeline
+
+[[autodoc]] QwenImageEditPipeline
+  - all
+  - __call__
+
+## QwenImagePipelineOutput
+
+[[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
