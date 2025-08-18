@@ -731,21 +731,21 @@ def _caching_allocator_warmup(
     accelerator_device_map = {
         param: torch.device(device)
         for param, device in expanded_device_map.items()
-        if str(device) not in ["cpu", "disk", "meta"]
+        if str(device) not in ["cpu", "disk"]
     }
     if not accelerator_device_map:
         return
 
     elements_per_device = defaultdict(int)
-    for name, device in accelerator_device_map.items():
+    for param_name, device in accelerator_device_map.items():
         try:
-            p = model.get_parameter(name)
+            p = model.get_parameter(param_name)
         except AttributeError:
             try:
-                p = model.get_buffer(name)
+                p = model.get_buffer(param_name)
             except AttributeError:
-                raise AttributeError(f"Parameter {name} not found in model")
-
+                raise AttributeError(f"Parameter {param_name} not found in model")
+        # TODO: account for TP when needed.
         elements_per_device[device] += p.numel()
 
     # This will kick off the caching allocator to avoid having to Malloc afterwards
