@@ -46,15 +46,20 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from PIL import Image
         >>> from diffusers import QwenImageEditPipeline
+        >>> from diffusers.utils import load_image
 
         >>> pipe = QwenImageEditPipeline.from_pretrained("Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> prompt = "Change the cat to a dog"
-        >>> image = Image.open("cat.png")
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
+        ... ).convert("RGB")
+        >>> prompt = (
+        ...     "Make Pikachu hold a sign that says 'Qwen Edit is awesome', yarn art style, detailed, vibrant colors"
+        ... )
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(image, prompt, num_inference_steps=50).images[0]
-        >>> image.save("qwenimageedit.png")
+        >>> image.save("qwenimage_edit.png")
         ```
 """
 PREFERRED_QWENIMAGE_RESOLUTIONS = [
@@ -178,7 +183,7 @@ def calculate_dimensions(target_area, ratio):
 
 class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     r"""
-    The QwenImage pipeline for text-to-image generation.
+    The Qwen-Image-Edit pipeline for image editing.
 
     Args:
         transformer ([`QwenImageTransformer2DModel`]):
@@ -217,8 +222,8 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.latent_channels = 16
         self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
+        self.latent_channels = self.vae.config.z_dim if getattr(self, "vae", None) else 16
         # QwenImage latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
@@ -635,7 +640,9 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             [`~pipelines.qwenimage.QwenImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated images.
         """
-        calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image.width / image.height)
+        image_size = image[0].size if isinstance(image, list) else image.size
+        width, height = image_size
+        calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, width / height)
         height = height or calculated_height
         width = width or calculated_width
 
