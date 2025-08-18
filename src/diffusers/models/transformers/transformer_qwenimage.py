@@ -219,6 +219,7 @@ class QwenEmbedRope(nn.Module):
                 video_freq = self.rope_cache[rope_key]
             else:
                 video_freq = self._compute_video_freqs(frame, height, width, idx)
+            video_freq = video_freq.to(device)
             vid_freqs.append(video_freq)
 
             if self.scale_rope:
