@@ -19,7 +19,7 @@ cd diffusers
 pip install -e .
 ```
 
-Then run
+Install the requirements in the `examples/dreambooth` folder as shown below.
 ```bash
 cd examples/dreambooth
 pip install -r requirements.txt
