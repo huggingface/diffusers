@@ -25,6 +25,25 @@
     - local: optimization/xformers
       title: xFormers
 
+- title: Modular Diffusers
+  isExpanded: false
+  sections:
+  - local: modular_diffusers/overview
+    title: Overview
+  - local: modular_diffusers/quickstart
+    title: Quickstart
+  - local: modular_diffusers/modular_diffusers_states
+    title: States
+  - local: modular_diffusers/pipeline_block
+    title: ModularPipelineBlocks
+  - local: modular_diffusers/sequential_pipeline_blocks
+    title: SequentialPipelineBlocks
+  - local: modular_diffusers/loop_sequential_pipeline_blocks
+    title: LoopSequentialPipelineBlocks
+  - local: modular_diffusers/auto_pipeline_blocks
+    title: AutoPipelineBlocks
+  - local: modular_diffusers/modular_pipeline
+    title: ModularPipeline
 
 - title: Training
   isExpanded: false
@@ -63,6 +82,8 @@
   sections:
   - title: Task recipes
     sections:
+    - local: community_projects
+      title: Projects built with Diffusers
     - local: conceptual/philosophy
       title: Philosophy
     - local: conceptual/contribution
