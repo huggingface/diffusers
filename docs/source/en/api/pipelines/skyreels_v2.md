@@ -44,7 +44,7 @@ The following SkyReels-V2 models are supported in Diffusers:
 
 ### A _Visual_ Demonstration
 
-```
+```text
 An example with these parameters:
 base_num_frames=97, num_frames=97, num_inference_steps=30, ar_step=5, causal_block_size=5
 
