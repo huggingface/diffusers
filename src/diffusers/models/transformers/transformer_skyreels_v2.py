@@ -40,7 +40,6 @@ from ..normalization import FP32LayerNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# TODO: Copied from doesn't work here?
 def _get_qkv_projections(
     attn: "SkyReelsV2Attention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor
 ):

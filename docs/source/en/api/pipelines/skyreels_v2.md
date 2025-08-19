@@ -171,7 +171,7 @@ pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.conf
 
 # Some acceleration helpers
 # Be sure to install Flash Attention: https://github.com/Dao-AILab/flash-attention#installation-and-features
-# Normally 14 min., with compile_repeated_blocks(fullgraph=True) 12 min., with Flash Attention too 5.5 min.
+# Normally 14 min., with compile_repeated_blocks(fullgraph=True) 12 min., with Flash Attention too 5.5 min at A100.
 #pipeline.transformer.set_attention_backend("flash")
 #pipeline.transformer.compile_repeated_blocks(fullgraph=True)
 
