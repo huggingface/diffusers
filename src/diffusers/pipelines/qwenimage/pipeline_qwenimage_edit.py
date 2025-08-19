@@ -62,25 +62,6 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("qwenimage_edit.png")
         ```
 """
-PREFERRED_QWENIMAGE_RESOLUTIONS = [
-    (672, 1568),
-    (688, 1504),
-    (720, 1456),
-    (752, 1392),
-    (800, 1328),
-    (832, 1248),
-    (880, 1184),
-    (944, 1104),
-    (1024, 1024),
-    (1104, 944),
-    (1184, 880),
-    (1248, 832),
-    (1328, 800),
-    (1392, 752),
-    (1456, 720),
-    (1504, 688),
-    (1568, 672),
-]
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -685,17 +666,9 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         # 3. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             img = image[0] if isinstance(image, list) else image
-            image_height, image_width = self.image_processor.get_default_height_width(img)
-            aspect_ratio = image_width / image_height
-            if _auto_resize:
-                _, image_width, image_height = min(
-                    (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_QWENIMAGE_RESOLUTIONS
-                )
-            image_width = image_width // multiple_of * multiple_of
-            image_height = image_height // multiple_of * multiple_of
-            image = self.image_processor.resize(image, image_height, image_width)
+            image = self.image_processor.resize(image, calculated_height, calculated_width)
             prompt_image = image
-            image = self.image_processor.preprocess(image, image_height, image_width)
+            image = self.image_processor.preprocess(image, calculated_height, calculated_width)
             image = image.unsqueeze(2)
 
         has_neg_prompt = negative_prompt is not None or (
@@ -741,7 +714,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         img_shapes = [
             [
                 (1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2),
-                (1, image_height // self.vae_scale_factor // 2, image_width // self.vae_scale_factor // 2),
+                (1, calculated_height // self.vae_scale_factor // 2, calculated_width // self.vae_scale_factor // 2),
             ]
         ] * batch_size
 
