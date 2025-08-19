@@ -613,7 +613,8 @@ def _assign_components_to_devices(
 
 
 def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dict, library, max_memory, **kwargs):
-    # TODO: seperate out different device_map methods when it gets to it.
+    # Only implement pipeline-level component balancing for "balanced".
+    # For other strategies, return as-is so sub-models (Transformers/Diffusers) can perform intra-module sharding.
     if device_map != "balanced":
         return device_map
     # To avoid circular import problem.
@@ -801,6 +802,7 @@ def load_sub_model(
     # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
     # This makes sure that the weights won't be initialized which significantly speeds up loading.
     if is_diffusers_model or is_transformers_model:
+        # Default forwarding of placement hints
         loading_kwargs["device_map"] = device_map
         loading_kwargs["max_memory"] = max_memory
         loading_kwargs["offload_folder"] = offload_folder
@@ -829,6 +831,22 @@ def load_sub_model(
             loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
         else:
             loading_kwargs["low_cpu_mem_usage"] = False
+
+        # Translate Diffusers-specific strategies for Transformers models:
+        # Transformers only accept: 'auto', 'balanced', 'balanced_low_0', 'sequential', device names, or dicts.
+
+        # For Diffusers models that don't implement `_no_split_modules`, they cannot accept string strategies
+        # (auto/balanced/etc.) for intra-module sharding. In that case, place the whole module on a single device.
+        if is_diffusers_model and isinstance(device_map, str) and device_map in {"auto", "balanced", "sequential"}:
+            try:
+                # class_obj is the class, not instance
+                supports_sharding = getattr(class_obj, "_no_split_modules", None) is not None
+            except Exception:
+                supports_sharding = False
+            if not supports_sharding:
+                # Prefer the primary accelerator if available; else CPU.
+                preferred = 0 if (hasattr(torch, "cuda") and torch.cuda.is_available()) else (0 if hasattr(torch, "xpu") and torch.xpu.is_available() else "cpu")
+                loading_kwargs["device_map"] = {"": preferred}
 
     if (
         quantization_config is not None

@@ -673,6 +673,8 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
 
     _supports_gradient_checkpointing = False
+    # Allow device_map strings
+    _no_split_modules: List[str] = []
 
     # fmt: off
     @register_to_config
