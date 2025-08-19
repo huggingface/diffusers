@@ -210,7 +210,7 @@ from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingImageToVideoPi
 from diffusers.utils import export_to_video, load_image
 
 
-model_id = "Skywork/SkyReels-V2-DF-14B-720P-Diffusers"
+model_id = "Skywork/SkyReels-V2-DF-1.3B-720P-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32, device_map="cuda")
 pipeline = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16, device_map="cuda"
@@ -272,7 +272,7 @@ from diffusers import AutoencoderKLWan, SkyReelsV2DiffusionForcingVideoToVideoPi
 from diffusers.utils import export_to_video, load_video
 
 
-model_id = "Skywork/SkyReels-V2-DF-14B-720P-Diffusers"
+model_id = "Skywork/SkyReels-V2-DF-1.3B-720P-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32, device_map="cuda")
 pipeline = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
     model_id, vae=vae, torch_dtype=torch.bfloat16, device_map="cuda"
