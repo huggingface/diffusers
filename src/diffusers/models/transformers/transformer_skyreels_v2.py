@@ -529,6 +529,7 @@ class SkyReelsV2Transformer3DModel(
     _no_split_modules = ["SkyReelsV2TransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
+    _repeated_blocks = ["SkyReelsV2TransformerBlock"]
 
     @register_to_config
     def __init__(
