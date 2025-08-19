@@ -514,52 +514,6 @@ class SkyReelsV2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         self.gradient_checkpointing = False
 
-    def _load_from_state_dict(
-        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-    ):
-        """
-        Handle backward compatibility by converting deprecated `scale_shift_table` to the new `SkyReelsV2AdaLayerNorm` format.
-        """
-        # Check if this is an old checkpoint with scale_shift_table
-        scale_shift_table_key = prefix + "scale_shift_table"
-        if scale_shift_table_key in state_dict:
-            scale_shift_table = state_dict.pop(scale_shift_table_key)
-
-            # The scale_shift_table has shape (1, 2, inner_dim)
-            inner_dim = scale_shift_table.shape[2]
-
-            # Create identity matrices for the linear transformation
-            # This maintains the original behavior where the linear layer acts as input.dot(identity) + scale_shift_table
-            # If scale_shift_table is on meta device, create tensors on CPU to avoid meta tensor issues
-            device = scale_shift_table.device if scale_shift_table.device.type != "meta" else torch.device("cpu")
-            dtype = scale_shift_table.dtype
-
-            identity_matrix = torch.eye(inner_dim, device=device, dtype=dtype)
-            linear_weight = torch.cat([identity_matrix, identity_matrix], dim=0)
-
-            # Set the linear layer weights and bias
-            state_dict[prefix + "norm_out.linear.weight"] = linear_weight.T
-            # The bias should contain the original scale_shift_table values
-            # scale_shift_table shape: (1, 2, inner_dim) -> flatten to (2 * inner_dim,)
-            # Move scale_shift_table to same device as the identity matrix to avoid device mismatch
-            scale_shift_table_flat = scale_shift_table.to(device).flatten()
-            state_dict[prefix + "norm_out.linear.bias"] = scale_shift_table_flat
-
-            # Handle FP32LayerNorm parameter renaming: norm_out -> norm_out.norm
-            old_norm_weight_key = prefix + "norm_out.weight"
-            if old_norm_weight_key in state_dict:
-                state_dict[prefix + "norm_out.norm.weight"] = state_dict.pop(old_norm_weight_key)
-
-            old_norm_bias_key = prefix + "norm_out.bias"
-            if old_norm_bias_key in state_dict:
-                state_dict[prefix + "norm_out.norm.bias"] = state_dict.pop(old_norm_bias_key)
-
-            logger.info("Converted deprecated 'scale_shift_table' to new 'SkyReelsV2AdaLayerNorm' format for backward compatibility.")
-
-        return super()._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-        )
-
     def forward(
         self,
         hidden_states: torch.Tensor,
