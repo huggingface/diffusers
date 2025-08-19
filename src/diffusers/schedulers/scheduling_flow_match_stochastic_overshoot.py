@@ -40,6 +40,7 @@ class FlowMatchStochasticOvershootDiscreteSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.FloatTensor
+    predicted_x1: Optional[torch.FloatTensor] = None
 
 
 class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -83,6 +84,7 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
             sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
 
         self.c = c
+        self.overshot_func = lambda t, dt: t + dt
         self.timesteps = sigmas * num_train_timesteps
 
         self._step_index = None
@@ -327,13 +329,14 @@ class FlowMatchStochasticOvershootDiscreteScheduler(SchedulerMixin, ConfigMixin)
 
         # Cast sample back to model compatible dtype
         prev_sample = prev_sample.to(model_output.dtype)
+        predicted_x1 = sample - sigma * model_output
         # upon completion increase step index by one
         self._step_index += 1
 
         if not return_dict:
-            return (prev_sample,)
+            return (prev_sample, predicted_x1)
 
-        return FlowMatchStochasticOvershootDiscreteSchedulerOutput(prev_sample=prev_sample)
+        return FlowMatchStochasticOvershootDiscreteSchedulerOutput(prev_sample=prev_sample, predicted_x1=predicted_x1)
 
     def __len__(self):
         return self.config.num_train_timesteps
