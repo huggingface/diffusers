@@ -274,7 +274,7 @@ class SkyReelsV2Attention(torch.nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanImageEmbedding with WanImageEmbedding -> SkyReelsV2ImageEmbedding
+# Copied from diffusers.models.transformers.transformer_wan.WanImageEmbedding with Wan -> SkyReelsV2
 class SkyReelsV2ImageEmbedding(torch.nn.Module):
     def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
@@ -363,6 +363,7 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
         return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
 
 
+# Copied from diffusers.models.transformers.transformer_wan.WanRotaryPosEmbed with Wan -> SkyReelsV2
 class SkyReelsV2RotaryPosEmbed(nn.Module):
     def __init__(
         self,
