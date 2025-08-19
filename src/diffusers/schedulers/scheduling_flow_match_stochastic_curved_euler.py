@@ -452,6 +452,7 @@ class FlowMatchStochasticCurvedEulerScheduler(SchedulerMixin, ConfigMixin):
         # Update z for next step
         # Z_{t_{i+1}} = (1 - t_{i+1}) * Z^(0)_ref + t_{i+1} * Z^(1)
         prev_sample = (1 - sigma_next) * z_t_0 + sigma_next * z_t_1_ref
+        prev_sample = prev_sample.to(model_output.dtype)
 
         # upon completion increase step index by one
         self._step_index += 1
