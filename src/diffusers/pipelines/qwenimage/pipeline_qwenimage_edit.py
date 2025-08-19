@@ -546,7 +546,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        _auto_resize: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -665,7 +664,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         device = self._execution_device
         # 3. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
-            img = image[0] if isinstance(image, list) else image
             image = self.image_processor.resize(image, calculated_height, calculated_width)
             prompt_image = image
             image = self.image_processor.preprocess(image, calculated_height, calculated_width)
@@ -685,9 +683,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
         )
         if do_true_cfg:
-            # negative image is the same size as the original image, but all pixels are white
-            # negative_image = Image.new("RGB", (image.width, image.height), (255, 255, 255))
-
             negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
                 image=prompt_image,
                 prompt=negative_prompt,
