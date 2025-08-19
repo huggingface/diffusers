@@ -38,6 +38,7 @@ class AutoencoderKLWanTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase
             "dim_mult": [1, 1, 1, 1],
             "num_res_blocks": 1,
             "temperal_downsample": [False, True, True],
+            "patch_size": 2,
         }
 
     @property
