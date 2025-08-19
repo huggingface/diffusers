@@ -150,19 +150,30 @@ From the original repo:
 import torch
 from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline, UniPCMultistepScheduler
 from diffusers.utils import export_to_video
+# For faster loading into the GPU
+os.environ["HF_ENABLE_PARALLEL_LOADING"] = "yes"
 
-vae = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Skywork/SkyReels-V2-DF-14B-540P-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+
+model_id = "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers"
+vae = AutoModel.from_pretrained(model_id,
+                                subfolder="vae",
+                                torch_dtype=torch.float32,
+                                device_map="cuda")
 
 pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
-    "Skywork/SkyReels-V2-DF-14B-540P-Diffusers",
+    model_id,
     vae=vae,
-    transformer=transformer,
-    torch_dtype=torch.bfloat16
+    torch_dtype=torch.bfloat16,
+    device_map="cuda"
 )
 flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
-pipeline = pipeline.to("cuda")
+
+# Some acceleration helpers
+# Be sure to install Flash Attention: https://github.com/Dao-AILab/flash-attention#installation-and-features
+# Normally 14 min., with compile_repeated_blocks(fullgraph=True) 12 min., with Flash Attention too 5.5 min.
+#pipeline.transformer.set_attention_backend("flash")
+#pipeline.transformer.compile_repeated_blocks(fullgraph=True)
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 
@@ -200,13 +211,12 @@ from diffusers.utils import export_to_video, load_image
 
 
 model_id = "Skywork/SkyReels-V2-DF-14B-720P-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32, device_map="cuda")
 pipeline = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, torch_dtype=torch.bfloat16
+    model_id, vae=vae, torch_dtype=torch.bfloat16, device_map="cuda"
 )
 flow_shift = 5.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
-pipeline.to("cuda")
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
 last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
@@ -263,13 +273,12 @@ from diffusers.utils import export_to_video, load_video
 
 
 model_id = "Skywork/SkyReels-V2-DF-14B-720P-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32, device_map="cuda")
 pipeline = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
-    model_id, vae=vae, torch_dtype=torch.bfloat16
+    model_id, vae=vae, torch_dtype=torch.bfloat16, device_map="cuda"
 )
 flow_shift = 5.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
-pipeline.to("cuda")
 
 video = load_video("input_video.mp4")
 
@@ -286,50 +295,7 @@ export_to_video(output, "video.mp4", fps=24, quality=8)
 </hfoption>
 </hfoptions>
 
-
-## Notes
-
-- SkyReels-V2 supports LoRAs with [`~loaders.SkyReelsV2LoraLoaderMixin.load_lora_weights`].
-
-  <details>
-  <summary>Show example code</summary>
-
-  ```py
-  import torch
-  from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline
-  from diffusers.utils import export_to_video
-
-  vae = AutoModel.from_pretrained(
-      "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers", subfolder="vae", torch_dtype=torch.float32
-  )
-  pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
-      "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers", vae=vae, torch_dtype=torch.bfloat16
-  )
-  pipeline.to("cuda")
-
-  pipeline.load_lora_weights("benjamin-paine/steamboat-willie-1.3b", adapter_name="steamboat-willie")
-  pipeline.set_adapters("steamboat-willie")
-
-  pipeline.enable_model_cpu_offload()
-
-  # use "steamboat willie style" to trigger the LoRA
-  prompt = """
-  steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot,
-  revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
-  for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
-  Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
-  shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
-  """
-
-  output = pipeline(
-      prompt=prompt,
-      num_frames=97,
-      guidance_scale=6.0,
-  ).frames[0]
-  export_to_video(output, "video.mp4", fps=24)
-  ```
-
-  </details>
+`SkyReelsV2Pipeline` and `SkyReelsV2ImageToVideoPipeline` are also available without Diffusion Forcing framework applied.
 
 
 ## SkyReelsV2DiffusionForcingPipeline
