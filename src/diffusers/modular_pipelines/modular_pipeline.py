@@ -272,29 +272,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
         return input_names
 
-    def _get_requirements(self):
-        if getattr(self, "_requirements", None) is not None:
-            defined_reqs = self._requirements
-            if not isinstance(defined_reqs, list):
-                defined_reqs = [defined_reqs]
-
-            final_reqs = []
-            for pkg, specified_ver in defined_reqs:
-                pkg_available, pkg_actual_ver = _is_package_available(pkg)
-                if not pkg_available:
-                    raise ValueError(
-                        f"{pkg} was specified in the requirements but wasn't found. Please check your environment."
-                    )
-                if specified_ver != pkg_actual_ver:
-                    logger.warning(
-                        f"Version for {pkg} was specified to be {specified_ver} whereas the actual version found is {pkg_actual_ver}. Ignore if this is not concerning."
-                    )
-                final_reqs.append((pkg, specified_ver))
-            return final_reqs
-
-        else:
-            return None
-
     @property
     def required_inputs(self) -> List[InputParam]:
         return self._get_required_inputs()
@@ -329,19 +306,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             )
 
         if "requirements" in config and config["requirements"] is not None:
-            requirements: Union[List[Tuple[str, str]], Tuple[str, str]] = config["requirements"]
-            if not isinstance(requirements, list):
-                requirements = [requirements]
-            for pkg, fetched_ver in requirements:
-                pkg_available, pkg_actual_ver = _is_package_available(pkg)
-                if not pkg_available:
-                    raise ValueError(
-                        f"{pkg} was specified in the requirements but wasn't found in the current environment."
-                    )
-                if fetched_ver != pkg_actual_ver:
-                    logger.warning(
-                        f"Version of {pkg} was specified to be {fetched_ver} in the configuration. However, the actual installed version if {pkg_actual_ver}. Things might work unexpected."
-                    )
+            _ = _validate_requirements(config["requirements"])
 
         hub_kwargs_names = [
             "cache_dir",
@@ -383,8 +348,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         self.register_to_config(auto_map=auto_map)
 
         # resolve requirements
-        requirements = self._get_requirements()
-        if requirements is not None:
+        requirements = _validate_requirements(getattr(self, "_requirements", None))
+        if requirements:
             self.register_to_config(requirements=requirements)
 
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
@@ -2489,3 +2454,33 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             return state.get(output)
         else:
             raise ValueError(f"Output '{output}' is not a valid output type")
+
+
+def _validate_requirements(reqs):
+    normalized_reqs = _normalize_requirements(reqs)
+    if not normalized_reqs:
+        return []
+
+    final: List[Tuple[str, str]] = []
+    for req, specified_ver in normalized_reqs:
+        req_available, req_actual_ver = _is_package_available(req)
+        if not req_available:
+            raise ValueError(f"{req} was specified in the requirements but wasn't found in the current environment.")
+        if specified_ver != req_actual_ver:
+            logger.warning(
+                f"Version of {req} was specified to be {specified_ver} in the configuration. However, the actual installed version if {req_actual_ver}. Things might work unexpected."
+            )
+
+        final.append((req, specified_ver))
+
+    return final
+
+
+def _normalize_requirements(reqs):
+    if not reqs:
+        return []
+    if isinstance(reqs, tuple) and len(reqs) == 2 and isinstance(reqs[0], str):
+        req_seq: List[Tuple[str, str]] = [reqs]  # single pair
+    else:
+        req_seq = reqs
+    return req_seq
