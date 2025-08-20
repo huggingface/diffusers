@@ -127,6 +127,7 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -552,6 +553,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
+        from .bria import BriaPipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
