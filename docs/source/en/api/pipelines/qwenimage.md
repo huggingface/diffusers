@@ -14,6 +14,10 @@
 
 # QwenImage
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 Qwen-Image from the Qwen team is an image generation foundation model in the Qwen series that achieves significant advances in complex text rendering and precise image editing. Experiments show strong general capabilities in both image generation and editing, with exceptional performance in text rendering, especially for Chinese.
 
 Qwen-Image comes in the following variants:
@@ -85,6 +89,12 @@ image.save("qwen_fewsteps.png")
 ```
 
 </details>
+
+<Tip>
+
+The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
+
+</Tip>
 
 ## QwenImagePipeline
 
