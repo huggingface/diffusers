@@ -32,6 +32,7 @@ from ..pipelines.pipeline_loading_utils import _fetch_class_library_tuple, simpl
 from ..utils import PushToHubMixin, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.import_utils import _is_package_available
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
     ComponentSpec,
@@ -231,6 +232,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_config.json"
     model_name = None
+    _requirements: Union[List[Tuple[str, str], Tuple[str, str]]] = None
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -270,6 +272,28 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
         return input_names
 
+    def _get_requirements(self):
+        if getattr(self, "_requirements", None) is not None:
+            defined_reqs = self._requirements
+            if not isinstance(defined_reqs):
+                defined_reqs = [defined_reqs]
+
+            final_reqs = []
+            for pkg, specified_ver in defined_reqs:
+                pkg_available, pkg_actual_ver = _is_package_available(pkg)
+                if not pkg_available:
+                    raise ValueError(
+                        f"{pkg} was specified in the requirements but wasn't found. Please check your environment."
+                    )
+                if specified_ver != pkg_actual_ver:
+                    logger.warning(
+                        f"Version for {pkg} was specified to be {specified_ver} whereas the actual version found is {pkg_actual_ver}. Ignore if this is not concerning."
+                    )
+                final_reqs.append((pkg, specified_ver))
+
+        else:
+            return None
+
     @property
     def required_inputs(self) -> List[InputParam]:
         return self._get_required_inputs()
@@ -293,6 +317,31 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         trust_remote_code: Optional[bool] = None,
         **kwargs,
     ):
+        config = cls.load_config(pretrained_model_name_or_path)
+        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
+        trust_remote_code = resolve_trust_remote_code(
+            trust_remote_code, pretrained_model_name_or_path, has_remote_code
+        )
+        if not (has_remote_code and trust_remote_code):
+            raise ValueError(
+                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+            )
+
+        if "requirements" in config and config["requirements"] is not None:
+            requirements: Union[List[Tuple[str, str]], Tuple[str, str]] = config["requirements"]
+            if not isinstance(requirements, list):
+                requirements = [requirements]
+            for pkg, fetched_ver in requirements:
+                pkg_available, pkg_actual_ver = _is_package_available(pkg)
+                if not pkg_available:
+                    raise ValueError(
+                        f"{pkg} was specified in the requirements but wasn't found in the current environment."
+                    )
+                if fetched_ver != pkg_actual_ver:
+                    logger.warning(
+                        f"Version of {pkg} was specified to be {fetched_ver} in the configuration. However, the actual installed version if {pkg_actual_ver}. Things might work unexpected."
+                    )
+
         hub_kwargs_names = [
             "cache_dir",
             "force_download",
@@ -304,16 +353,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
-
-        config = cls.load_config(pretrained_model_name_or_path)
-        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
-        trust_remote_code = resolve_trust_remote_code(
-            trust_remote_code, pretrained_model_name_or_path, has_remote_code
-        )
-        if not (has_remote_code and trust_remote_code):
-            raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
-            )
 
         class_ref = config["auto_map"][cls.__name__]
         module_file, class_name = class_ref.split(".")
@@ -340,8 +379,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
         parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]
         auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
-
         self.register_to_config(auto_map=auto_map)
+
+        # resolve requirements
+        requirements = self._get_requirements()
+        if requirements is not None:
+            self.register_to_config(requirements=requirements)
+
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
         config = dict(self.config)
         self._internal_dict = FrozenDict(config)
