@@ -340,6 +340,8 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/bria_transformer
+        title: BriaTransformer2DModel
       - local: api/models/chroma_transformer
         title: ChromaTransformer2DModel
       - local: api/models/cogvideox_transformer3d
@@ -468,6 +470,8 @@
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
       title: BLIP-Diffusion
+    - local: api/pipelines/bria_3_2
+      title: Bria 3.2
     - local: api/pipelines/chroma
       title: Chroma
     - local: api/pipelines/cogvideox
