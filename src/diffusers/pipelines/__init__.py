@@ -127,6 +127,7 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["animemory"] = ["AniMemoryPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -544,6 +545,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
         )
+        from .animemory import AniMemoryPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import (
             AudioLDM2Pipeline,
