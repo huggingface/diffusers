@@ -115,16 +115,7 @@ class Magi1AttnProcessor:
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        encoder_hidden_states_img = None
-        if attn.add_k_proj is not None:
-            # 512 is the context length of the text encoder, hardcoded for now
-            image_context_length = encoder_hidden_states.shape[1] - 512
-            encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
-            encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
-
-        # Attention heads [sq, b, h] --> [sq, b, q + qx + k + v]
-        mixed_qqkv = attn.layer_norm(hidden_states.transpose(0, 1))#.transpose(0, 1)
-        query, key, value = _get_qkv_projections(attn, mixed_qqkv, encoder_hidden_states)
+        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
         query = query.reshape(query.size(0), query.size(1), -1, attn.kv_inner_dim)
         key = key.reshape(key.size(0), key.size(1), -1, attn.kv_inner_dim)
         original_dtype_query = query.dtype
@@ -132,13 +123,11 @@ class Magi1AttnProcessor:
         query = query.float()
         key = key.float()
 
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
+        query = attn.norm_q(query)
         query = query.transpose(0, 1).contiguous()
         query = flash_apply_rotary_emb(query, cos_emb, sin_emb)
         query = query.to(original_dtype_query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
+        key = attn.norm_k(key)
         key = key.transpose(0, 1).contiguous()
         key = flash_apply_rotary_emb(key, cos_emb, sin_emb)
         key = key.to(original_dtype_key)
@@ -165,27 +154,6 @@ class Magi1AttnProcessor:
             query = apply_rotary_emb(query, rotary_emb)
             key = apply_rotary_emb(key, rotary_emb)
 
-        # I2V task
-        hidden_states_img = None
-        if encoder_hidden_states_img is not None:
-            key_img, value_img = _get_added_kv_projections(attn, encoder_hidden_states_img)
-
-            key_img = key_img.unflatten(2, (attn.heads, -1))
-            value_img = value_img.unflatten(2, (attn.heads, -1))
-
-            hidden_states_img = dispatch_attention_fn(
-                query,
-                key_img,
-                value_img,
-                attn_mask=None,
-                dropout_p=0.0,
-                is_causal=False,
-                enable_gqa=True,
-                backend=self._attention_backend,
-            )
-            hidden_states_img = hidden_states_img.flatten(2, 3)
-            hidden_states_img = hidden_states_img.type_as(query)
-
         hidden_states = dispatch_attention_fn(
             query,
             key,
@@ -200,9 +168,6 @@ class Magi1AttnProcessor:
         hidden_states = hidden_states.permute(2, 0, 1, 3)
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
-
-        if hidden_states_img is not None:
-            hidden_states = hidden_states + hidden_states_img
 
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
@@ -563,11 +528,14 @@ class Magi1TransformerBlock(nn.Module):
     ) -> torch.Tensor:
         residual = hidden_states.float()
 
+        # Attention heads [sq, b, h] --> [sq, b, q + qx + k + v]
+        mixed_qqkv = self.norm1(hidden_states.transpose(0, 1))#.transpose(0, 1)
+
         # 1. Self-attention
-        self_attn_output = self.attn1(hidden_states=hidden_states, rotary_emb=rotary_emb)
+        self_attn_output = self.attn1(mixed_qqkv, None, None, rotary_emb)
 
         # 2. Cross-attention
-        cross_attn_output = self.attn2(hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states)
+        cross_attn_output = self.attn2(mixed_qqkv, encoder_hidden_states, None, None)
 
         attn_out = torch.concat([self_attn_output, cross_attn_output], dim=2)
         hidden_states = self.linear_proj(attn_out)
