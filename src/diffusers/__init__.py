@@ -1,4 +1,4 @@
-__version__ = "0.35.0.dev0"
+__version__ = "0.36.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -181,6 +181,7 @@ else:
             "AutoencoderOobleck",
             "AutoencoderTiny",
             "AutoModel",
+            "BriaTransformer2DModel",
             "CacheMixin",
             "ChromaTransformer2DModel",
             "CogVideoXTransformer3DModel",
@@ -397,6 +398,7 @@ else:
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
+            "BriaPipeline",
             "ChromaImg2ImgPipeline",
             "ChromaPipeline",
             "CLIPImageProjection",
@@ -846,6 +848,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderOobleck,
             AutoencoderTiny,
             AutoModel,
+            BriaTransformer2DModel,
             CacheMixin,
             ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
@@ -1032,6 +1035,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
+            BriaPipeline,
             ChromaImg2ImgPipeline,
             ChromaPipeline,
             CLIPImageProjection,
