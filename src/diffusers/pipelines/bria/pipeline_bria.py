@@ -49,11 +49,11 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import BriaPipeline
 
-        >>> pipe = BriaPipeline.from_pretrained("briaai/BRIA-3.2", torch_dtype=torch.float16)
+        >>> pipe = BriaPipeline.from_pretrained("briaai/BRIA-3.2", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        # BRIA's T5 text encoder is sensitive to precision. We need to cast it to float16 and keep the final layer in float32.
+        # BRIA's T5 text encoder is sensitive to precision. We need to cast it to bfloat16 and keep the final layer in float32.
 
-        >>> pipe.text_encoder = pipe.text_encoder.to(dtype=torch.float16)
+        >>> pipe.text_encoder = pipe.text_encoder.to(dtype=torch.bfloat16)
         >>> for block in pipe.text_encoder.encoder.block:
         ...     block.layer[-1].DenseReluDense.wo.to(dtype=torch.float32)
         # BRIA's VAE is not supported in mixed precision, so we use float32.
@@ -267,6 +267,7 @@ class BriaPipeline(DiffusionPipeline):
     def interrupt(self):
         return self._interrupt
 
+   
     def check_inputs(
         self,
         prompt,
