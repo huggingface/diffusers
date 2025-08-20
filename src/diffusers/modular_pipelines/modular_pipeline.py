@@ -232,7 +232,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_config.json"
     model_name = None
-    _requirements: Union[List[Tuple[str, str], Tuple[str, str]]] = None
+    _requirements: Union[List[Tuple[str, str]], Tuple[str, str]] = None
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -275,7 +275,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     def _get_requirements(self):
         if getattr(self, "_requirements", None) is not None:
             defined_reqs = self._requirements
-            if not isinstance(defined_reqs):
+            if not isinstance(defined_reqs, list):
                 defined_reqs = [defined_reqs]
 
             final_reqs = []
@@ -290,6 +290,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                         f"Version for {pkg} was specified to be {specified_ver} whereas the actual version found is {pkg_actual_ver}. Ignore if this is not concerning."
                     )
                 final_reqs.append((pkg, specified_ver))
+            return final_reqs
 
         else:
             return None
