@@ -8,6 +8,7 @@ from ...schedulers import DreamMaskedDiffusionScheduler
 from ...utils import is_torch_xla_available, logging
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import DreamTextPipelineOutput
+from .tokenization_dream import DreamTokenizer
 
 
 if is_torch_xla_available():
@@ -34,7 +35,7 @@ class DreamTextPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        tokenizer,
+        tokenizer: DreamTokenizer,
         transformer: DreamTransformer1DModel,
         scheduler: DreamMaskedDiffusionScheduler,
     ):

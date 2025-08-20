@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_dream"] = ["DreamTextPipeline"]
+    _import_structure["tokenization_dream"] = ["DreamTokenizer"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_dream import DreamTextPipeline
+        from .tokenization_dream import DreamTokenizer
 else:
     import sys
 
