@@ -22,14 +22,17 @@ This guide recommends some basic performance tips for using the [`DiffusionPipel
 
 Reducing the amount of memory used indirectly speeds up generation and can help a model fit on device.
 
+The [`~DiffusionPipeline.enable_model_cpu_offload`] method moves a model to the CPU when it is not in use to save GPU memory.
+
 ```py
 import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.bfloat16
-).to("cuda")
+  torch_dtype=torch.bfloat16,
+  device_map="cuda"
+)
 pipeline.enable_model_cpu_offload()
 
 prompt = """
@@ -44,7 +47,7 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 
 Denoising is the most computationally demanding process during diffusion. Methods that optimizes this process accelerates inference speed. Try the following methods for a speed up.
 
-- Add `.to("cuda")` to place the pipeline on a GPU. Placing a model on an accelerator, like a GPU, increases speed because it performs computations in parallel.
+- Add `device_map="cuda"` to place the pipeline on a GPU. Placing a model on an accelerator, like a GPU, increases speed because it performs computations in parallel.
 - Set `torch_dtype=torch.bfloat16` to execute the pipeline in half-precision. Reducing the data type precision increases speed because it takes less time to perform computations in a lower precision.
 
 ```py
@@ -54,8 +57,9 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.bfloat16
-).to("cuda")
+  torch_dtype=torch.bfloat16,
+  device_map="cuda
+)
 ```
 
 - Use a faster scheduler, such as [`DPMSolverMultistepScheduler`], which only requires ~20-25 steps.
@@ -88,8 +92,9 @@ Many modern diffusion models deliver high-quality images out-of-the-box. However
 
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
-        torch_dtype=torch.bfloat16
-    ).to("cuda")
+        torch_dtype=torch.bfloat16,
+        device_map="cuda"
+    )
 
     prompt = """
     cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
@@ -109,8 +114,9 @@ Many modern diffusion models deliver high-quality images out-of-the-box. However
 
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
-        torch_dtype=torch.bfloat16
-    ).to("cuda")
+        torch_dtype=torch.bfloat16,
+        device_map="cuda"
+    )
     pipeline.scheduler = HeunDiscreteScheduler.from_config(pipeline.scheduler.config)
 
     prompt = """
