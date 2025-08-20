@@ -1148,9 +1148,23 @@ class PipelineTesterMixin:
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
+        
+        # Reset PyTorch's JIT compiler state
         torch.compiler.reset()
+        
+        # Run garbage collection to clean up any remaining objects
         gc.collect()
+        
+        # Clear CUDA cache if CUDA is available
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
+        # Clear backend cache
         backend_empty_cache(torch_device)
+        
+        # Ensure all pending operations are complete
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()

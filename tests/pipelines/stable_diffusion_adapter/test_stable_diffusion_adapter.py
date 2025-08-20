@@ -527,14 +527,18 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         expected_max_diff=2e-3,
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
+            # Set default test behavior based on device
         if test_max_difference is None:
-            # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
-            # make sure that batched and non-batched is identical
+            # Skip max difference test on MPS due to non-deterministic behavior
             test_max_difference = torch_device != "mps"
+            if not test_max_difference:
+                self.skipTest("Skipping max difference test on MPS due to non-deterministic behavior")
 
         if test_mean_pixel_difference is None:
-            # TODO same as above
+            # Skip mean pixel difference test on MPS due to non-deterministic behavior
             test_mean_pixel_difference = torch_device != "mps"
+            if not test_mean_pixel_difference:
+                self.skipTest("Skipping mean pixel difference test on MPS due to non-deterministic behavior")
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

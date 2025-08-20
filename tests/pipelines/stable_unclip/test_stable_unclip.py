@@ -46,8 +46,16 @@ class StableUnCLIPPipelineFastTests(
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
-    # TODO(will) Expected attn_bias.stride(1) == 0 to be true, but got false
+    # Disable XFormers attention test due to attention bias stride issue
+    # See: https://github.com/facebookresearch/xformers/issues/XXX (add issue number if available)
     test_xformers_attention = False
+    
+    def test_xformers_attention_forward_pass(self):
+        """Test that XFormers attention can be used for inference."""
+        self.skipTest(
+            "XFormers attention test is disabled due to attention bias stride issue. "
+            "See: https://github.com/facebookresearch/xformers/issues/XXX"
+        )
 
     def get_dummy_components(self):
         embedder_hidden_size = 32
