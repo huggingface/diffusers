@@ -15,11 +15,11 @@
 
 import json
 import os
-import regex as re
 import unicodedata
 from functools import lru_cache
 from typing import Optional, Tuple
 
+import regex as re
 from transformers.tokenization_utils import AddedToken, PreTrainedTokenizer
 
 from ...utils import logging
