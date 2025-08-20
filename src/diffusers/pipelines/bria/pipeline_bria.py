@@ -267,7 +267,6 @@ class BriaPipeline(DiffusionPipeline):
     def interrupt(self):
         return self._interrupt
 
-   
     def check_inputs(
         self,
         prompt,
