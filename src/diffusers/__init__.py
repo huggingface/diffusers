@@ -1,4 +1,4 @@
-__version__ = "0.35.0.dev0"
+__version__ = "0.36.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -502,6 +502,7 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
+            "QwenImageEditPipeline",
             "QwenImageImg2ImgPipeline",
             "QwenImageInpaintPipeline",
             "QwenImagePipeline",
@@ -1144,6 +1145,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
+            QwenImageEditPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
             QwenImagePipeline,
