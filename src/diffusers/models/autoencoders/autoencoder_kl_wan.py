@@ -1026,16 +1026,8 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if decoder_base_dim is None:
             decoder_base_dim = base_dim
 
-        # Adjust input and output channels based on patch_size
-        # When patch_size > 1, patchify increases channels by patch_size^2
-        encoder_in_channels = in_channels
-        decoder_out_channels = out_channels
-        if patch_size is not None and patch_size > 1:
-            encoder_in_channels = in_channels * patch_size * patch_size
-            decoder_out_channels = out_channels * patch_size * patch_size
-
         self.encoder = WanEncoder3d(
-            in_channels=encoder_in_channels,
+            in_channels=in_channels,
             dim=base_dim,
             z_dim=z_dim * 2,
             dim_mult=dim_mult,
@@ -1056,7 +1048,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             attn_scales=attn_scales,
             temperal_upsample=self.temperal_upsample,
             dropout=dropout,
-            out_channels=decoder_out_channels,
+            out_channels=out_channels,
             is_residual=is_residual,
         )
 
@@ -1157,7 +1149,11 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return self.tiled_encode(x)
 
         self.clear_cache()
-        if self.config.patch_size is not None:
+        # Apply patchify only if needed - check if model expects patchified input
+        # If in_channels equals original_channels * patch_size^2, model expects patchified input
+        if (self.config.patch_size is not None and self.config.patch_size > 1 and
+            self.config.in_channels != x.shape[1] and
+            self.config.in_channels == x.shape[1] * self.config.patch_size * self.config.patch_size):
             x = patchify(x, patch_size=self.config.patch_size)
         iter_ = 1 + (num_frame - 1) // 4
         for i in range(iter_):
@@ -1223,7 +1219,12 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 out_ = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
                 out = torch.cat([out, out_], 2)
 
-        if self.config.patch_size is not None:
+        # Apply unpatchify only if needed - check if model outputs patchified data
+        # If out_channels is greater than expected output channels, model outputs patchified data
+        expected_out_channels = 3  # Assuming RGB output
+        if (self.config.patch_size is not None and self.config.patch_size > 1 and
+            self.config.out_channels != expected_out_channels and 
+            self.config.out_channels == expected_out_channels * self.config.patch_size * self.config.patch_size):
             out = unpatchify(out, patch_size=self.config.patch_size)
 
         out = torch.clamp(out, min=-1.0, max=1.0)
@@ -1285,7 +1286,9 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             `torch.Tensor`:
                 The latent representation of the encoded videos.
         """
-        if self.config.patch_size is not None:
+        if (self.config.patch_size is not None and self.config.patch_size > 1 and
+            self.config.in_channels != x.shape[1] and
+            self.config.in_channels == x.shape[1] * self.config.patch_size * self.config.patch_size):
             x = patchify(x, patch_size=self.config.patch_size)
 
         _, _, num_frames, height, width = x.shape
@@ -1404,7 +1407,10 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
 
-        if self.config.patch_size is not None:
+        expected_out_channels = 3  # Assuming RGB output
+        if (self.config.patch_size is not None and self.config.patch_size > 1 and
+            self.config.out_channels != expected_out_channels and
+            self.config.out_channels == expected_out_channels * self.config.patch_size * self.config.patch_size):
             dec = unpatchify(dec, patch_size=self.config.patch_size)
 
         dec = torch.clamp(dec, min=-1.0, max=1.0)
