@@ -750,6 +750,7 @@ class NunchakuConfig(QuantizationConfigMixin):
     ):
         self.quant_method = QuantizationMethod.NUNCHAKU
         self.precision = precision
+        self.rank = rank
         self.group_size = self.group_size_map[precision]
         self.modules_to_not_convert = modules_to_not_convert
 
@@ -762,6 +763,8 @@ class NunchakuConfig(QuantizationConfigMixin):
         accpeted_precision = ["int4", "nvfp4"]
         if self.precision not in accpeted_precision:
             raise ValueError(f"Only supported precision in {accpeted_precision} but found {self.precision}")
+
+        # TODO: should there be a check for rank?
 
     # Copied from diffusers.quantizers.bitsandbytes.quantization_config.BitsandBytesConfig.to_diff_dict with BitsandBytesConfig->NunchakuConfig
     def to_diff_dict(self) -> Dict[str, Any]:
