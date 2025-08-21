@@ -13,6 +13,7 @@ from .utils import (
     is_k_diffusion_available,
     is_librosa_available,
     is_note_seq_available,
+    is_nunchaku_available,
     is_onnx_available,
     is_opencv_available,
     is_optimum_quanto_available,
@@ -98,6 +99,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("TorchAoConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_nunchaku_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_nunchaku_objects
+
+    _import_structure["utils.dummy_nunchaku_objects"] = [
+        name for name in dir(dummy_nunchaku_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("NunchakuConfig")
 
 try:
     if not is_torch_available() and not is_accelerate_available() and not is_optimum_quanto_available():
@@ -790,6 +803,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_optimum_quanto_objects import *
     else:
         from .quantizers.quantization_config import QuantoConfig
+
+    try:
+        if not is_nunchaku_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_optimum_quanto_objects import *
+    else:
+        from .quantizers.quantization_config import NunchakuConfig
 
     try:
         if not is_onnx_available():
