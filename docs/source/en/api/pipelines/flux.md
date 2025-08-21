@@ -317,7 +317,7 @@ if integrity_checker.test_image(image_):
 ```
 
 ### Kontext Inpainting
-The Kontext Inpainting Pipeline enables image modification within a fixed mask region. It currently supports both text-based conditioning and image-reference conditioning.
+[`FluxKontextInpaintPipeline`] enables image modification within a fixed mask region. It currently supports both text-based conditioning and image-reference conditioning.
 #### Inpainting with text only
 
 ```python
