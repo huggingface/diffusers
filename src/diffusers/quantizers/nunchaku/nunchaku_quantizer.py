@@ -29,9 +29,9 @@ if is_nunchaku_available():
 logger = logging.get_logger(__name__)
 
 
-class QuantoQuantizer(DiffusersQuantizer):
+class NunChakuQuantizer(DiffusersQuantizer):
     r"""
-    Diffusers Quantizer for Optimum Quanto
+    Diffusers Quantizer for Nunchaku (https://github.com/nunchaku-tech/nunchaku)
     """
 
     use_keep_in_fp32_modules = True
@@ -68,7 +68,7 @@ class QuantoQuantizer(DiffusersQuantizer):
         # device_map = kwargs.get("device_map", None)
         # if isinstance(device_map, dict) and len(device_map.keys()) > 1:
         #     raise ValueError(
-        #         "`device_map` for multi-GPU inference or CPU/disk offload is currently not supported with Diffusers and the Quanto backend"
+        #         "`device_map` for multi-GPU inference or CPU/disk offload is currently not supported with Diffusers and the nunchaku backend"
         #     )
 
     def check_if_quantized_param(
@@ -79,7 +79,6 @@ class QuantoQuantizer(DiffusersQuantizer):
         state_dict: Dict[str, Any],
         **kwargs,
     ):
-        # Quanto imports diffusers internally. This is here to prevent circular imports
         from nunchaku.models.linear import SVDQW4A4Linear
 
         module, tensor_name = get_module_from_name(model, param_name)
@@ -140,7 +139,7 @@ class QuantoQuantizer(DiffusersQuantizer):
 
     def update_torch_dtype(self, torch_dtype: "torch.dtype") -> "torch.dtype":
         if torch_dtype is None:
-            # We force the `dtype` to be bfloat16, this is a requirement from `bitsandbytes`
+            # We force the `dtype` to be bfloat16, this is a requirement from `nunchaku`
             logger.info(
                 "Overriding torch_dtype=%s with `torch_dtype=torch.bfloat16` due to "
                 "requirements of `nunchaku` to enable model loading in 4-bit. "
