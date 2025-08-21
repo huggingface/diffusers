@@ -150,29 +150,27 @@ From the original repo:
 import torch
 from diffusers import AutoModel, SkyReelsV2DiffusionForcingPipeline, UniPCMultistepScheduler
 from diffusers.utils import export_to_video
-# For faster loading into the GPU
-os.environ["HF_ENABLE_PARALLEL_LOADING"] = "yes"
 
 
 model_id = "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers"
-vae = AutoModel.from_pretrained(model_id,
-                                subfolder="vae",
-                                torch_dtype=torch.float32,
-                                device_map="cuda")
+vae = AutoModel.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 
 pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     model_id,
     vae=vae,
     torch_dtype=torch.bfloat16,
-    device_map="cuda"
 )
+pipeline.to("cuda")
 flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 
 # Some acceleration helpers
 # Be sure to install Flash Attention: https://github.com/Dao-AILab/flash-attention#installation-and-features
-# Normally 14 min., with compile_repeated_blocks(fullgraph=True) 12 min., with Flash Attention too 5.5 min at A100.
-#pipeline.transformer.set_attention_backend("flash")
+# Normally 14 min., with compile_repeated_blocks(fullgraph=True) 12 min., with Flash Attention too less min. at A100.
+# If you want to follow the original implementation in terms of attentions:
+#for block in pipeline.transformer.blocks:
+#    block.attn1.set_attention_backend("_native_cudnn")
+#    block.attn2.set_attention_backend("flash_varlen")  # or "_flash_varlen_3"
 #pipeline.transformer.compile_repeated_blocks(fullgraph=True)
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
@@ -211,10 +209,11 @@ from diffusers.utils import export_to_video, load_image
 
 
 model_id = "Skywork/SkyReels-V2-DF-1.3B-720P-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32, device_map="cuda")
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipeline = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, torch_dtype=torch.bfloat16, device_map="cuda"
+    model_id, vae=vae, torch_dtype=torch.bfloat16
 )
+pipeline.to("cuda")
 flow_shift = 5.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 
@@ -273,10 +272,11 @@ from diffusers.utils import export_to_video, load_video
 
 
 model_id = "Skywork/SkyReels-V2-DF-1.3B-720P-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32, device_map="cuda")
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipeline = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
-    model_id, vae=vae, torch_dtype=torch.bfloat16, device_map="cuda"
+    model_id, vae=vae, torch_dtype=torch.bfloat16
 )
+pipeline.to("cuda")
 flow_shift = 5.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 
