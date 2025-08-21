@@ -101,7 +101,7 @@ class DreamAttnProcessor:
 
         # Repeat KV heads if attn.kv_heads < attn.heads
         key = repeat_kv(key, attn.kv_groups)  # [B, N_KV, L, H] --> [B, N, L, H]
-        value = repeat_kv(query, attn.kv_groups)  # [B, N_KV, L, H] --> [B, N, L, H]
+        value = repeat_kv(value, attn.kv_groups)  # [B, N_KV, L, H] --> [B, N, L, H]
 
         # TODO: call dispatch_attention_fn here to dispatch the implementation to a backend? e.g. FlashAttn
         # hidden_states = dispatch_attention_fn(
@@ -175,13 +175,12 @@ class DreamSdpaAttnProcessor:
 
         # Repeat KV heads if attn.kv_heads < attn.heads
         key = repeat_kv(key, attn.kv_groups)  # [B, N_KV, L, H] --> [B, N, L, H]
-        value = repeat_kv(query, attn.kv_groups)  # [B, N_KV, L, H] --> [B, N, L, H]
+        value = repeat_kv(value, attn.kv_groups)  # [B, N_KV, L, H] --> [B, N, L, H]
 
         # TODO: call dispatch_attention_fn here to dispatch the implementation to a backend? e.g. FlashAttn
         # hidden_states = dispatch_attention_fn(
         #     query, key, value, attn_mask=attention_mask, backend=self._attention_backend
         # )
-        # TODO: check SDPA call here
         hidden_states = F.scaled_dot_product_attention(
             query,
             key,
@@ -348,12 +347,12 @@ class DreamMLP(nn.Module):
         self.down_proj = nn.Linear(self.intermediate_size, self.dim_out, bias=bias)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.up_proj(hidden_states)
+        expanded_hidden_states = self.up_proj(hidden_states)
 
         gated_hidden_states = self.gate_proj(hidden_states)
         gated_hidden_states = self.act_fn(gated_hidden_states)
 
-        hidden_states = gated_hidden_states * hidden_states
+        hidden_states = gated_hidden_states * expanded_hidden_states
         hidden_states = self.down_proj(hidden_states)
         return hidden_states
 
@@ -389,7 +388,7 @@ class DreamTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: torch.Tensor,  # temb is not used in Dream (time-invariant model)
+        temb: Optional[torch.Tensor] = None,  # temb is not used in Dream (time-invariant model)
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
