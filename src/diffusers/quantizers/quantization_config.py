@@ -766,7 +766,7 @@ class NunchakuConfig(QuantizationConfigMixin):
 
         # TODO: should there be a check for rank?
 
-    # Copied from diffusers.quantizers.bitsandbytes.quantization_config.BitsandBytesConfig.to_diff_dict with BitsandBytesConfig->NunchakuConfig
+    # Copied from diffusers.quantizers.quantization_config.BitsAndBytesConfig.to_diff_dict with BitsAndBytesConfig->NunchakuConfig
     def to_diff_dict(self) -> Dict[str, Any]:
         """
         Removes all attributes from config which correspond to the default config attributes for better readability and
