@@ -1,1 +1,1 @@
-from .nunchaku_quantizer import NunChakuQuantizer
+from .nunchaku_quantizer import NunchakuQuantizer

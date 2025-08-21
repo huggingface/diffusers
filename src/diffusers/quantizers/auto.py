@@ -21,7 +21,7 @@ from typing import Dict, Optional, Union
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
-from .nunchaku import NunChakuQuantizer
+from .nunchaku import NunchakuQuantizer
 from .quantization_config import (
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
@@ -41,7 +41,7 @@ AUTO_QUANTIZER_MAPPING = {
     "gguf": GGUFQuantizer,
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
-    "nunchaku": NunChakuQuantizer,
+    "nunchaku": NunchakuQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {

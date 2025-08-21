@@ -29,7 +29,7 @@ if is_nunchaku_available():
 logger = logging.get_logger(__name__)
 
 
-class NunChakuQuantizer(DiffusersQuantizer):
+class NunchakuQuantizer(DiffusersQuantizer):
     r"""
     Diffusers Quantizer for Nunchaku (https://github.com/nunchaku-tech/nunchaku)
     """
