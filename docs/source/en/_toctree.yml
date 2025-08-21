@@ -17,7 +17,7 @@
   - local: tutorials/autopipeline
     title: AutoPipeline
   - local: using-diffusers/custom_pipeline_overview
-    title: Load community pipelines and components
+    title: Community pipelines and models
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
