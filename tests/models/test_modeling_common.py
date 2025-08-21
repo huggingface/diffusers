@@ -2142,17 +2142,9 @@ class TorchCompileTesterMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             package_path = os.path.join(tmpdir, f"{self.model_class.__name__}.pt2")
-            _ = torch._inductor.aoti_compile_and_package(
-                exported_model,
-                package_path=package_path,
-                inductor_configs={
-                    "aot_inductor.package_constants_in_so": False,
-                    "aot_inductor.package_constants_on_disk": True,
-                    "aot_inductor.package": True,
-                },
-            )
+            _ = torch._inductor.aoti_compile_and_package(exported_model, package_path=package_path)
             assert os.path.exists(package_path)
-            loaded_binary = load_package(package_path)
+            loaded_binary = load_package(package_path, run_single_threaded=True)
 
         model.forward = loaded_binary
 
