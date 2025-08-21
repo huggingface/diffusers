@@ -317,7 +317,10 @@ if integrity_checker.test_image(image_):
 ```
 
 ### Kontext Inpainting
-[`FluxKontextInpaintPipeline`] enables image modification within a fixed mask region. It currently supports both text-based conditioning and image-reference conditioning.
+`FluxKontextInpaintPipeline` enables image modification within a fixed mask region. It currently supports both text-based conditioning and image-reference conditioning.
+<hfoptions id="kontext-inpaint">
+<hfoption id="text-only">
+
 #### Inpainting with text only
 
 ```python
@@ -344,6 +347,8 @@ pipe.to("cuda")
 image = pipe(prompt=prompt, image=source, mask_image=mask, strength=1.0).images[0]
 image.save("kontext_inpainting_normal.png")
 ```
+</hfoption>
+<hfoption id="image conditioning">
 
 #### Inpainting with image conditioning
 ```python
@@ -371,6 +376,8 @@ image = pipe(
 ).images[0]
 image.save("kontext_inpainting_ref.png")
 ```
+</hfoption>
+</hfoptions>
 
 ## Combining Flux Turbo LoRAs with Flux Control, Fill, and Redux
 
