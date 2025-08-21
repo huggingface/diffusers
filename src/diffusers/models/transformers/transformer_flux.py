@@ -354,25 +354,13 @@ class FluxSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        if is_torch_npu_available():
-            from ..attention_processor import FluxAttnProcessor2_0_NPU
-
-            deprecation_message = (
-                "Defaulting to FluxAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
-                "should be set explicitly using the `set_attn_processor` method."
-            )
-            deprecate("npu_processor", "0.34.0", deprecation_message)
-            processor = FluxAttnProcessor2_0_NPU()
-        else:
-            processor = FluxAttnProcessor()
-
         self.attn = FluxAttention(
             query_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             out_dim=dim,
             bias=True,
-            processor=processor,
+            processor=FluxAttnProcessor(),
             eps=1e-6,
             pre_only=True,
         )
