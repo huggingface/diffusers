@@ -762,3 +762,26 @@ class NunchakuConfig(QuantizationConfigMixin):
         accpeted_precision = ["int4", "nvfp4"]
         if self.precision not in accpeted_precision:
             raise ValueError(f"Only supported precision in {accpeted_precision} but found {self.precision}")
+
+    # Copied from diffusers.quantizers.bitsandbytes.quantization_config.BitsandBytesConfig.to_diff_dict with BitsandBytesConfig->NunchakuConfig
+    def to_diff_dict(self) -> Dict[str, Any]:
+        """
+        Removes all attributes from config which correspond to the default config attributes for better readability and
+        serializes to a Python dictionary.
+
+        Returns:
+            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance,
+        """
+        config_dict = self.to_dict()
+
+        # get the default config dict
+        default_config_dict = NunchakuConfig().to_dict()
+
+        serializable_config_dict = {}
+
+        # only serialize values that differ from the default config
+        for key, value in config_dict.items():
+            if value != default_config_dict[key]:
+                serializable_config_dict[key] = value
+
+        return serializable_config_dict

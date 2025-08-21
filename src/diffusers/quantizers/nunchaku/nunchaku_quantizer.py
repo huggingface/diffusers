@@ -169,13 +169,16 @@ class NunchakuQuantizer(DiffusersQuantizer):
             model,
             modules_to_not_convert=self.modules_to_not_convert,
             quantization_config=self.quantization_config,
-            pre_quantized=self.pre_quantized,
         )
         model.config.quantization_config = self.quantization_config
 
     def _process_model_after_weight_loading(self, model, **kwargs):
         return model
 
-    # @property
-    # def is_serializable(self):
-    #     return True
+    @property
+    def is_serializable(self):
+        return False
+
+    @property
+    def is_trainable(self):
+        return False

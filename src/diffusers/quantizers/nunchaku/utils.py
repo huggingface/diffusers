@@ -5,9 +5,7 @@ from ...utils import is_accelerate_available, is_nunchaku_available, logging
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
-
-if is_nunchaku_available():
-    from nunchaku.models.linear import SVDQW4A4Linear
+    
 
 
 logger = logging.get_logger(__name__)
@@ -15,6 +13,7 @@ logger = logging.get_logger(__name__)
 
 def _replace_with_nunchaku_linear(
     model,
+    svdq_linear_cls,
     modules_to_not_convert=None,
     current_key_name=None,
     quantization_config=None,
@@ -36,7 +35,7 @@ def _replace_with_nunchaku_linear(
                     out_features = module.out_features
 
                     if quantization_config.precision in ["int4", "nvfp4"]:
-                        model._modules[name] = SVDQW4A4Linear(
+                        model._modules[name] = svdq_linear_cls(
                             in_features,
                             out_features,
                             rank=quantization_config.rank,
@@ -62,7 +61,10 @@ def _replace_with_nunchaku_linear(
 
 
 def replace_with_nunchaku_linear(model, modules_to_not_convert=None, current_key_name=None, quantization_config=None):
-    model, _ = _replace_with_nunchaku_linear(model, modules_to_not_convert, current_key_name, quantization_config)
+    if is_nunchaku_available():
+        from nunchaku.models.linear import SVDQW4A4Linear
+
+    model, _ = _replace_with_nunchaku_linear(model, SVDQW4A4Linear, modules_to_not_convert, current_key_name, quantization_config)
 
     has_been_replaced = any(
         isinstance(replaced_module, SVDQW4A4Linear) for _, replaced_module in model.named_modules()
