@@ -217,6 +217,7 @@ _gguf_available, _gguf_version = _is_package_available("gguf")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
 _optimum_quanto_available, _optimum_quanto_version = _is_package_available("optimum", get_dist_name=True)
+_nunchaku_available, _nunchaku_version = _is_package_available("nunchaku", get_dist_name=True)
 _pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_available("pytorch_retinaface")
 _better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
 _nltk_available, _nltk_version = _is_package_available("nltk")
@@ -361,6 +362,10 @@ def is_torchao_available():
 
 def is_optimum_quanto_available():
     return _optimum_quanto_available
+
+
+def is_nunchaku_available():
+    return _nunchaku_available
 
 
 def is_timm_available():
@@ -816,7 +821,7 @@ def is_k_diffusion_version(operation: str, version: str):
 
 def is_optimum_quanto_version(operation: str, version: str):
     """
-    Compares the current Accelerate version to a given reference with an operation.
+    Compares the current quanto version to a given reference with an operation.
 
     Args:
         operation (`str`):
@@ -827,6 +832,21 @@ def is_optimum_quanto_version(operation: str, version: str):
     if not _optimum_quanto_available:
         return False
     return compare_versions(parse(_optimum_quanto_version), operation, version)
+
+
+def is_nunchaku_version(operation: str, version: str):
+    """
+    Compares the current nunchaku version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _nunchaku_available:
+        return False
+    return compare_versions(parse(_nunchaku_version), operation, version)
 
 
 def is_xformers_version(operation: str, version: str):

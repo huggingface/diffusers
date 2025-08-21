@@ -46,6 +46,7 @@ class QuantizationMethod(str, Enum):
     GGUF = "gguf"
     TORCHAO = "torchao"
     QUANTO = "quanto"
+    NUNCHAKU = "nunchaku"
 
 
 if is_torchao_available():
@@ -724,3 +725,40 @@ class QuantoConfig(QuantizationConfigMixin):
         accepted_weights = ["float8", "int8", "int4", "int2"]
         if self.weights_dtype not in accepted_weights:
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
+
+
+class NunchakuConfig(QuantizationConfigMixin):
+    """
+    This is a wrapper class about all possible attributes and features that you can play with a model that has been
+    loaded using `nunchaku`.
+
+    Args:
+        TODO
+       modules_to_not_convert (`list`, *optional*, default to `None`):
+            The list of modules to not quantize, useful for quantizing models that explicitly require to have some
+            modules left in their original precision (e.g. Whisper encoder, Llava encoder, Mixtral gate layers).
+    """
+
+    group_size_map = {"int4": 64, "nvfp4": 16}
+
+    def __init__(
+        self,
+        precision: str = "int4",
+        rank: int = 32,
+        modules_to_not_convert: Optional[List[str]] = None,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.NUNCHAKU
+        self.precision = precision
+        self.group_size = self.group_size_map[precision]
+        self.modules_to_not_convert = modules_to_not_convert
+
+        self.post_init()
+
+    def post_init(self):
+        r"""
+        Safety checker that arguments are correct
+        """
+        accpeted_precision = ["int4", "nvfp4"]
+        if self.precision not in accpeted_precision:
+            raise ValueError(f"Only supported precision in {accpeted_precision} but found {self.precision}")
