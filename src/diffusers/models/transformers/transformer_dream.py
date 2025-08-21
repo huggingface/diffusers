@@ -283,16 +283,19 @@ class DreamRotaryEmbedding(nn.Module):
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     @torch.no_grad()
-    def forward(self, position_ids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # NOTE: x is only used for its device and dtype and not its actual contents
         # position_ids shape: [B, S]
+        # D --> dim --> attention_head_dim
         # TODO: rewrite in terms of get_1d_rotary_pos_embed?
         inv_freq_expanded = self.inv_freq[None, :, None].expand(position_ids.shape[0], -1, 1)  # [B, D // 2, 1]?
         position_ids_expanded = position_ids[:, None, :]  # [B, 1, S]?
 
-        freqs = (inv_freq_expanded @ position_ids_expanded).transpose(1, 2)  # [B, S, D // 2]?
+        # Force to float32 following https://github.com/huggingface/transformers/pull/29285
+        freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)  # [B, S, D // 2]?
         emb = torch.cat((freqs, freqs), dim=-1)  # [B, S, D]
-        cos = emb.cos()
-        sin = emb.sin()
+        cos = emb.cos().to(dtype=x.dtype)
+        sin = emb.sin().to(dtype=x.dtype)
 
         return cos, sin
 
@@ -516,7 +519,7 @@ class DreamTransformer1DModel(
             position_ids = torch.arange(hidden_states.shape[1], device=hidden_states.device)
             position_ids = position_ids.unsqueeze(0)  # [L] --> [1, L]
         # Get RoPE embeddings (shared across all layers)
-        rotary_emb = self.rotary_embedding(position_ids)
+        rotary_emb = self.rotary_embedding(hidden_states, position_ids)
 
         # Transformer decoder layers
         for block in self.transformer_blocks:
