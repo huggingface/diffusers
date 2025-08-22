@@ -225,14 +225,7 @@ _sageattention_available, _sageattention_version = _is_package_available("sageat
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
 _kornia_available, _kornia_version = _is_package_available("kornia")
-
-_nvidia_modelopt_available = importlib.util.find_spec("modelopt") is not None
-if _nvidia_modelopt_available:
-    try:
-        _nvidia_modelopt_version = importlib_metadata.version("nvidia_modelopt")
-        logger.debug(f"Successfully import nvidia_modelopt version {_nvidia_modelopt_version}")
-    except importlib_metadata.PackageNotFoundError:
-        _nvidia_modelopt_available = False
+_nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 
 
 def is_torch_available():

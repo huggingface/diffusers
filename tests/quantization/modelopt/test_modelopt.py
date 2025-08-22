@@ -2,7 +2,7 @@ import gc
 import tempfile
 import unittest
 
-from diffusers import NVIDIAModelOptConfig, StableDiffusion3Pipeline, SD3Transformer2DModel
+from diffusers import NVIDIAModelOptConfig, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.utils import is_nvidia_modelopt_available, is_torch_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
@@ -12,6 +12,7 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate,
     require_big_accelerator,
+    require_modelopt_version_greater_or_equal,
     require_torch_cuda_compatibility,
     torch_device,
 )
@@ -31,6 +32,7 @@ enable_full_determinism()
 @nightly
 @require_big_accelerator
 @require_accelerate
+@require_modelopt_version_greater_or_equal("0.33.1")
 class ModelOptBaseTesterMixin:
     model_id = "hf-internal-testing/tiny-sd3-pipe"
     model_cls = SD3Transformer2DModel

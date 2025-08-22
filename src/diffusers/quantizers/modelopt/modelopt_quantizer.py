@@ -115,23 +115,27 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             logger.info("You did not specify `torch_dtype` in `from_pretrained`. Setting it to `torch.float32`.")
             torch_dtype = torch.float32
         return torch_dtype
-    
+
     def get_conv_param_names(self, model: "ModelMixin") -> List[str]:
         """
-        Get parameter names for all convolutional layers in a HuggingFace ModelMixin.
-        Includes Conv1d/2d/3d and ConvTranspose1d/2d/3d.
+        Get parameter names for all convolutional layers in a HuggingFace ModelMixin. Includes Conv1d/2d/3d and
+        ConvTranspose1d/2d/3d.
         """
         conv_types = (
-            nn.Conv1d, nn.Conv2d, nn.Conv3d,
-            nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d,
+            nn.Conv1d,
+            nn.Conv2d,
+            nn.Conv3d,
+            nn.ConvTranspose1d,
+            nn.ConvTranspose2d,
+            nn.ConvTranspose3d,
         )
-        
+
         conv_param_names = []
         for name, module in model.named_modules():
             if isinstance(module, conv_types):
                 for param_name, _ in module.named_parameters(recurse=False):
                     conv_param_names.append(f"{name}.{param_name}")
-    
+
         return conv_param_names
 
     def _process_model_before_weight_loading(

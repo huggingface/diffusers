@@ -39,7 +39,7 @@ deps = {
     "gguf": "gguf>=0.10.0",
     "torchao": "torchao>=0.7.0",
     "bitsandbytes": "bitsandbytes>=0.43.3",
-    "nvidia_modelopt[hf]": "nvidia_modelopt[hf]>=0.27.0",
+    "nvidia_modelopt[hf]": "nvidia_modelopt[hf]>=0.33.1",
     "regex": "regex!=2019.12.17",
     "requests": "requests",
     "tensorboard": "tensorboard",
