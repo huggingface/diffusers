@@ -149,6 +149,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DMultiControlNetModel,
             MultiControlNetModel,
             MultiControlNetUnionModel,
+            QwenImageControlNetModel,
+            QwenImageMultiControlNetModel,
             SanaControlNetModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,

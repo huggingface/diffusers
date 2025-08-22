@@ -667,7 +667,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
             latents_mean = (torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)).to(device)
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(device)
-            
+
             control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
             control_image = (control_image - latents_mean) * latents_std
 
@@ -752,7 +752,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     if isinstance(controlnet_cond_scale, list):
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
-                
+
                 # controlnet
                 controlnet_block_samples = self.controlnet(
                     hidden_states=latents,
@@ -765,7 +765,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
                     return_dict=False,
                 )
-                
+
                 with self.transformer.cache_context("cond"):
                     noise_pred = self.transformer(
                         hidden_states=latents,

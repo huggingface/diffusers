@@ -19,14 +19,19 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin, FromOriginalModelMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
 from ..attention_processor import AttentionProcessor
 from ..cache_utils import CacheMixin
 from ..controlnets.controlnet import zero_module
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..transformers.transformer_qwenimage import QwenImageTransformerBlock, QwenTimestepProjEmbeddings, QwenEmbedRope, RMSNorm
+from ..transformers.transformer_qwenimage import (
+    QwenEmbedRope,
+    QwenImageTransformerBlock,
+    QwenTimestepProjEmbeddings,
+    RMSNorm,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -238,7 +243,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         temb = self.time_text_embed(timestep, hidden_states)
 
         image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
-        
+
         timestep = timestep.to(hidden_states.dtype)
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)

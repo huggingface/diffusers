@@ -37,10 +37,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipeline_qwenimage import QwenImagePipeline
+        from .pipeline_qwenimage_controlnet import QwenImageControlNetPipeline
         from .pipeline_qwenimage_edit import QwenImageEditPipeline
         from .pipeline_qwenimage_img2img import QwenImageImg2ImgPipeline
         from .pipeline_qwenimage_inpaint import QwenImageInpaintPipeline
-        from .pipeline_qwenimage_controlnet import QwenImageControlNetPipeline
 else:
     import sys
 
