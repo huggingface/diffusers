@@ -75,7 +75,7 @@ Asynchronous Processing Timeline:
 For Long Videos (`num_frames` > `base_num_frames`):
 `base_num_frames` acts as the "sliding window size" for processing long videos.
 
-Example: 257-frame video with `base_num_frames=97`, `overlap_history=17`
+Example: `257`-frame video with `base_num_frames=97`, `overlap_history=17`
 ```text
 ┌──── Iteration 1 (frames 1-97) ────┐
 │ Processing window: 97 frames      │ → 5 blocks,
@@ -312,6 +312,10 @@ export_to_video(output, "video.mp4", fps=24, quality=8)
 
 </hfoption>
 </hfoptions>
+
+## Notes
+
+- SkyReels-V2 supports LoRAs with [`~loaders.SkyReelsV2LoraLoaderMixin.load_lora_weights`].
 
 `SkyReelsV2Pipeline` and `SkyReelsV2ImageToVideoPipeline` are also available without Diffusion Forcing framework applied.
 
