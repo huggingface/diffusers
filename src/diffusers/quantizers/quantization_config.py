@@ -767,8 +767,12 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         "FP8": (4, 3),
         "INT8": 8,
         "INT4": 4,
-        # "NF4": 4,  # TODO: enable this upon modelopt release https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/183
+        "NF4": 4,
         "NVFP4": (2,1),
+    }
+    quanttype_to_scalingbits = {
+        "NF4": 8,
+        "NVFP4": (4, 3),
     }
 
     def __init__(
@@ -884,15 +888,17 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
             quant_cfg["*input_quantizer"]["axis"] = self.channel_quantize
             quant_cfg["*input_quantizer"]["type"] = "dynamic"
 
-        # Only fixed sizes are supported for now in modelopt
-        if "NF4" in w_type:
-            quant_cfg["*weight_quantizer"]["block_sizes"].update({"scale_bits":8, "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize}})
-        elif "NVFP4" in w_type:
-            quant_cfg["*weight_quantizer"]["block_sizes"].update({"scale_bits":(4,3), "type": "dynamic"})
-        if act_type:
-            if "NF4" in act_type:
-                quant_cfg["*input_quantizer"]["block_sizes"].update({"scale_bits":8, "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize}})
-            elif "NVFP4" in act_type:
-                quant_cfg["*input_quantizer"]["block_sizes"].update({"scale_bits":(4,3), "type": "dynamic"})
+        # Only fixed scaling sizes are supported for now in modelopt
+        if self.scale_channel_quantize is not None and self.scale_block_quantize is not None:
+            if w_type in NVIDIAModelOptConfig.quanttype_to_scalingbits:
+                quant_cfg["*weight_quantizer"]["block_sizes"].update({
+                    "scale_bits": NVIDIAModelOptConfig.quanttype_to_scalingbits[w_type],
+                    "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize}
+                })
+            if act_type and act_type in NVIDIAModelOptConfig.quanttype_to_scalingbits:
+                quant_cfg["*input_quantizer"]["block_sizes"].update({
+                    "scale_bits": NVIDIAModelOptConfig.quanttype_to_scalingbits[act_type],
+                    "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize}
+                })
 
         return BASE_CONFIG

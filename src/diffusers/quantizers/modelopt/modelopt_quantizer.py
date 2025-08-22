@@ -32,7 +32,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
 
     use_keep_in_fp32_modules = True
     requires_calibration = False
-    required_packages = ["modelopt"]
+    required_packages = ["nvidia_modelopt"]
 
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
