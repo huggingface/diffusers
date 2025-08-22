@@ -217,7 +217,10 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.top_p_schedule = None
         self.top_k_schedule = None
 
-        self.timesteps = None
+        # For compatibility with scheduler tests, create a dummy timestep schedule on initialization. Since masked
+        # diffusion models such as Dream are trained in a continuous-time setting, num_train_timesteps is not
+        # well-defined for this scheduler.
+        self.timesteps = torch.linspace(1.0, final_timestep, 11)  # Pretend there are 10 timesteps
         self.alphas = None
 
         self.init_noise_sigma = 1.0
