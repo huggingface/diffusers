@@ -321,7 +321,6 @@ if integrity_checker.test_image(image_):
 <hfoptions id="kontext-inpaint">
 <hfoption id="text-only">
 
-#### Inpainting with text only
 
 ```python
 import torch
