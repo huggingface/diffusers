@@ -63,7 +63,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 
 There are a few ways to load a community pipeline.
 
-- Pass a local path to `custom_pipeline` to load a local community pipeline.
+- Pass a path to `custom_pipeline` to load a local community pipeline. The directory must contain a `pipeline.py` file containing the pipeline class.
 
   ```py
   import torch
@@ -71,7 +71,7 @@ There are a few ways to load a community pipeline.
 
   pipeline = DiffusionPipeline.from_pretrained(
       "stabilityai/stable-diffusion-3-medium-diffusers",
-      custom_pipeline="./path/tp/pipeline_directory/",
+      custom_pipeline="path/to/pipeline_directory",
       torch_dtype=torch.float16,
       device_map="cuda"
   )
