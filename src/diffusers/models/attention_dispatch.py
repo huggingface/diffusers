@@ -491,8 +491,8 @@ else:
             return func
         return wrap if fn is None else fn
     
-    custom_op = custom_op_no_op
-    register_fake = register_fake_no_op
+    _custom_op = custom_op_no_op
+    _register_fake = register_fake_no_op
 
 
 @custom_op("flash_attn_3::_flash_attn_forward", mutates_args=(), device_types="cuda")
