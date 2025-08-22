@@ -349,7 +349,6 @@ image.save("kontext_inpainting_normal.png")
 </hfoption>
 <hfoption id="image conditioning">
 
-#### Inpainting with image conditioning
 ```python
 import torch
 from diffusers import FluxKontextInpaintPipeline
