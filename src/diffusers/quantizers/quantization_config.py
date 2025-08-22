@@ -759,6 +759,8 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
             The forward loop function to use for calibration during quantization.
         modelopt_config (`dict`, *optional*, default to `None`):
             The modelopt config, useful for passing custom configs to modelopt.
+        disable_conv_quantization (`bool`, *optional*, default to `False`):
+            If set to `True`, the quantization will be disabled for convolutional layers.
         kwargs (`Dict[str, Any]`, *optional*):
             Additional parameters which are to be used for calibration.
     """
@@ -787,6 +789,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         algorithm: str = "max",
         forward_loop: Optional[Callable] = None,
         modelopt_config: Optional[dict] = None,
+        disable_conv_quantization: bool = False,
         **kwargs,
     ) -> None:
         self.quant_method = QuantizationMethod.MODELOPT
@@ -803,6 +806,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         self.scale_channel_quantize = scale_channel_quantize
         self.scale_block_quantize = scale_block_quantize
         self.modelopt_config = self.get_config_from_quant_type() if not modelopt_config else modelopt_config
+        self.disable_conv_quantization = disable_conv_quantization
 
     def _normalize_quant_type(self, quant_type: str) -> str:
         """

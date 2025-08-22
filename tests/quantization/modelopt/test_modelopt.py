@@ -2,7 +2,7 @@ import gc
 import tempfile
 import unittest
 
-from diffusers import NVIDIAModelOptConfig, SanaPipeline, SanaTransformer2DModel
+from diffusers import NVIDIAModelOptConfig, StableDiffusion3Pipeline, SD3Transformer2DModel
 from diffusers.utils import is_nvidia_modelopt_available, is_torch_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
@@ -32,9 +32,9 @@ enable_full_determinism()
 @require_big_accelerator
 @require_accelerate
 class ModelOptBaseTesterMixin:
-    model_id = "Efficient-Large-Model/Sana_600M_1024px_diffusers"
-    model_cls = SanaTransformer2DModel
-    pipeline_cls = SanaPipeline
+    model_id = "hf-internal-testing/tiny-sd3-pipe"
+    model_cls = SD3Transformer2DModel
+    pipeline_cls = StableDiffusion3Pipeline
     torch_dtype = torch.bfloat16
     expected_memory_reduction = 0.0
     keep_in_fp32_module = ""
@@ -270,7 +270,7 @@ class SanaTransformerINT4WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase)
             "quant_type": "INT4",
             "block_quantize": 128,
             "channel_quantize": -1,
-            "modules_to_not_convert": ["conv", "patch_embed"],
+            "disable_conv_quantization": True,
         }
 
 

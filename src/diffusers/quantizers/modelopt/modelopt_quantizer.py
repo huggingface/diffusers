@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 if is_torch_available():
     import torch
+    import torch.nn as nn
 
 if is_accelerate_available():
     from accelerate.utils import set_module_tensor_to_device
@@ -114,6 +115,24 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             logger.info("You did not specify `torch_dtype` in `from_pretrained`. Setting it to `torch.float32`.")
             torch_dtype = torch.float32
         return torch_dtype
+    
+    def get_conv_param_names(self, model: "ModelMixin") -> List[str]:
+        """
+        Get parameter names for all convolutional layers in a HuggingFace ModelMixin.
+        Includes Conv1d/2d/3d and ConvTranspose1d/2d/3d.
+        """
+        conv_types = (
+            nn.Conv1d, nn.Conv2d, nn.Conv3d,
+            nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d,
+        )
+        
+        conv_param_names = []
+        for name, module in model.named_modules():
+            if isinstance(module, conv_types):
+                for param_name, _ in module.named_parameters(recurse=False):
+                    conv_param_names.append(f"{name}.{param_name}")
+    
+        return conv_param_names
 
     def _process_model_before_weight_loading(
         self,
@@ -135,6 +154,8 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         if isinstance(modules_to_not_convert, str):
             modules_to_not_convert = [modules_to_not_convert]
         modules_to_not_convert.extend(keep_in_fp32_modules)
+        if self.quantization_config.disable_conv_quantization:
+            modules_to_not_convert.extend(self.get_conv_param_names(model))
 
         for module in modules_to_not_convert:
             self.quantization_config.modelopt_config["quant_cfg"]["*" + module + "*"] = {"enable": False}
