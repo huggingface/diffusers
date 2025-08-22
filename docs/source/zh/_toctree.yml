@@ -15,15 +15,49 @@
   - local: using-diffusers/schedulers
     title: Load schedulers and models
 
+- title: Inference
+  isExpanded: false
+  sections:
+  - local: training/distributed_inference
+    title: Distributed inference
+
 - title: Inference optimization
   isExpanded: false
   sections:
   - local: optimization/fp16
     title: Accelerate inference
+  - local: optimization/cache
+    title: Caching
+  - local: optimization/memory
+    title: Reduce memory usage
+  - local: optimization/speed-memory-optims
+    title: Compile and offloading quantized models
   - title: Community optimizations
     sections:
+    - local: optimization/pruna
+      title: Pruna
     - local: optimization/xformers
       title: xFormers
+    - local: optimization/tome
+      title: Token merging
+    - local: optimization/deepcache
+      title: DeepCache
+    - local: optimization/tgate
+      title: TGATE
+    - local: optimization/xdit
+      title: xDiT
+    - local: optimization/para_attn
+      title: ParaAttention
+
+- title: Hybrid Inference
+  isExpanded: false
+  sections:
+  - local: hybrid_inference/overview
+    title: Overview
+  - local: hybrid_inference/vae_encode
+    title: VAE Encode
+  - local: hybrid_inference/api_reference
+    title: API Reference
 
 - title: Modular Diffusers
   isExpanded: false
@@ -44,6 +78,10 @@
     title: AutoPipelineBlocks
   - local: modular_diffusers/modular_pipeline
     title: ModularPipeline
+  - local: modular_diffusers/components_manager
+    title: ComponentsManager
+  - local: modular_diffusers/guiders
+    title: Guiders
 
 - title: Training
   isExpanded: false
@@ -56,12 +94,20 @@
     sections:
     - local: training/text2image
       title: Text-to-image
+    - local: training/kandinsky
+      title: Kandinsky 2.2
+    - local: training/wuerstchen
+      title: Wuerstchen
     - local: training/controlnet
       title: ControlNet
+    - local: training/instructpix2pix
+      title: InstructPix2Pix
   - title: Methods
     sections:
     - local: training/text_inversion
       title: Textual Inversion
+    - local: training/dreambooth
+      title: DreamBooth
     - local: training/lora
       title: LoRA
 
@@ -70,6 +116,16 @@
   sections:
   - local: optimization/onnx
     title: ONNX
+  - local: optimization/open_vino
+    title: OpenVINO
+  - local: optimization/coreml
+    title: Core ML
+  - local: optimization/mps
+    title: Metal Performance Shaders (MPS)
+  - local: optimization/habana
+    title: Intel Gaudi
+  - local: optimization/neuron
+    title: AWS Neuron
 
 - title: Specific pipeline examples
   isExpanded: false
