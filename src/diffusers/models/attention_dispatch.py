@@ -495,7 +495,7 @@ else:
     _register_fake = register_fake_no_op
 
 
-@custom_op("flash_attn_3::_flash_attn_forward", mutates_args=(), device_types="cuda")
+@_custom_op("flash_attn_3::_flash_attn_forward", mutates_args=(), device_types="cuda")
 def _wrapped_flash_attn_3_original(
     query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
