@@ -157,7 +157,7 @@ class FlaxAttention(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0 We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
