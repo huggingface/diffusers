@@ -1,7 +1,31 @@
-from ..modular_pipeline import PipelineBlock, PipelineState
+# Copyright 2025 Qwen-Image Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from typing import List, Optional, Union
+import torch
+from ...utils import logging
+from transformers import Qwen2Tokenizer, Qwen2_5_VLForConditionalGeneration
+
+from ...guiders import ClassifierFreeGuidance
+from ...configuration_utils import FrozenDict
+
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 
+from .modular_pipeline import QwenImageModularPipeline
 
+logger = logging.get_logger(__name__)
 
 
 def get_qwen_prompt_embeds(
@@ -51,32 +75,32 @@ def get_qwen_prompt_embeds(
 
     return prompt_embeds, encoder_attention_mask
 
-class QwenImageTextEncoderStep(PipelineBlock):
+class QwenImageTextEncoderStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     @property
     def description(self) -> str:
-        return "QwenImage Text Encoder"
+        return "Text Encoder step that generate text_embeddings to guide the image generation"
     
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec(name="text_encoder", type=Qwen2_5_VLForConditionalGeneration, description="The text encoder to use"),
-            ComponentSpec(name="tokenizer", type=Qwen2Tokenizer, description="The tokenizer to use"),
+            ComponentSpec("text_encoder", Qwen2_5_VLForConditionalGeneration, description="The text encoder to use"),
+            ComponentSpec("tokenizer", Qwen2Tokenizer, description="The tokenizer to use"),
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
                 config=FrozenDict({"guidance_scale": 4.0}),
                 default_creation_method="from_config",
-                required=False,
             ),
         ]
     
     @property
     def expected_configs(self) -> List[ConfigSpec]:
         return [
-            ConfigSpec(name="prompt_template_encode", "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"),
-            ConfigSpec(name="prompt_template_encode_start_idx", 34),
+            ConfigSpec(name="prompt_template_encode", default="<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"),
+            ConfigSpec(name="prompt_template_encode_start_idx", default=34),
+            ConfigSpec(name="tokenizer_max_length", default=1024),
         ]
     
     @property
@@ -91,12 +115,13 @@ class QwenImageTextEncoderStep(PipelineBlock):
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(name="prompt_embeds", kwargs_type="guider_input_fields",type_hint=torch.Tensor, description="The prompt embeddings"),
-            OutputParam(name="encoder_attention_mask", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The encoder attention mask"),
+            OutputParam(name="prompt_embeds_mask", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The encoder attention mask"),
             OutputParam(name="negative_prompt_embeds", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings"),
             OutputParam(name="negative_prompt_embeds_mask", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings mask"),
         ]
 
-    def check_inputs(self, prompt, negative_prompt, max_sequence_length):
+    @staticmethod
+    def check_inputs(prompt, negative_prompt, max_sequence_length):
 
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
@@ -107,23 +132,25 @@ class QwenImageTextEncoderStep(PipelineBlock):
         if max_sequence_length is not None and max_sequence_length > 1024:
             raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
     
-    def __call__(self, components, state: PipelineState):
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
         device = components._execution_device
-
         self.check_inputs(block_state.prompt, block_state.negative_prompt, block_state.max_sequence_length)
 
-        prompt_embeds, encoder_attention_mask = get_qwen_prompt_embeds(
+        block_state.prompt_embeds, block_state.prompt_embeds_mask = get_qwen_prompt_embeds(
             components.text_encoder,
             components.tokenizer,
             prompt=block_state.prompt,
             prompt_template_encode=components.config.prompt_template_encode,
             prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
-            tokenizer_max_length=block_state.max_sequence_length,
-            device,
-            dtype,
+            tokenizer_max_length=components.config.tokenizer_max_length,
+            device=device,
         )
+
+        block_state.prompt_embeds = block_state.prompt_embeds[:, :block_state.max_sequence_length]
+        block_state.prompt_embeds_mask = block_state.prompt_embeds_mask[:, :block_state.max_sequence_length]
 
         if components.requires_unconditional_embeds:
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds(
@@ -132,7 +159,11 @@ class QwenImageTextEncoderStep(PipelineBlock):
                 prompt=block_state.negative_prompt,
                 prompt_template_encode=components.config.prompt_template_encode,
                 prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
-                tokenizer_max_length=block_state.max_sequence_length,
-                device,
-                dtype,
+                tokenizer_max_length=components.config.tokenizer_max_length,
+                device=device,
             )
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds[:, :block_state.max_sequence_length]
+            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask[:, :block_state.max_sequence_length]
+
+        self.set_block_state(state, block_state)
+        return components, state

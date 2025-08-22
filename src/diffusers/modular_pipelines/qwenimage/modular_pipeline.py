@@ -44,12 +44,34 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     def vae_scale_factor(self):
         vae_scale_factor = 8
         if hasattr(self, "vae") and self.vae is not None:
-            vae_scale_factor = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None)
+            vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
         return vae_scale_factor
 
     @property
     def num_channels_latents(self):
-        num_channels_latents = 64
+        num_channels_latents = 16
         if hasattr(self, "transformer") and self.transformer is not None:
-            num_channels_latents = self.transformer.config.in_channels
+            num_channels_latents = self.transformer.config.in_channels // 4
         return num_channels_latents
+    
+
+    @property
+    def is_guidance_distilled(self):
+        is_guidance_distilled = False
+        if hasattr(self, "transformer") and self.transformer is not None:
+            is_guidance_distilled = self.transformer.config.guidance_embeds
+        return is_guidance_distilled
+
+
+    @property
+    def requires_unconditional_embeds(self):
+        # by default, always prepare unconditional embeddings
+        requires_unconditional_embeds = True
+
+        if hasattr(self, "guider") and self.guider is not None:
+            requires_unconditional_embeds = self.guider.num_conditions > 1
+
+        elif not hasattr(self, "guider") or self.guider is None:
+            requires_unconditional_embeds = False
+
+        return requires_unconditional_embeds

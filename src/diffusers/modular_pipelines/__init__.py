@@ -47,6 +47,7 @@ else:
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
     _import_structure["wan"] = ["WanAutoBlocks", "WanModularPipeline"]
     _import_structure["flux"] = ["FluxAutoBlocks", "FluxModularPipeline"]
+    _import_structure["qwenimage"] = ["QwenImageModularPipeline"]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -70,6 +71,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import WanAutoBlocks, WanModularPipeline
+        from .qwenimage import QwenImageModularPipeline
 else:
     import sys
 
