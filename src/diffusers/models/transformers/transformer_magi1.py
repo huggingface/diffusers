@@ -132,11 +132,12 @@ class Magi1AttnProcessor:
             query = apply_rotary_emb(query, *rotary_emb)
             key = apply_rotary_emb(key, *rotary_emb)
 
-        query = query.transpose(0, 1).reshape(-1, query.shape[-2], query.shape[-1]).contiguous()
-        key = key.transpose(0, 1).reshape(-1, key.shape[-2], key.shape[-1]).contiguous()
-        value = value.unflatten(2, (-1, attn.kv_inner_dim)).reshape(-1, value.shape[-2], value.shape[-1]).contiguous()
+        # batch_size, seq_len, num_heads, head_dim
+        query = query.contiguous()
+        key = key.contiguous()
+        value = value.unflatten(2, (-1, attn.kv_inner_dim)).transpose(0, 1).contiguous()
 
-        # Perform Grouped-query Attention (GQA)
+        # Perform Grouped-Query Attention (GQA)
         kv_heads = attn.kv_heads if attn.kv_heads is not None else attn.heads
         n_rep = attn.heads // kv_heads
         if n_rep >= 1:
@@ -529,7 +530,7 @@ class Magi1TransformerBlock(nn.Module):
     ) -> torch.Tensor:
         residual = hidden_states.float()
 
-        # Attention heads [sq, b, h] --> [sq, b, q + qx + k + v]
+        # [bs, sq, h] --> [sq, bs, q + qx + k + v]
         mixed_qqkv = self.norm1(hidden_states.transpose(0, 1))
 
         # 1. Self-attention
