@@ -118,14 +118,10 @@ class Magi1AttnProcessor:
         query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
         query = query.reshape(query.size(0), query.size(1), -1, attn.kv_inner_dim)
         key = key.reshape(key.size(0), key.size(1), -1, attn.kv_inner_dim)
-        original_dtype_query = query.dtype
-        original_dtype_key = key.dtype
-        query = query.float()
-        key = key.float()
 
-        query = attn.norm_q(query)
+        query = attn.norm_q(query.float()).to(query.dtype)
         query = query.transpose(0, 1).contiguous()
-        key = attn.norm_k(key)
+        key = attn.norm_k(key.float()).to(key.dtype)
         key = key.transpose(0, 1).contiguous()
 
         if rotary_emb is not None:
@@ -145,9 +141,6 @@ class Magi1AttnProcessor:
 
             query = apply_rotary_emb(query, *rotary_emb)
             key = apply_rotary_emb(key, *rotary_emb)
-
-        query = query.to(original_dtype_query)
-        key = key.to(original_dtype_key)
 
         query = query.transpose(0, 1).reshape(-1, query.shape[-2], query.shape[-1]).contiguous()
         key = key.transpose(0, 1).reshape(-1, key.shape[-2], key.shape[-1]).contiguous()
