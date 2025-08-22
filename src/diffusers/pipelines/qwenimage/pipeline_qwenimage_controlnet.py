@@ -45,8 +45,9 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers.utils import load_image
-        >>> from diffusers import QwenImageControlNetModel, QwenImageControlNetPipeline
+        >>> from diffusers import QwenImageControlNetModel, QwenImageMultiControlNetModel, QwenImageControlNetPipeline
 
+        >>> # QwenImageControlNetModel
         >>> controlnet = QwenImageControlNetModel.from_pretrained("InstantX/Qwen-Image-ControlNet-Union", torch_dtype=torch.bfloat16)
         >>> pipe = QwenImageControlNetPipeline.from_pretrained("Qwen/Qwen-Image", controlnet=controlnet, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
@@ -57,6 +58,19 @@ EXAMPLE_DOC_STRING = """
         >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(prompt, negative_prompt=negative_prompt, control_image=control_image, controlnet_conditioning_scale=1.0, num_inference_steps=30, true_cfg_scale=4.0).images[0]
         >>> image.save("qwenimage_cn_union.png")
+
+        >>> # QwenImageMultiControlNetModel
+        >>> controlnet = QwenImageControlNetModel.from_pretrained("InstantX/Qwen-Image-ControlNet-Union", torch_dtype=torch.bfloat16)
+        >>> controlnet = QwenImageMultiControlNetModel([controlnet])
+        >>> pipe = QwenImageControlNetPipeline.from_pretrained("Qwen/Qwen-Image", controlnet=controlnet, torch_dtype=torch.bfloat16)
+        >>> pipe.to("cuda")
+        >>> prompt = "Aesthetics art, traditional asian pagoda, elaborate golden accents, sky blue and white color palette, swirling cloud pattern, digital illustration, east asian architecture, ornamental rooftop, intricate detailing on building, cultural representation."
+        >>> negative_prompt = " "
+        >>> control_image = load_image("https://huggingface.co/InstantX/Qwen-Image-ControlNet-Union/resolve/main/conds/canny.png")
+        >>> # Depending on the variant being used, the pipeline call will slightly vary.
+        >>> # Refer to the pipeline documentation for more details.
+        >>> image = pipe(prompt, negative_prompt=negative_prompt, control_image=[control_image, control_image], controlnet_conditioning_scale=[0.5, 0.5], num_inference_steps=30, true_cfg_scale=4.0).images[0]
+        >>> image.save("qwenimage_cn_union_multi.png")
         ```
 """
 
@@ -177,7 +191,9 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         text_encoder: Qwen2_5_VLForConditionalGeneration,
         tokenizer: Qwen2Tokenizer,
         transformer: QwenImageTransformer2DModel,
-        controlnet: QwenImageControlNetModel,
+        controlnet: Union[
+            QwenImageControlNetModel, QwenImageMultiControlNetModel
+        ],
     ):
         super().__init__()
 
@@ -589,7 +605,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
         elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
-            mult = len(self.controlnet.nets) if isinstance(self.controlnet, QwenImageMultiControlNetModel) else 1
+            mult = len(control_image) if isinstance(self.controlnet, QwenImageMultiControlNetModel) else 1
             control_guidance_start, control_guidance_end = (
                 mult * [control_guidance_start],
                 mult * [control_guidance_end],
@@ -657,11 +673,11 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=self.vae.dtype,
-            )  # torch.Size([1, 3, height_ori, width_ori])
+            )
             height, width = control_image.shape[-2:]
 
             if control_image.ndim == 4:
-                control_image = control_image.unsqueeze(2)  # torch.Size([1, 3, 1, height_ori, width_ori])
+                control_image = control_image.unsqueeze(2)
 
             # vae encode
             self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
@@ -675,7 +691,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
             control_image = (control_image - latents_mean) * latents_std
 
-            control_image = control_image.permute(0, 2, 1, 3, 4)  # torch.Size([1, 1, 16, height_ori//8, width_ori//8])
+            control_image = control_image.permute(0, 2, 1, 3, 4)
 
             # pack
             control_image = self._pack_latents(
@@ -684,7 +700,53 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 num_channels_latents=num_channels_latents,
                 height=control_image.shape[3],
                 width=control_image.shape[4],
-            )
+            ).to(dtype=prompt_embeds.dtype, device=device)
+        
+        else:
+            if isinstance(self.controlnet, QwenImageMultiControlNetModel):
+                control_images = []
+                for control_image_ in control_image:
+                    control_image_ = self.prepare_image(
+                        image=control_image_,
+                        width=width,
+                        height=height,
+                        batch_size=batch_size * num_images_per_prompt,
+                        num_images_per_prompt=num_images_per_prompt,
+                        device=device,
+                        dtype=self.vae.dtype,
+                    )
+
+                    height, width = control_image_.shape[-2:]
+
+                    if control_image_.ndim == 4:
+                        control_image_ = control_image_.unsqueeze(2)
+
+                    # vae encode
+                    self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
+                    latents_mean = (torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)).to(
+                        device
+                    )
+                    latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                        device
+                    )
+
+                    control_image_ = retrieve_latents(self.vae.encode(control_image_), generator=generator)
+                    control_image_ = (control_image_ - latents_mean) * latents_std
+
+                    control_image_ = control_image_.permute(0, 2, 1, 3, 4)
+
+                    # pack
+                    control_image_ = self._pack_latents(
+                        control_image_,
+                        batch_size=control_image_.shape[0],
+                        num_channels_latents=num_channels_latents,
+                        height=control_image_.shape[3],
+                        width=control_image_.shape[4],
+                    ).to(dtype=prompt_embeds.dtype, device=device)
+
+                    control_images.append(control_image_)
+
+                control_image = control_images
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
@@ -756,11 +818,11 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     if isinstance(controlnet_cond_scale, list):
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
-
+                
                 # controlnet
                 controlnet_block_samples = self.controlnet(
                     hidden_states=latents,
-                    controlnet_cond=control_image.to(dtype=latents.dtype, device=device),
+                    controlnet_cond=control_image,
                     conditioning_scale=cond_scale,
                     timestep=timestep / 1000,
                     encoder_hidden_states=prompt_embeds,

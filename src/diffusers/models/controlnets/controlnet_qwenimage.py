@@ -295,7 +295,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         )
 
 
-class QwenImageMultiControlNetModel(ModelMixin):
+class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
     `QwenImageMultiControlNetModel` wrapper class for Multi-QwenImageControlNetModel
 
