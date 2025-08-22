@@ -160,9 +160,6 @@ class Magi1AttnProcessor:
             key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
             value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
 
-        if self._attention_backend == "flash" and self.is_cross_attention:
-            self._attention_backend = "flash_varlen"
-
         hidden_states = dispatch_attention_fn(
             query,
             key,
@@ -530,15 +527,15 @@ class Magi1TransformerBlock(nn.Module):
                 int(dim * 2),
             ),
         )
-        self.self_attn_post_norm = FP32LayerNorm(dim, eps)
-        self.self_attn_post_norm.weight += 1
         self.norm2 = FP32LayerNorm(dim, eps)
+        self.norm2.weight += 1
+        self.norm3 = FP32LayerNorm(dim, eps)
 
         # 3. Feed-forward
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu")
 
-        self.mlp_post_norm = FP32LayerNorm(dim, eps)
-        self.mlp_post_norm.weight += 1
+        self.norm4 = FP32LayerNorm(dim, eps)
+        self.norm4.weight += 1
 
     def forward(
         self,
@@ -569,18 +566,18 @@ class Magi1TransformerBlock(nn.Module):
         # Residual connection for self-attention
         original_dtype = hidden_states.dtype
         hidden_states = range_mod_pytorch(hidden_states.float(), condition_map, gate_msa)
-        hidden_states = self.self_attn_post_norm(hidden_states)
+        hidden_states = self.norm2(hidden_states)
         hidden_states = hidden_states + residual
         residual = hidden_states
         hidden_states = hidden_states.to(original_dtype)
 
-        hidden_states = self.norm2(hidden_states)
+        hidden_states = self.norm3(hidden_states)
         hidden_states = self.ffn(hidden_states)
 
         # Residual connection for MLP
         original_dtype = hidden_states.dtype
         hidden_states = range_mod_pytorch(hidden_states.float(), condition_map, gate_mlp)
-        hidden_states = self.mlp_post_norm(hidden_states)
+        hidden_states = self.norm4(hidden_states)
         hidden_states = hidden_states + residual
         hidden_states = hidden_states.to(original_dtype)
         return hidden_states
@@ -666,7 +663,6 @@ class Magi1Transformer3DModel(
 
         # 1. Patch & position embedding
         self.rope = Magi1RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
-
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size, bias=False)
 
         # 2. Condition embeddings
