@@ -82,7 +82,7 @@ class FlaxTimestepEmbedding(nn.Module):
     """
 
     logger.warning(
-        "Flax classes are deprecated and will be removed in Diffusers v1. We "
+        "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
         "recommend migrating to PyTorch classes or pinning your version of Diffusers."
     )
 
@@ -115,7 +115,7 @@ class FlaxTimesteps(nn.Module):
     freq_shift: float = 1
 
     logger.warning(
-        "Flax classes are deprecated and will be removed in Diffusers v1. We "
+        "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
         "recommend migrating to PyTorch classes or pinning your version of Diffusers."
     )
 

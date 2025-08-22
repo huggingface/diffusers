@@ -77,7 +77,7 @@ class FlaxUpsample2D(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
         self.conv = nn.Conv(
@@ -115,7 +115,7 @@ class FlaxDownsample2D(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -162,7 +162,7 @@ class FlaxResnetBlock2D(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -239,7 +239,7 @@ class FlaxAttentionBlock(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -325,7 +325,7 @@ class FlaxDownEncoderBlock2D(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -387,7 +387,7 @@ class FlaxUpDecoderBlock2D(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -446,7 +446,7 @@ class FlaxUNetMidBlock2D(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -542,7 +542,7 @@ class FlaxEncoder(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -659,7 +659,7 @@ class FlaxDecoder(nn.Module):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -836,7 +836,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
 
     def setup(self):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1. We "
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
