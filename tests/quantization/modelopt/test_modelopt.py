@@ -319,5 +319,7 @@ class SanaTransformerNVFP4WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase
             "quant_type": "NVFP4",
             "block_quantize": 128,
             "channel_quantize": -1,
+            "scale_block_quantize": 8,
+            "scale_channel_quantize": -1,
             "modules_to_not_convert": ["conv"],
         }
