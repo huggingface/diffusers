@@ -190,6 +190,23 @@ def _get_mapping_function_kwargs(mapping_fn, **kwargs):
     return mapping_kwargs
 
 
+def _maybe_determine_modules_to_not_convert(quantization_config, state_dict):
+    if quantization_config is None:
+        return None
+    else:
+        is_nunchaku = quantization_config.quant_method == "nunchaku"
+        if not is_nunchaku:
+            return None
+        else:
+            no_qweight = set()
+            for key in state_dict:
+                if key.endswith(".weight"):
+                    # module name is everything except the last piece after "."
+                    module_name = ".".join(key.split(".")[:-1])
+                    no_qweight.add(module_name)
+            return sorted(no_qweight)
+
+
 class FromOriginalModelMixin:
     """
     Load pretrained weights saved in the `.ckpt` or `.safetensors` format into a model.
@@ -324,6 +341,18 @@ class FromOriginalModelMixin:
                 user_agent=user_agent,
             )
         if quantization_config is not None:
+            # For `nunchaku` checkpoints, we might want to determine the `modules_to_not_convert`.
+            original_modules_to_not_convert = quantization_config.modules_to_not_convert or []
+            determined_modules_to_not_convert = _maybe_determine_modules_to_not_convert(
+                quantization_config, checkpoint
+            )
+            if determined_modules_to_not_convert:
+                original_modules_to_not_convert.extend(determined_modules_to_not_convert)
+                original_modules_to_not_convert = list(set(original_modules_to_not_convert))
+                logger.info(
+                    f"`modules_to_not_convert` in the quantization_config was updated from {quantization_config.modules_to_not_convert} to {original_modules_to_not_convert}."
+                )
+                quantization_config.modules_to_not_convert = original_modules_to_not_convert
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
             hf_quantizer.validate_environment()
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
@@ -404,8 +433,9 @@ class FromOriginalModelMixin:
             model = cls.from_config(diffusers_model_config)
 
         checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
-
-        if _should_convert_state_dict_to_diffusers(model.state_dict(), checkpoint):
+        if not (
+            quantization_config is not None and quantization_config.quant_method == "nunchaku"
+        ) and _should_convert_state_dict_to_diffusers(model.state_dict(), checkpoint):
             diffusers_format_checkpoint = checkpoint_mapping_fn(
                 config=diffusers_model_config, checkpoint=checkpoint, **checkpoint_mapping_kwargs
             )

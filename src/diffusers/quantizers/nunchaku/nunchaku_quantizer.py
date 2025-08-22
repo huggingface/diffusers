@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 if is_torch_available():
     import torch
 
+if is_accelerate_available():
+    pass
+
+if is_nunchaku_available():
+    from .utils import replace_with_nunchaku_linear
 
 logger = logging.get_logger(__name__)
 
@@ -35,10 +40,6 @@ class NunchakuQuantizer(DiffusersQuantizer):
 
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
-        dtype_map = {"int4": torch.int8}
-        if is_fp8_available():
-            dtype_map = {"nvfp4": torch.float8_e4m3fn}
-        self.dtype_map = dtype_map
 
     def validate_environment(self, *args, **kwargs):
         if not torch.cuda.is_available():
@@ -74,14 +75,13 @@ class NunchakuQuantizer(DiffusersQuantizer):
         state_dict: Dict[str, Any],
         **kwargs,
     ):
-        # TODO: revisit
-        # Check if the param_name is not in self.modules_to_not_convert
-        if any((key + "." in param_name) or (key == param_name) for key in self.modules_to_not_convert):
-            return False
-        else:
-            # We only quantize the weight of nn.Linear
-            module, _ = get_module_from_name(model, param_name)
-            return isinstance(module, torch.nn.Linear)
+        from nunchaku.models.linear import SVDQW4A4Linear
+
+        module, _ = get_module_from_name(model, param_name)
+        if self.pre_quantized and isinstance(module, SVDQW4A4Linear):
+            return True
+
+        return False
 
     def create_quantized_param(
         self,
@@ -98,42 +98,33 @@ class NunchakuQuantizer(DiffusersQuantizer):
         from nunchaku.models.linear import SVDQW4A4Linear
 
         module, tensor_name = get_module_from_name(model, param_name)
+        state_dict = args[0]
         if tensor_name not in module._parameters and tensor_name not in module._buffers:
             raise ValueError(f"{module} does not have a parameter or a buffer named {tensor_name}.")
 
-        if self.pre_quantized:
-            if tensor_name in module._parameters:
-                module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
-            if tensor_name in module._buffers:
-                module._buffers[tensor_name] = torch.nn.Parameter(param_value.to(target_device))
-
-        elif isinstance(module, torch.nn.Linear):
-            # TODO: this returns an `SVDQW4A4Linear` layer initialized from the corresponding `linear` module.
-            # But we need to have a utility that can take a pretrained param value and quantize it. Not sure
-            # how to do that yet.
-            # Essentially, we need something like `bnb.nn.Params4bit.from_prequantized`. Or is there a better
-            # way to do it?
-            is_param = tensor_name in module._parameters
-            is_buffer = tensor_name in module._buffers
-            new_module = SVDQW4A4Linear.from_linear(
-                module, precision=self.quantization_config.precision, rank=self.quantization_config.rank
-            )
-            module_name = ".".join(param_name.split(".")[:-1])
-            if "." in module_name:
-                parent_name, leaf = module_name.rsplit(".", 1)
-                parent = model.get_submodule(parent_name)
+        if isinstance(module, SVDQW4A4Linear):
+            if param_value.ndim == 1:
+                module._parameters[tensor_name] = torch.nn.Parameter(param_value, requires_grad=False).to(
+                    target_device
+                )
+            elif tensor_name == "qweight":
+                module._parameters[tensor_name] = torch.nn.Parameter(param_value, requires_grad=False).to(
+                    target_device
+                )
+                # if the tensor has qweight, but does not have low-rank branch, we need to add some artificial tensors
+                for t in ["lora_up", "lora_down"]:
+                    # need to check at the state dict level for this
+                    new_tensor_name = param_name.replace(".qweight", f".{t}")
+                    if new_tensor_name not in state_dict:
+                        oc, ic = param_value.shape
+                        ic = ic * 2  # v is packed into INT8, so we need to double the size
+                        module._parameters[t] = torch.zeros(
+                            (0, ic) if t == "lora_down" else (oc, 0), device=param_value.device, dtype=torch.bfloat16
+                        )
             else:
-                parent, leaf = model, module_name
-
-            # rebind
-            # this will result into
-            # AttributeError: 'SVDQW4A4Linear' object has no attribute 'weight'. Did you mean: 'qweight'.
-            if is_param:
-                new_module._parameters[tensor_name] = torch.nn.Parameter(param_value).to(device=target_device)
-            elif is_buffer:
-                new_module._buffers[tensor_name] = torch.nn.Parameter(param_value).to(device=target_device)
-
-            setattr(parent, leaf, new_module)
+                module._parameters[tensor_name] = torch.nn.Parameter(param_value, requires_grad=False).to(
+                    target_device
+                )
 
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
@@ -173,24 +164,25 @@ class NunchakuQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert
-
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
-
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
-
-        # TODO: revisit
-        # Extend `self.modules_to_not_convert` to keys that are supposed to be offloaded to `cpu` or `disk`
-        # if isinstance(device_map, dict) and len(device_map.keys()) > 1:
-        #     keys_on_cpu = [key for key, value in device_map.items() if value in ["disk", "cpu"]]
-        #     self.modules_to_not_convert.extend(keys_on_cpu)
-
         # Purge `None`.
         # Unlike `transformers`, we don't know if we should always keep certain modules in FP32
         # in case of diffusion transformer models. For language models and others alike, `lm_head`
         # and tied modules are usually kept in FP32.
         self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
 
+        # Extend `self.modules_to_not_convert` to keys that are supposed to be offloaded to `cpu` or `disk`
+        if isinstance(device_map, dict) and len(device_map.keys()) > 1:
+            keys_on_cpu = [key for key, value in device_map.items() if value in ["disk", "cpu"]]
+            self.modules_to_not_convert.extend(keys_on_cpu)
+
+        model = replace_with_nunchaku_linear(
+            model,
+            modules_to_not_convert=self.modules_to_not_convert,
+            quantization_config=self.quantization_config,
+        )
         model.config.quantization_config = self.quantization_config
 
     def _process_model_after_weight_loading(self, model, **kwargs):

@@ -297,6 +297,13 @@ def load_model_dict_into_meta(
             offload_index = offload_weight(param, param_name, offload_folder, offload_index)
         elif param_device == "cpu" and state_dict_index is not None:
             state_dict_index = offload_weight(param, param_name, state_dict_folder, state_dict_index)
+        # This check below might be a bit counter-intuitive in nature. This is because we're checking if the param
+        # or its module is quantized and if so, we're proceeding with creating a quantized param. This is because
+        # of the way pre-trained models are loaded. They're initialized under "meta" device, where
+        # quantization layers are first injected. Hence, for a model that is either pre-quantized or supplemented
+        # with a `quantization_config` during `from_pretrained`, we expect `check_if_quantized_param` to return True.
+        # Then depending on the quantization backend being used, we run the actual quantization step under
+        # `create_quantized_param`.
         elif is_quantized and (
             hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=param_device)
         ):
