@@ -354,6 +354,6 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
                             for control_block_sample, block_sample in zip(control_block_samples, block_samples)
                         ]
         else:
-            raise ValueError("QwenImageMultiControlNetModel only supports controlnet-union now.")
+            raise ValueError("QwenImageMultiControlNetModel only supports a single controlnet-union now.")
 
         return control_block_samples

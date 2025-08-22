@@ -100,6 +100,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
 def calculate_shift(
     image_seq_len,
