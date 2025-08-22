@@ -81,6 +81,9 @@ The following example will download the full precision `mochi-1-preview` weights
 import torch
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview")
 
@@ -90,7 +93,7 @@ pipe.enable_vae_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 
-with torch.autocast("cuda", torch.bfloat16, cache_enabled=False):
+with torch.autocast(device, torch.bfloat16, cache_enabled=False):
       frames = pipe(prompt, num_frames=85).frames[0]
 
 export_to_video(frames, "mochi.mp4", fps=30)
@@ -137,7 +140,10 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
+from diffusers.utils.torch_utils import get_device
 from diffusers.video_processor import VideoProcessor
+
+device = get_device()
 
 pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", force_zeros_for_empty_prompt=True)
 pipe.enable_vae_tiling()
@@ -150,7 +156,7 @@ with torch.no_grad():
         pipe.encode_prompt(prompt=prompt)
     )
 
-with torch.autocast("cuda", torch.bfloat16):
+with torch.autocast(device, torch.bfloat16):
     with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
         frames = pipe(
             prompt_embeds=prompt_embeds,
@@ -162,7 +168,7 @@ with torch.autocast("cuda", torch.bfloat16):
             height=480,
             width=848,
             num_frames=163,
-            generator=torch.Generator("cuda").manual_seed(0),
+            generator=torch.Generator(device).manual_seed(0),
             output_type="latent",
             return_dict=False,
         )[0]
@@ -188,14 +194,17 @@ video = video_processor.postprocess_video(video)[0]
 export_to_video(video, "mochi.mp4", fps=30)
 ```
 
-## Running inference with multiple GPUs
+## Running inference with multiple accelerators
 
-It is possible to split the large Mochi transformer across multiple GPUs using the `device_map` and `max_memory` options in `from_pretrained`. In the following example we split the model across two GPUs, each with 24GB of VRAM.
+It is possible to split the large Mochi transformer across multiple accelerators using the `device_map` and `max_memory` options in `from_pretrained`. In the following example we split the model across two accelerators, each with 24GB of VRAM.
 
 ```python
 import torch
 from diffusers import MochiPipeline, MochiTransformer3DModel
 from diffusers.utils import export_to_video
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 model_id = "genmo/mochi-1-preview"
 transformer = MochiTransformer3DModel.from_pretrained(
@@ -209,7 +218,7 @@ pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
 pipe.enable_model_cpu_offload()
 pipe.enable_vae_tiling()
 
-with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
+with torch.autocast(device_type=device, dtype=torch.bfloat16, cache_enabled=False):
     frames = pipe(
         prompt="Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k.",
         negative_prompt="",
@@ -219,7 +228,7 @@ with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=Fals
         num_inference_steps=50,
         guidance_scale=4.5,
         num_videos_per_prompt=1,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        generator=torch.Generator(device=device).manual_seed(0),
         max_sequence_length=256,
         output_type="pil",
     ).frames[0]
@@ -239,6 +248,9 @@ Diffusers currently doesn't support using the FP8 scaled versions of the Mochi s
 import torch
 from diffusers import MochiPipeline, MochiTransformer3DModel
 from diffusers.utils import export_to_video
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 model_id = "genmo/mochi-1-preview"
 
@@ -250,7 +262,7 @@ pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
 pipe.enable_model_cpu_offload()
 pipe.enable_vae_tiling()
 
-with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
+with torch.autocast(device_type=device, dtype=torch.bfloat16, cache_enabled=False):
     frames = pipe(
         prompt="Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k.",
         negative_prompt="",
@@ -260,7 +272,7 @@ with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=Fals
         num_inference_steps=50,
         guidance_scale=4.5,
         num_videos_per_prompt=1,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        generator=torch.Generator(device=device).manual_seed(0),
         max_sequence_length=256,
         output_type="pil",
     ).frames[0]
