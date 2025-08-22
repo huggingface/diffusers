@@ -56,7 +56,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         num_attention_heads: int = 24,
         joint_attention_dim: int = 3584,
         axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
-        extra_condition_channels: int = 0, # for controlnet-inpainting
+        extra_condition_channels: int = 0,  # for controlnet-inpainting
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -86,7 +86,9 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):
             self.controlnet_blocks.append(zero_module(nn.Linear(self.inner_dim, self.inner_dim)))
-        self.controlnet_x_embedder = zero_module(torch.nn.Linear(in_channels + extra_condition_channels, self.inner_dim))
+        self.controlnet_x_embedder = zero_module(
+            torch.nn.Linear(in_channels + extra_condition_channels, self.inner_dim)
+        )
 
         self.gradient_checkpointing = False
 
@@ -286,7 +288,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            return (controlnet_block_samples)
+            return controlnet_block_samples
 
         return QwenImageControlNetOutput(
             controlnet_block_samples=controlnet_block_samples,

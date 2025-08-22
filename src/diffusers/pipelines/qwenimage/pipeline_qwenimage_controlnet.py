@@ -73,6 +73,7 @@ def calculate_shift(
     mu = image_seq_len * m + b
     return mu
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -85,6 +86,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -487,12 +489,10 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 1.0,
-
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         control_image: PipelineImageInput = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
-
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -657,21 +657,25 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=self.vae.dtype,
-            ) # torch.Size([1, 3, height_ori, width_ori])
+            )  # torch.Size([1, 3, height_ori, width_ori])
             height, width = control_image.shape[-2:]
 
             if control_image.ndim == 4:
-                control_image = control_image.unsqueeze(2) # torch.Size([1, 3, 1, height_ori, width_ori])
+                control_image = control_image.unsqueeze(2)  # torch.Size([1, 3, 1, height_ori, width_ori])
 
             # vae encode
             self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
-            latents_mean = (torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)).to(device)
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(device)
+            latents_mean = (torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)).to(
+                device
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                device
+            )
 
             control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
             control_image = (control_image - latents_mean) * latents_std
 
-            control_image = control_image.permute(0, 2, 1, 3, 4) # torch.Size([1, 1, 16, height_ori//8, width_ori//8])
+            control_image = control_image.permute(0, 2, 1, 3, 4)  # torch.Size([1, 1, 16, height_ori//8, width_ori//8])
 
             # pack
             control_image = self._pack_latents(
