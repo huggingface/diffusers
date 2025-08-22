@@ -191,9 +191,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         text_encoder: Qwen2_5_VLForConditionalGeneration,
         tokenizer: Qwen2Tokenizer,
         transformer: QwenImageTransformer2DModel,
-        controlnet: Union[
-            QwenImageControlNetModel, QwenImageMultiControlNetModel
-        ],
+        controlnet: Union[QwenImageControlNetModel, QwenImageMultiControlNetModel],
     ):
         super().__init__()
 
@@ -701,7 +699,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 height=control_image.shape[3],
                 width=control_image.shape[4],
             ).to(dtype=prompt_embeds.dtype, device=device)
-        
+
         else:
             if isinstance(self.controlnet, QwenImageMultiControlNetModel):
                 control_images = []
@@ -723,12 +721,12 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
                     # vae encode
                     self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
-                    latents_mean = (torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)).to(
-                        device
-                    )
-                    latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                        device
-                    )
+                    latents_mean = (
+                        torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)
+                    ).to(device)
+                    latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(
+                        1, self.vae.config.z_dim, 1, 1, 1
+                    ).to(device)
 
                     control_image_ = retrieve_latents(self.vae.encode(control_image_), generator=generator)
                     control_image_ = (control_image_ - latents_mean) * latents_std
@@ -818,7 +816,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     if isinstance(controlnet_cond_scale, list):
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
-                
+
                 # controlnet
                 controlnet_block_samples = self.controlnet(
                     hidden_states=latents,
