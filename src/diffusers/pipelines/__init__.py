@@ -393,6 +393,7 @@ else:
         "QwenImageImg2ImgPipeline",
         "QwenImageInpaintPipeline",
         "QwenImageEditPipeline",
+        "QwenImageControlNetPipeline",
     ]
 try:
     if not is_onnx_available():
