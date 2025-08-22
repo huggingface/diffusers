@@ -4,7 +4,6 @@ from ...utils import (
     get_module_from_name,
     is_accelerate_available,
     is_nvidia_modelopt_available,
-    is_nvidia_modelopt_version,
     is_torch_available,
     logging,
 )
@@ -94,8 +93,10 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         if self.pre_quantized:
             module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
         else:
-            set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)    
-            mtq.calibrate(module, self.quantization_config.modelopt_config["algorithm"], self.quantization_config.forward_loop)
+            set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
+            mtq.calibrate(
+                module, self.quantization_config.modelopt_config["algorithm"], self.quantization_config.forward_loop
+            )
             mtq.compress(module)
             module.weight.requires_grad = False
 
@@ -123,7 +124,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
         import modelopt.torch.opt as mto
-        
+
         if self.pre_quantized:
             return
 
@@ -144,14 +145,14 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
     def _process_model_after_weight_loading(self, model, **kwargs):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
         from modelopt.torch.opt import ModeloptStateManager
-        
+
         if self.pre_quantized:
             return model
-        
+
         for _, m in model.named_modules():
             if hasattr(m, ModeloptStateManager._state_key) and m is not model:
                 ModeloptStateManager.remove_state(m)
-        
+
         return model
 
     @property

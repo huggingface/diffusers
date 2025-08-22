@@ -2,7 +2,7 @@ import gc
 import tempfile
 import unittest
 
-from diffusers import SanaPipeline, SanaTransformer2DModel, NVIDIAModelOptConfig
+from diffusers import NVIDIAModelOptConfig, SanaPipeline, SanaTransformer2DModel
 from diffusers.utils import is_nvidia_modelopt_available, is_torch_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
@@ -16,11 +16,13 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
+
 if is_nvidia_modelopt_available():
     import modelopt.torch.quantization as mtq
 
 if is_torch_available():
     import torch
+
     from ..utils import LoRALayer, get_memory_consumption_stat
 
 enable_full_determinism()
@@ -69,29 +71,20 @@ class ModelOptBaseTesterMixin:
     def test_modelopt_memory_usage(self):
         inputs = self.get_dummy_inputs()
         inputs = {
-            k: v.to(device=torch_device, dtype=torch.bfloat16)
-            for k, v in inputs.items()
-            if not isinstance(v, bool)
+            k: v.to(device=torch_device, dtype=torch.bfloat16) for k, v in inputs.items() if not isinstance(v, bool)
         }
 
         unquantized_model = self.model_cls.from_pretrained(
             self.model_id, torch_dtype=self.torch_dtype, subfolder="transformer"
         )
         unquantized_model.to(torch_device)
-        unquantized_model_memory = get_memory_consumption_stat(
-            unquantized_model, inputs
-        )
+        unquantized_model_memory = get_memory_consumption_stat(unquantized_model, inputs)
 
-        quantized_model = self.model_cls.from_pretrained(
-            **self.get_dummy_model_init_kwargs()
-        )
+        quantized_model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
         quantized_model.to(torch_device)
         quantized_model_memory = get_memory_consumption_stat(quantized_model, inputs)
 
-        assert (
-            unquantized_model_memory / quantized_model_memory
-            >= self.expected_memory_reduction
-        )
+        assert unquantized_model_memory / quantized_model_memory >= self.expected_memory_reduction
 
     def test_keep_modules_in_fp32(self):
         _keep_in_fp32_modules = self.model_cls._keep_in_fp32_modules
@@ -109,9 +102,7 @@ class ModelOptBaseTesterMixin:
     def test_modules_to_not_convert(self):
         init_kwargs = self.get_dummy_model_init_kwargs()
         quantization_config_kwargs = self.get_dummy_init_kwargs()
-        quantization_config_kwargs.update(
-            {"modules_to_not_convert": self.modules_to_not_convert}
-        )
+        quantization_config_kwargs.update({"modules_to_not_convert": self.modules_to_not_convert})
         quantization_config = NVIDIAModelOptConfig(**quantization_config_kwargs)
         init_kwargs.update({"quantization_config": quantization_config})
 
@@ -159,18 +150,14 @@ class ModelOptBaseTesterMixin:
         with torch.no_grad():
             saved_model_output = saved_model(**inputs)
 
-        assert torch.allclose(
-            model_output.sample, saved_model_output.sample, rtol=1e-5, atol=1e-5
-        )
+        assert torch.allclose(model_output.sample, saved_model_output.sample, rtol=1e-5, atol=1e-5)
 
     def test_torch_compile(self):
         if not self._test_torch_compile:
             return
 
         model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
-        compiled_model = torch.compile(
-            model, mode="max-autotune", fullgraph=True, dynamic=False
-        )
+        compiled_model = torch.compile(model, mode="max-autotune", fullgraph=True, dynamic=False)
 
         model.to(torch_device)
         with torch.no_grad():
@@ -183,9 +170,7 @@ class ModelOptBaseTesterMixin:
         model_output = model_output.detach().float().cpu().numpy()
         compiled_model_output = compiled_model_output.detach().float().cpu().numpy()
 
-        max_diff = numpy_cosine_similarity_distance(
-            model_output.flatten(), compiled_model_output.flatten()
-        )
+        max_diff = numpy_cosine_similarity_distance(model_output.flatten(), compiled_model_output.flatten())
         assert max_diff < 1e-3
 
     def test_device_map_error(self):
@@ -203,17 +188,13 @@ class ModelOptBaseTesterMixin:
         caption_channels = 8
 
         torch.manual_seed(0)
-        hidden_states = torch.randn(
-            (batch_size, num_latent_channels, height, width)
-        ).to(torch_device, dtype=torch.bfloat16)
+        hidden_states = torch.randn((batch_size, num_latent_channels, height, width)).to(
+            torch_device, dtype=torch.bfloat16
+        )
         encoder_hidden_states = torch.randn((batch_size, seq_len, caption_channels)).to(
             torch_device, dtype=torch.bfloat16
         )
-        timestep = (
-            torch.tensor([1.0])
-            .to(torch_device, dtype=torch.bfloat16)
-            .expand(batch_size)
-        )
+        timestep = torch.tensor([1.0]).to(torch_device, dtype=torch.bfloat16).expand(batch_size)
 
         return {
             "hidden_states": hidden_states,
@@ -229,9 +210,7 @@ class ModelOptBaseTesterMixin:
             subfolder="transformer",
             torch_dtype=torch.bfloat16,
         )
-        pipe = self.pipeline_cls.from_pretrained(
-            self.model_id, transformer=transformer, torch_dtype=torch.bfloat16
-        )
+        pipe = self.pipeline_cls.from_pretrained(self.model_id, transformer=transformer, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload(device=torch_device)
         _ = pipe("a cat holding a sign that says hello", num_inference_steps=2)
 

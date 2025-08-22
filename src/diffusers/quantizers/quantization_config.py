@@ -734,9 +734,8 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
     Args:
         quant_type (`str`):
             The type of quantization we want to use, following is how to use:
-                **weightquant_activationquant ==> FP8_FP8**
-                In the above example we have use FP8 for both weight and activation quantization.
-                Following are the all the options:
+                **weightquant_activationquant ==> FP8_FP8** In the above example we have use FP8 for both weight and
+                activation quantization. Following are the all the options:
                     - FP8
                     - INT8
                     - INT4
@@ -763,12 +762,13 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         kwargs (`Dict[str, Any]`, *optional*):
             Additional parameters which are to be used for calibration.
     """
+
     quanttype_to_numbits = {
         "FP8": (4, 3),
         "INT8": 8,
         "INT4": 4,
         "NF4": 4,
-        "NVFP4": (2,1),
+        "NVFP4": (2, 1),
     }
     quanttype_to_scalingbits = {
         "NF4": 8,
@@ -779,7 +779,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         self,
         quant_type: str,
         modules_to_not_convert: Optional[List[str]] = None,
-        weight_only: bool=True,
+        weight_only: bool = True,
         channel_quantize: Optional[int] = None,
         block_quantize: Optional[int] = None,
         scale_channel_quantize: Optional[int] = None,
@@ -787,7 +787,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         algorithm: str = "max",
         forward_loop: Optional[Callable] = None,
         modelopt_config: Optional[dict] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         self.quant_method = QuantizationMethod.MODELOPT
         self._normalize_quant_type(quant_type)
@@ -808,8 +808,8 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         """
         Validates and normalizes the quantization type string.
 
-        Splits the quant_type into weight and activation components, verifies them
-        against supported types, and replaces unsupported values with safe defaults.
+        Splits the quant_type into weight and activation components, verifies them against supported types, and
+        replaces unsupported values with safe defaults.
 
         Args:
             quant_type (str): The input quantization type string (e.g., 'FP8_INT8').
@@ -821,21 +821,15 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         w_type = parts[0]
         act_type = parts[1] if len(parts) > 1 else None
         if len(parts) > 2:
-            logger.warning(
-                f"Quantization type {quant_type} is not supported. Picking FP8_INT8 as default"
-            )
+            logger.warning(f"Quantization type {quant_type} is not supported. Picking FP8_INT8 as default")
             w_type = "FP8"
             act_type = None
         else:
             if w_type not in NVIDIAModelOptConfig.quanttype_to_numbits:
-                logger.warning(
-                    f"Weight Quantization type {w_type} is not supported. Picking FP8 as default"
-                )
+                logger.warning(f"Weight Quantization type {w_type} is not supported. Picking FP8 as default")
                 w_type = "FP8"
             if act_type is not None and act_type not in NVIDIAModelOptConfig.quanttype_to_numbits:
-                logger.warning(
-                    f"Activation Quantization type {act_type} is not supported. Picking INT8 as default"
-                )
+                logger.warning(f"Activation Quantization type {act_type} is not supported. Picking INT8 as default")
                 act_type = None
         self.quant_type = w_type + ("_" + act_type if act_type is not None else "")
 
@@ -877,11 +871,10 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 quant_cfg[k]["num_bits"] = NVIDIAModelOptConfig.quanttype_to_numbits[w_type]
 
         if self.block_quantize is not None and self.channel_quantize is not None:
-            quant_cfg["*weight_quantizer"]["block_sizes"] = {
-                self.channel_quantize: self.block_quantize
-            }
+            quant_cfg["*weight_quantizer"]["block_sizes"] = {self.channel_quantize: self.block_quantize}
             quant_cfg["*input_quantizer"]["block_sizes"] = {
-                self.channel_quantize: self.block_quantize, "type": "dynamic"
+                self.channel_quantize: self.block_quantize,
+                "type": "dynamic",
             }
         elif self.channel_quantize is not None:
             quant_cfg["*weight_quantizer"]["axis"] = self.channel_quantize
@@ -891,14 +884,18 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         # Only fixed scaling sizes are supported for now in modelopt
         if self.scale_channel_quantize is not None and self.scale_block_quantize is not None:
             if w_type in NVIDIAModelOptConfig.quanttype_to_scalingbits:
-                quant_cfg["*weight_quantizer"]["block_sizes"].update({
-                    "scale_bits": NVIDIAModelOptConfig.quanttype_to_scalingbits[w_type],
-                    "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize}
-                })
+                quant_cfg["*weight_quantizer"]["block_sizes"].update(
+                    {
+                        "scale_bits": NVIDIAModelOptConfig.quanttype_to_scalingbits[w_type],
+                        "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize},
+                    }
+                )
             if act_type and act_type in NVIDIAModelOptConfig.quanttype_to_scalingbits:
-                quant_cfg["*input_quantizer"]["block_sizes"].update({
-                    "scale_bits": NVIDIAModelOptConfig.quanttype_to_scalingbits[act_type],
-                    "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize}
-                })
+                quant_cfg["*input_quantizer"]["block_sizes"].update(
+                    {
+                        "scale_bits": NVIDIAModelOptConfig.quanttype_to_scalingbits[act_type],
+                        "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize},
+                    }
+                )
 
         return BASE_CONFIG

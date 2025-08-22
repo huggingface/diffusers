@@ -841,11 +841,10 @@ def is_optimum_quanto_version(operation: str, version: str):
     return compare_versions(parse(_optimum_quanto_version), operation, version)
 
 
-
 def is_nvidia_modelopt_version(operation: str, version: str):
     """
     Compares the current Nvidia ModelOpt version to a given reference with an operation.
-    
+
     Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
