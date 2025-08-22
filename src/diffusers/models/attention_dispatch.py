@@ -478,8 +478,8 @@ def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
 # this but it was never merged: https://github.com/Dao-AILab/flash-attention/pull/1590
 
 if torch.__version__ >= "2.4.0":
-    custom_op = torch.library.custom_op
-    register_fake = torch.library.register_fake
+    _custom_op = torch.library.custom_op
+    _register_fake = torch.library.register_fake
 else:
     def custom_op_no_op(name, fn=None, /, *, mutates_args, device_types=None, schema=None):
         def wrap(func):
