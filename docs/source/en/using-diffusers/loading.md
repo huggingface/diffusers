@@ -54,25 +54,26 @@ pipeline = QwenImagePipeline.from_pretrained(
 
 ### Local pipelines
 
-Pipelines can also be run locally. Download a checkpoint to your setup with [git-lfs](https://git-lfs.github.com/).
+Pipelines can also be run locally. Use [`~huggingface_hub.snapshot_download`] to download a model repository.
 
-```bash
-git-lfs install
-git clone https://huggingface.co/Qwen/Qwen-Image
+```py
+from huggingface_hub import snapshot_download
+
+snapshot_download(repo_id="Qwen/Qwen-Image")
 ```
 
-The model is downloaded to a local folder. Pass the folder path to [`~QwenImagePipeline.from_pretrained`] to load it.
+The model is downloaded to your [cache](../installation#cache). Pass the folder path to [`~QwenImagePipeline.from_pretrained`] to load it.
 
 ```py
 import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "path/to/local/Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
+  "path/to/your/cache", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 ```
 
-The [`~QwenImagePipeline.from_pretrained`] method won't download files from the Hub when it detects a local path. But this also means it won't download and cache any updates that have been made to the model.
+The [`~QwenImagePipeline.from_pretrained`] method won't download files from the Hub when it detects a local path. But this also means it won't download and cache any updates that have been made to the model either.
 
 ## Pipeline data types
 
@@ -82,10 +83,10 @@ Pass the data type for each model as a dictionary to `torch_dtype`. Use the `def
 
 ```py
 import torch
-from diffusers import HunyuanVideoPipeline
+from diffusers import QwenImagePipeline
 
-pipeline = HunyuanVideoPipeline.from_pretrained(
-  "hunyuanvideo-community/HunyuanVideo",
+pipeline = QwenImagePipeline.from_pretrained(
+  "Qwen/Qwen-Image",
   torch_dtype={"transformer": torch.bfloat16, "default": torch.float16},
 )
 print(pipeline.transformer.dtype, pipeline.vae.dtype)
@@ -95,10 +96,10 @@ You don't need to use a dictionary if you're loading all the models in the same 
 
 ```py
 import torch
-from diffusers import HunyuanVideoPipeline
+from diffusers import QwenImagePipeline
 
-pipeline = HunyuanVideoPipeline.from_pretrained(
-  "hunyuanvideo-community/HunyuanVideo", torch_dtype=torch.bfloat16
+pipeline = QwenImagePipeline.from_pretrained(
+  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16
 )
 print(pipeline.transformer.dtype, pipeline.vae.dtype)
 ```
@@ -111,9 +112,9 @@ Diffusers currently provides three options to `device_map`, `"cuda"`, `"balanced
 
 | parameter | description |
 |---|---|
-| `"cuda"` | places model on CUDA device |
+| `"cuda"` | places model or pipeline on CUDA device |
 | `"balanced"` | evenly distributes model or pipeline on all GPUs |
-| `"auto"` | distribute model or pipeline from fastest device first to slowest |
+| `"auto"` | distribute model from fastest device first to slowest |
 
 Use the `max_memory` argument in [`~DiffusionPipeline.from_pretrained`] to allocate a maximum amount of memory to use on each device. By default, Diffusers uses the maximum amount available.
 
@@ -125,7 +126,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "black-forest-labs/FLUX.1-dev", 
+  "Qwen/Qwen-Image", 
   torch_dtype=torch.bfloat16,
   device_map="cuda",
 )
@@ -136,11 +137,11 @@ pipeline = DiffusionPipeline.from_pretrained(
 
 ```py
 import torch
-from diffusers import DiffusionPipeline, AutoModel
+from diffusers import AutoModel
 
 max_memory = {0: "16GB", 1: "16GB"}
 transformer = AutoModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", 
+    "Qwen/Qwen-Image", 
     subfolder="transformer",
     torch_dtype=torch.bfloat16
     device_map="cuda",
@@ -168,10 +169,7 @@ pipeline.reset_device_map()
 
 Large models are often [sharded](../training/distributed_inference#model-sharding) into smaller files so that they are easier to load. Diffusers supports loading shards in parallel to speed up the loading process.
 
-Set the environment variables below to enable parallel loading.
-
-- Set `HF_ENABLE_PARALLEL_LOADING` to `"YES"` to enable parallel loading of shards.
-- Set `HF_PARALLEL_LOADING_WORKERS` to configure the number of parallel threads to use when loading shards. More workers loads a model faster but uses more memory.
+Set `HF_ENABLE_PARALLEL_LOADING` to `"YES"` to enable parallel loading of shards.
 
 The `device_map` argument should be set to `"cuda"` to pre-allocate a large chunk of memory based on the model size. This substantially reduces model load time because warming up the memory allocator now avoids many smaller calls to the allocator later.
 
@@ -222,7 +220,7 @@ Memory usage is determined by the pipeline with the highest memory requirement r
 The example below loads a pipeline and then loads a second pipeline with [`~DiffusionPipeline.from_pipe`] to use [perturbed-attention guidance (PAG)](../api/pipelines/pag) to improve generation quality.
 
 > [!WARNING]
-> Use [`AutoPipelineForText2Image`] instead because [`DiffusionPipeline`] doesn't support PAG. Refer to the [AutoPipeline](../tutorials/autopipeline) docs to learn more. 
+> Use [`AutoPipelineForText2Image`] because [`DiffusionPipeline`] doesn't support PAG. Refer to the [AutoPipeline](../tutorials/autopipeline) docs to learn more. 
 
 ```py
 import torch
@@ -264,7 +262,7 @@ Some methods may not work correctly on pipelines created with [`~DiffusionPipeli
 
 Diffusers provides a [safety checker](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py) for older Stable Diffusion models to prevent generating harmful content. It screens the generated output against a set of hardcoded harmful concepts.
 
-If you want to disable the safety checker, pass `safety_checker=None` in [`!DiffusionPipeline.from_pretrained`] as shown below.
+If you want to disable the safety checker, pass `safety_checker=None` in [`~DiffusionPipeline.from_pretrained`] as shown below.
 
 ```py
 from diffusers import DiffusionPipeline
