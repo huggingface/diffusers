@@ -504,7 +504,7 @@ def _wrapped_flash_attn_3_original(
     return out, lse
 
 
-@register_fake("flash_attn_3::_flash_attn_forward")
+@_register_fake("flash_attn_3::_flash_attn_forward")
 def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     batch_size, seq_len, num_heads, head_dim = query.shape
     lse_shape = (batch_size, seq_len, num_heads)
