@@ -52,6 +52,7 @@ if is_torch_available():
         "HunyuanDiT2DControlNetModel",
         "HunyuanDiT2DMultiControlNetModel",
     ]
+    _import_structure["controlnets.controlnet_qwenimage"] = ["QwenImageControlNetModel", "QwenImageMultiControlNetModel"]
     _import_structure["controlnets.controlnet_sana"] = ["SanaControlNetModel"]
     _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
     _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
