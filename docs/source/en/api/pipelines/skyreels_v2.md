@@ -44,17 +44,24 @@ The following SkyReels-V2 models are supported in Diffusers:
 
 ### A _Visual_ Demonstration
 
-```text
-An example with these parameters:
-base_num_frames=97, num_frames=97, num_inference_steps=30, ar_step=5, causal_block_size=5
+The example below has the following parameters:
 
-vae_scale_factor_temporal -> 4
-num_latent_frames: (97-1)//vae_scale_factor_temporal+1 = 25 frames -> 5 blocks of 5 frames each
+- `base_num_frames=97`
+- `num_frames=97`
+- `num_inference_steps=30`
+- `ar_step=5`
+- `causal_block_size=5`
 
-base_num_latent_frames = (97-1)//vae_scale_factor_temporal+1 = 25 → blocks = 25//5 = 5 blocks
-This 5 blocks means the maximum context length of the model is 25 frames in the latent space.
+With `vae_scale_factor_temporal=4`, expect `5` blocks of `5` frames each as calculated by:
+
+`num_latent_frames: (97-1)//vae_scale_factor_temporal+1 = 25 frames -> 5 blocks of 5 frames each`
+
+And the maximum context length in the latent space is calculated with `base_num_latent_frames`:
+
+`base_num_latent_frames = (97-1)//vae_scale_factor_temporal+1 = 25 -> 25//5 = 5 blocks`
 
 Asynchronous Processing Timeline:
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │ Steps:    1    6   11   16   21   26   31   36   41   46   50   │
 │ Block 1: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]                       │
@@ -63,11 +70,13 @@ Asynchronous Processing Timeline:
 │ Block 4:                [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]        │
 │ Block 5:                     [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]   │
 └─────────────────────────────────────────────────────────────────┘
+```
 
-For Long Videos (num_frames > base_num_frames):
-base_num_frames acts as the "sliding window size" for processing long videos.
+For Long Videos (`num_frames` > `base_num_frames`):
+`base_num_frames` acts as the "sliding window size" for processing long videos.
 
-Example: 257-frame video with base_num_frames=97, overlap_history=17
+Example: 257-frame video with `base_num_frames=97`, `overlap_history=17`
+```text
 ┌──── Iteration 1 (frames 1-97) ────┐
 │ Processing window: 97 frames      │ → 5 blocks,
 │ Generates: frames 1-97            │   async processing
@@ -82,34 +91,40 @@ Example: 257-frame video with base_num_frames=97, overlap_history=17
                         │ Overlap: 17 frames (161-177) from prev   │ → 5 blocks,
                         │ Generates: frames 178-257                │   async processing
                         └──────────────────────────────────────────┘
+```
 
-Each iteration independently runs the asynchronous processing with its own 5 blocks.
-base_num_frames controls:
+Each iteration independently runs the asynchronous processing with its own `5` blocks.
+`base_num_frames` controls:
 1. Memory usage (larger window = more VRAM)
 2. Model context length (must match training constraints)
-3. Number of blocks per iteration (base_num_latent_frames // causal_block_size)
+3. Number of blocks per iteration (`base_num_latent_frames // causal_block_size`)
 
-Each block takes 30 steps to complete denoising.
-Block N starts at step: 1 + (N-1) x ar_step
-Total steps: 30 + (5-1) x 5 = 50 steps
+Each block takes `30` steps to complete denoising.
+Block N starts at step: `1 + (N-1) x ar_step`
+Total steps: `30 + (5-1) x 5 = 50` steps
 
 
-Synchronous mode (ar_step=0) would process all blocks/frames simultaneously:
+Synchronous mode (`ar_step=0`) would process all blocks/frames simultaneously:
+```text
 ┌──────────────────────────────────────────────┐
 │ Steps:       1            ...            30  │
 │ All blocks: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■] │
 └──────────────────────────────────────────────┘
-Total steps: 30 steps
+```
+Total steps: `30` steps
 
 
 An example on how the step matrix is constructed for asynchronous processing:
-Given the parameters: (num_inference_steps=30, flow_shift=8, num_frames=97, ar_step=5, causal_block_size=5)
+Given the parameters: (`num_inference_steps=30, flow_shift=8, num_frames=97, ar_step=5, causal_block_size=5`)
+```
 - num_latent_frames = (97 frames - 1) // (4 temporal downsampling) + 1 = 25
 - step_template = [999, 995, 991, 986, 980, 975, 969, 963, 956, 948,
                    941, 932, 922, 912, 901, 888, 874, 859, 841, 822,
                    799, 773, 743, 708, 666, 615, 551, 470, 363, 216]
+```
 
-The algorithm creates a 50x25 step_matrix where:
+The algorithm creates a `50x25` `step_matrix` where:
+```
 - Row 1:  [999×5, 999×5, 999×5, 999×5, 999×5]
 - Row 2:  [995×5, 999×5, 999×5, 999×5, 999×5]
 - Row 3:  [991×5, 999×5, 999×5, 999×5, 999×5]
@@ -123,16 +138,19 @@ The algorithm creates a 50x25 step_matrix where:
 - Row 42: [  0×5,   0×5,   0×5, 551×5, 773×5]
 - ...
 - Row 50: [  0×5,   0×5,   0×5,   0×5, 216×5]
+```
 
-Detailed Row 6 Analysis:
+Detailed Row `6` Analysis:
+```
 - step_matrix[5]:      [ 975×5,  999×5,   999×5,   999×5,   999×5]
 - step_index[5]:       [   6×5,    1×5,     0×5,     0×5,     0×5]
 - step_update_mask[5]: [True×5, True×5, False×5, False×5, False×5]
 - valid_interval[5]:   (0, 25)
-
-Key Pattern: Block i lags behind Block i-1 by exactly ar_step=5 timesteps, creating the
-staggered "diffusion forcing" effect where later blocks condition on cleaner earlier blocks.
 ```
+
+Key Pattern: Block `i` lags behind Block `i-1` by exactly `ar_step=5` timesteps, creating the
+staggered "diffusion forcing" effect where later blocks condition on cleaner earlier blocks.
+
 
 ### Text-to-Video Generation
 
