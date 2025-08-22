@@ -37,6 +37,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [AudioLDM2](audioldm2) | text2audio |
 | [AuraFlow](auraflow) | text2image |
 | [BLIP Diffusion](blip_diffusion) | text2image |
+| [Bria 3.2](bria_3_2) | text2image |
 | [CogVideoX](cogvideox) | text2video |
 | [Consistency Models](consistency_models) | unconditional image generation |
 | [ControlNet](controlnet) | text2image, image2image, inpainting |
