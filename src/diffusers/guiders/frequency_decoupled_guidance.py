@@ -19,7 +19,7 @@ import torch
 
 from ..configuration_utils import register_to_config
 from ..utils import is_kornia_available
-from .guider_utils import BaseGuidance, rescale_noise_cfg
+from .guider_utils import BaseGuidance, GuiderInput, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
@@ -230,7 +230,10 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, GuiderInput]:
+        guider_inputs = GuiderInput(pred_cond, pred_uncond)
         pred = None
 
         if not self._is_fdg_enabled():
@@ -277,7 +280,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             if self.guidance_rescale_space == "data" and self.guidance_rescale[0] > 0.0:
                 pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale[0])
 
-        return pred, {}
+        return pred, guider_inputs
 
     @property
     def is_conditional(self) -> bool:

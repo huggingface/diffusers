@@ -20,7 +20,7 @@ import torch
 from ..configuration_utils import register_to_config
 from ..hooks import HookRegistry, LayerSkipConfig
 from ..hooks.layer_skip import _apply_layer_skip_hook
-from .guider_utils import BaseGuidance, rescale_noise_cfg
+from .guider_utils import BaseGuidance, GuiderInput, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
@@ -192,7 +192,8 @@ class SkipLayerGuidance(BaseGuidance):
         pred_cond: torch.Tensor,
         pred_uncond: Optional[torch.Tensor] = None,
         pred_cond_skip: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, GuiderInput]:
+        guider_inputs = GuiderInput(pred_cond, pred_uncond)
         pred = None
 
         if not self._is_cfg_enabled() and not self._is_slg_enabled():
@@ -214,7 +215,7 @@ class SkipLayerGuidance(BaseGuidance):
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
-        return pred, {}
+        return pred, guider_inputs
 
     @property
     def is_conditional(self) -> bool:
