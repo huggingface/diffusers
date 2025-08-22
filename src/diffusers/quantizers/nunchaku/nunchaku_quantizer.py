@@ -2,13 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from diffusers.utils.import_utils import is_nunchaku_version
 
-from ...utils import (
-    get_module_from_name,
-    is_accelerate_available,
-    is_nunchaku_available,
-    is_torch_available,
-    logging,
-)
+from ...utils import get_module_from_name, is_accelerate_available, is_nunchaku_available, is_torch_available, logging
 from ...utils.torch_utils import is_fp8_available
 from ..base import DiffusersQuantizer
 
@@ -20,13 +14,18 @@ if TYPE_CHECKING:
 if is_torch_available():
     import torch
 
-if is_accelerate_available():
-    pass
-
 if is_nunchaku_available():
     from .utils import replace_with_nunchaku_linear
 
 logger = logging.get_logger(__name__)
+
+
+KEY_MAP = {
+    "lora_down": "proj_down",
+    "lora_up": "proj_up",
+    "smooth_orig": "smooth_factor_orig",
+    "smooth": "smooth_factor",
+}
 
 
 class NunchakuQuantizer(DiffusersQuantizer):
@@ -98,33 +97,11 @@ class NunchakuQuantizer(DiffusersQuantizer):
         from nunchaku.models.linear import SVDQW4A4Linear
 
         module, tensor_name = get_module_from_name(model, param_name)
-        state_dict = args[0]
         if tensor_name not in module._parameters and tensor_name not in module._buffers:
             raise ValueError(f"{module} does not have a parameter or a buffer named {tensor_name}.")
 
         if isinstance(module, SVDQW4A4Linear):
-            if param_value.ndim == 1:
-                module._parameters[tensor_name] = torch.nn.Parameter(param_value, requires_grad=False).to(
-                    target_device
-                )
-            elif tensor_name == "qweight":
-                module._parameters[tensor_name] = torch.nn.Parameter(param_value, requires_grad=False).to(
-                    target_device
-                )
-                # if the tensor has qweight, but does not have low-rank branch, we need to add some artificial tensors
-                for t in ["lora_up", "lora_down"]:
-                    # need to check at the state dict level for this
-                    new_tensor_name = param_name.replace(".qweight", f".{t}")
-                    if new_tensor_name not in state_dict:
-                        oc, ic = param_value.shape
-                        ic = ic * 2  # v is packed into INT8, so we need to double the size
-                        module._parameters[t] = torch.zeros(
-                            (0, ic) if t == "lora_down" else (oc, 0), device=param_value.device, dtype=torch.bfloat16
-                        )
-            else:
-                module._parameters[tensor_name] = torch.nn.Parameter(param_value, requires_grad=False).to(
-                    target_device
-                )
+            module._parameters[tensor_name] = torch.nn.Parameter(param_value, requires_grad=False).to(target_device)
 
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
