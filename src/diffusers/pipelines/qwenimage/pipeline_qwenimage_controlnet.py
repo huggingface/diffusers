@@ -45,14 +45,14 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers.utils import load_image
-        >>> from diffusers import QwenImageControlNetPipeline
+        >>> from diffusers import QwenImageControlNetModel, QwenImageControlNetPipeline
 
         >>> controlnet = QwenImageControlNetModel.from_pretrained("InstantX/Qwen-Image-ControlNet-Union", torch_dtype=torch.bfloat16)
         >>> pipe = QwenImageControlNetPipeline.from_pretrained("Qwen/Qwen-Image", controlnet=controlnet, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> prompt = ""
+        >>> prompt = "Aesthetics art, traditional asian pagoda, elaborate golden accents, sky blue and white color palette, swirling cloud pattern, digital illustration, east asian architecture, ornamental rooftop, intricate detailing on building, cultural representation."
         >>> negative_prompt = " "
-        >>> control_image = load_image(CONDITION_IMAGE_PATH)
+        >>> control_image = load_image("https://huggingface.co/InstantX/Qwen-Image-ControlNet-Union/resolve/main/conds/canny.png")
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(prompt, negative_prompt=negative_prompt, control_image=control_image, controlnet_conditioning_scale=1.0, num_inference_steps=30, true_cfg_scale=4.0).images[0]
