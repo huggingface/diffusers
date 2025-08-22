@@ -127,7 +127,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
             components.guider.cleanup_models(components.transformer)
 
         # Perform guidance
-        block_state.noise_pred, block_state.scheduler_step_kwargs = components.guider(guider_state)
+        block_state.noise_pred, block_state.guider_inputs = components.guider(guider_state)
 
         return components, block_state
 
@@ -171,7 +171,7 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
             block_state.noise_pred.float(),
             t,
             block_state.latents.float(),
-            **block_state.scheduler_step_kwargs,
+            **block_state.guider_inputs,
             return_dict=False,
         )[0]
 
