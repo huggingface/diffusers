@@ -59,7 +59,7 @@ If you want to add a new official callback, feel free to open a [feature request
 Early stopping is useful if you aren't happy with the intermediate results during generation. This callback sets a hardcoded stop point after which the pipeline terminates by setting the `_interrupt` attribute to `True`.
 
 ```py
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionXLPipeline
 
 def interrupt_callback(pipeline, i, t, callback_kwargs):
     stop_idx = 10
@@ -68,7 +68,9 @@ def interrupt_callback(pipeline, i, t, callback_kwargs):
 
     return callback_kwargs
 
-pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stable-diffusion-v1-5/stable-diffusion-v1-5"
+)
 num_inference_steps = 50
 
 pipeline(
