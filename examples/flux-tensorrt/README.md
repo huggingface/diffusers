@@ -105,10 +105,10 @@ image.save("test_pipeline.png")
 Example: Transformer Only (Other Modules on Torch)
 ```python
 pipeline = FluxPipelineTRT.from_pretrained(
-            "black-forest-labs/FLUX.1-dev", 
-            torch_dtype=torch.bfloat16, 
-            engine_transformer=engine_transformer,
-            )
+   "black-forest-labs/FLUX.1-dev", 
+   torch_dtype=torch.bfloat16, 
+   engine_transformer=engine_transformer,
+)
 pipeline.to("cuda")
 ```
 
