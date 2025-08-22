@@ -299,8 +299,8 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
     r"""
     `QwenImageMultiControlNetModel` wrapper class for Multi-QwenImageControlNetModel
 
-    This module is a wrapper for multiple instances of the `QwenImageControlNetModel`. The `forward()` API is designed to be
-    compatible with `QwenImageControlNetModel`.
+    This module is a wrapper for multiple instances of the `QwenImageControlNetModel`. The `forward()` API is designed
+    to be compatible with `QwenImageControlNetModel`.
 
     Args:
         controlnets (`List[QwenImageControlNetModel]`):
