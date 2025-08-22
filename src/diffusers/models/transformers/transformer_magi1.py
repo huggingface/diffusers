@@ -55,16 +55,6 @@ def _get_qkv_projections(attn: "Magi1Attention", hidden_states: torch.Tensor, en
     return query, key, value
 
 
-# Copied from diffusers.models.transformers.transformer_wan._get_added_kv_projections
-def _get_added_kv_projections(attn: "Magi1Attention", encoder_hidden_states_img: torch.Tensor):
-    if attn.fused_projections:
-        key_img, value_img = attn.to_added_kv(encoder_hidden_states_img).chunk(2, dim=-1)
-    else:
-        key_img = attn.add_k_proj(encoder_hidden_states_img)
-        value_img = attn.add_v_proj(encoder_hidden_states_img)
-    return key_img, value_img
-
-
 def range_mod_pytorch(x, c_mapping, gatings):
     """
     PyTorch implementation of range_mod_triton. # TODO: Ensure that this implementation is correct and matches the
@@ -119,10 +109,10 @@ class Magi1AttnProcessor:
         query = query.reshape(query.size(0), query.size(1), -1, attn.kv_inner_dim)
         key = key.reshape(key.size(0), key.size(1), -1, attn.kv_inner_dim)
 
-        query = attn.norm_q(query.float()).to(query.dtype)
-        query = query.transpose(0, 1).contiguous()
-        key = attn.norm_k(key.float()).to(key.dtype)
-        key = key.transpose(0, 1).contiguous()
+        query = attn.norm_q(query)
+        query = query.transpose(0, 1)
+        key = attn.norm_k(key)
+        key = key.transpose(0, 1)
 
         if rotary_emb is not None:
 
@@ -199,7 +189,6 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         self.cross_attention_dim_head = cross_attention_dim_head
         self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
 
-        self.layer_norm = torch.nn.LayerNorm(dim, eps)
         self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=False)
         self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
         self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
@@ -209,8 +198,8 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
                 torch.nn.Dropout(dropout),
             ]
         )
-        self.norm_q = torch.nn.LayerNorm(dim_head * heads, eps)
-        self.norm_k = torch.nn.LayerNorm(dim_head * heads, eps)
+        self.norm_q = FP32LayerNorm(dim_head * heads, eps)
+        self.norm_k = FP32LayerNorm(dim_head * heads, eps)
 
         self.add_k_proj = self.add_v_proj = None
         if added_kv_proj_dim is not None:
@@ -624,7 +613,7 @@ class Magi1Transformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "rope"]
     _no_split_modules = ["Magi1TransformerBlock", "norm_out"]
-    _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out"]
+    _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out", "norm_q", "norm_k"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["Magi1TransformerBlock"]
 
