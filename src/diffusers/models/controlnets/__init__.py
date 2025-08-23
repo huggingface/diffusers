@@ -9,6 +9,7 @@ if is_torch_available():
         HunyuanDiT2DControlNetModel,
         HunyuanDiT2DMultiControlNetModel,
     )
+    from .controlnet_qwenimage import QwenImageControlNetModel, QwenImageMultiControlNetModel
     from .controlnet_sana import SanaControlNetModel
     from .controlnet_sd3 import SD3ControlNetModel, SD3ControlNetOutput, SD3MultiControlNetModel
     from .controlnet_sparsectrl import (
