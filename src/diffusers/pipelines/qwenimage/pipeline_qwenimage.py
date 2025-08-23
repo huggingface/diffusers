@@ -486,8 +486,9 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
                 that are closely linked to the text `prompt`, usually at the expense of lower image quality. This
                 parameter in the pipeline is there to support future guidance-distilled models when they come up. It is
-                ignored when not using guidance distilled models. To enable traditional classifier-free guidance, please pass `true_cfg_scale > 1.0`
-                and `negative_prompt` (even an empty negative prompt like " " should enable classifier-free guidance computations).
+                ignored when not using guidance distilled models. To enable traditional classifier-free guidance,
+                please pass `true_cfg_scale > 1.0` and `negative_prompt` (even an empty negative prompt like " " should
+                enable classifier-free guidance computations).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
