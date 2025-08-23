@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import os
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -21,7 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin
-from ..utils import PushToHubMixin, get_logger
+from ..utils import BaseOutput, PushToHubMixin, get_logger
 
 
 if TYPE_CHECKING:
@@ -285,8 +284,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
 
 
-@dataclass
-class GuiderOutput:
+class GuiderOutput(BaseOutput):
     pred: torch.Tensor
     pred_cond: Optional[torch.Tensor]
     pred_uncond: Optional[torch.Tensor]
