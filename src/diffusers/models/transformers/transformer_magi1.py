@@ -34,7 +34,6 @@ from ..normalization import FP32LayerNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.models.transformers.transformer_wan._get_qkv_projections
 def _get_qkv_projections(attn: "Magi1Attention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
     # encoder_hidden_states is only passed for cross-attention
     if encoder_hidden_states is None:
@@ -212,7 +211,6 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
 
         self.set_processor(processor)
 
-    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.fuse_projections
     def fuse_projections(self):
         if getattr(self, "fused_projections", False):
             return
@@ -249,7 +247,6 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         self.fused_projections = True
 
     @torch.no_grad()
-    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.unfuse_projections
     def unfuse_projections(self):
         if not getattr(self, "fused_projections", False):
             return
@@ -383,7 +380,6 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         return temb, y_xattn, y_adaln, encoder_hidden_states_image
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanRotaryPosEmbed with Wan -> Magi1
 class Magi1RotaryPosEmbed(nn.Module):
     def __init__(
         self,
