@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 import torch
 
 from ..configuration_utils import register_to_config
-from .guider_utils import BaseGuidance, GuiderInput, rescale_noise_cfg
+from .guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
@@ -78,10 +78,7 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(
-        self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, GuiderInput]:
-        guider_inputs = GuiderInput(pred_cond, pred_uncond)
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
         pred = None
 
         if not self._is_tcfg_enabled():
@@ -92,7 +89,7 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
-        return pred, guider_inputs
+        return GuiderOutput(pred=pred, pred_cond=pred_cond, pred_uncond=pred_uncond)
 
     @property
     def is_conditional(self) -> bool:

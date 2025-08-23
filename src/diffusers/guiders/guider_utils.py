@@ -286,7 +286,8 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
 
 
 @dataclass
-class GuiderInput:
+class GuiderOutput:
+    pred: torch.Tensor
     pred_cond: Optional[torch.Tensor]
     pred_uncond: Optional[torch.Tensor]
 
