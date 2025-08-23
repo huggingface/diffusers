@@ -15,6 +15,7 @@
 PyTorch utilities: Utilities related to PyTorch
 """
 
+import functools
 from typing import List, Optional, Tuple, Union
 
 from . import logging
@@ -168,6 +169,7 @@ def get_torch_cuda_device_capability():
         return None
 
 
+@functools.lru_cache
 def get_device():
     if torch.cuda.is_available():
         return "cuda"

@@ -108,7 +108,7 @@ LIBRARIES = []
 for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
 
-SUPPORTED_DEVICE_MAP = ["balanced"]
+SUPPORTED_DEVICE_MAP = ["balanced"] + [get_device()]
 
 logger = logging.get_logger(__name__)
 
@@ -988,12 +988,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         _maybe_warn_for_wrong_component_in_quant_config(init_dict, quantization_config)
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 7.1 device_map shenanigans
-            if final_device_map is not None and len(final_device_map) > 0:
-                component_device = final_device_map.get(name, None)
-                if component_device is not None:
-                    current_device_map = {"": component_device}
-                else:
-                    current_device_map = None
+            if final_device_map is not None:
+                if isinstance(final_device_map, dict) and len(final_device_map) > 0:
+                    component_device = final_device_map.get(name, None)
+                    if component_device is not None:
+                        current_device_map = {"": component_device}
+                    else:
+                        current_device_map = None
+                elif isinstance(final_device_map, str):
+                    current_device_map = final_device_map
 
             # 7.2 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name

@@ -21,106 +21,257 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import FeedForward
-from ..attention_processor import Attention
+from ...utils import USE_PEFT_BACKEND, is_kernels_available, logging, scale_lora_layers, unscale_lora_layers
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
-from ..normalization import AdaLayerNorm, FP32LayerNorm
+from ..normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class Magi1AttnProcessor2_0:
-    r"""
-    Processor for implementing MAGI-1 attention mechanism.
+# Copied from diffusers.models.transformers.transformer_wan._get_qkv_projections
+def _get_qkv_projections(attn: "Magi1Attention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
+    # encoder_hidden_states is only passed for cross-attention
+    if encoder_hidden_states is None:
+        encoder_hidden_states = hidden_states
 
-    This processor handles both self-attention and cross-attention for the MAGI-1 model, following diffusers' standard
-    attention processor interface. It supports image conditioning for image-to-video generation tasks.
+    if attn.fused_projections:
+        if attn.cross_attention_dim_head is None:
+            # In self-attention layers, we can fuse the entire QKV projection into a single linear
+            query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+        else:
+            # In cross-attention layers, we can only fuse the KV projections into a single linear
+            query = attn.to_q(hidden_states)
+            key, value = attn.to_kv(encoder_hidden_states).chunk(2, dim=-1)
+    else:
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+    return query, key, value
+
+
+def range_mod_pytorch(x, c_mapping, gatings):
     """
+    PyTorch implementation of range_mod_triton. # TODO: Ensure that this implementation is correct and matches the
+    range_mod_triton implementation.
+
+    Inputs:
+        x: (s, b, h). Tensor of inputs embedding (images or latent representations of images) c_mapping: (s, b). Tensor
+        of condition map gatings: (b, denoising_range_num, h). Tensor of condition embedding
+    """
+    s, b, h = x.shape
+
+    # Flatten x and c_mapping to 2D for easier indexing
+    x_flat = x.transpose(0, 1).flatten(0, 1)  # (s*b, h)
+    c_mapping_flat = c_mapping.transpose(0, 1).flatten(0, 1)  # (s*b,)
+    gatings_flat = gatings.flatten(0, 1)  # (b*denoising_range_num, h)
+
+    # Use advanced indexing to select the appropriate gating for each row
+    # c_mapping_flat contains indices into gatings_flat
+    selected_gatings = gatings_flat[c_mapping_flat]  # (s*b, h)
+
+    # Element-wise multiplication
+    y_flat = x_flat * selected_gatings  # (s*b, h)
+
+    # Reshape back to original dimensions
+    y = y_flat.reshape(b, s, h).transpose(0, 1)  # (s, b, h)
+
+    return y
+
+
+if is_kernels_available():
+    from kernels import use_kernel_forward_from_hub
+
+    range_mod_pytorch = use_kernel_forward_from_hub("range_mod_triton")(range_mod_pytorch)
+
+
+class Magi1AttnProcessor:
+    _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("Magi1AttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("Magi1AttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "Magi1Attention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # Handle image conditioning if present for cross-attention
-        encoder_hidden_states_img = None
-        if attn.add_k_proj is not None and encoder_hidden_states is not None:
-            # Extract image conditioning from the concatenated encoder states
-            # The text encoder context length is typically 512 tokens
-            text_context_length = getattr(attn, "text_context_length", 512)
-            image_context_length = encoder_hidden_states.shape[1] - text_context_length
-            encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
-            encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
+        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+        query = query.reshape(query.size(0), query.size(1), -1, attn.kv_inner_dim)
+        key = key.reshape(key.size(0), key.size(1), -1, attn.kv_inner_dim)
 
-        # For self-attention, use hidden_states as encoder_hidden_states
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
+        query = attn.norm_q(query)
+        query = query.transpose(0, 1)
+        key = attn.norm_k(key)
+        key = key.transpose(0, 1)
 
-        # Standard attention computation
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        # Apply normalization if available
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # Reshape for multi-head attention
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-
-        # Apply rotary embeddings if provided
         if rotary_emb is not None:
 
-            def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-                dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
-                x_rotated = torch.view_as_complex(hidden_states.to(dtype).unflatten(3, (-1, 2)))
-                x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4)
-                return x_out.type_as(hidden_states)
+            def apply_rotary_emb(
+                hidden_states: torch.Tensor,
+                freqs_cos: torch.Tensor,
+                freqs_sin: torch.Tensor,
+            ):
+                x1, x2 = hidden_states.unflatten(-1, (-1, 2)).unbind(-1)
+                cos = freqs_cos[..., 0::2]
+                sin = freqs_sin[..., 1::2]
+                out = torch.empty_like(hidden_states)
+                out[..., 0::2] = x1 * cos - x2 * sin
+                out[..., 1::2] = x1 * sin + x2 * cos
+                return out.type_as(hidden_states)
 
-            query = apply_rotary_emb(query, rotary_emb)
-            key = apply_rotary_emb(key, rotary_emb)
+            query = apply_rotary_emb(query, *rotary_emb)
+            key = apply_rotary_emb(key, *rotary_emb)
 
-        # Compute attention
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        # batch_size, seq_len, num_heads, head_dim
+        query = query.contiguous()
+        key = key.contiguous()
+        value = value.unflatten(2, (-1, attn.kv_inner_dim)).transpose(0, 1).contiguous()
+
+        # Perform Grouped-Query Attention (GQA)
+        kv_heads = attn.kv_heads if attn.kv_heads is not None else attn.heads
+        n_rep = attn.heads // kv_heads
+        if n_rep >= 1:
+            key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+            value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            enable_gqa=True,
+            backend=self._attention_backend,
         )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        # Convert [b, nh, sq, hd] -> [sq, b, (hn hd)]
+        hidden_states = hidden_states.permute(2, 0, 1, 3)
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
 
-        # Handle image conditioning (I2V task) for cross-attention
-        if encoder_hidden_states_img is not None:
-            key_img = attn.add_k_proj(encoder_hidden_states_img)
-            key_img = attn.norm_added_k(key_img)
-            value_img = attn.add_v_proj(encoder_hidden_states_img)
-
-            key_img = key_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-            value_img = value_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-
-            attn_output_img = F.scaled_dot_product_attention(
-                query, key_img, value_img, attn_mask=None, dropout_p=0.0, is_causal=False
-            )
-            attn_output_img = attn_output_img.transpose(1, 2).flatten(2, 3)
-            hidden_states = hidden_states + attn_output_img
-
-        # Apply output projection
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
+
+class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = Magi1AttnProcessor
+    _available_processors = [Magi1AttnProcessor]
+
+    def __init__(
+        self,
+        dim: int,
+        heads: int = 8,
+        kv_heads: Optional[int] = None,
+        dim_head: int = 64,
+        eps: float = 1e-5,
+        dropout: float = 0.0,
+        added_kv_proj_dim: Optional[int] = None,
+        cross_attention_dim_head: Optional[int] = None,
+        processor=None,
+        is_cross_attention=None,
+    ):
+        super().__init__()
+
+        self.inner_dim = dim_head * heads
+        self.heads = heads
+        self.kv_heads = kv_heads if kv_heads is not None else heads
+        self.added_kv_proj_dim = added_kv_proj_dim
+        self.cross_attention_dim_head = cross_attention_dim_head
+        self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
+
+        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=False)
+        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
+        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
+        self.to_out = torch.nn.ModuleList(
+            [
+                torch.nn.Linear(self.inner_dim, dim, bias=True),
+                torch.nn.Dropout(dropout),
+            ]
+        )
+        self.norm_q = FP32LayerNorm(dim_head * heads, eps)
+        self.norm_k = FP32LayerNorm(dim_head * heads, eps)
+
+        self.add_k_proj = self.add_v_proj = None
+        if added_kv_proj_dim is not None:
+            self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
+            self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
+            self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
+
+        self.is_cross_attention = cross_attention_dim_head is not None
+
+        self.set_processor(processor)
+
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.fuse_projections
+    def fuse_projections(self):
+        if getattr(self, "fused_projections", False):
+            return
+
+        if self.cross_attention_dim_head is None:
+            concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
+            concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_qkv = nn.Linear(in_features, out_features, bias=True)
+            self.to_qkv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+        else:
+            concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
+            concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_kv = nn.Linear(in_features, out_features, bias=True)
+            self.to_kv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+
+        if self.added_kv_proj_dim is not None:
+            concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
+            concatenated_bias = torch.cat([self.add_k_proj.bias.data, self.add_v_proj.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_added_kv = nn.Linear(in_features, out_features, bias=True)
+            self.to_added_kv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
+
+        self.fused_projections = True
+
+    @torch.no_grad()
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.unfuse_projections
+    def unfuse_projections(self):
+        if not getattr(self, "fused_projections", False):
+            return
+
+        if hasattr(self, "to_qkv"):
+            delattr(self, "to_qkv")
+        if hasattr(self, "to_kv"):
+            delattr(self, "to_kv")
+        if hasattr(self, "to_added_kv"):
+            delattr(self, "to_added_kv")
+
+        self.fused_projections = False
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
 
 
 class Magi1ImageEmbedding(torch.nn.Module):
@@ -232,9 +383,14 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         return temb, y_xattn, y_adaln, encoder_hidden_states_image
 
 
+# Copied from diffusers.models.transformers.transformer_wan.WanRotaryPosEmbed with Wan -> Magi1
 class Magi1RotaryPosEmbed(nn.Module):
     def __init__(
-        self, attention_head_dim: int, patch_size: Tuple[int, int, int], max_seq_len: int, theta: float = 10000.0
+        self,
+        attention_head_dim: int,
+        patch_size: Tuple[int, int, int],
+        max_seq_len: int,
+        theta: float = 10000.0,
     ):
         super().__init__()
 
@@ -244,36 +400,52 @@ class Magi1RotaryPosEmbed(nn.Module):
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
         t_dim = attention_head_dim - h_dim - w_dim
-
-        freqs = []
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
+
+        freqs_cos = []
+        freqs_sin = []
+
         for dim in [t_dim, h_dim, w_dim]:
-            freq = get_1d_rotary_pos_embed(
-                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=freqs_dtype
+            freq_cos, freq_sin = get_1d_rotary_pos_embed(
+                dim,
+                max_seq_len,
+                theta,
+                use_real=True,
+                repeat_interleave_real=True,
+                freqs_dtype=freqs_dtype,
             )
-            freqs.append(freq)
-        self.freqs = torch.cat(freqs, dim=1)
+            freqs_cos.append(freq_cos)
+            freqs_sin.append(freq_sin)
+
+        self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
+        self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
-        freqs = self.freqs.to(hidden_states.device)
-        freqs = freqs.split_with_sizes(
-            [
-                self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
-                self.attention_head_dim // 6,
-                self.attention_head_dim // 6,
-            ],
-            dim=1,
-        )
+        split_sizes = [
+            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
+            self.attention_head_dim // 3,
+            self.attention_head_dim // 3,
+        ]
 
-        freqs_f = freqs[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_h = freqs[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_w = freqs[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
-        freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
-        return freqs
+        freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
+        freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
+
+        freqs_cos_f = freqs_cos[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_cos_h = freqs_cos[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_cos_w = freqs_cos[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
+
+        freqs_sin_f = freqs_sin[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_sin_h = freqs_sin[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_sin_w = freqs_sin[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
+
+        freqs_cos = torch.cat([freqs_cos_f, freqs_cos_h, freqs_cos_w], dim=-1).reshape(1, ppf * pph * ppw, 1, -1)
+        freqs_sin = torch.cat([freqs_sin_f, freqs_sin_h, freqs_sin_w], dim=-1).reshape(1, ppf * pph * ppw, 1, -1)
+
+        return freqs_cos, freqs_sin
 
 
 class Magi1TransformerBlock(nn.Module):
@@ -288,6 +460,7 @@ class Magi1TransformerBlock(nn.Module):
         dim (`int`): The number of channels in the input and output.
         ffn_dim (`int`): The number of channels in the feed-forward layer.
         num_heads (`int`): The number of attention heads.
+        num_kv_heads (`int`): The number of key-value attention heads.
         qk_norm (`str`): The type of normalization to apply to query and key projections.
         cross_attn_norm (`bool`): Whether to apply normalization in cross-attention.
         eps (`float`): The epsilon value for layer normalization.
@@ -299,6 +472,7 @@ class Magi1TransformerBlock(nn.Module):
         dim: int,
         ffn_dim: int,
         num_heads: int,
+        num_kv_heads: int,
         qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
@@ -307,43 +481,44 @@ class Magi1TransformerBlock(nn.Module):
         super().__init__()
 
         # 1. Self-attention
-        self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-        self.attn1 = Attention(
-            query_dim=dim,
+        self.norm1 = FP32LayerNorm(dim, eps)
+        self.attn1 = Magi1Attention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
+            kv_heads=num_kv_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
-            processor=Magi1AttnProcessor2_0(),
+            cross_attention_dim_head=None,
+            processor=Magi1AttnProcessor(),
         )
 
         # 2. Cross-attention
-        self.attn2 = Attention(
-            query_dim=dim,
+        self.attn2 = Magi1Attention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
+            kv_heads=num_kv_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
-            added_kv_proj_dim=added_kv_proj_dim,
-            added_proj_bias=True,
-            processor=Magi1AttnProcessor2_0(),
+            cross_attention_dim_head=dim // num_kv_heads,
+            processor=Magi1AttnProcessor(),
         )
-        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
+
+        self.ada_modulate_layer = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(
+                int(dim * 0.25),
+                int(dim * 2),
+            ),
+        )
+        self.norm2 = FP32LayerNorm(dim, eps)
+        self.norm2.weight += 1
+        self.norm3 = FP32LayerNorm(dim, eps)
 
         # 3. Feed-forward
-        self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
-        self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+        self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu")
 
-        # Scale and shift table for AdaLN - 6 components for gating
-        self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
+        self.norm4 = FP32LayerNorm(dim, eps)
+        self.norm4.weight += 1
 
     def forward(
         self,
@@ -351,34 +526,49 @@ class Magi1TransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
+        condition_map: torch.Tensor,
     ) -> torch.Tensor:
-        # Apply softcap to temb
-        temb = (1.0 * torch.tanh(temb.float() / 1.0)).to(temb.dtype)
-        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (self.scale_shift_table + temb).chunk(
-            6, dim=1
-        )
+        residual = hidden_states.float()
+
+        # [bs, sq, h] --> [sq, bs, q + qx + k + v]
+        mixed_qqkv = self.norm1(hidden_states.transpose(0, 1))
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        self_attn_output = self.attn1(mixed_qqkv, None, None, rotary_emb)
 
         # 2. Cross-attention
-        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
-        attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
-        hidden_states = hidden_states + attn_output
+        cross_attn_output = self.attn2(mixed_qqkv, encoder_hidden_states, None, None)
 
-        # 3. Feed-forward
-        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
-        )
-        ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+        hidden_states = torch.concat([self_attn_output, cross_attn_output], dim=2)
 
+        gate_output = self.ada_modulate_layer(temb)
+        # Softcap with 1.0
+        gate_output = torch.tanh(gate_output.float()).to(gate_output.dtype)
+        gate_msa, gate_mlp = gate_output.chunk(2, dim=-1)
+
+        # Residual connection for self-attention
+        original_dtype = hidden_states.dtype
+        hidden_states = range_mod_pytorch(hidden_states.float(), condition_map, gate_msa)
+        hidden_states = self.norm2(hidden_states)
+        hidden_states = hidden_states + residual
+        residual = hidden_states
+        hidden_states = hidden_states.to(original_dtype)
+
+        hidden_states = self.norm3(hidden_states)
+        hidden_states = self.ffn(hidden_states)
+
+        # Residual connection for MLP
+        original_dtype = hidden_states.dtype
+        hidden_states = range_mod_pytorch(hidden_states.float(), condition_map, gate_mlp)
+        hidden_states = self.norm4(hidden_states)
+        hidden_states = hidden_states + residual
+        hidden_states = hidden_states.to(original_dtype)
         return hidden_states
 
 
-class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class Magi1Transformer3DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     r"""
     A Transformer model for video-like data used in the Magi1 model.
 
@@ -424,7 +614,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "rope"]
     _no_split_modules = ["Magi1TransformerBlock", "norm_out"]
-    _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out"]
+    _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out", "norm_q", "norm_k"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["Magi1TransformerBlock"]
 
@@ -434,6 +624,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         patch_size: Tuple[int] = (1, 2, 2),
         num_attention_heads: int = 16,
         attention_head_dim: int = 64,
+        num_kv_heads: int = 8,
         in_channels: int = 16,
         out_channels: int = 16,
         cross_attention_dim: int = 4096,
@@ -455,7 +646,6 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
 
         # 1. Patch & position embedding
         self.rope = Magi1RotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
-
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size, bias=False)
 
         # 2. Condition embeddings
@@ -474,20 +664,21 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         self.blocks = nn.ModuleList(
             [
                 Magi1TransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
+                    inner_dim,
+                    ffn_dim,
+                    num_attention_heads,
+                    num_kv_heads,
+                    qk_norm,
+                    cross_attn_norm,
+                    eps,
+                    added_kv_proj_dim,
                 )
                 for _ in range(num_layers)
             ]
         )
 
         # 4. Output norm & projection
-        self.norm_out = AdaLayerNorm(
-            embedding_dim=inner_dim,
-            output_dim=2 * inner_dim,
-            norm_elementwise_affine=False,
-            norm_eps=eps,
-            chunk_dim=1,
-        )
+        self.norm_out = FP32LayerNorm(inner_dim, eps)
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size), bias=False)
 
         self.gradient_checkpointing = False
@@ -500,6 +691,7 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
+        condition_map: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
@@ -542,11 +734,11 @@ class Magi1Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.blocks:
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, temb, rotary_emb
+                    block, hidden_states, encoder_hidden_states, temb, rotary_emb, condition_map
                 )
         else:
             for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, temb, rotary_emb)
+                hidden_states = block(hidden_states, encoder_hidden_states, temb, rotary_emb, condition_map)
 
         hidden_states = self.norm_out(hidden_states, temb=temb)
         hidden_states = self.proj_out(hidden_states)
