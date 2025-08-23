@@ -467,17 +467,17 @@ class VaeImageProcessor(ConfigMixin):
 
     def resize(
         self,
-        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
+        image: PipelineImageInput,
         height: int,
         width: int,
         resize_mode: str = "default",  # "default", "fill", "crop"
-    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
+    ) -> PipelineImageInput:
         """
         Resize image.
 
         Args:
-            image (`PIL.Image.Image`, `np.ndarray` or `torch.Tensor`):
-                The image input, can be a PIL image, numpy array or pytorch tensor.
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                The image batch input, can be a PIL image, numpy array or pytorch tensor, or a list of these elements.
             height (`int`):
                 The height to resize to.
             width (`int`):
@@ -492,7 +492,7 @@ class VaeImageProcessor(ConfigMixin):
                 supported for PIL image input.
 
         Returns:
-            `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
+            `torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`:
                 The resized image.
         """
         if resize_mode != "default" and not isinstance(image, PIL.Image.Image):
@@ -523,6 +523,16 @@ class VaeImageProcessor(ConfigMixin):
                 size=(height, width),
             )
             image = self.pt_to_numpy(image)
+        elif isinstance(image, list):
+            image = [
+                self.resize(
+                    img,
+                    height=height,
+                    width=width,
+                    resize_mode=resize_mode,
+                )
+                for img in image
+            ]
         return image
 
     def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
