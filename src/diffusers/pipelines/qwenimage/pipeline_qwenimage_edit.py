@@ -62,25 +62,6 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("qwenimage_edit.png")
         ```
 """
-PREFERRED_QWENIMAGE_RESOLUTIONS = [
-    (672, 1568),
-    (688, 1504),
-    (720, 1456),
-    (752, 1392),
-    (800, 1328),
-    (832, 1248),
-    (880, 1184),
-    (944, 1104),
-    (1024, 1024),
-    (1104, 944),
-    (1184, 880),
-    (1248, 832),
-    (1328, 800),
-    (1392, 752),
-    (1456, 720),
-    (1504, 688),
-    (1568, 672),
-]
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -565,7 +546,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        _auto_resize: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -597,6 +577,11 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
+
+                This parameter in the pipeline is there to support future guidance-distilled models when they come up.
+                Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance,
+                please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should
+                enable classifier-free guidance computations.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -641,8 +626,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             returning a tuple, the first element is a list with the generated images.
         """
         image_size = image[0].size if isinstance(image, list) else image.size
-        width, height = image_size
-        calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, width / height)
+        calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
         height = height or calculated_height
         width = width or calculated_width
 
@@ -680,18 +664,9 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         device = self._execution_device
         # 3. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
-            img = image[0] if isinstance(image, list) else image
-            image_height, image_width = self.image_processor.get_default_height_width(img)
-            aspect_ratio = image_width / image_height
-            if _auto_resize:
-                _, image_width, image_height = min(
-                    (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_QWENIMAGE_RESOLUTIONS
-                )
-            image_width = image_width // multiple_of * multiple_of
-            image_height = image_height // multiple_of * multiple_of
-            image = self.image_processor.resize(image, image_height, image_width)
+            image = self.image_processor.resize(image, calculated_height, calculated_width)
             prompt_image = image
-            image = self.image_processor.preprocess(image, image_height, image_width)
+            image = self.image_processor.preprocess(image, calculated_height, calculated_width)
             image = image.unsqueeze(2)
 
         has_neg_prompt = negative_prompt is not None or (
@@ -708,9 +683,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
         )
         if do_true_cfg:
-            # negative image is the same size as the original image, but all pixels are white
-            # negative_image = Image.new("RGB", (image.width, image.height), (255, 255, 255))
-
             negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
                 image=prompt_image,
                 prompt=negative_prompt,
@@ -737,7 +709,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         img_shapes = [
             [
                 (1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2),
-                (1, image_height // self.vae_scale_factor // 2, image_width // self.vae_scale_factor // 2),
+                (1, calculated_height // self.vae_scale_factor // 2, calculated_width // self.vae_scale_factor // 2),
             ]
         ] * batch_size
 
