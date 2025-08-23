@@ -14,16 +14,25 @@
 
 import math
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from dataclasses import dataclass
 
 import torch
 
 from ..configuration_utils import register_to_config
 from .guider_utils import BaseGuidance, rescale_noise_cfg
+from ..utils import BaseOutput
 
 
 if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
 
+@dataclass
+class ClassifierFreeGuidanceOutput(BaseOutput):
+    """
+    Output class for Classifier-free guidance.
+    """
+    pred: torch.Tensor
+    pred_cond: torch.Tensor
 
 class ClassifierFreeGuidance(BaseGuidance):
     """
@@ -109,7 +118,7 @@ class ClassifierFreeGuidance(BaseGuidance):
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
-        return pred, {}
+        return ClassifierFreeGuidanceOutput(pred=pred, pred_cond=pred_cond)
 
     @property
     def is_conditional(self) -> bool:
