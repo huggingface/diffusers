@@ -171,8 +171,8 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def scale_noise(
         self,
         sample: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
-        noise: Optional[torch.FloatTensor] = None,
+        timestep: torch.FloatTensor,
+        noise: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
         Forward process in flow-matching
@@ -180,8 +180,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`):
                 The input sample.
-            timestep (`int`, *optional*):
+            timestep (`torch.FloatTensor`):
                 The current timestep in the diffusion chain.
+            noise (`torch.FloatTensor`):
+                The noise tensor.
 
         Returns:
             `torch.FloatTensor`:
