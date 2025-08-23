@@ -62,7 +62,6 @@ def _get_qkv_projections(
     return query, key, value
 
 
-# Copied from diffusers.models.transformers.transformer_wan._get_added_kv_projections
 def _get_added_kv_projections(attn: "SkyReelsV2Attention", encoder_hidden_states_img: torch.Tensor):
     if attn.fused_projections:
         key_img, value_img = attn.to_added_kv(encoder_hidden_states_img).chunk(2, dim=-1)
@@ -211,7 +210,6 @@ class SkyReelsV2Attention(torch.nn.Module, AttentionModuleMixin):
 
         self.set_processor(processor)
 
-    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.fuse_projections
     def fuse_projections(self):
         if getattr(self, "fused_projections", False):
             return
@@ -248,7 +246,6 @@ class SkyReelsV2Attention(torch.nn.Module, AttentionModuleMixin):
         self.fused_projections = True
 
     @torch.no_grad()
-    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.unfuse_projections
     def unfuse_projections(self):
         if not getattr(self, "fused_projections", False):
             return
@@ -262,7 +259,6 @@ class SkyReelsV2Attention(torch.nn.Module, AttentionModuleMixin):
 
         self.fused_projections = False
 
-    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.forward
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -274,7 +270,6 @@ class SkyReelsV2Attention(torch.nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanImageEmbedding with Wan -> SkyReelsV2
 class SkyReelsV2ImageEmbedding(torch.nn.Module):
     def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
@@ -363,7 +358,6 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
         return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanRotaryPosEmbed with Wan -> SkyReelsV2
 class SkyReelsV2RotaryPosEmbed(nn.Module):
     def __init__(
         self,
