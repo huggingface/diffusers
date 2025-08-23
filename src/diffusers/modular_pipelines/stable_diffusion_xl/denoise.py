@@ -492,7 +492,6 @@ class StableDiffusionXLLoopAfterDenoiser(ModularPipelineBlocks):
             t,
             block_state.latents,
             **block_state.extra_step_kwargs,
-            **block_state.guider_inputs,
             return_dict=False,
         )[0]
 
@@ -590,7 +589,6 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(ModularPipelineBlocks):
             t,
             block_state.latents,
             **block_state.extra_step_kwargs,
-            **block_state.guider_inputs,
             return_dict=False,
         )[0]
 

@@ -171,7 +171,6 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
             block_state.noise_pred.float(),
             t,
             block_state.latents.float(),
-            **block_state.guider_inputs,
             return_dict=False,
         )[0]
 
