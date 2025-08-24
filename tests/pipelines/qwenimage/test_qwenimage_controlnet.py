@@ -21,25 +21,25 @@ from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Q
 from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
+    QwenImageControlNetPipeline,
     QwenImageTransformer2DModel,
-    QwenImageControlNetPipeline
 )
 from diffusers.models.controlnets.controlnet_qwenimage import QwenImageControlNetModel
-from diffusers.utils import load_image
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np, FluxIPAdapterTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-
 class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = QwenImageControlNetPipeline
-    params = (TEXT_TO_IMAGE_PARAMS | frozenset(["control_image", "controlnet_conditioning_scale"])) - {"cross_attention_kwargs"}
+    params = (TEXT_TO_IMAGE_PARAMS | frozenset(["control_image", "controlnet_conditioning_scale"])) - {
+        "cross_attention_kwargs"
+    }
     batch_params = frozenset(["prompt", "negative_prompt", "control_image"])
     image_params = frozenset(["control_image"])
     image_latents_params = frozenset(["latents"])
@@ -56,7 +56,7 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "callback_on_step_end_tensor_inputs",
         ]
     )
- 
+
     supports_dduf = False
     test_xformers_attention = True
     test_layerwise_casting = True
@@ -75,31 +75,29 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             guidance_embeds=False,
             axes_dims_rope=(8, 4, 4),
         )
-    
 
         torch.manual_seed(0)
         controlnet = QwenImageControlNetModel(
             patch_size=2,
-            in_channels=16,        
-            out_channels=4,         
-            num_layers=2,            
-            attention_head_dim=16,   
-            num_attention_heads=3,  
-            joint_attention_dim=16, 
-            axes_dims_rope=(8, 4, 4) 
+            in_channels=16,
+            out_channels=4,
+            num_layers=2,
+            attention_head_dim=16,
+            num_attention_heads=3,
+            joint_attention_dim=16,
+            axes_dims_rope=(8, 4, 4),
         )
 
-
         torch.manual_seed(0)
-        z_dim = 4  
+        z_dim = 4
         vae = AutoencoderKLQwenImage(
-            base_dim=z_dim * 6,          
-            z_dim=z_dim,                 
-            dim_mult=[1, 2, 4],          
-            num_res_blocks=1,            
+            base_dim=z_dim * 6,
+            z_dim=z_dim,
+            dim_mult=[1, 2, 4],
+            num_res_blocks=1,
             temperal_downsample=[False, True],
-            latents_mean=[0.0] * z_dim,  
-            latents_std=[1.0] * z_dim,   
+            latents_mean=[0.0] * z_dim,
+            latents_std=[1.0] * z_dim,
         )
 
         torch.manual_seed(0)
@@ -191,13 +189,30 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # Expected slice from the generated image
         expected_slice = torch.tensor(
-            [0.4726, 0.5549, 0.6324, 0.6548, 0.4968, 0.4639, 0.4749, 0.4898, 0.4725, 0.4645, 0.4435, 0.3339, 0.3400, 0.4630, 0.3879, 0.4406]
+            [
+                0.4726,
+                0.5549,
+                0.6324,
+                0.6548,
+                0.4968,
+                0.4639,
+                0.4749,
+                0.4898,
+                0.4725,
+                0.4645,
+                0.4435,
+                0.3339,
+                0.3400,
+                0.4630,
+                0.3879,
+                0.4406,
+            ]
         )
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
-        
+
     def test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
     ):
@@ -277,5 +292,3 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
-    
-    
