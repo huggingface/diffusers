@@ -113,3 +113,17 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 ## PushToHubMixin
 
 [[autodoc]] utils.PushToHubMixin
+
+## Callbacks
+
+[[autodoc]] callbacks.PipelineCallback
+
+[[autodoc]] callbacks.SDCFGCutoffCallback
+
+[[autodoc]] callbacks.SDXLCFGCutoffCallback
+
+[[autodoc]] callbacks.SDXLControlnetCFGCutoffCallback
+
+[[autodoc]] callbacks.IPAdapterScaleCutoffCallback
+
+[[autodoc]] callbacks.SD3CFGCutoffCallback
