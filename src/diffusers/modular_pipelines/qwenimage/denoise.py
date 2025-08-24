@@ -52,6 +52,34 @@ class QwenImageLoopBeforeDenoiser(ModularPipelineBlocks):
     def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         # one timestep
         block_state.timestep = t.expand(block_state.latents.shape[0]).to(block_state.latents.dtype)
+        block_state.latent_model_input = block_state.latents
+        return components, block_state
+
+
+class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    @property
+    def description(self) -> str:
+        return (
+            "step within the denoising loop that prepares the latent input for the denoiser. "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "object (e.g. `QwenImageDenoiseLoopWrapper`)"
+        )
+    
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."),
+            InputParam("image_latents", required=True, type_hint=torch.Tensor, description="The initial image latents to use for the denoising process. Can be encoded in vae_encoder step and packed in prepare_image_latents step."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        # one timestep
+
+        block_state.latent_model_input = torch.cat([block_state.latents, block_state.image_latents], dim=1)
+        block_state.timestep = t.expand(block_state.latents.shape[0]).to(block_state.latents.dtype)
         return components, block_state
 
 
@@ -107,7 +135,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
 
             # YiYi TODO: add cache context
             guider_state_batch.noise_pred = components.transformer(
-                hidden_states=block_state.latents,
+                hidden_states=block_state.latent_model_input,
                 timestep=block_state.timestep / 1000,
                 img_shapes=block_state.img_shapes,
                 attention_kwargs=block_state.attention_kwargs,
@@ -128,7 +156,80 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
         return components, block_state
 
             
-            
+class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    @property
+    def description(self) -> str:
+        return (
+            "step within the denoising loop that denoise the latent input for the denoiser. "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "object (e.g. `QwenImageDenoiseLoopWrapper`)"
+        )
+    
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 4.0}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec("transformer", QwenImageTransformer2DModel),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("attention_kwargs"),
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The latents to use for the denoising process. Can be generated in prepare_latents step."),
+            InputParam("num_inference_steps", required=True, type_hint=int, description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."),
+            InputParam(kwargs_type="guider_input_fields", description="All coditional model inputs that need to be prepared with guider: e.g. prompt_embeds, negative_prompt_embeds, etc."),
+            InputParam("img_shapes", required=True, type_hint=List[Tuple[int, int]], description="The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step."),
+        ]
+    
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        
+        guider_input_fields = {
+            "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+            "encoder_hidden_states_mask": ("prompt_embeds_mask", "negative_prompt_embeds_mask"),
+            "txt_seq_lens": ("txt_seq_lens", "negative_txt_seq_lens"),
+        }
+
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        guider_state = components.guider.prepare_inputs(block_state, guider_input_fields)
+
+        for guider_state_batch in guider_state:
+            components.guider.prepare_models(components.transformer)
+            cond_kwargs = guider_state_batch.as_dict()
+            cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in guider_input_fields}
+
+            # YiYi TODO: add cache context
+            guider_state_batch.noise_pred = components.transformer(
+                hidden_states=block_state.latent_model_input,
+                timestep=block_state.timestep / 1000,
+                img_shapes=block_state.img_shapes,
+                attention_kwargs=block_state.attention_kwargs,
+                return_dict=False,
+                **cond_kwargs,
+            )[0]
+
+            components.guider.cleanup_models(components.transformer)
+        
+        guider_output = components.guider(guider_state)
+
+        pred = guider_output.pred[:, : block_state.latents.size(1)]
+        pred_cond = guider_output.pred_cond[:, : block_state.latents.size(1)]
+
+        # apply guidance rescale
+        pred_cond_norm = torch.norm(pred_cond, dim=-1, keepdim=True)
+        pred_norm = torch.norm(pred, dim=-1, keepdim=True)
+        block_state.noise_pred = pred * (pred_cond_norm / pred_norm)
+        
+
+        return components, block_state       
 
 
 class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
@@ -237,4 +338,26 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
             "This block supports text2img tasks."
+        )
+
+
+# composing the denoising loops
+class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
+    block_classes = [
+        QwenImageEditLoopBeforeDenoiser,
+        QwenImageEditLoopDenoiser,
+        QwenImageLoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. \n"
+            "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            " - `QwenImageEditLoopBeforeDenoiser`\n"
+            " - `QwenImageEditLoopDenoiser`\n"
+            " - `QwenImageLoopAfterDenoiser`\n"
+            "This block supports text2img and img2img tasks."
         )

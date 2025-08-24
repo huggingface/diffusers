@@ -65,13 +65,10 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
 
     @property
     def requires_unconditional_embeds(self):
-        # by default, always prepare unconditional embeddings
-        requires_unconditional_embeds = True
+
+        requires_unconditional_embeds = False
 
         if hasattr(self, "guider") and self.guider is not None:
-            requires_unconditional_embeds = self.guider.num_conditions > 1
-
-        elif not hasattr(self, "guider") or self.guider is None:
-            requires_unconditional_embeds = False
+            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
 
         return requires_unconditional_embeds

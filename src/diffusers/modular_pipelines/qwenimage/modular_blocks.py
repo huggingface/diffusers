@@ -14,44 +14,16 @@
 
 from ...utils import logging
 
-from .encoders import QwenImageTextEncoderStep
+from .encoders import QwenImageTextEncoderStep, QwenImageEditTextEncoderStep, QwenImageVaeEncoderStep
 from .decoders import QwenImageDecodeStep
-from .denoise import QwenImageDenoiseStep
-from .before_denoise import QwenImageInputStep, QwenImagePrepareLatentsStep, QwenImageSetTimestepsStep, QwenImagePrepareAdditionalInputsStep
+from .denoise import QwenImageDenoiseStep, QwenImageEditDenoiseStep
+from .before_denoise import QwenImageInputStep, QwenImagePrepareLatentsStep, QwenImageSetTimestepsStep, QwenImagePrepareAdditionalInputsStep, QwenImagePrepareImageLatentsStep, QwenImageEditPrepareAdditionalInputsStep, QwenImageImageResizeStep
 
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 
 logger = logging.get_logger(__name__)
 
-
-class QwenImageBeforeDenoiseStep(SequentialPipelineBlocks):
-
-    block_classes = [
-        QwenImageInputStep,
-        QwenImagePrepareLatentsStep,
-        QwenImageSetTimestepsStep,
-        QwenImagePrepareAdditionalInputsStep,
-    ]
-
-    block_names = [
-        "input",
-        "prepare_latents",
-        "set_timesteps",
-        "prepare_additional_inputs",
-    ]
-
-    @property
-    def description(self):
-        return (
-            "Before denoise step that prepare the inputs for the denoise step.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `QwenImageInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `QwenImagePrepareLatentsStep` is used to prepare the latents\n"
-            + " - `QwenImageSetTimestepsStep` is used to set the timesteps\n"
-            + " - `QwenImagePrepareAdditionalInputsStep` is used to prepare the additional inputs for the model\n"
-        )
-        
 
 TEXT2IMAGE_BLOCKS = InsertableDict(
     [
@@ -65,4 +37,22 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
     ]
     )
 
-ALL_BLOCKS = {"text2image": TEXT2IMAGE_BLOCKS}
+EDIT_BLOCKS = InsertableDict(
+    [
+        ("image_resize", QwenImageImageResizeStep),
+        ("text_encoder", QwenImageEditTextEncoderStep),
+        ("vae_encoder", QwenImageVaeEncoderStep),
+        ("input", QwenImageInputStep),
+        ("prepare_image_latents", QwenImagePrepareImageLatentsStep),
+        ("prepare_latents", QwenImagePrepareLatentsStep),
+        ("set_timesteps", QwenImageSetTimestepsStep),
+        ("prepare_additional_inputs", QwenImageEditPrepareAdditionalInputsStep),
+        ("denoise", QwenImageEditDenoiseStep),
+        ("decode", QwenImageDecodeStep),
+    ]
+    )
+
+ALL_BLOCKS = {
+    "text2image": TEXT2IMAGE_BLOCKS,
+    "edit": EDIT_BLOCKS,
+}

@@ -15,17 +15,18 @@
 from typing import List, Optional, Union
 import torch
 from ...utils import logging
-from transformers import Qwen2Tokenizer, Qwen2_5_VLForConditionalGeneration
+from transformers import Qwen2Tokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2VLProcessor
 
 from ...guiders import ClassifierFreeGuidance
 from ...configuration_utils import FrozenDict
+
+from ...models import AutoencoderKLQwenImage
+from ...image_processor import VaeImageProcessor
 
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 
 from .modular_pipeline import QwenImageModularPipeline
-
-from ...pipelines.qwenimage.pipeline_qwenimage import calculate_dimensions
 
 logger = logging.get_logger(__name__)
 
@@ -86,7 +87,6 @@ def get_qwen_prompt_embeds_edit(
     prompt_template_encode: str = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n",
     prompt_template_encode_start_idx: int = 64,
     device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
 ):
 
     prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -122,9 +122,49 @@ def get_qwen_prompt_embeds_edit(
         [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
     )
 
-    prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+    prompt_embeds = prompt_embeds.to(device=device)
 
     return prompt_embeds, encoder_attention_mask
+
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+# Modified from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._encode_vae_image
+def encode_vae_image(image: torch.Tensor, vae: AutoencoderKLQwenImage, generator: torch.Generator, latent_channels: int = 16):
+    if isinstance(generator, list):
+        image_latents = [
+            retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i], sample_mode="argmax")
+            for i in range(image.shape[0])
+        ]
+        image_latents = torch.cat(image_latents, dim=0)
+    else:
+        image_latents = retrieve_latents(vae.encode(image), generator=generator, sample_mode="argmax")
+    latents_mean = (
+        torch.tensor(vae.config.latents_mean)
+        .view(1, latent_channels, 1, 1, 1)
+        .to(image_latents.device, image_latents.dtype)
+    )
+    latents_std = (
+        torch.tensor(vae.config.latents_std)
+        .view(1, latent_channels, 1, 1, 1)
+        .to(image_latents.device, image_latents.dtype)
+    )
+    image_latents = (image_latents - latents_mean) / latents_std
+
+    return image_latents
+
 
 class QwenImageTextEncoderStep(ModularPipelineBlocks):
     model_name = "qwenimage"
@@ -204,10 +244,11 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
         block_state.prompt_embeds_mask = block_state.prompt_embeds_mask[:, :block_state.max_sequence_length]
 
         if components.requires_unconditional_embeds:
+            negative_prompt = block_state.negative_prompt or ""
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds(
                 components.text_encoder,
                 components.tokenizer,
-                prompt=block_state.negative_prompt,
+                prompt=negative_prompt,
                 prompt_template_encode=components.config.prompt_template_encode,
                 prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
                 tokenizer_max_length=components.config.tokenizer_max_length,
@@ -216,41 +257,6 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
             block_state.negative_prompt_embeds = block_state.negative_prompt_embeds[:, :block_state.max_sequence_length]
             block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask[:, :block_state.max_sequence_length]
 
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class QwenImageImageResizeStep(ModularPipelineBlocks):
-    model_name = "qwenimage"
-
-    @property
-    def description(self) -> str:
-        return "Image Resize step that resize the image to the target area while maintaining the aspect ratio"
-    
-    @property
-    def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 16}), default_creation_method="from_config"),
-        ]
-    
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam(name="image", required=True, type_hint=torch.Tensor, description="The image to resize"),
-        ]
-    
-    @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
-        block_state = self.get_block_state(state)
-
-
-        if not isinstance(block_state.image, list):
-            block_state.image = [block_state.image]
-        
-        image_width, image_height = block_state.image[0].size
-        calculated_width, calculated_height = calculate_dimensions(1024 * 1024, image_width / image_height)
-
-        block_state.image = components.image_processor.resize(image, (calculated_height, calculated_width))
         self.set_block_state(state, block_state)
         return components, state
 
@@ -287,7 +293,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
         return [
             InputParam(name="prompt", required=True, type_hint=str, description="The prompt to encode"),
             InputParam(name="negative_prompt", type_hint=str, description="The negative prompt to encode"),
-            InputParam(name="max_sequence_length", type_hint=int, description="The max sequence length to use", default=1024),
+            InputParam(name="image", required=True, type_hint=torch.Tensor, description="The image prompt to encode, should be resized using resize step"),
         ]
     
     @property
@@ -300,52 +306,101 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    def check_inputs(prompt, negative_prompt, max_sequence_length):
+    def check_inputs(prompt, negative_prompt):
 
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
         
         if negative_prompt is not None and not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
-        
-        if max_sequence_length is not None and max_sequence_length > 1024:
-            raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
     
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        self.check_inputs(block_state.prompt, block_state.negative_prompt, block_state.max_sequence_length)
+        self.check_inputs(block_state.prompt, block_state.negative_prompt)
 
         device = components._execution_device
-        image = components.image_processor.preprocess(block_state.image)
 
-
-        block_state.prompt_embeds, block_state.prompt_embeds_mask = get_qwen_prompt_embeds(
+        block_state.prompt_embeds, block_state.prompt_embeds_mask = get_qwen_prompt_embeds_edit(
             components.text_encoder,
-            components.tokenizer,
+            components.processor,
             prompt=block_state.prompt,
+            image=block_state.image,
             prompt_template_encode=components.config.prompt_template_encode,
             prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
-            tokenizer_max_length=components.config.tokenizer_max_length,
             device=device,
         )
 
-        block_state.prompt_embeds = block_state.prompt_embeds[:, :block_state.max_sequence_length]
-        block_state.prompt_embeds_mask = block_state.prompt_embeds_mask[:, :block_state.max_sequence_length]
-
         if components.requires_unconditional_embeds:
-            block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds(
+            negative_prompt = block_state.negative_prompt or ""
+            block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds_edit(
                 components.text_encoder,
-                components.tokenizer,
-                prompt=block_state.negative_prompt,
+                components.processor,
+                prompt=negative_prompt,
+                image=block_state.image,
                 prompt_template_encode=components.config.prompt_template_encode,
                 prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
-                tokenizer_max_length=components.config.tokenizer_max_length,
                 device=device,
             )
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds[:, :block_state.max_sequence_length]
-            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask[:, :block_state.max_sequence_length]
 
         self.set_block_state(state, block_state)
+        return components, state
+    
+
+class QwenImageVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    @property
+    def description(self) -> str:
+        return "Vae Encoder step that encode the input image into a latent representation"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLQwenImage),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("image", required=True, description="The image to encode, should already be resized using resize step"),
+            InputParam("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="The latents representing the reference image",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+        dtype = components.vae.dtype
+
+        image = components.image_processor.preprocess(block_state.image)
+        image = image.unsqueeze(2)
+        image = image.to(device=device, dtype=dtype)
+
+
+        # Encode image into latents
+        block_state.image_latents = encode_vae_image(
+            image=image, vae=components.vae, generator=block_state.generator, latent_channels=components.num_channels_latents
+        )
+
+        self.set_block_state(state, block_state)
+
         return components, state
