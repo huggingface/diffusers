@@ -21,12 +21,11 @@ from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Q
 from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
+    QwenImageControlNetModel,
     QwenImageControlNetPipeline,
+    QwenImageMultiControlNetModel,
     QwenImageTransformer2DModel,
-    QwenImageControlNetModel, 
-    QwenImageMultiControlNetModel
 )
-
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -219,18 +218,16 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"
         components = self.get_dummy_components()
 
-        components["controlnet"] = QwenImageMultiControlNetModel(
-            [components["controlnet"]]
-        )
+        components["controlnet"] = QwenImageMultiControlNetModel([components["controlnet"]])
 
         pipe = self.pipeline_class(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        control_image = inputs["control_image"] 
-        inputs["control_image"] = [control_image, control_image]  
-        inputs["controlnet_conditioning_scale"] = [0.5, 0.5]  
+        control_image = inputs["control_image"]
+        inputs["control_image"] = [control_image, control_image]
+        inputs["controlnet_conditioning_scale"] = [0.5, 0.5]
 
         image = pipe(**inputs).images
         generated_image = image[0]
@@ -238,29 +235,28 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Expected slice from the generated image
         expected_slice = torch.tensor(
             [
-                0.6239, 
-                0.6642, 
-                0.5768, 
-                0.6039, 
-                0.5270, 
-                0.5070, 
-                0.5006, 
-                0.5271, 
+                0.6239,
+                0.6642,
+                0.5768,
+                0.6039,
+                0.5270,
+                0.5070,
+                0.5006,
+                0.5271,
                 0.4506,
-                0.3085, 
-                0.3435, 
-                0.5152, 
-                0.5096, 
-                0.5422, 
-                0.4286, 
-                0.5752
+                0.3085,
+                0.3435,
+                0.5152,
+                0.5096,
+                0.5422,
+                0.4286,
+                0.5752,
             ]
         )
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
-    
 
     def test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
