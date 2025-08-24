@@ -21,7 +21,7 @@ def create_schedule(
         schedule = None
     elif isinstance(schedule_params, float):
         # Interpret as a constant schedule for all timesteps
-        schedule = torch.full(num_inference_steps, schedule_params)
+        schedule = torch.full((num_inference_steps,), schedule_params)
     elif isinstance(schedule_params, (tuple, list)):
         # Interpret first and second elems as start and end points of a linear schedule
         schedule = torch.linspace(schedule_params[0], schedule_params[1], num_inference_steps)
@@ -79,7 +79,8 @@ def sample_tokens(
  ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Samples from a sequence of logits of shape [..., vocab_size] and returns both the sampled sequence (as the second
-    return elem) and the model probabilities for the chosen tokens (as the first return elem).
+    return elem) and the model probabilities for the chosen tokens (as the first return elem) with the same shape as
+    the leading (non-vocab-size) dims of logits.
     """
     # logits shape: [B, L, V]
     if temperature > 0:
@@ -112,8 +113,8 @@ def sample_tokens(
     if margin_confidence:
         sorted_probs, _ = torch.sort(probs, dim=-1, descending=True)
         # Extract top1 and top2 probabilities
-        top1_probs = sorted_probs[:, 0]
-        top2_probs = sorted_probs[:, 1]
+        top1_probs = sorted_probs[..., 0]
+        top2_probs = sorted_probs[..., 1]
         # Calculate confidence as top1 - top2
         confidence = top1_probs - top2_probs
 
@@ -225,6 +226,37 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         self.init_noise_sigma = 1.0
 
+    def t_to_alpha(
+        self,
+        timesteps: Optional[torch.Tensor] = None,
+        masking_schedule: Optional[str] = None,
+    ) -> torch.Tensor:
+        """
+        Calculates the masking (alpha) schedule as a function of the provided timesteps. The timesteps do not
+        necessarily have to match those of self.timesteps.
+        """
+        if timesteps is None:
+            if self.timesteps is not None:
+                timesteps = self.timesteps
+            else:
+                raise ValueError("Since `self.timesteps` is not set, `timesteps` cannot also be `None`")
+        if masking_schedule is None:
+            masking_schedule = self.config.masking_schedule
+
+        if self.config.masking_schedule == "linear":
+            alphas = 1.0 - timesteps
+        elif self.config.masking_schedule == "cosine":
+            alphas = 1.0 - torch.cos((torch.pi / 2) * (1.0 - timesteps))
+        elif self.config.masking_schedule == "polynomial":
+            alphas = 1.0 - torch.pow(timesteps, self.config.polynomial_exp)
+        else:
+            raise ValueError(
+                f"{self.config.masking_schedule} is not a supported masking schedule. Currently supported schedules "
+                f"are `linear`, `cosine`, and `polynomial`."
+            )
+
+        return alphas
+
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
@@ -283,10 +315,12 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
 
+        self.num_inference_steps = num_inference_steps
+
         if self.config.timestep_discretization == "linear":
             timesteps = torch.linspace(1.0, self.config.final_timestep, num_inference_steps + 1, device=device)
         elif self.config.timestep_discretization == "cosine":
-            timesteps = torch.linspace(self.config.final_timestep, 1.0, num_inference_steps + 1)
+            timesteps = torch.linspace(1.0, self.config.final_timestep, num_inference_steps + 1)
             timesteps = torch.cos((torch.pi / 2) * (1.0 - timesteps)).to(device)
         else:
             raise ValueError(
@@ -296,18 +330,7 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = timesteps
 
         # Now calculate the masking or noise schedule (alpha) values at the chosen timestep discretization
-        if self.config.masking_schedule == "linear":
-            alphas = 1.0 - self.timesteps
-        elif self.config.masking_schedule == "cosine":
-            alphas = 1.0 - torch.cos((torch.pi / 2) * (1.0 - self.timesteps))
-        elif self.config.masking_schedule == "polynomial":
-            alphas = 1.0 - torch.pow(self.timesteps, self.config.polynomial_exp)
-        else:
-            raise ValueError(
-                f"{self.config.masking_schedule} is not a supported masking schedule. Currently supported schedules "
-                f"are `linear`, `cosine`, and `polynomial`."
-            )
-        self.alphas = alphas.to(device=device)
+        self.alphas = self.t_to_alpha(timesteps=self.timesteps).to(device=device)
 
         # Allow overriding of specific sampling parameters (temperature, top_p, etc.)
         if temperature is None:
@@ -364,7 +387,7 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
             # Right shift the logits from the model
             # Dream models are trained to predict at right-shifted positions, analogous to an autoregressive model,
             # so we also need to shift the inputs at inference time
-            model_output = torch.cat(model_output[:, :1], model_output[:, :-1], dim=1)
+            model_output = torch.cat([model_output[:, :1], model_output[:, :-1]], dim=1)
 
         # Probability of unmasking each token at time t
         unmask_prob = (self.alphas[step_idx + 1] - self.alphas[step_idx]) / (1 - self.alphas[step_idx])
@@ -418,6 +441,9 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
                 prev_sample = torch.zeros_like(sample, device=sample.device)
                 prev_sample = torch.where(unmask_index, pred_original_sample, sample)
+            else:
+                # No tokens to unmask, so the sample should stay the same
+                prev_sample = sample
 
         # TODO: do we need to shift the tokens again at the end???
         if not return_dict:
@@ -428,35 +454,34 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
     def add_noise(
         self,
         original_samples: torch.Tensor,
+        noise: Optional[torch.Tensor],
         timesteps: torch.Tensor,
         generator: Optional[torch.Generator] = None,
     ) -> torch.Tensor:
-        # For each batch instance i with timestep t_i, mask each position independently with prob 1 - alphas[t_i]
+        """
+        Applies a masked (discrete) diffusion forward process where batch instance i with timestep t_i is masked at
+        each position independently with probability 1 - alpha(t_i). Any (continuous) time in [0, 1] can be used, not
+        just those timesteps that would be in self.timesteps, as masked diffusion models are usually trained in
+        continuous time.
+
+        Note that `noise` here should be drawn from a uniform distribution over [0, 1], rather than a Gaussian
+        distribution as is normal for continuous-space diffusion models.
+        """
         # original_samples shape: [B, L]
-        # Make sure alphas and timesteps have the same device and dtype as original_samples
-        alphas = self.alphas.to(device=original_samples.device, dtype=original_samples.dtype)
-        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
-            # mps does not support float64
-            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
-            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
-        else:
-            schedule_timesteps = self.timesteps.to(original_samples.device)
-            timesteps = timesteps.to(original_samples.device)
+        alphas = self.t_to_alpha(timesteps=timesteps)
+        alphas = alphas.to(device=original_samples.device, dtype=original_samples.dtype)
 
-        step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        mask_probs = 1.0 - alphas
+        while len(mask_probs.shape) < len(original_samples.shape):
+            mask_probs = mask_probs.unsqueeze(-1)
 
-        mask_probs = 1.0 - alphas[step_indices].flatten()
-        while len(mask_probs).shape < len(original_samples.shape):
-            mask_probs.unsqueeze(-1)
-
-        mask_indices = (
-            torch.rand(
+        if noise is None:
+            noise = torch.rand(
                 original_samples.shape,
                 device=generator.device if generator is not None else original_samples.device,
                 generator=generator,
             ).to(original_samples.device)
-            < mask_probs
-        )
+        mask_indices = noise < mask_probs
 
         masked_samples = original_samples.clone()
         masked_samples[mask_indices] = self.config.mask_token_id
