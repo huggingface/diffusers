@@ -24,8 +24,8 @@ else:
     _import_structure["encoders"] = ["QwenImageTextEncoderStep"]
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
-        "TEXT2IMAGE_BLOCKS",
         "CONTROLNET_BLOCKS",
+        "TEXT2IMAGE_BLOCKS",
     ]
     _import_structure["modular_pipeline"] = ["QwenImageModularPipeline"]
 
@@ -41,8 +41,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .modular_blocks import (
             ALL_BLOCKS,
-            TEXT2IMAGE_BLOCKS,
             CONTROLNET_BLOCKS,
+            TEXT2IMAGE_BLOCKS,
         )
         from .modular_pipeline import QwenImageModularPipeline
 else:

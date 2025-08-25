@@ -12,26 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union, Tuple
+import inspect
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import inspect
 
-from ...image_processor import VaeImageProcessor
 from ...configuration_utils import FrozenDict
-
+from ...image_processor import VaeImageProcessor
+from ...models import QwenImageControlNetModel, QwenImageMultiControlNetModel
 from ...pipelines.qwenimage.pipeline_qwenimage_edit import calculate_dimensions
-
+from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline
-
-from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils.torch_utils import randn_tensor, unwrap_module
-
-from ...models import QwenImageControlNetModel, QwenImageMultiControlNetModel
-
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -108,7 +103,6 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-
 def pack_latents(latents, batch_size, num_channels_latents, height, width):
     latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
     latents = latents.permute(0, 2, 4, 1, 3, 5)
@@ -123,13 +117,18 @@ class QwenImageResizeDynamicStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return "Image Resize step that resize the image to target height and width"
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 16}), default_creation_method="from_config"),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
         ]
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         additional_inputs = []
@@ -139,7 +138,7 @@ class QwenImageResizeDynamicStep(ModularPipelineBlocks):
             InputParam(name="height"),
             InputParam(name="width"),
         ] + additional_inputs
-    
+
     def __init__(self, input_names: List[str] = ["image"]):
         if not isinstance(input_names, list):
             input_names = [input_names]
@@ -148,13 +147,12 @@ class QwenImageResizeDynamicStep(ModularPipelineBlocks):
 
     @staticmethod
     def check_inputs(height, width, vae_scale_factor):
-
         if height is not None and height % (vae_scale_factor * 2) != 0:
             raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
 
         if width is not None and width % (vae_scale_factor * 2) != 0:
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
-    
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
@@ -173,10 +171,12 @@ class QwenImageResizeDynamicStep(ModularPipelineBlocks):
                 continue
             if not isinstance(image_input, list):
                 image_input = [image_input]
-            
-            resized_images = [components.image_processor.resize(image, height=height, width=width) for image in image_input]
+
+            resized_images = [
+                components.image_processor.resize(image, height=height, width=width) for image in image_input
+            ]
             setattr(block_state, input_name, resized_images)
-        
+
         self.set_block_state(state, block_state)
         return components, state
 
@@ -187,32 +187,39 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return "Image Resize step that resize the image to the target area while maintaining the aspect ratio."
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 16}), default_creation_method="from_config"),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
         ]
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(name="image", required=True, type_hint=torch.Tensor, description="The image to resize"),
         ]
-    
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-
         images = block_state.image
         if not isinstance(images, list):
             images = [images]
-        
+
         image_width, image_height = images[0].size
         calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_width / image_height)
 
-        resized_images = [components.image_processor.resize(image, height=calculated_height, width=calculated_width) for image in images]
+        resized_images = [
+            components.image_processor.resize(image, height=calculated_height, width=calculated_width)
+            for image in images
+        ]
 
         block_state.image = resized_images
         self.set_block_state(state, block_state)
@@ -220,7 +227,6 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
 
 
 class QwenImageTextInputsStep(ModularPipelineBlocks):
-
     model_name = "qwenimage"
 
     @property
@@ -233,7 +239,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
             "of prompt_embeds. The tensors will be duplicated across the batch dimension to\n"
             "have a final batch_size of batch_size * num_images_per_prompt."
         )
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         return [
@@ -243,7 +249,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
             InputParam(name="negative_prompt_embeds", kwargs_type="denoiser_input_fields"),
             InputParam(name="negative_prompt_embeds_mask", kwargs_type="denoiser_input_fields"),
         ]
-    
+
     @property
     def intermediate_outputs(self) -> List[str]:
         return [
@@ -258,28 +264,27 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
                 description="Data type of model tensor inputs (determined by `prompt_embeds`)",
             ),
         ]
-    
+
     @staticmethod
     def check_inputs(prompt_embeds, prompt_embeds_mask, negative_prompt_embeds, negative_prompt_embeds_mask):
-        
         if negative_prompt_embeds is not None and negative_prompt_embeds_mask is None:
             raise ValueError("`negative_prompt_embeds_mask` is required when `negative_prompt_embeds` is not None")
-        
+
         if negative_prompt_embeds is None and negative_prompt_embeds_mask is not None:
             raise ValueError("cannot pass `negative_prompt_embeds_mask` without `negative_prompt_embeds`")
-        
+
         if prompt_embeds_mask.shape[0] != prompt_embeds.shape[0]:
             raise ValueError("`prompt_embeds_mask` must have the same batch size as `prompt_embeds`")
-        
+
         elif negative_prompt_embeds is not None and negative_prompt_embeds.shape[0] != prompt_embeds.shape[0]:
             raise ValueError("`negative_prompt_embeds` must have the same batch size as `prompt_embeds`")
-        
-        elif negative_prompt_embeds_mask is not None and negative_prompt_embeds_mask.shape[0] != prompt_embeds.shape[0]:
+
+        elif (
+            negative_prompt_embeds_mask is not None and negative_prompt_embeds_mask.shape[0] != prompt_embeds.shape[0]
+        ):
             raise ValueError("`negative_prompt_embeds_mask` must have the same batch size as `prompt_embeds`")
 
-    
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
-
         block_state = self.get_block_state(state)
 
         self.check_inputs(
@@ -296,29 +301,36 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
 
         block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
         block_state.prompt_embeds = block_state.prompt_embeds.view(
-            block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1)
-        
+            block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+        )
+
         block_state.prompt_embeds_mask = block_state.prompt_embeds_mask.repeat(1, block_state.num_images_per_prompt, 1)
         block_state.prompt_embeds_mask = block_state.prompt_embeds_mask.view(
-            block_state.batch_size * block_state.num_images_per_prompt, seq_len)
-        
+            block_state.batch_size * block_state.num_images_per_prompt, seq_len
+        )
+
         if block_state.negative_prompt_embeds is not None:
             _, seq_len, _ = block_state.negative_prompt_embeds.shape
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(
+                1, block_state.num_images_per_prompt, 1
+            )
             block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.view(
-                block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1)
-            
-            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask.repeat(1, block_state.num_images_per_prompt, 1)
+                block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+            )
+
+            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask.repeat(
+                1, block_state.num_images_per_prompt, 1
+            )
             block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask.view(
-                block_state.batch_size * block_state.num_images_per_prompt, seq_len)
-           
+                block_state.batch_size * block_state.num_images_per_prompt, seq_len
+            )
+
         self.set_block_state(state, block_state)
 
         return components, state
 
 
 class QwenImageInputsDynamicStep(ModularPipelineBlocks):
-
     model_name = "qwenimage"
 
     @property
@@ -330,39 +342,42 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
             "of prompt_embeds. The tensors will be duplicated across the batch dimension to\n"
             "have a final batch_size of batch_size * num_images_per_prompt."
         )
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         additional_inputs = []
         for input_name in self.tensor_input_names:
             additional_inputs.append(InputParam(name=input_name, required=True))
-        
+
         return [
             InputParam(name="num_images_per_prompt", default=1),
-            InputParam(name="batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt"),
+            InputParam(
+                name="batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
+            ),
         ] + additional_inputs
-    
-    
+
     @staticmethod
     def check_inputs(tensor_input, tensor_input_name, batch_size):
-
         if tensor_input is not None and tensor_input.shape[0] != 1 and tensor_input.shape[0] != batch_size:
-            raise ValueError(f"`{tensor_input_name}` must have have batch size 1 or {batch_size}, but got {tensor_input.shape[0]}")
-        
-    
+            raise ValueError(
+                f"`{tensor_input_name}` must have have batch size 1 or {batch_size}, but got {tensor_input.shape[0]}"
+            )
+
     def __init__(self, input_names: List[str] = ["image_latents"]):
         if not isinstance(input_names, list):
             input_names = [input_names]
         self.tensor_input_names = input_names
         super().__init__()
-    
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
-
         block_state = self.get_block_state(state)
 
         final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
-        
+
         for input_name in self.tensor_input_names:
             tensor_input = getattr(block_state, input_name)
             # make sure input tensor e.g. image_latents has batch size 1 or batch_size same as prompts
@@ -371,18 +386,15 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
                 tensor_input_name=input_name,
                 batch_size=block_state.batch_size,
             )
-            tensor_input = tensor_input.repeat(
-                final_batch_size // tensor_input.shape[0], 1, 1, 1, 1
-            )
+            tensor_input = tensor_input.repeat(final_batch_size // tensor_input.shape[0], 1, 1, 1, 1)
             setattr(block_state, input_name, tensor_input)
-           
+
         self.set_block_state(state, block_state)
 
         return components, state
 
 
 class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
-
     model_name = "qwenimage"
 
     @property
@@ -402,24 +414,32 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=int,
                 description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
             ),
-            InputParam(name="dtype", required=True, type_hint=torch.dtype, description="The dtype of the model inputs, can be generated in input step."),
+            InputParam(
+                name="dtype",
+                required=True,
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs, can be generated in input step.",
+            ),
         ]
-    
+
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"),
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process",
+            ),
         ]
 
     @staticmethod
     def check_inputs(height, width, vae_scale_factor):
-
         if height is not None and height % (vae_scale_factor * 2) != 0:
             raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
 
         if width is not None and width % (vae_scale_factor * 2) != 0:
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
-    
+
     @staticmethod
     def prepare_latents(
         batch_size,
@@ -449,10 +469,8 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
 
         return latents
 
-
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
-
         block_state = self.get_block_state(state)
 
         self.check_inputs(
@@ -475,16 +493,15 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
             width=width,
             dtype=block_state.dtype,
             device=device,
-            generator=block_state.generator)
+            generator=block_state.generator,
+        )
 
-        
         self.set_block_state(state, block_state)
 
         return components, state
 
 
 class QwenImagePrepareImageLatentsDynamicStep(ModularPipelineBlocks):
-
     model_name = "qwenimage"
 
     @property
@@ -500,18 +517,16 @@ class QwenImagePrepareImageLatentsDynamicStep(ModularPipelineBlocks):
         return [
             InputParam(name="height"),
             InputParam(name="width"),
-            ] + additional_inputs
-    
+        ] + additional_inputs
+
     def __init__(self, input_names: List[str] = ["image_latents"]):
         if not isinstance(input_names, list):
             input_names = [input_names]
         self.image_latents_input_names = input_names
         super().__init__()
 
-
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
-
         block_state = self.get_block_state(state)
 
         for input_name in self.image_latents_input_names:
@@ -531,7 +546,7 @@ class QwenImagePrepareImageLatentsDynamicStep(ModularPipelineBlocks):
                 block_state.height = height_image_latent * components.vae_scale_factor
             if block_state.width is None:
                 block_state.width = width_image_latent * components.vae_scale_factor
-            
+
             setattr(block_state, input_name, image_latents)
 
         self.set_block_state(state, block_state)
@@ -539,15 +554,13 @@ class QwenImagePrepareImageLatentsDynamicStep(ModularPipelineBlocks):
         return components, state
 
 
-
 class QwenImageSetTimestepsStep(ModularPipelineBlocks):
-
     model_name = "qwenimage"
 
     @property
     def description(self) -> str:
         return "Step that sets the the scheduler's timesteps for inference"
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
@@ -559,28 +572,43 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
         return [
             InputParam(name="num_inference_steps", default=50),
             InputParam(name="sigmas"),
-            InputParam(name="latents", required=True, type_hint=torch.Tensor, description="The latents to use for the denoising process"),
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The latents to use for the denoising process",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"),
-            OutputParam(name="num_inference_steps", type_hint=int, description="The number of inference steps to use for the denoising process"),
+            OutputParam(
+                name="timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"
+            ),
+            OutputParam(
+                name="num_inference_steps",
+                type_hint=int,
+                description="The number of inference steps to use for the denoising process",
+            ),
         ]
-    
+
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
-        sigmas = np.linspace(1.0, 1 / block_state.num_inference_steps, block_state.num_inference_steps) if block_state.sigmas is None else block_state.sigmas
-        
+        sigmas = (
+            np.linspace(1.0, 1 / block_state.num_inference_steps, block_state.num_inference_steps)
+            if block_state.sigmas is None
+            else block_state.sigmas
+        )
+
         mu = calculate_shift(
             image_seq_len=block_state.latents.shape[1],
-            base_seq_len= components.scheduler.config.get("base_image_seq_len", 256),
-            max_seq_len= components.scheduler.config.get("max_image_seq_len", 4096),
-            base_shift= components.scheduler.config.get("base_shift", 0.5),
-            max_shift= components.scheduler.config.get("max_shift", 1.15),
+            base_seq_len=components.scheduler.config.get("base_image_seq_len", 256),
+            max_seq_len=components.scheduler.config.get("max_image_seq_len", 4096),
+            base_shift=components.scheduler.config.get("base_shift", 0.5),
+            max_shift=components.scheduler.config.get("max_shift", 1.15),
         )
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
             scheduler=components.scheduler,
@@ -595,16 +623,15 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
 
         return components, state
-        
+
 
 class QwenImagePrepareAdditionalInputsStep(ModularPipelineBlocks):
-
     model_name = "qwenimage"
 
     @property
     def description(self) -> str:
         return "Step that prepares the additional inputs for the text-to-image generation process"
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         return [
@@ -614,28 +641,47 @@ class QwenImagePrepareAdditionalInputsStep(ModularPipelineBlocks):
             InputParam(name="prompt_embeds_mask"),
             InputParam(name="negative_prompt_embeds_mask"),
         ]
-    
+
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="img_shapes", type_hint=List[List[Tuple[int, int, int]]], description="The shapes of the images latents, used for RoPE calculation"),
-            OutputParam(name="txt_seq_lens", kwargs_type="denoiser_input_fields", type_hint=List[int], description="The sequence lengths of the prompt embeds, used for RoPE calculation"),
-            OutputParam(name="negative_txt_seq_lens", kwargs_type="denoiser_input_fields", type_hint=List[int], description="The sequence lengths of the negative prompt embeds, used for RoPE calculation"),
+            OutputParam(
+                name="img_shapes",
+                type_hint=List[List[Tuple[int, int, int]]],
+                description="The shapes of the images latents, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="txt_seq_lens",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the prompt embeds, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="negative_txt_seq_lens",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the negative prompt embeds, used for RoPE calculation",
+            ),
         ]
-    
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
 
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         height = block_state.height or components.default_height
         width = block_state.width or components.default_width
 
-        block_state.img_shapes = [[(1, height // components.vae_scale_factor // 2, width // components.vae_scale_factor // 2)] * block_state.batch_size]
-        block_state.txt_seq_lens = block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
-        block_state.negative_txt_seq_lens = (
-            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist() if block_state.negative_prompt_embeds_mask is not None else None
+        block_state.img_shapes = [
+            [(1, height // components.vae_scale_factor // 2, width // components.vae_scale_factor // 2)]
+            * block_state.batch_size
+        ]
+        block_state.txt_seq_lens = (
+            block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
         )
-
+        block_state.negative_txt_seq_lens = (
+            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist()
+            if block_state.negative_prompt_embeds_mask is not None
+            else None
+        )
 
         self.set_block_state(state, block_state)
 
@@ -643,13 +689,12 @@ class QwenImagePrepareAdditionalInputsStep(ModularPipelineBlocks):
 
 
 class QwenImageEditPrepareAdditionalInputsStep(ModularPipelineBlocks):
-
     model_name = "qwenimage"
 
     @property
     def description(self) -> str:
         return "Step that prepares the additional inputs for the text-to-image generation process"
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         return [
@@ -660,17 +705,30 @@ class QwenImageEditPrepareAdditionalInputsStep(ModularPipelineBlocks):
             InputParam(name="prompt_embeds_mask"),
             InputParam(name="negative_prompt_embeds_mask"),
         ]
-    
+
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="img_shapes", type_hint=List[List[Tuple[int, int, int]]], description="The shapes of the images latents, used for RoPE calculation"),
-            OutputParam(name="txt_seq_lens", kwargs_type="denoiser_input_fields", type_hint=List[int], description="The sequence lengths of the prompt embeds, used for RoPE calculation"),
-            OutputParam(name="negative_txt_seq_lens", kwargs_type="denoiser_input_fields", type_hint=List[int], description="The sequence lengths of the negative prompt embeds, used for RoPE calculation"),
+            OutputParam(
+                name="img_shapes",
+                type_hint=List[List[Tuple[int, int, int]]],
+                description="The shapes of the images latents, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="txt_seq_lens",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the prompt embeds, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="negative_txt_seq_lens",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the negative prompt embeds, used for RoPE calculation",
+            ),
         ]
-    
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
 
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         image = block_state.image[0] if isinstance(block_state.image, list) else block_state.image
@@ -678,16 +736,23 @@ class QwenImageEditPrepareAdditionalInputsStep(ModularPipelineBlocks):
 
         block_state.img_shapes = [
             [
-                (1, block_state.height // components.vae_scale_factor // 2, block_state.width // components.vae_scale_factor // 2),
+                (
+                    1,
+                    block_state.height // components.vae_scale_factor // 2,
+                    block_state.width // components.vae_scale_factor // 2,
+                ),
                 (1, image_height // components.vae_scale_factor // 2, image_width // components.vae_scale_factor // 2),
             ]
         ] * block_state.batch_size
 
-        block_state.txt_seq_lens = block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
-        block_state.negative_txt_seq_lens = (
-            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist() if block_state.negative_prompt_embeds_mask is not None else None
+        block_state.txt_seq_lens = (
+            block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
         )
-
+        block_state.negative_txt_seq_lens = (
+            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist()
+            if block_state.negative_prompt_embeds_mask is not None
+            else None
+        )
 
         self.set_block_state(state, block_state)
 
@@ -713,7 +778,12 @@ class QwenImageControlNetInputStep(ModularPipelineBlocks):
             InputParam("control_guidance_start", default=0.0),
             InputParam("control_guidance_end", default=1.0),
             InputParam("controlnet_conditioning_scale", default=1.0),
-            InputParam("timesteps", required=True, type_hint=torch.Tensor, description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."),
+            InputParam(
+                "timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
+            ),
         ]
 
     @property
@@ -721,7 +791,6 @@ class QwenImageControlNetInputStep(ModularPipelineBlocks):
         return [
             OutputParam("controlnet_keep", type_hint=List[float], description="The controlnet keep values"),
         ]
-
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -755,8 +824,9 @@ class QwenImageControlNetInputStep(ModularPipelineBlocks):
         if isinstance(controlnet, QwenImageMultiControlNetModel) and isinstance(
             block_state.controlnet_conditioning_scale, float
         ):
-            block_state.controlnet_conditioning_scale = [block_state.controlnet_conditioning_scale] * len(controlnet.nets)
-
+            block_state.controlnet_conditioning_scale = [block_state.controlnet_conditioning_scale] * len(
+                controlnet.nets
+            )
 
         # controlnet_keep
         block_state.controlnet_keep = []

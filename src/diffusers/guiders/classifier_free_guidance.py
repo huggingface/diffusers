@@ -13,26 +13,29 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from ..configuration_utils import register_to_config
-from .guider_utils import BaseGuidance, rescale_noise_cfg
 from ..utils import BaseOutput
+from .guider_utils import BaseGuidance, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
+
 
 @dataclass
 class ClassifierFreeGuidanceOutput(BaseOutput):
     """
     Output class for Classifier-free guidance.
     """
+
     pred: torch.Tensor
     pred_cond: torch.Tensor
+
 
 class ClassifierFreeGuidance(BaseGuidance):
     """

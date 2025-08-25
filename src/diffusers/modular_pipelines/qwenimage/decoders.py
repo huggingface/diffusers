@@ -13,18 +13,19 @@
 # limitations under the License.
 
 from typing import List, Union
-import torch
+
 import numpy as np
 import PIL
+import torch
 
+from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
+from ...models import AutoencoderKLQwenImage
+from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from ...models import AutoencoderKLQwenImage
-from ...configuration_utils import FrozenDict
-from ...utils import logging
-from ...image_processor import VaeImageProcessor
-
 from .modular_pipeline import QwenImageModularPipeline
+
 
 logger = logging.get_logger(__name__)
 
@@ -51,7 +52,7 @@ class QwenImageDecodeStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return "Step that decodes the latents to images"
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
@@ -60,19 +61,29 @@ class QwenImageDecodeStep(ModularPipelineBlocks):
                 "image_processor",
                 VaeImageProcessor,
                 config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config"
+                default_creation_method="from_config",
             ),
         ]
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(name="height"),
             InputParam(name="width"),
-            InputParam(name="latents", required=True, type_hint=torch.Tensor, description="The latents to decode, can be generated in the denoise step"),
-            InputParam(name="output_type", default="pil", type_hint=str, description="The type of the output images, can be 'pil', 'np', 'pt'"),
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The latents to decode, can be generated in the denoise step",
+            ),
+            InputParam(
+                name="output_type",
+                default="pil",
+                type_hint=str,
+                description="The type of the output images, can be 'pil', 'np', 'pt'",
+            ),
         ]
-    
+
     @property
     def intermediate_outputs(self) -> List[str]:
         return [
@@ -82,12 +93,12 @@ class QwenImageDecodeStep(ModularPipelineBlocks):
                 description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]
-    
+
     @staticmethod
     def check_inputs(output_type):
         if output_type not in ["pil", "np", "pt"]:
             raise ValueError(f"Invalid output_type: {output_type}")
-    
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -106,13 +117,14 @@ class QwenImageDecodeStep(ModularPipelineBlocks):
             .view(1, components.vae.config.z_dim, 1, 1, 1)
             .to(block_state.latents.device, block_state.latents.dtype)
         )
-        latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(1, components.vae.config.z_dim, 1, 1, 1).to(
-            block_state.latents.device, block_state.latents.dtype
-        )
+        latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
+            1, components.vae.config.z_dim, 1, 1, 1
+        ).to(block_state.latents.device, block_state.latents.dtype)
         block_state.latents = block_state.latents / latents_std + latents_mean
         block_state.images = components.vae.decode(block_state.latents, return_dict=False)[0][:, :, 0]
-        block_state.images = components.image_processor.postprocess(block_state.images, output_type=block_state.output_type)
+        block_state.images = components.image_processor.postprocess(
+            block_state.images, output_type=block_state.output_type
+        )
 
         self.set_block_state(state, block_state)
         return components, state
-        

@@ -13,37 +13,35 @@
 # limitations under the License.
 
 from ...utils import logging
-
-from .encoders import QwenImageTextEncoderStep, QwenImageEditTextEncoderStep, QwenImageVaeEncoderDynamicStep
-from .decoders import QwenImageDecodeStep
-from .denoise import (
-    QwenImageDenoiseStep, 
-    QwenImageEditDenoiseStep,
-    QwenImageControlNetDenoiseStep,
-    QwenImageControlNetLoopBeforeDenoiser,
-)
-from .before_denoise import (
-    QwenImageTextInputsStep, 
-    QwenImagePrepareLatentsStep, 
-    QwenImageSetTimestepsStep, 
-    QwenImagePrepareAdditionalInputsStep, 
-    QwenImageInputsDynamicStep, 
-    QwenImageEditPrepareAdditionalInputsStep, 
-    QwenImageEditResizeStep,
-    QwenImageResizeDynamicStep, 
-    QwenImagePrepareImageLatentsDynamicStep, 
-    QwenImageControlNetInputStep,
-)
-
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
+from .before_denoise import (
+    QwenImageControlNetInputStep,
+    QwenImageEditPrepareAdditionalInputsStep,
+    QwenImageEditResizeStep,
+    QwenImageInputsDynamicStep,
+    QwenImagePrepareAdditionalInputsStep,
+    QwenImagePrepareImageLatentsDynamicStep,
+    QwenImagePrepareLatentsStep,
+    QwenImageResizeDynamicStep,
+    QwenImageSetTimestepsStep,
+    QwenImageTextInputsStep,
+)
+from .decoders import QwenImageDecodeStep
+from .denoise import (
+    QwenImageControlNetLoopBeforeDenoiser,
+    QwenImageDenoiseStep,
+    QwenImageEditDenoiseStep,
+)
+from .encoders import QwenImageEditTextEncoderStep, QwenImageTextEncoderStep, QwenImageVaeEncoderDynamicStep
+
 
 logger = logging.get_logger(__name__)
 
 
 class QwenImageEditPrepareImageLatentsStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
-    
+
     block_classes = [
         QwenImageInputsDynamicStep("image_latents"),
         QwenImagePrepareImageLatentsDynamicStep("image_latents"),
@@ -57,14 +55,17 @@ class QwenImageEditPrepareImageLatentsStep(SequentialPipelineBlocks):
 
 
 controlnet_image_resize = QwenImageResizeDynamicStep("control_image")
-controlnet_vae_encoder = QwenImageVaeEncoderDynamicStep(input_name="control_image", output_name="control_image_latents")
+controlnet_vae_encoder = QwenImageVaeEncoderDynamicStep(
+    input_name="control_image", output_name="control_image_latents"
+)
+
 
 class QwenImageControlnetVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
-    
+
     block_classes = [
-        controlnet_image_resize, # resize the controlnet image to height/width
-        controlnet_vae_encoder, # encode
+        controlnet_image_resize,  # resize the controlnet image to height/width
+        controlnet_vae_encoder,  # encode
     ]
 
     block_names = ["resize", "encode"]
@@ -73,13 +74,14 @@ class QwenImageControlnetVaeEncoderStep(SequentialPipelineBlocks):
     def description(self) -> str:
         return "Step that encodes the control image"
 
+
 class QwenImageControlnetBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
-    
+
     block_classes = [
-        QwenImageInputsDynamicStep("control_image_latents"), # duplicate to match batch_size
-        QwenImagePrepareImageLatentsDynamicStep("control_image_latents"), # pachify the latents
-        QwenImageControlNetInputStep, # prepare the controlnet inputs e.g. controlnet_keep, controlnet_conditioning_scale, etc.
+        QwenImageInputsDynamicStep("control_image_latents"),  # duplicate to match batch_size
+        QwenImagePrepareImageLatentsDynamicStep("control_image_latents"),  # pachify the latents
+        QwenImageControlNetInputStep,  # prepare the controlnet inputs e.g. controlnet_keep, controlnet_conditioning_scale, etc.
     ]
 
     block_names = ["adjust_control_image_latent", "patchify_control_image_latent", "prepare_controlnet_inputs"]
@@ -99,16 +101,18 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
         ("denoise", QwenImageDenoiseStep),
         ("decode", QwenImageDecodeStep),
     ]
-    )
+)
 
 CONTROLNET_BLOCKS = InsertableDict(
-
-    [    
+    [
         ("controlnet_vae_encoder", QwenImageControlnetVaeEncoderStep),
         ("controlnet_before_denoise", QwenImageControlnetBeforeDenoiseStep),
-        ("controlnet_denoise_loop_before", QwenImageControlNetLoopBeforeDenoiser), # insert before the denoiseloop_denoiser
+        (
+            "controlnet_denoise_loop_before",
+            QwenImageControlNetLoopBeforeDenoiser,
+        ),  # insert before the denoiseloop_denoiser
     ]
-    )
+)
 
 
 EDIT_BLOCKS = InsertableDict(
@@ -124,7 +128,7 @@ EDIT_BLOCKS = InsertableDict(
         ("denoise", QwenImageEditDenoiseStep),
         ("decode", QwenImageDecodeStep),
     ]
-    )
+)
 
 ALL_BLOCKS = {
     "text2image": TEXT2IMAGE_BLOCKS,

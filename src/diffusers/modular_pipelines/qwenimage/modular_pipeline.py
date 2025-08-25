@@ -16,8 +16,8 @@
 from ...loaders import QwenImageLoraLoaderMixin
 from ..modular_pipeline import ModularPipeline
 
-class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
 
+class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage.
 
@@ -53,7 +53,6 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
         if hasattr(self, "transformer") and self.transformer is not None:
             num_channels_latents = self.transformer.config.in_channels // 4
         return num_channels_latents
-    
 
     @property
     def is_guidance_distilled(self):
@@ -62,10 +61,8 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
             is_guidance_distilled = self.transformer.config.guidance_embeds
         return is_guidance_distilled
 
-
     @property
     def requires_unconditional_embeds(self):
-
         requires_unconditional_embeds = False
 
         if hasattr(self, "guider") and self.guider is not None:

@@ -69,9 +69,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .qwenimage import QwenImageModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import WanAutoBlocks, WanModularPipeline
-        from .qwenimage import QwenImageModularPipeline
 else:
     import sys
 
