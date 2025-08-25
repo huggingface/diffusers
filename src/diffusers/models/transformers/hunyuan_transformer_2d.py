@@ -19,7 +19,7 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import FeedForward
+from .modeling_common import FeedForward
 from ..attention_processor import Attention, AttentionProcessor, FusedHunyuanAttnProcessor2_0, HunyuanAttnProcessor2_0
 from ..embeddings import (
     HunyuanCombinedTimestepTextSizeStyleEmbedding,

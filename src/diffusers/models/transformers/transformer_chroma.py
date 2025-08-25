@@ -24,7 +24,8 @@ from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, Pe
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.import_utils import is_torch_npu_available
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import AttentionMixin, FeedForward
+from ..attention import AttentionMixin
+from .modeling_common import FeedForward
 from ..cache_utils import CacheMixin
 from ..embeddings import FluxPosEmbed, PixArtAlphaTextProjection, Timesteps, get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
