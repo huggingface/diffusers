@@ -73,9 +73,11 @@ def _get_qkv_projections(attn: "FluxAttention", hidden_states, encoder_hidden_st
 
 
 class FluxAttnProcessor:
-    _attention_backend = None
+    def __init__(self, _attention_backend=None):
+        super().__init__()
 
-    def __init__(self):
+        self._attention_backend = _attention_backend
+
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0. Please upgrade your pytorch version.")
 
@@ -354,25 +356,13 @@ class FluxSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        if is_torch_npu_available():
-            from ..attention_processor import FluxAttnProcessor2_0_NPU
-
-            deprecation_message = (
-                "Defaulting to FluxAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
-                "should be set explicitly using the `set_attn_processor` method."
-            )
-            deprecate("npu_processor", "0.34.0", deprecation_message)
-            processor = FluxAttnProcessor2_0_NPU()
-        else:
-            processor = FluxAttnProcessor()
-
         self.attn = FluxAttention(
             query_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             out_dim=dim,
             bias=True,
-            processor=processor,
+            processor=FluxAttnProcessor(),
             eps=1e-6,
             pre_only=True,
         )
