@@ -357,6 +357,7 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=int(dim * 0.25))
         self.text_embedder = Magi1TextProjection(text_embed_dim, dim, adaln_dim=int(dim * 0.25))
+        
         self.enable_distillation = enable_distillation
 
     def forward(
@@ -764,7 +765,6 @@ class Magi1Transformer3DModel(
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -810,24 +810,19 @@ class Magi1Transformer3DModel(
             )
 
         timestep_shape = timestep.shape
-        temb, y_xattn, y_adaln, encoder_hidden_states_image = self.condition_embedder(
+        temb, y_xattn, y_adaln = self.condition_embedder(
             timestep.flatten(),
             encoder_hidden_states,
-            encoder_hidden_states_image,
             num_steps=num_steps,
             distill_interval=distill_interval,
         )
 
         temb = temb.reshape(*timestep_shape, -1) + y_adaln
 
-        # Process cross-attention inputs with proper masking
-        if encoder_hidden_states_image is not None:
-            encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
-
         # Handle attention masking for variable-length sequences
         if encoder_attention_mask is not None:
             # Apply masking to flatten variable-length sequences
-            encoder_hidden_states = self._apply_attention_mask(encoder_hidden_states, encoder_attention_mask)
+            encoder_hidden_states = self._apply_attention_mask(y_xattn, encoder_attention_mask)
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -842,31 +837,11 @@ class Magi1Transformer3DModel(
         hidden_states = self.norm_out(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
-        # Unpatchify: convert from sequence back to video format
         hidden_states = hidden_states.reshape(
-            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1
+            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
         )
-
-        # Rearrange patches: (B, T//p_t, H//p_h, W//p_w, C*p_t*p_h*p_w) -> (B, C, T, H, W)
-        p_t, p_h, p_w = self.config.patch_size
-        hidden_states = hidden_states.view(
-            batch_size,
-            post_patch_num_frames,
-            post_patch_height,
-            post_patch_width,
-            self.config.out_channels,
-            p_t,
-            p_h,
-            p_w,
-        )
-        hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
-        output = hidden_states.contiguous().view(
-            batch_size,
-            self.config.out_channels,
-            post_patch_num_frames * p_t,
-            post_patch_height * p_h,
-            post_patch_width * p_w,
-        )
+        hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
+        output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
