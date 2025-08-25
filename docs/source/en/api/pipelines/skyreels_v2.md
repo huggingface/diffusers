@@ -182,15 +182,6 @@ pipeline.to("cuda")
 flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 
-# Some acceleration helpers
-# Be sure to install Flash Attention: https://github.com/Dao-AILab/flash-attention#installation-and-features
-# Normally 14 min., with compile_repeated_blocks(fullgraph=True) 12 min., with Flash Attention too less min. at A100.
-# If you want to follow the original implementation in terms of attentions:
-#for block in pipeline.transformer.blocks:
-#    block.attn1.set_attention_backend("_native_cudnn")
-#    block.attn2.set_attention_backend("flash_varlen")  # or "_flash_varlen_3"
-#pipeline.transformer.compile_repeated_blocks(fullgraph=True)
-
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 
 output = pipeline(
