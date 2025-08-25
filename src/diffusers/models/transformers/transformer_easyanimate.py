@@ -22,7 +22,8 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import Attention, FeedForward
+from ..attention_processor import Attention
+from .modeling_common import FeedForward
 from ..embeddings import TimestepEmbedding, Timesteps, get_3d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin

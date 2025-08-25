@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from ..utils import logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_xformers_available
-from .attention_processor import AttentionProcessor
+from .attention_processor import Attention, AttentionProcessor
 
 
 if is_xformers_available():
