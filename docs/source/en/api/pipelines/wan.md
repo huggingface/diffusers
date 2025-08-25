@@ -42,7 +42,7 @@ The following Wan models are supported in Diffusers:
 - [Wan 2.2 TI2V 5B](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B-Diffusers)
 
 > [!TIP]
-> Click on the Wan2.1 models in the right sidebar for more examples of video generation.
+> Click on the Wan models in the right sidebar for more examples of video generation.
 
 ### Text-to-Video Generation
 
