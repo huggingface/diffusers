@@ -340,6 +340,9 @@ jobs:
           - backend: "optimum_quanto"
             test_location: "quanto"
             additional_deps: []
+          - backend: "nvidia_modelopt"
+            test_location: "modelopt"
+            additional_deps: ["peft"]
     runs-on:
       group: aws-g6e-xlarge-plus
     container:
