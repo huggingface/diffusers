@@ -990,6 +990,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionScheduler,
         )
         from .training_utils import EMAModel
+
     try:
         if not (is_torch_available() and is_scipy_available()):
             raise OptionalDependencyNotAvailable()
