@@ -20,7 +20,6 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, SD3Transformer2DLoadersMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from .modeling_common import FeedForward, JointTransformerBlock
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
@@ -31,6 +30,7 @@ from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero
+from .modeling_common import FeedForward, JointTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

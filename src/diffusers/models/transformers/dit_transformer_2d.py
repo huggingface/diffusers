@@ -19,10 +19,10 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
-from .modeling_common import BasicTransformerBlock
 from ..embeddings import PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from .modeling_common import BasicTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

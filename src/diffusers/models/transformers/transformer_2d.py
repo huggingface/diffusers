@@ -19,11 +19,11 @@ from torch import nn
 
 from ...configuration_utils import LegacyConfigMixin, register_to_config
 from ...utils import deprecate, logging
-from .modeling_common import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import LegacyModelMixin
 from ..normalization import AdaLayerNormSingle
+from .modeling_common import BasicTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

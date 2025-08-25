@@ -12,19 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import deprecate, logging
+from ..utils import logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_xformers_available
-from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
-from .attention_processor import Attention, AttentionProcessor, JointAttnProcessor2_0
-from .embeddings import SinusoidalPositionalEmbedding
-from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX
+from .attention_processor import AttentionProcessor
 
 
 if is_xformers_available():
@@ -511,7 +507,12 @@ class AttentionModuleMixin:
 
 def _chunked_feed_forward(*args, **kwargs):
     """Backward compatibility stub. Use transformers.modeling_common._chunked_feed_forward instead."""
+    logger.warning(
+        "Importing `_chunked_feed_forward` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+        "Please use `from diffusers.models.transformers.modeling_common import _chunked_feed_forward` instead."
+    )
     from .transformers.modeling_common import _chunked_feed_forward as _actual_chunked_feed_forward
+
     return _actual_chunked_feed_forward(*args, **kwargs)
 
 
@@ -519,8 +520,14 @@ class GatedSelfAttentionDense:
     r"""
     Backward compatibility stub. Use transformers.modeling_common.GatedSelfAttentionDense instead.
     """
+
     def __new__(cls, *args, **kwargs):
+        logger.warning(
+            "Importing `GatedSelfAttentionDense` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+            "Please use `from diffusers.models.transformers.modeling_common import GatedSelfAttentionDense` instead."
+        )
         from .transformers.modeling_common import GatedSelfAttentionDense
+
         return GatedSelfAttentionDense(*args, **kwargs)
 
 
@@ -528,8 +535,14 @@ class JointTransformerBlock:
     r"""
     Backward compatibility stub. Use transformers.modeling_common.JointTransformerBlock instead.
     """
+
     def __new__(cls, *args, **kwargs):
+        logger.warning(
+            "Importing `JointTransformerBlock` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+            "Please use `from diffusers.models.transformers.modeling_common import JointTransformerBlock` instead."
+        )
         from .transformers.modeling_common import JointTransformerBlock
+
         return JointTransformerBlock(*args, **kwargs)
 
 
@@ -537,8 +550,14 @@ class BasicTransformerBlock:
     r"""
     Backward compatibility stub. Use transformers.modeling_common.BasicTransformerBlock instead.
     """
+
     def __new__(cls, *args, **kwargs):
+        logger.warning(
+            "Importing `BasicTransformerBlock` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+            "Please use `from diffusers.models.transformers.modeling_common import BasicTransformerBlock` instead."
+        )
         from .transformers.modeling_common import BasicTransformerBlock
+
         return BasicTransformerBlock(*args, **kwargs)
 
 
@@ -546,8 +565,14 @@ class LuminaFeedForward:
     r"""
     Backward compatibility stub. Use transformers.modeling_common.LuminaFeedForward instead.
     """
+
     def __new__(cls, *args, **kwargs):
+        logger.warning(
+            "Importing `LuminaFeedForward` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+            "Please use `from diffusers.models.transformers.modeling_common import LuminaFeedForward` instead."
+        )
         from .transformers.modeling_common import LuminaFeedForward
+
         return LuminaFeedForward(*args, **kwargs)
 
 
@@ -555,8 +580,14 @@ class TemporalBasicTransformerBlock:
     r"""
     Backward compatibility stub. Use transformers.modeling_common.TemporalBasicTransformerBlock instead.
     """
+
     def __new__(cls, *args, **kwargs):
+        logger.warning(
+            "Importing `TemporalBasicTransformerBlock` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+            "Please use `from diffusers.models.transformers.modeling_common import TemporalBasicTransformerBlock` instead."
+        )
         from .transformers.modeling_common import TemporalBasicTransformerBlock
+
         return TemporalBasicTransformerBlock(*args, **kwargs)
 
 
@@ -564,8 +595,14 @@ class SkipFFTransformerBlock:
     r"""
     Backward compatibility stub. Use transformers.modeling_common.SkipFFTransformerBlock instead.
     """
+
     def __new__(cls, *args, **kwargs):
+        logger.warning(
+            "Importing `SkipFFTransformerBlock` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+            "Please use `from diffusers.models.transformers.modeling_common import SkipFFTransformerBlock` instead."
+        )
         from .transformers.modeling_common import SkipFFTransformerBlock
+
         return SkipFFTransformerBlock(*args, **kwargs)
 
 
@@ -573,16 +610,27 @@ class FreeNoiseTransformerBlock:
     r"""
     Backward compatibility stub. Use transformers.modeling_common.FreeNoiseTransformerBlock instead.
     """
-    def __new__(cls, *args, **kwargs):
-        from .transformers.modeling_common import FreeNoiseTransformerBlock
-        return FreeNoiseTransformerBlock(*args, **kwargs)
 
+    def __new__(cls, *args, **kwargs):
+        logger.warning(
+            "Importing `FreeNoiseTransformerBlock` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+            "Please use `from diffusers.models.transformers.modeling_common import FreeNoiseTransformerBlock` instead."
+        )
+        from .transformers.modeling_common import FreeNoiseTransformerBlock
+
+        return FreeNoiseTransformerBlock(*args, **kwargs)
 
 
 class FeedForward:
     r"""
     Backward compatibility stub. Use transformers.modeling_common.FeedForward instead.
     """
+
     def __new__(cls, *args, **kwargs):
+        logger.warning(
+            "Importing `FeedForward` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
+            "Please use `from diffusers.models.transformers.modeling_common import FeedForward` instead."
+        )
         from .transformers.modeling_common import FeedForward
+
         return FeedForward(*args, **kwargs)
