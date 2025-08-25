@@ -110,7 +110,7 @@ class VisualClozeProcessor(VaeImageProcessor):
                         new_h = int(processed_images[i][j].height * (new_w / processed_images[i][j].width))
                         new_w = int(new_w / 16) * 16
                         new_h = int(new_h / 16) * 16
-                        processed_images[i][j] = self.height(processed_images[i][j], new_h, new_w)
+                        processed_images[i][j] = self._resize_and_crop(processed_images[i][j], new_h, new_w)
 
         # Convert to tensors and normalize
         image_sizes = []
