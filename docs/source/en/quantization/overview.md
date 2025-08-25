@@ -62,7 +62,7 @@ pipe = DiffusionPipeline.from_pretrained(
 image = pipe("photo of a cute dog").images[0]
 ```
 
-`components_to_quantize` doesn't have to be a list. You can also pass: `components_to_quantize="transformers"`.
+`components_to_quantize` doesn't have to be a list. You can also pass: `components_to_quantize="transformer"`.
 
 ### Advanced quantization
 
