@@ -90,7 +90,7 @@ class GGUFQuantizer(DiffusersQuantizer):
     def check_if_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: Union["GGUFParameter", "torch.Tensor"],
+        param_value: Union["torch.Tensor"],
         param_name: str,
         state_dict: Dict[str, Any],
         **kwargs,

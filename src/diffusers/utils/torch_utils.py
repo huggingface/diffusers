@@ -197,3 +197,7 @@ def device_synchronize(device_type: Optional[str] = None):
         device_type = get_device()
     device_mod = getattr(torch, device_type, torch.cuda)
     device_mod.synchronize()
+
+
+def is_fp8_available():
+    return getattr(torch, "float8_e4m3fn", None) is None
