@@ -95,7 +95,12 @@ def _determine_device_map(
                 "`accelerate` to properly deal with them (`pip install --upgrade accelerate`)."
             )
 
-        if device_map != "sequential":
+        # Support several strategies:
+        # - "sequential": respect user-provided max_memory (or detect) without balancing
+        if device_map == "sequential":
+            max_memory = get_max_memory(max_memory)
+        else:
+            # Includes: "balanced", "auto"
             max_memory = get_balanced_memory(
                 model,
                 dtype=torch_dtype,
@@ -103,11 +108,61 @@ def _determine_device_map(
                 max_memory=max_memory,
                 **device_map_kwargs,
             )
-        else:
-            max_memory = get_max_memory(max_memory)
 
         if hf_quantizer is not None:
             max_memory = hf_quantizer.adjust_max_memory(max_memory)
+
+        # Align with Transformers: add currently unused reserved memory on accelerators,
+        # then optionally apply a safety headroom.
+        try:
+            inferred = dict(max_memory) if max_memory is not None else {}
+            for device_name in list(inferred.keys()):
+                # Only consider accelerator devices; skip CPU
+                if device_name == "cpu":
+                    continue
+                unused_mem = 0
+                # device_name could be an int (preferred) or a string key.
+                dev_index = None
+                if isinstance(device_name, int):
+                    dev_index = device_name
+                elif isinstance(device_name, str):
+                    # parse patterns like "cuda:0" or "xpu:0"
+                    if ":" in device_name:
+                        try:
+                            dev_index = int(device_name.split(":", 1)[1])
+                        except Exception:
+                            dev_index = None
+                # query backend-specific reserved/allocated
+                try:
+                    if hasattr(torch, "xpu") and torch.xpu.is_available():
+                        if dev_index is not None:
+                            unused_mem = torch.xpu.memory_reserved(dev_index) - torch.xpu.memory_allocated(dev_index)
+                    elif torch.cuda.is_available():
+                        if dev_index is not None:
+                            unused_mem = torch.cuda.memory_reserved(dev_index) - torch.cuda.memory_allocated(dev_index)
+                except Exception:
+                    unused_mem = 0
+
+                if unused_mem and unused_mem > 0:
+                    inferred[device_name] = inferred.get(device_name, 0) + unused_mem
+
+                # Respect explicit user cap if provided with the same key.
+                if max_memory is not None and device_name in max_memory:
+                    inferred[device_name] = min(inferred[device_name], max_memory[device_name])
+
+            # Apply a slightly safer occupancy for 'auto' to reduce OOMs after 
+            if device_map == "auto":
+                for k in list(inferred.keys()):
+                    if k != "cpu":
+                        try:
+                            inferred[k] = int(inferred[k] * 0.85)
+                        except Exception:
+                            pass
+
+            max_memory = inferred
+        except Exception:
+            # If any backend call fails, proceed with the baseline max_memory
+            pass
 
         device_map_kwargs["max_memory"] = max_memory
         device_map = infer_auto_device_map(model, dtype=target_dtype, **device_map_kwargs)
