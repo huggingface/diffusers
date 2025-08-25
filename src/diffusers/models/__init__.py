@@ -97,10 +97,10 @@ if is_torch_available():
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
+    _import_structure["transformers.transformer_step_video"] = ["StepVideoTransformer3DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
-    _import_structure["transformers.transformer_step_video"] = ["StepVideoTransformer3DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
@@ -194,12 +194,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
             StableAudioDiTModel,
+            StepVideoTransformer3DModel,
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
-            StepVideoTransformer3DModel,
         )
         from .unets import (
             I2VGenXLUNet,

@@ -22,7 +22,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...loaders import WanLoraLoaderMixin
+from ...loaders import StepVideoLoraLoaderMixin
 from ...models import AutoencoderKLStepVideo, StepVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
@@ -149,10 +149,6 @@ class StepVideoImageToVideoPipeline(DiffusionPipeline, StepVideoLoraLoaderMixin)
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLStepVideo`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
-        transformer_2 ([`WanTransformer3DModel`], *optional*):
-            Conditional Transformer to denoise the input latents during the low-noise stage. In two-stage denoising,
-            `transformer` handles high-noise stages and `transformer_2` handles low-noise stages. If not provided, only
-            `transformer` is used.
         boundary_ratio (`float`, *optional*, defaults to `None`):
             Ratio of total timesteps to use as the boundary for switching between transformers in two-stage denoising.
             The actual boundary timestep is calculated as `boundary_ratio * num_train_timesteps`. When provided,

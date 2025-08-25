@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import regex as re
 import torch
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import StepVideoLoraLoaderMixin
@@ -28,6 +28,7 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import StepVideoPipelineOutput
+from .step_llm import HunyuanCLIP, StepLLM
 
 
 if is_torch_xla_available():
@@ -103,19 +104,16 @@ class StepVideoPipeline(DiffusionPipeline, StepVideoLoraLoaderMixin):
         tokenizer ([`T5Tokenizer`]):
             Tokenizer from [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5Tokenizer),
             specifically the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
-        text_encoder ([`T5EncoderModel`]):
-            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
-            the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
+        text_encoder ([`HunyuanCLIP`]):
+
+        text_encoder_2 ([`StepLLM`]):
+
         transformer ([`WanTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLStepVideo`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
-        transformer_2 ([`WanTransformer3DModel`], *optional*):
-            Conditional Transformer to denoise the input latents during the low-noise stage. If provided, enables
-            two-stage denoising where `transformer` handles high-noise stages and `transformer_2` handles low-noise
-            stages. If not provided, only `transformer` is used.
         boundary_ratio (`float`, *optional*, defaults to `None`):
             Ratio of total timesteps to use as the boundary for switching between transformers in two-stage denoising.
             The actual boundary timestep is calculated as `boundary_ratio * num_train_timesteps`. When provided,
@@ -123,18 +121,18 @@ class StepVideoPipeline(DiffusionPipeline, StepVideoLoraLoaderMixin):
             boundary_timestep. If `None`, only `transformer` is used for the entire denoising process.
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->transformer_2->vae"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-    _optional_components = ["transformer", "transformer_2"]
+    _optional_components = ["transformer"]
 
     def __init__(
         self,
         tokenizer: AutoTokenizer,
-        text_encoder: UMT5EncoderModel,
+        text_encoder: HunyuanCLIP,
+        text_encoder_2: StepLLM,
         vae: AutoencoderKLStepVideo,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        transformer: Optional[WanTransformer3DModel] = None,
-        transformer_2: Optional[WanTransformer3DModel] = None,
+        transformer: Optional[StepVideoTransformer3DModel] = None,
         boundary_ratio: Optional[float] = None,
         expand_timesteps: bool = False,  # Wan2.2 ti2v
     ):
@@ -143,6 +141,7 @@ class StepVideoPipeline(DiffusionPipeline, StepVideoLoraLoaderMixin):
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
             tokenizer=tokenizer,
             transformer=transformer,
             scheduler=scheduler,

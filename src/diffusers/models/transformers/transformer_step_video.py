@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -306,7 +306,7 @@ class StepVideoTimeTextImageEmbedding(nn.Module):
 
         self.image_embedder = None
         if image_embed_dim is not None:
-            self.image_embedder = WanImageEmbedding(image_embed_dim, dim, pos_embed_seq_len=pos_embed_seq_len)
+            self.image_embedder = StepVideoImageEmbedding(image_embed_dim, dim, pos_embed_seq_len=pos_embed_seq_len)
 
     def forward(
         self,
@@ -556,12 +556,12 @@ class StepVideoTransformer3DModel(
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
-        self.rope = WanRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
+        self.rope = StepVideoRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
         # image_embedding_dim=1280 for I2V model
-        self.condition_embedder = WanTimeTextImageEmbedding(
+        self.condition_embedder = StepVideoTimeTextImageEmbedding(
             dim=inner_dim,
             time_freq_dim=freq_dim,
             time_proj_dim=inner_dim * 6,
