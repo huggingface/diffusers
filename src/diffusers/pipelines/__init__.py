@@ -393,6 +393,7 @@ else:
         "QwenImageImg2ImgPipeline",
         "QwenImageInpaintPipeline",
         "QwenImageEditPipeline",
+        "QwenImageEditInpaintPipeline",
         "QwenImageControlNetPipeline",
     ]
 try:
@@ -713,6 +714,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .qwenimage import (
+            QwenImageEditInpaintPipeline,
             QwenImageControlNetPipeline,
             QwenImageEditPipeline,
             QwenImageImg2ImgPipeline,
