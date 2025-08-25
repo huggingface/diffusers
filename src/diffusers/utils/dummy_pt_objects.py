@@ -242,6 +242,7 @@ def apply_layer_skip(*args, **kwargs):
 def apply_pyramid_attention_broadcast(*args, **kwargs):
     requires_backends(apply_pyramid_attention_broadcast, ["torch"])
 
+
 class AllegroTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
