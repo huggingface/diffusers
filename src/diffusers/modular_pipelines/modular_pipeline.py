@@ -32,6 +32,7 @@ from ..pipelines.pipeline_loading_utils import _fetch_class_library_tuple, simpl
 from ..utils import PushToHubMixin, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.import_utils import _is_package_available
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
     ComponentSpec,
@@ -231,6 +232,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_config.json"
     model_name = None
+    _requirements: Union[List[Tuple[str, str]], Tuple[str, str]] = None
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -293,6 +295,19 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         trust_remote_code: Optional[bool] = None,
         **kwargs,
     ):
+        config = cls.load_config(pretrained_model_name_or_path)
+        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
+        trust_remote_code = resolve_trust_remote_code(
+            trust_remote_code, pretrained_model_name_or_path, has_remote_code
+        )
+        if not (has_remote_code and trust_remote_code):
+            raise ValueError(
+                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+            )
+
+        if "requirements" in config and config["requirements"] is not None:
+            _ = _validate_requirements(config["requirements"])
+
         hub_kwargs_names = [
             "cache_dir",
             "force_download",
@@ -304,16 +319,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
-
-        config = cls.load_config(pretrained_model_name_or_path)
-        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
-        trust_remote_code = resolve_trust_remote_code(
-            trust_remote_code, pretrained_model_name_or_path, has_remote_code
-        )
-        if not (has_remote_code and trust_remote_code):
-            raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
-            )
 
         class_ref = config["auto_map"][cls.__name__]
         module_file, class_name = class_ref.split(".")
@@ -340,8 +345,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
         parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]
         auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
-
         self.register_to_config(auto_map=auto_map)
+
+        # resolve requirements
+        requirements = _validate_requirements(getattr(self, "_requirements", None))
+        if requirements:
+            self.register_to_config(requirements=requirements)
+
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
         config = dict(self.config)
         self._internal_dict = FrozenDict(config)
@@ -2444,3 +2454,33 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             return state.get(output)
         else:
             raise ValueError(f"Output '{output}' is not a valid output type")
+
+
+def _validate_requirements(reqs):
+    normalized_reqs = _normalize_requirements(reqs)
+    if not normalized_reqs:
+        return []
+
+    final: List[Tuple[str, str]] = []
+    for req, specified_ver in normalized_reqs:
+        req_available, req_actual_ver = _is_package_available(req)
+        if not req_available:
+            raise ValueError(f"{req} was specified in the requirements but wasn't found in the current environment.")
+        if specified_ver != req_actual_ver:
+            logger.warning(
+                f"Version of {req} was specified to be {specified_ver} in the configuration. However, the actual installed version if {req_actual_ver}. Things might work unexpected."
+            )
+
+        final.append((req, specified_ver))
+
+    return final
+
+
+def _normalize_requirements(reqs):
+    if not reqs:
+        return []
+    if isinstance(reqs, tuple) and len(reqs) == 2 and isinstance(reqs[0], str):
+        req_seq: List[Tuple[str, str]] = [reqs]  # single pair
+    else:
+        req_seq = reqs
+    return req_seq
