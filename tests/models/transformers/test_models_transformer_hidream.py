@@ -20,6 +20,10 @@ import torch
 from diffusers import HiDreamImageTransformer2DModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    is_torch_compile,
+    require_torch_2,
+    require_torch_gpu,
+    slow,
     torch_device,
 )
 
@@ -94,3 +98,20 @@ class HiDreamTransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HiDreamImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    @require_torch_gpu
+    @require_torch_2
+    @is_torch_compile
+    @slow
+    def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model = torch.compile(model, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
