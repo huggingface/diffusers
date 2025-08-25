@@ -13,40 +13,7 @@ from diffusers import Magi1Pipeline, Magi1Transformer3DModel
 from diffusers.models.autoencoders import AutoencoderKLMagi1
 
 
-TRANSFORMER_KEYS_RENAME_DICT = {
-    "t_embedder.mlp.0": "condition_embedder.time_embedder.linear_1",
-    "t_embedder.mlp.2": "condition_embedder.time_embedder.linear_2",
-    "y_embedder.y_proj_xattn.0": "condition_embedder.text_embedder.linear_1",
-    "videodit_blocks.final_layernorm": "norm_out",
-    "final_linear.linear": "proj_out",
-    "x_embedder": "patch_embedding",
-}
-
-
-BLOCK_COMPONENT_MAPPINGS = {
-    "self_attention.linear_qkv.q": "attn1.to_q",
-    "self_attention.linear_qkv.k": "attn1.to_k",
-    "self_attention.linear_qkv.v": "attn1.to_v",
-    "self_attention.linear_proj": "attn1.to_out.0",
-    "self_attention.q_layernorm": "attn1.norm_q",
-    "self_attention.k_layernorm": "attn1.norm_k",
-    "self_attention.linear_qkv.layer_norm": "norm1",
-    "self_attention.linear_qkv.qx": "attn2.to_q",
-    "self_attention.q_layernorm_xattn": "attn2.norm_q",
-    "self_attention.k_layernorm_xattn": "attn2.norm_k",
-    "mlp.linear_fc1": "ff.net.0.proj",
-    "mlp.linear_fc2": "ff.net.2",
-    "mlp.layer_norm": "norm3",
-    "self_attn_post_norm": "norm2",
-    "mlp_post_norm": "norm4",
-    "ada_modulate_layer.proj.0": "scale_shift_table",
-}
-
-
-TRANSFORMER_SPECIAL_KEYS_REMAP = {}
-
-
-def convert_magi_transformer(model_type):
+def convert_magi1_transformer(model_type):
     """
     Convert MAGI-1 transformer for a specific model type.
 
@@ -107,12 +74,12 @@ def convert_magi_transformer(model_type):
         dest_path = os.path.join(transformer_ckpt_dir, f"model-{i + 1:05d}-of-{len(checkpoint_files):05d}.safetensors")
         shutil.copy2(shard_path, dest_path)
 
-    transformer = convert_magi_transformer_checkpoint(transformer_ckpt_dir)
+    transformer = convert_magi1_transformer_checkpoint(transformer_ckpt_dir)
 
     return transformer
 
 
-def convert_magi_vae():
+def convert_magi1_vae():
     vae_ckpt_path = hf_hub_download("sand-ai/MAGI-1", "ckpt/vae/diffusion_pytorch_model.safetensors")
     checkpoint = load_file(vae_ckpt_path)
 
@@ -237,7 +204,7 @@ def convert_vae_state_dict(checkpoint):
     return state_dict
 
 
-def load_magi_transformer_checkpoint(checkpoint_path):
+def load_magi1_transformer_checkpoint(checkpoint_path):
     """
     Load a MAGI-1 transformer checkpoint.
 
@@ -291,7 +258,7 @@ def load_magi_transformer_checkpoint(checkpoint_path):
     return state_dict
 
 
-def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file=None, dtype=None):
+def convert_magi1_transformer_checkpoint(checkpoint_path, transformer_config_file=None, dtype=None):
     """
     Convert a MAGI-1 transformer checkpoint to a diffusers Magi1Transformer3DModel.
 
@@ -312,17 +279,13 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
             "out_channels": 16,
             "num_layers": 34,
             "num_attention_heads": 24,
+            "num_kv_heads": 8,
             "attention_head_dim": 128,
             "cross_attention_dim": 4096,
             "freq_dim": 256,
             "ffn_dim": 12288,
             "patch_size": (1, 2, 2),
-            "use_linear_projection": False,
-            "upcast_attention": False,
-            "cross_attn_norm": True,
-            "qk_norm": "rms_norm_across_heads",
             "eps": 1e-6,
-            "rope_max_seq_len": 1024,
         }
 
     transformer = Magi1Transformer3DModel(
@@ -330,29 +293,20 @@ def convert_magi_transformer_checkpoint(checkpoint_path, transformer_config_file
         out_channels=config["out_channels"],
         num_layers=config["num_layers"],
         num_attention_heads=config["num_attention_heads"],
+        num_kv_heads=config["num_kv_heads"],
         attention_head_dim=config["attention_head_dim"],
         cross_attention_dim=config["cross_attention_dim"],
         freq_dim=config["freq_dim"],
         ffn_dim=config["ffn_dim"],
         patch_size=config["patch_size"],
-        use_linear_projection=config["use_linear_projection"],
-        upcast_attention=config["upcast_attention"],
-        cross_attn_norm=config["cross_attn_norm"],
-        qk_norm=config["qk_norm"],
         eps=config["eps"],
-        rope_max_seq_len=config["rope_max_seq_len"],
     )
 
-    checkpoint = load_magi_transformer_checkpoint(checkpoint_path)
+    checkpoint = load_magi1_transformer_checkpoint(checkpoint_path)
 
     converted_state_dict = convert_transformer_state_dict(checkpoint)
 
-    missing_keys, unexpected_keys = transformer.load_state_dict(converted_state_dict, strict=False)
-
-    print(f"Missing keys ({len(missing_keys)}): {missing_keys}")
-    print(f"Unexpected keys ({len(unexpected_keys)}): {unexpected_keys}")
-
-    missing_keys, unexpected_keys = transformer.load_state_dict(converted_state_dict, strict=False)
+    transformer.load_state_dict(converted_state_dict, strict=True)
 
     if dtype is not None:
         transformer = transformer.to(dtype=dtype)
@@ -379,30 +333,26 @@ def convert_transformer_state_dict(checkpoint):
     converted_state_dict["condition_embedder.time_embedder.linear_2.weight"] = checkpoint["t_embedder.mlp.2.weight"]
     converted_state_dict["condition_embedder.time_embedder.linear_2.bias"] = checkpoint["t_embedder.mlp.2.bias"]
 
-    converted_state_dict["condition_embedder.text_embedder.linear_1.weight"] = checkpoint[
+    converted_state_dict["condition_embedder.text_embedder.y_proj_xattn.0.weight"] = checkpoint[
         "y_embedder.y_proj_xattn.0.weight"
     ]
-    converted_state_dict["condition_embedder.text_embedder.linear_1.bias"] = checkpoint[
+    converted_state_dict["condition_embedder.text_embedder.y_proj_xattn.0.bias"] = checkpoint[
         "y_embedder.y_proj_xattn.0.bias"
     ]
 
-    converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = checkpoint[
-        "y_embedder.y_proj_adaln.2.weight"
+    converted_state_dict["condition_embedder.text_embedder.y_proj_adaln.weight"] = checkpoint[
+        "y_embedder.y_proj_adaln.0.weight"
     ]
-    converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = checkpoint[
-        "y_embedder.y_proj_adaln.2.bias"
+    converted_state_dict["condition_embedder.text_embedder.y_proj_adaln.bias"] = checkpoint[
+        "y_embedder.y_proj_adaln.0.bias"
     ]
-    hidden_size = checkpoint["y_embedder.y_proj_xattn.0.weight"].shape[0]
-    converted_state_dict["condition_embedder.text_embedder.linear_2.weight"] = torch.eye(hidden_size)
-    converted_state_dict["condition_embedder.text_embedder.linear_2.bias"] = torch.zeros(hidden_size)
 
     converted_state_dict["norm_out.weight"] = checkpoint["videodit_blocks.final_layernorm.weight"]
     converted_state_dict["norm_out.bias"] = checkpoint["videodit_blocks.final_layernorm.bias"]
 
     converted_state_dict["proj_out.weight"] = checkpoint["final_linear.linear.weight"]
-    converted_state_dict["proj_out.bias"] = checkpoint["final_linear.linear.bias"]
 
-    converted_state_dict["rope.freqs"] = checkpoint["rope.bands"]
+    converted_state_dict["rope.bands"] = checkpoint["rope.bands"]
 
     for layer_idx in range(34):
         layer_prefix = f"videodit_blocks.layers.{layer_idx}"
@@ -418,29 +368,17 @@ def convert_transformer_state_dict(checkpoint):
         converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_qkv.q.weight"
         ]
-        converted_state_dict[f"{block_prefix}.attn1.to_q.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.q.bias"
-        ]
 
         converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_qkv.k.weight"
-        ]
-        converted_state_dict[f"{block_prefix}.attn1.to_k.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.k.bias"
         ]
 
         converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_qkv.v.weight"
         ]
-        converted_state_dict[f"{block_prefix}.attn1.to_v.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.v.bias"
-        ]
 
         converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_proj.weight"
-        ]
-        converted_state_dict[f"{block_prefix}.attn1.to_out.0.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_proj.bias"
         ]
 
         converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[
@@ -460,25 +398,17 @@ def convert_transformer_state_dict(checkpoint):
         converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
         ]
-        converted_state_dict[f"{block_prefix}.attn2.to_q.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.qx.bias"
-        ]
 
         kv_weight = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.weight"]
         k_weight, v_weight = kv_weight.chunk(2, dim=0)
         converted_state_dict[f"{block_prefix}.attn2.to_k.weight"] = k_weight
         converted_state_dict[f"{block_prefix}.attn2.to_v.weight"] = v_weight
 
-        kv_bias = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.bias"]
-        k_bias, v_bias = kv_bias.chunk(2, dim=0)
-        converted_state_dict[f"{block_prefix}.attn2.to_k.bias"] = k_bias
-        converted_state_dict[f"{block_prefix}.attn2.to_v.bias"] = v_bias
-
-        converted_state_dict[f"{block_prefix}.attn2.to_out.0.weight"] = converted_state_dict[
-            f"{block_prefix}.attn1.to_out.0.weight"
-        ]
-        converted_state_dict[f"{block_prefix}.attn2.to_out.0.bias"] = converted_state_dict[
-            f"{block_prefix}.attn1.to_out.0.bias"
+        # MAGI-1 applies a single shared projection (linear_proj) after concatenating
+        # core (self-attn) and cross-attn outputs. Diffusers has separate modules,
+        # so we set both attn1.to_out and attn2.to_out from the same original weight.
+        converted_state_dict[f"{block_prefix}.attn2.to_out.0.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_proj.weight"
         ]
 
         converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[
@@ -501,21 +431,19 @@ def convert_transformer_state_dict(checkpoint):
         converted_state_dict[f"{block_prefix}.norm3.weight"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.weight"]
         converted_state_dict[f"{block_prefix}.norm3.bias"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.bias"]
 
-        converted_state_dict[f"{block_prefix}.ff.net.0.proj.weight"] = checkpoint[
+        converted_state_dict[f"{block_prefix}.ffn.net.0.proj.weight"] = checkpoint[
             f"{layer_prefix}.mlp.linear_fc1.weight"
         ]
-        converted_state_dict[f"{block_prefix}.ff.net.0.proj.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc1.bias"]
 
-        converted_state_dict[f"{block_prefix}.ff.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
-        converted_state_dict[f"{block_prefix}.ff.net.2.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.bias"]
+        converted_state_dict[f"{block_prefix}.ffn.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
 
         converted_state_dict[f"{block_prefix}.norm4.weight"] = checkpoint[f"{layer_prefix}.mlp_post_norm.weight"]
         converted_state_dict[f"{block_prefix}.norm4.bias"] = checkpoint[f"{layer_prefix}.mlp_post_norm.bias"]
 
-        converted_state_dict[f"{block_prefix}.scale_shift_table.weight"] = checkpoint[
+        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.weight"] = checkpoint[
             f"{layer_prefix}.ada_modulate_layer.proj.0.weight"
         ]
-        converted_state_dict[f"{block_prefix}.scale_shift_table.bias"] = checkpoint[
+        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.bias"] = checkpoint[
             f"{layer_prefix}.ada_modulate_layer.proj.0.bias"
         ]
 
@@ -528,6 +456,8 @@ def get_args():
     parser.add_argument("--model_type", type=str, default=None)
     parser.add_argument("--output_path", type=str, required=True)
     parser.add_argument("--dtype", default="fp32", choices=["fp32", "fp16", "bf16", "none"])
+    parser.add_argument("--push_to_hub", action="store_true", help="If set, push to the Hub after conversion")
+    parser.add_argument("--repo_id", type=str, default=None, help="Repo ID to push to (when --push_to_hub is set)")
     return parser.parse_args()
 
 
@@ -540,8 +470,8 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    transformer = convert_magi_transformer(args.model_type)
-    # vae = convert_magi_vae()
+    transformer = convert_magi1_transformer(args.model_type)
+    # vae = convert_magi1_vae()
     # text_encoder = T5EncoderModel.from_pretrained("DeepFloyd/t5-v1_1-xxl")
     # tokenizer = AutoTokenizer.from_pretrained("DeepFloyd/t5-v1_1-xxl")
     # flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
@@ -577,10 +507,10 @@ if __name__ == "__main__":
         scheduler=None,  # scheduler,
     )
 
-    pipe.save_pretrained(
-        args.output_path,
-        safe_serialization=True,
-        max_shard_size="5GB",
-        push_to_hub=True,
-        repo_id=f"tolgacangoz/{args.model_type}-Diffusers",
-    )
+    save_kwargs = dict(safe_serialization=True, max_shard_size="5GB")
+    if args.push_to_hub:
+        save_kwargs.update({
+            "push_to_hub": True,
+            "repo_id": args.repo_id if args.repo_id is not None else f"tolgacangoz/{args.model_type}-Diffusers",
+        })
+    pipe.save_pretrained(args.output_path, **save_kwargs)
