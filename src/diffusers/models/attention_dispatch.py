@@ -38,6 +38,8 @@ from ..utils import (
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 
 
+logger = get_logger(__name__)  # pylint: disable=invalid-name
+
 _REQUIRED_FLASH_VERSION = "2.6.3"
 _REQUIRED_SAGE_VERSION = "2.1.1"
 _REQUIRED_FLEX_VERSION = "2.5.0"
@@ -52,6 +54,7 @@ _CAN_USE_NPU_ATTN = is_torch_npu_available()
 _CAN_USE_XLA_ATTN = is_torch_xla_available() and is_torch_xla_version(">=", _REQUIRED_XLA_VERSION)
 _CAN_USE_XFORMERS_ATTN = is_xformers_available() and is_xformers_version(">=", _REQUIRED_XFORMERS_VERSION)
 
+_DEFAULT_HUB_ID_FA3 = "kernels-community/vllm-flash-attn3"
 
 if _CAN_USE_FLASH_ATTN:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -64,8 +67,16 @@ if _CAN_USE_FLASH_ATTN_3:
     from flash_attn_interface import flash_attn_func as flash_attn_3_func
     from flash_attn_interface import flash_attn_varlen_func as flash_attn_3_varlen_func
 else:
-    flash_attn_3_func = None
-    flash_attn_3_varlen_func = None
+    try:
+        from kernels import get_kernel
+
+        vllm_flash_attn3 = get_kernel(_DEFAULT_HUB_ID_FA3)
+        flash_attn_3_func = vllm_flash_attn3.flash_attn_func
+        flash_attn_3_varlen_func = vllm_flash_attn3.flash_attn_varlen_func
+        logger.debug(f"Using Flash Attention 3 from {_DEFAULT_HUB_ID_FA3} using the `kernels` lib.")
+    except ImportError:
+        flash_attn_3_func = None
+        flash_attn_3_varlen_func = None
 
 
 if _CAN_USE_SAGE_ATTN:
@@ -131,8 +142,6 @@ else:
     _custom_op = custom_op_no_op
     _register_fake = register_fake_no_op
 
-
-logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 # TODO(aryan): Add support for the following:
 # - Sage Attention++
