@@ -20,7 +20,7 @@
   </div>
 </div>
 
-# Wan2.1
+# Wan
 
 [Wan-2.1](https://huggingface.co/papers/2503.20314) by the Wan Team.
 
