@@ -507,10 +507,12 @@ if __name__ == "__main__":
         scheduler=None,  # scheduler,
     )
 
-    save_kwargs = dict(safe_serialization=True, max_shard_size="5GB")
+    save_kwargs = {"safe_serialization": True, "max_shard_size": "5GB"}
     if args.push_to_hub:
-        save_kwargs.update({
-            "push_to_hub": True,
-            "repo_id": args.repo_id if args.repo_id is not None else f"tolgacangoz/{args.model_type}-Diffusers",
-        })
+        save_kwargs.update(
+            {
+                "push_to_hub": True,
+                "repo_id": args.repo_id if args.repo_id is not None else f"tolgacangoz/{args.model_type}-Diffusers",
+            }
+        )
     pipe.save_pretrained(args.output_path, **save_kwargs)

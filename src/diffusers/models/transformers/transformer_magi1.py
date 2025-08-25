@@ -25,7 +25,7 @@ from ...utils import USE_PEFT_BACKEND, is_kernels_available, logging, scale_lora
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
-from ..embeddings import TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
+from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
@@ -382,18 +382,19 @@ class Magi1TimeTextImageEmbedding(nn.Module):
                 distill_dt_factor = base_chunk_step / distill_interval * distill_dt_scalar
             else:
                 distill_dt_factor = num_steps / 4 * distill_dt_scalar
-            
+
             distill_dt = torch.ones_like(timestep) * distill_dt_factor
             distill_dt_embed = self.time_embedder(distill_dt)
             temb = temb + distill_dt_embed
 
         return temb, y_xattn, y_adaln
 
+
 # TODO: Verify this.
 class Magi1RotaryPosEmbed(nn.Module):
     """
     Rotary Position Embedding for MAGI-1 model.
-    
+
     Args:
         dim (`int`): The embedding dimension.
         attention_head_dim (`int`): The attention head dimension.
@@ -419,25 +420,26 @@ class Magi1RotaryPosEmbed(nn.Module):
 
     def _get_default_bands(self) -> torch.Tensor:
         num_bands = self.dim // 8
-        
+
         exp = torch.arange(0, num_bands, dtype=torch.float32) / num_bands
-        bands = 1.0 / (self.theta ** exp)
-        
+        bands = 1.0 / (self.theta**exp)
+
         return bands
 
-    def _build_3d_grid(self, feat_shape: List[int], ref_feat_shape: Optional[List[int]] = None, device: torch.device = None) -> torch.Tensor:
+    def _build_3d_grid(
+        self, feat_shape: List[int], ref_feat_shape: Optional[List[int]] = None, device: torch.device = None
+    ) -> torch.Tensor:
         """Build 3D spatial grid matching original MAGI-1 implementation."""
         T, H, W = feat_shape
-        
 
         t = torch.arange(T, device=device, dtype=torch.float32)
         h = torch.arange(H, device=device, dtype=torch.float32)
         w = torch.arange(W, device=device, dtype=torch.float32)
-        
+
         # Center alignment for H/W dimensions
         h = h - (H - 1) / 2
         w = w - (W - 1) / 2
-        
+
         # Handle reference shape rescaling (for fine-tuning)
         if ref_feat_shape is not None:
             ref_T, ref_H, ref_W = ref_feat_shape
@@ -445,7 +447,7 @@ class Magi1RotaryPosEmbed(nn.Module):
             coords = [t, h, w]
             shapes = [T, H, W]
             ref_shapes = [ref_T, ref_H, ref_W]
-            
+
             for coord, shape, ref_shape in zip(coords, shapes, ref_shapes):
                 if shape == 1:
                     assert ref_shape == 1, "ref_feat_shape must be 1 when feat_shape is 1"
@@ -453,14 +455,14 @@ class Magi1RotaryPosEmbed(nn.Module):
                 else:
                     t_rescaled.append(coord / (shape - 1) * (ref_shape - 1))
             t, h, w = t_rescaled
-        
+
         # Create 3D meshgrid
         try:
             grid_t, grid_h, grid_w = torch.meshgrid(t, h, w, indexing="ij")
         except TypeError:
             # Fallback for older PyTorch versions
             grid_t, grid_h, grid_w = torch.meshgrid(t, h, w)
-        
+
         # Stack into grid tensor: [T, H, W, 3]
         grid = torch.stack([grid_t, grid_h, grid_w], dim=-1)
         return grid
@@ -469,30 +471,30 @@ class Magi1RotaryPosEmbed(nn.Module):
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
-        
+
         device = hidden_states.device
         feat_shape = [ppf, pph, ppw]
-        
+
         # Build 3D spatial grid
         grid = self._build_3d_grid(feat_shape, ref_feat_shape, device)  # [T, H, W, 3]
         grid = grid.unsqueeze(-1)  # [T, H, W, 3, 1]
-        
+
         # Apply frequency bands
         bands = self.bands.to(device)  # [num_bands]
         pos = grid * bands  # [T, H, W, 3, num_bands]
-        
+
         # Compute sin/cos embeddings
         pos_sin = pos.sin()
         pos_cos = pos.cos()
-        
+
         # Concatenate sin and cos
         embeddings = torch.cat([pos_sin, pos_cos], dim=-1)  # [T, H, W, 3, 2*num_bands]
-        
+
         # Reshape to sequence format: [seq_len, embed_dim]
         seq_len = ppf * pph * ppw
         embed_dim = 3 * 2 * self.bands.shape[0]  # 3 spatial dims * 2 (sin/cos) * num_bands
         embeddings = embeddings.reshape(seq_len, embed_dim)
-        
+
         return embeddings
 
 
@@ -686,7 +688,7 @@ class Magi1Transformer3DModel(
 
         # 3. Transformer blocks
         # For image-to-video tasks, we may need additional projections
-        #added_kv_proj_dim = image_embed_dim if image_embed_dim is not None else None
+        # added_kv_proj_dim = image_embed_dim if image_embed_dim is not None else None
 
         self.blocks = nn.ModuleList(
             [
@@ -712,52 +714,48 @@ class Magi1Transformer3DModel(
     ) -> torch.Tensor:
         """
         Generate condition map that determines which condition to use for each token.
-        
+
         Args:
             batch_size: Batch size
             seq_len: Sequence length (T*H*W after patching)
             denoising_range_num: Number of denoising ranges
             device: Device to create tensor on
-            
+
         Returns:
             condition_map: (seq_len, batch_size) tensor mapping tokens to conditions
         """
         seqlen_per_chunk = seq_len // denoising_range_num
         condition_map = torch.arange(batch_size * denoising_range_num, device=device)
         condition_map = torch.repeat_interleave(condition_map, seqlen_per_chunk)
-        
+
         # Handle remainder if seq_len is not perfectly divisible
         remainder = seq_len % denoising_range_num
         if remainder > 0:
             # Extend the last chunk indices for remaining tokens
             last_indices = torch.full((remainder,), batch_size * denoising_range_num - 1, device=device)
             condition_map = torch.cat([condition_map, last_indices])
-            
+
         condition_map = condition_map.reshape(batch_size, -1).transpose(0, 1).contiguous()
         return condition_map
-    
-    def _apply_attention_mask(
-        self, y_xattn: torch.Tensor, attention_mask: torch.Tensor
-    ) -> torch.Tensor:
+
+    def _apply_attention_mask(self, y_xattn: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """
         Apply attention mask to cross-attention inputs, flattening variable-length sequences.
-        
+
         Args:
             y_xattn: Cross-attention embeddings (B, seq_len, dim)
             attention_mask: Attention mask (B, seq_len)
-            
+
         Returns:
             y_xattn_flat: Flattened valid tokens (total_valid_tokens, dim)
         """
         # Ensure mask is boolean
         if attention_mask.dtype != torch.bool:
             attention_mask = attention_mask.bool()
-            
+
         # Flatten and select valid tokens
-        y_xattn_flat = torch.masked_select(
-            y_xattn, attention_mask.unsqueeze(-1)
-        ).reshape(-1, y_xattn.shape[-1])
-        
+        y_xattn_flat = torch.masked_select(y_xattn, attention_mask.unsqueeze(-1)).reshape(-1, y_xattn.shape[-1])
+
         return y_xattn_flat
 
     def forward(
@@ -800,18 +798,23 @@ class Magi1Transformer3DModel(
         # Patch embedding
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)  # (B, T*H*W, C)
-        
+
         # Generate condition_map if not provided
         if condition_map is None:
             condition_map = self._generate_condition_map(
-                batch_size, post_patch_num_frames * post_patch_height * post_patch_width, 
-                denoising_range_num or 1, hidden_states.device
+                batch_size,
+                post_patch_num_frames * post_patch_height * post_patch_width,
+                denoising_range_num or 1,
+                hidden_states.device,
             )
 
         timestep_shape = timestep.shape
         temb, y_xattn, y_adaln, encoder_hidden_states_image = self.condition_embedder(
-            timestep.flatten(), encoder_hidden_states, encoder_hidden_states_image,
-            num_steps=num_steps, distill_interval=distill_interval
+            timestep.flatten(),
+            encoder_hidden_states,
+            encoder_hidden_states_image,
+            num_steps=num_steps,
+            distill_interval=distill_interval,
         )
 
         temb = temb.reshape(*timestep_shape, -1) + y_adaln
@@ -819,7 +822,7 @@ class Magi1Transformer3DModel(
         # Process cross-attention inputs with proper masking
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
-            
+
         # Handle attention masking for variable-length sequences
         if encoder_attention_mask is not None:
             # Apply masking to flatten variable-length sequences
