@@ -205,10 +205,10 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="prompt_embeds", kwargs_type="guider_input_fields",type_hint=torch.Tensor, description="The prompt embeddings"),
-            OutputParam(name="prompt_embeds_mask", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The encoder attention mask"),
-            OutputParam(name="negative_prompt_embeds", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings"),
-            OutputParam(name="negative_prompt_embeds_mask", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings mask"),
+            OutputParam(name="prompt_embeds", kwargs_type="denoiser_input_fields",type_hint=torch.Tensor, description="The prompt embeddings"),
+            OutputParam(name="prompt_embeds_mask", kwargs_type="denoiser_input_fields", type_hint=torch.Tensor, description="The encoder attention mask"),
+            OutputParam(name="negative_prompt_embeds", kwargs_type="denoiser_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings"),
+            OutputParam(name="negative_prompt_embeds_mask", kwargs_type="denoiser_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings mask"),
         ]
 
     @staticmethod
@@ -299,10 +299,10 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="prompt_embeds", kwargs_type="guider_input_fields",type_hint=torch.Tensor, description="The prompt embeddings"),
-            OutputParam(name="prompt_embeds_mask", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The encoder attention mask"),
-            OutputParam(name="negative_prompt_embeds", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings"),
-            OutputParam(name="negative_prompt_embeds_mask", kwargs_type="guider_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings mask"),
+            OutputParam(name="prompt_embeds", kwargs_type="denoiser_input_fields",type_hint=torch.Tensor, description="The prompt embeddings"),
+            OutputParam(name="prompt_embeds_mask", kwargs_type="denoiser_input_fields", type_hint=torch.Tensor, description="The encoder attention mask"),
+            OutputParam(name="negative_prompt_embeds", kwargs_type="denoiser_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings"),
+            OutputParam(name="negative_prompt_embeds_mask", kwargs_type="denoiser_input_fields", type_hint=torch.Tensor, description="The negative prompt embeddings mask"),
         ]
 
     @staticmethod
@@ -352,13 +352,13 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     def __init__(self, input_name: str = "image", output_name: str = "image_latents"):
-        self.input_name = input_name
-        self.output_name = output_name
+        self.image_input_name = input_name
+        self.image_latents_output_name = output_name
         super().__init__()
 
     @property
     def description(self) -> str:
-        return "Vae Encoder step that encode the input image into a latent representation"
+        return f"Vae Encoder step that encode the input image into a latent representation. Optionally update height and width based on image size."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -375,7 +375,7 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(self.input_name, required=True),
+            InputParam(self.image_input_name, required=True),
             InputParam("generator"),
         ]
 
@@ -383,7 +383,7 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
-                self.output_name,
+                self.image_latents_output_name,
                 type_hint=torch.Tensor,
                 description="The latents representing the reference image",
             )
@@ -396,7 +396,7 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         device = components._execution_device
         dtype = components.vae.dtype
 
-        image = getattr(block_state, self.input_name)
+        image = getattr(block_state, self.image_input_name)
 
         image = components.image_processor.preprocess(image)
         image = image.unsqueeze(2)
@@ -408,7 +408,7 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             image=image, vae=components.vae, generator=block_state.generator, latent_channels=components.num_channels_latents
         )
 
-        setattr(block_state, self.output_name, image_latents)
+        setattr(block_state, self.image_latents_output_name, image_latents)
 
         self.set_block_state(state, block_state)
 

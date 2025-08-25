@@ -25,7 +25,7 @@ from .modular_pipeline import QwenImageModularPipeline
 
 from ...guiders import ClassifierFreeGuidance
 from ...configuration_utils import FrozenDict
-from ...models import QwenImageTransformer2DModel
+from ...models import QwenImageTransformer2DModel, QwenImageControlNetModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 
 logger = logging.get_logger(__name__)
@@ -83,6 +83,95 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
+class QwenImageControlNetLoopBeforeDenoiser(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 4.0}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec("controlnet", QwenImageControlNetModel),
+        ]
+
+    @property
+    def description(self) -> str:
+        return (
+            "step within the denoising loop that runs the controlnet before the denoiser. "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "object (e.g. `QwenImageDenoiseLoopWrapper`)"
+        )
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                "control_image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
+            ),
+            InputParam(
+                "controlnet_conditioning_scale",
+                type_hint=float,
+                description="The controlnet conditioning scale value to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
+            ),
+            InputParam(
+                "controlnet_keep",
+                required=True,
+                type_hint=List[float],
+                description="The controlnet keep values to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
+            ),
+            InputParam(
+                "num_inference_steps",
+                required=True,
+                type_hint=int,
+                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
+            ),
+            InputParam(
+                kwargs_type="denoiser_input_fields",
+                description=(
+                    "All conditional model inputs for the denoiser. "
+                    "It should contain prompt_embeds/negative_prompt_embeds, txt_seq_lens/negative_txt_seq_lens."
+                ),
+            ),
+        ]
+
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: int):
+
+        # cond_scale for the timestep (controlnet input)
+        if isinstance(block_state.controlnet_keep[i], list):
+            block_state.cond_scale = [
+                c * s for c, s in zip(block_state.controlnet_conditioning_scale, block_state.controlnet_keep[i])
+            ]
+        else:
+            controlnet_cond_scale = block_state.controlnet_conditioning_scale
+            if isinstance(controlnet_cond_scale, list):
+                controlnet_cond_scale = controlnet_cond_scale[0]
+            block_state.cond_scale = controlnet_cond_scale * block_state.controlnet_keep[i]
+
+        # run controlnet for the guidance batch
+        block_state.controlnet_block_samples = components.controlnet(
+            hidden_states=block_state.latent_model_input,
+            controlnet_cond=block_state.control_image_latents,
+            conditioning_scale=block_state.cond_scale,
+            timestep=block_state.timestep / 1000,
+            img_shapes=block_state.img_shapes,
+            encoder_hidden_states=block_state.prompt_embeds,
+            encoder_hidden_states_mask=block_state.prompt_embeds_mask,
+            txt_seq_lens=block_state.txt_seq_lens,
+            return_dict=False,
+        )
+
+        return components, block_state
+
+
 class QwenImageLoopDenoiser(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -112,7 +201,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
             InputParam("attention_kwargs"),
             InputParam("latents", required=True, type_hint=torch.Tensor, description="The latents to use for the denoising process. Can be generated in prepare_latents step."),
             InputParam("num_inference_steps", required=True, type_hint=int, description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."),
-            InputParam(kwargs_type="guider_input_fields", description="All coditional model inputs that need to be prepared with guider: e.g. prompt_embeds, negative_prompt_embeds, etc."),
+            InputParam(kwargs_type="denoiser_input_fields", description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc."),
             InputParam("img_shapes", required=True, type_hint=List[Tuple[int, int]], description="The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step."),
         ]
     
@@ -139,6 +228,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
                 timestep=block_state.timestep / 1000,
                 img_shapes=block_state.img_shapes,
                 attention_kwargs=block_state.attention_kwargs,
+                controlnet_block_samples=block_state.controlnet_block_samples,
                 return_dict=False,
                 **cond_kwargs,
             )[0]
@@ -185,7 +275,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
             InputParam("attention_kwargs"),
             InputParam("latents", required=True, type_hint=torch.Tensor, description="The latents to use for the denoising process. Can be generated in prepare_latents step."),
             InputParam("num_inference_steps", required=True, type_hint=int, description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."),
-            InputParam(kwargs_type="guider_input_fields", description="All coditional model inputs that need to be prepared with guider: e.g. prompt_embeds, negative_prompt_embeds, etc."),
+            InputParam(kwargs_type="denoiser_input_fields", description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc."),
             InputParam("img_shapes", required=True, type_hint=List[Tuple[int, int]], description="The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step."),
         ]
     
@@ -212,6 +302,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
                 timestep=block_state.timestep / 1000,
                 img_shapes=block_state.img_shapes,
                 attention_kwargs=block_state.attention_kwargs,
+                controlnet_block_samples=block_state.controlnet_block_samples,
                 return_dict=False,
                 **cond_kwargs,
             )[0]
@@ -230,6 +321,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
         
 
         return components, block_state       
+
 
 
 class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
@@ -273,8 +365,6 @@ class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
 
         return components, block_state
         
-
-
 
 
 class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
@@ -335,6 +425,30 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
             " - `QwenImageLoopBeforeDenoiser`\n"
+            " - `QwenImageLoopDenoiser`\n"
+            " - `QwenImageLoopAfterDenoiser`\n"
+            "This block supports text2img tasks."
+        )
+
+
+# composing the controlnet denoising loops
+class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
+    block_classes = [
+        QwenImageLoopBeforeDenoiser,
+        QwenImageControlNetLoopBeforeDenoiser,
+        QwenImageLoopDenoiser,
+        QwenImageLoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "controlnet_before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. \n"
+            "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            " - `QwenImageLoopBeforeDenoiser`\n"
+            " - `QwenImageControlNetLoopBeforeDenoiser`\n"
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
             "This block supports text2img tasks."
