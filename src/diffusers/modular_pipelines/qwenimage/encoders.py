@@ -348,8 +348,13 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
         return components, state
     
 
-class QwenImageVaeEncoderStep(ModularPipelineBlocks):
+class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
+
+    def __init__(self, input_name: str = "image", output_name: str = "image_latents"):
+        self.input_name = input_name
+        self.output_name = output_name
+        super().__init__()
 
     @property
     def description(self) -> str:
@@ -370,7 +375,7 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("image", required=True, description="The image to encode, should already be resized using resize step"),
+            InputParam(self.input_name, required=True),
             InputParam("generator"),
         ]
 
@@ -378,7 +383,7 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
-                "image_latents",
+                self.output_name,
                 type_hint=torch.Tensor,
                 description="The latents representing the reference image",
             )
@@ -391,15 +396,19 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
         device = components._execution_device
         dtype = components.vae.dtype
 
-        image = components.image_processor.preprocess(block_state.image)
+        image = getattr(block_state, self.input_name)
+
+        image = components.image_processor.preprocess(image)
         image = image.unsqueeze(2)
         image = image.to(device=device, dtype=dtype)
 
 
         # Encode image into latents
-        block_state.image_latents = encode_vae_image(
+        image_latents = encode_vae_image(
             image=image, vae=components.vae, generator=block_state.generator, latent_channels=components.num_channels_latents
         )
+
+        setattr(block_state, self.output_name, image_latents)
 
         self.set_block_state(state, block_state)
 

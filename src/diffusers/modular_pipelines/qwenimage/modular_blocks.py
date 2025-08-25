@@ -14,7 +14,7 @@
 
 from ...utils import logging
 
-from .encoders import QwenImageTextEncoderStep, QwenImageEditTextEncoderStep, QwenImageVaeEncoderStep
+from .encoders import QwenImageTextEncoderStep, QwenImageEditTextEncoderStep, QwenImageVaeEncoderDynamicStep
 from .decoders import QwenImageDecodeStep
 from .denoise import QwenImageDenoiseStep, QwenImageEditDenoiseStep
 from .before_denoise import QwenImageInputStep, QwenImagePrepareLatentsStep, QwenImageSetTimestepsStep, QwenImagePrepareAdditionalInputsStep, QwenImagePrepareImageLatentsStep, QwenImageEditPrepareAdditionalInputsStep, QwenImageImageResizeStep
@@ -41,7 +41,7 @@ EDIT_BLOCKS = InsertableDict(
     [
         ("image_resize", QwenImageImageResizeStep),
         ("text_encoder", QwenImageEditTextEncoderStep),
-        ("vae_encoder", QwenImageVaeEncoderStep),
+        ("vae_encoder", QwenImageVaeEncoderDynamicStep(input_name="image", output_name="image_latents")),
         ("input", QwenImageInputStep),
         ("prepare_image_latents", QwenImagePrepareImageLatentsStep),
         ("prepare_latents", QwenImagePrepareLatentsStep),
