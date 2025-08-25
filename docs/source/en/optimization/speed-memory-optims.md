@@ -29,7 +29,7 @@ The table below provides a comparison of optimization strategy combinations and 
 | quantization, torch.compile  | 25.847 | 14.9448 |
 | quantization, torch.compile, model CPU offloading | 32.312 | 12.2369 |
 
-_(These results are benchmarked on Flux with a RTX 4090. The transformer and text_encoder components are quantized. Refer to the [benchmarking script](https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d) if you're interested in evaluating your own model.)_
+<small>These results are benchmarked on Flux with a RTX 4090. The transformer and text_encoder components are quantized. Refer to the <a href="https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d">benchmarking script</a> if you're interested in evaluating your own model.</small>
 
 This guide will show you how to compile and offload a quantized model with [bitsandbytes](../quantization/bitsandbytes#torchcompile). Make sure you are using [PyTorch nightly](https://pytorch.org/get-started/locally/) and the latest version of bitsandbytes.
 
