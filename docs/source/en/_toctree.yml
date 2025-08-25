@@ -77,7 +77,7 @@
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/speed-memory-optims
-    title: Compile and offloading quantized models
+    title: Compiling and offloading quantized models
   - title: Community optimizations
     sections:
     - local: optimization/pruna
