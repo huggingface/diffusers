@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import PIL
 import regex as re
 import torch
-from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
+from transformers import AutoTokenizer, CLIPImageProcessor, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -137,11 +137,6 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
-        image_encoder ([`CLIPVisionModel`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModel), specifically
-            the
-            [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large)
-            variant.
         transformer ([`Magi1Transformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         scheduler ([`UniPCMultistepScheduler`]):
@@ -157,7 +152,6 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        image_encoder: CLIPVisionModel,
         image_processor: CLIPImageProcessor,
         transformer: Magi1Transformer3DModel,
         vae: AutoencoderKLMagi1,
@@ -169,7 +163,6 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            image_encoder=image_encoder,
             transformer=transformer,
             scheduler=scheduler,
             image_processor=image_processor,
@@ -228,8 +221,8 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     ):
         device = device or self._execution_device
         image = self.image_processor(images=image, return_tensors="pt").to(device)
-        image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-2]
+        image_embeds = self.vae.encode(**image, return_dict=False)[0]
+        return image_embeds
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
