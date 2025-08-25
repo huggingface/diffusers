@@ -12,48 +12,49 @@ This project provides **TensorRT-accelerated pipelines** for Flux models, enabli
 
 ---
 
-## ⚙️ Building Flux with TensorRT
 
-We follow the official [NVIDIA/TensorRT](https://github.com/NVIDIA/TensorRT) repository to build TensorRT.
-
-> **Note:**  
-> TensorRT was originally built with `diffusers==0.31.1`.  
-> Currently, we recommend using:
-> - one **venv** for building, and  
-> - another **venv** for inference.  
-
-(🔜 TODO: Build scripts for the latest `diffusers` will be added later.)
-
-### Installation
+## Installation
 ```bash
-git clone https://github.com/NVIDIA/TensorRT
-cd TensorRT/demo/Diffusion
-
-pip install tensorrt-cu12==10.13.2.6
+cd diffusers/examples/flux-tensorrt
 pip install -r requirements.txt
 ```
 
-### ⚡ Fast Building with Static Shapes
+## ⚙️ Build Flux with TensorRT
+
+Before building, make sure you have the ONNX checkpoints ready.
+You can either download the official [Flux ONNX](https://huggingface.co/black-forest-labs/FLUX.1-dev-onnx) checkpoints from Hugging Face, or export your own.
+
 ```bash
-# BF16
-python3 demo_txt2img_flux.py "a beautiful photograph of Mt. Fuji during cherry blossom" --hf-token=$HF_TOKEN --bf16 --download-onnx-models
-
-# FP8
-python3 demo_txt2img_flux.py "a beautiful photograph of Mt. Fuji during cherry blossom" --hf-token=$HF_TOKEN --quantization-level 4 --fp8 --download-onnx-models
-
-# FP4
-python3 demo_txt2img_flux.py "a beautiful photograph of Mt. Fuji during cherry blossom" --hf-token=$HF_TOKEN --fp4 --download-onnx-models
+huggingface-cli download black-forest-labs/FLUX.1-dev-onnx --local-dir onnx
 ```
 
-- To build with dynamic shape, add: `--build-dynamic-shape`.
-- To build with static batch, add  `--build-static-batch`.
+Build each component individually. For example, to build the **Transformer engine**:
+```python
+from module.transformers import FluxTransformerModel
 
-ℹ️ For more details, run:
-`python demo_txt2img_flux.py --help`
+engine_path = "checkpoints_trt/transformer/engine.plan"
+engine_transformer = FluxTransformerModel(engine_path=engine_path,build=True)
+
+# Build tranformer engine
+transformer_input_profile = engine_transformer.get_input_profile(
+    opt_batch_size=1,
+    opt_image_height=1024,
+    opt_image_width=1024,
+    static_batch = True,
+    dynamic_shape= True
+)
+engine_transformer.build(
+    onnx_path="onnx/transformer.opt/bf16/model.onnx", #Replace your onnx path
+    input_profile=transformer_input_profile,
+)
+```
+
+You can convert all ONNX checkpoints to TensorRT engines with a single command:
+```bash
+python convert_trt.py
+```
 
 ## 🖼️ Inference with Flux TensorRT
-Create a new venv (or update diffusers, peft in your existing one), then run fast inference using TensorRT engines.
-
 Example: Full Pipeline with All Engines
 
 ```python
@@ -68,10 +69,10 @@ from module.clip import CLIPModel
 import time
 
 # Local path for each engine
-engine_transformer_path = "path/to/transformer/engine_trt10.13.2.6.plan"
-engine_vae_path = "path/to/vae/engine_trt10.13.2.6.plan"
-engine_t5xxl_path = "path/to/t5/engine_trt10.13.2.6.plan"
-engine_clip_path = "path/to/clip/engine_trt10.13.2.6.plan"
+engine_transformer_path = "checkpoints_trt/transformer/engine.plan"
+engine_vae_path = "checkpoints_trt/vae/engine.plan"
+engine_t5xxl_path = "checkpoints_trt/t5/engine.plan"
+engine_clip_path = "checkpoints_trt/clip/engine.plan"
 
 # Create stream for each engine
 stream = cudart.cudaStreamCreate()[1]
