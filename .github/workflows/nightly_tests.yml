@@ -342,7 +342,7 @@ jobs:
             additional_deps: []
           - backend: "nvidia_modelopt"
             test_location: "modelopt"
-            additional_deps: ["peft"]
+            additional_deps: []
     runs-on:
       group: aws-g6e-xlarge-plus
     container:
