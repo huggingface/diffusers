@@ -22,13 +22,13 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from .modeling_common import FeedForward
 from ..attention_processor import AllegroAttnProcessor2_0, Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)

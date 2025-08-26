@@ -23,7 +23,6 @@ from diffusers.loaders import FromOriginalModelMixin
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from .modeling_common import FeedForward
 from ..attention_processor import Attention, AttentionProcessor
 from ..cache_utils import CacheMixin
 from ..embeddings import (
@@ -36,6 +35,7 @@ from ..embeddings import (
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, FP32LayerNorm
+from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

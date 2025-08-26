@@ -8,7 +8,6 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...utils import BaseOutput
-from .modeling_common import BasicTransformerBlock
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -18,6 +17,7 @@ from ..attention_processor import (
 )
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
+from .modeling_common import BasicTransformerBlock
 
 
 @dataclass

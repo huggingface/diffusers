@@ -26,7 +26,6 @@ from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, un
 from ...utils.import_utils import is_torch_npu_available
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin
-from .modeling_common import FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import (
@@ -38,6 +37,7 @@ from ..embeddings import (
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

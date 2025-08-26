@@ -19,10 +19,10 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
-from .modeling_common import BasicTransformerBlock, TemporalBasicTransformerBlock
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..resnet import AlphaBlender
+from .modeling_common import BasicTransformerBlock, TemporalBasicTransformerBlock
 
 
 @dataclass

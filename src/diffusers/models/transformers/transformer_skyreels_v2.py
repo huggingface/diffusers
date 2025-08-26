@@ -22,7 +22,6 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from .modeling_common import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import (
@@ -34,6 +33,7 @@ from ..embeddings import (
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
+from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

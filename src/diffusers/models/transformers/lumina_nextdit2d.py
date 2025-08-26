@@ -19,7 +19,6 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
-from .modeling_common import LuminaFeedForward
 from ..attention_processor import Attention, LuminaAttnProcessor2_0
 from ..embeddings import (
     LuminaCombinedTimestepCaptionEmbedding,
@@ -28,6 +27,7 @@ from ..embeddings import (
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import LuminaLayerNormContinuous, LuminaRMSNormZero, RMSNorm
+from .modeling_common import LuminaFeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

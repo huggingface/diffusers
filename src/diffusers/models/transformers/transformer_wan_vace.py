@@ -21,11 +21,11 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from .modeling_common import FeedForward
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
+from .modeling_common import FeedForward
 from .transformer_wan import (
     WanAttention,
     WanAttnProcessor,
