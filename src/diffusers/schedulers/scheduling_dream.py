@@ -318,19 +318,21 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
 
         if self.config.timestep_discretization == "linear":
-            timesteps = torch.linspace(1.0, self.config.final_timestep, num_inference_steps + 1, device=device)
+            timesteps = torch.linspace(1.0, self.config.final_timestep, num_inference_steps + 1)
         elif self.config.timestep_discretization == "cosine":
             timesteps = torch.linspace(1.0, self.config.final_timestep, num_inference_steps + 1)
-            timesteps = torch.cos((torch.pi / 2) * (1.0 - timesteps)).to(device)
+            timesteps = torch.cos((torch.pi / 2) * (1.0 - timesteps))
         else:
             raise ValueError(
                 f"{self.config.timestep_discretization} is not a supported timestep discretization strategy. Current "
                 f"supported strategies are `linear` and `cosine`."
             )
-        self.timesteps = timesteps
+        # Omit the final timestep so that len(self.timesteps) == num_inference_steps
+        self.timesteps = timesteps[:-1].to(device=device)
 
         # Now calculate the masking or noise schedule (alpha) values at the chosen timestep discretization
-        self.alphas = self.t_to_alpha(timesteps=self.timesteps).to(device=device)
+        # NOTE: the masking/alpha schedule is one element longer than self.timesteps (len num_inference_steps + 1)
+        self.alphas = self.t_to_alpha(timesteps=timesteps).to(device=device)
 
         # Allow overriding of specific sampling parameters (temperature, top_p, etc.)
         if temperature is None:
@@ -375,8 +377,6 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
         # model_output shape: [B, L, V]
         # sample shape: [B, L] (sequence of discrete tokens)
         step_idx = self.index_for_timestep(timestep)
-        t = self.timesteps[step_idx]  # Current timestep
-        s = self.timesteps[step_idx + 1]  # Previous timestep (next-largest timestep not yet processed)
         temperature = self.temperatures[step_idx] if self.temperatures is not None else 1.0
         top_p = self.top_p_schedule[step_idx] if self.top_p_schedule is not None else None
         top_k = self.top_k_schedule[step_idx] if self.top_k_schedule is not None else None
@@ -433,14 +433,19 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
             if num_tokens_to_unmask > 0:
                 if self.config.alg_temperature is None or self.config.alg_temperature == 0:
-                    _, unmask_index = torch.topk(full_confidence, num_tokens_to_unmask)
+                    _, unmask_indices = torch.topk(full_confidence, num_tokens_to_unmask)
                 else:
                     full_confidence = full_confidence / self.config.alg_temperature
                     full_confidence = F.softmax(full_confidence, dim=-1)
-                    unmask_index = torch.multinomial(full_confidence, num_samples=num_tokens_to_unmask)
+                    unmask_indices = torch.multinomial(
+                        full_confidence, num_samples=num_tokens_to_unmask, generator=generator
+                    )
+                unmask_indices = unmask_indices.to(sample.device)
 
-                prev_sample = torch.zeros_like(sample, device=sample.device)
-                prev_sample = torch.where(unmask_index, pred_original_sample, sample)
+                row_indices = torch.arange(sample.size(0), device=sample.device).unsqueeze(1).expand_as(unmask_indices)
+                prev_sample = sample.clone()
+                # Unmask at the chosen indices with values from the pred_original_sample
+                prev_sample[row_indices, unmask_indices] = pred_original_sample[row_indices, unmask_indices]
             else:
                 # No tokens to unmask, so the sample should stay the same
                 prev_sample = sample
