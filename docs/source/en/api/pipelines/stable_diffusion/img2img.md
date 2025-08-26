@@ -47,13 +47,3 @@ Make sure to check out the Stable Diffusion [Tips](overview#tips) section to lea
 ## StableDiffusionPipelineOutput
 
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
-
-## FlaxStableDiffusionImg2ImgPipeline
-
-[[autodoc]] FlaxStableDiffusionImg2ImgPipeline
-	- all
-	- __call__
-
-## FlaxStableDiffusionPipelineOutput
-
-[[autodoc]] pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput
