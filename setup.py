@@ -84,7 +84,6 @@ To create the package for PyPI.
     you need to go back to main before executing this.
 """
 
-import os
 import re
 import sys
 
@@ -100,7 +99,6 @@ _deps = [
     "compel==0.1.8",
     "datasets",
     "filelock",
-    "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
     "huggingface-hub>=0.34.0",
     "requests-mock==1.10.0",
@@ -245,14 +243,8 @@ extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 
-if os.name == "nt":  # windows
-    extras["flax"] = []  # jax is not supported on windows
-else:
-    extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
-extras["dev"] = (
-    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
-)
+extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]
 
 install_requires = [
     deps["importlib_metadata"],
