@@ -18,7 +18,8 @@ import unittest
 
 from diffusers import FlaxStableDiffusionInpaintPipeline
 from diffusers.utils import is_flax_available, load_image
-from diffusers.utils.testing_utils import require_flax, slow
+
+from ...testing_utils import require_flax, slow
 
 
 if is_flax_available():

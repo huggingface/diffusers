@@ -9,7 +9,8 @@ import torch
 import diffusers
 from diffusers import ComponentsManager, ModularPipeline, ModularPipelineBlocks
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_accelerator,

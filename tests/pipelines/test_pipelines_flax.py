@@ -20,7 +20,8 @@ import unittest
 import numpy as np
 
 from diffusers.utils import is_flax_available
-from diffusers.utils.testing_utils import require_flax, slow
+
+from ..testing_utils import require_flax, slow
 
 
 if is_flax_available():
