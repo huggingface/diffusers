@@ -31,13 +31,13 @@ from diffusers.loaders import ModularIPAdapterMixin
 from ...models.unets.test_models_unet_2d_condition import (
     create_ip_adapter_state_dict,
 )
-from ..test_modular_pipelines_common import (
-    ModularPipelineTesterMixin,
-)
-from ..testing_utils import (
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     torch_device,
+)
+from ..test_modular_pipelines_common import (
+    ModularPipelineTesterMixin,
 )
 
 
