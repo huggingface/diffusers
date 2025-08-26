@@ -23,6 +23,7 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
+from ..quantizers.quantization_config import NunchakuConfig
 from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
@@ -442,6 +443,7 @@ class FromOriginalModelMixin:
             )
 
         # This step is better off here than above because `diffusers_format_checkpoint` holds the keys we expect.
+        # We can move it to a separate function as well.
         if quantization_config is not None:
             original_modules_to_not_convert = quantization_config.modules_to_not_convert or []
             determined_modules_to_not_convert = _maybe_determine_modules_to_not_convert(
@@ -450,12 +452,15 @@ class FromOriginalModelMixin:
             if determined_modules_to_not_convert:
                 determined_modules_to_not_convert.extend(original_modules_to_not_convert)
                 determined_modules_to_not_convert = list(set(determined_modules_to_not_convert))
-                logger.info(
+                logger.debug(
                     f"`modules_to_not_convert` in the quantization_config was updated from {quantization_config.modules_to_not_convert} to {determined_modules_to_not_convert}."
                 )
-                quantization_config.modules_to_not_convert = original_modules_to_not_convert
-                # Update the `quant_config`.
-                hf_quantizer.quantization_config = quantization_config
+                modified_quant_config = quantization_config.to_dict()
+                modified_quant_config["modules_to_not_convert"] = determined_modules_to_not_convert
+                # TODO: figure out a better way.
+                modified_quant_config = NunchakuConfig.from_dict(modified_quant_config)
+                setattr(hf_quantizer, "quantization_config", modified_quant_config)
+                logger.debug("TODO")
 
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (

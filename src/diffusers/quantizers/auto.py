@@ -56,7 +56,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
 
 class DiffusersAutoQuantizer:
     """
-     The auto diffusers quantizer class that takes care of automatically instantiating to the correct
+    The auto diffusers quantizer class that takes care of automatically instantiating to the correct
     `DiffusersQuantizer` given the `QuantizationConfig`.
     """
 

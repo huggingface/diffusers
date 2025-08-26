@@ -791,25 +791,6 @@ class NunchakuConfig(QuantizationConfigMixin):
 
         # TODO: should there be a check for rank?
 
-    # Copied from diffusers.quantizers.quantization_config.BitsAndBytesConfig.to_diff_dict with BitsAndBytesConfig->NunchakuConfig
-    def to_diff_dict(self) -> Dict[str, Any]:
-        """
-        Removes all attributes from config which correspond to the default config attributes for better readability and
-        serializes to a Python dictionary.
-
-        Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance,
-        """
+    def __repr__(self):
         config_dict = self.to_dict()
-
-        # get the default config dict
-        default_config_dict = NunchakuConfig().to_dict()
-
-        serializable_config_dict = {}
-
-        # only serialize values that differ from the default config
-        for key, value in config_dict.items():
-            if value != default_config_dict[key]:
-                serializable_config_dict[key] = value
-
-        return serializable_config_dict
+        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"

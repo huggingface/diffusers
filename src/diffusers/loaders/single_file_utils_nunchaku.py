@@ -6,8 +6,8 @@ import torch
 _QKV_ANCHORS_NUNCHAKU = ("to_qkv", "add_qkv_proj")
 _ALLOWED_SUFFIXES_NUNCHAKU = {
     "bias",
-    "lora_down",
-    "lora_up",
+    "proj_down",
+    "proj_up",
     "qweight",
     "smooth_factor",
     "smooth_factor_orig",
@@ -66,14 +66,16 @@ def _unpack_qkv_state_dict(
         '...to_q.bias', '...to_k.bias', '...to_v.bias' '...to_q.wscales', '...to_k.wscales', '...to_v.wscales'
     Returns a NEW dict; original is not modified.
 
-    Only keys with suffix in `allowed_suffixes` are processed. Keys with non-divisible-by-3 tensors raise a ValueError.
+    Only keys with suffix in `allowed_suffixes` are processed. Keys with non-divisible-by-3 tensors raise a ValueError.:
     """
     anchors = tuple(anchors)
     allowed_suffixes = set(allowed_suffixes)
 
     new_sd: dict = {}
-    for k, v in state_dict.items():
+    sd_keys = list(state_dict.keys())
+    for k in sd_keys:
         m = _QKV_NUNCHAKU_REGEX.match(k)
+        v = state_dict.pop(k)
         if m:
             suffix = m.group("suffix")
             if suffix not in allowed_suffixes:

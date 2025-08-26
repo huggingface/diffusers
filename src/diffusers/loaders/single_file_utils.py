@@ -2220,7 +2220,7 @@ def convert_nunchaku_flux_to_diffusers(checkpoint, **kwargs):
         if k.startswith("single_transformer_blocks."):
             # attention / qkv / norms
             new_k = new_k.replace(".qkv_proj.", ".attn.to_qkv.")
-            new_k = new_k.replace(".out_proj.", ".attn.to_out.")
+            new_k = new_k.replace(".out_proj.", ".proj_out.")
             new_k = new_k.replace(".norm_k.", ".attn.norm_k.")
             new_k = new_k.replace(".norm_q.", ".attn.norm_q.")
 
@@ -2279,7 +2279,11 @@ def convert_nunchaku_flux_to_diffusers(checkpoint, **kwargs):
     for k in model_state_dict:
         if k not in new_state_dict:
             # CPU device for now
-            new_state_dict[k] = torch.ones_like(k, device="cpu")
+            new_state_dict[k] = torch.ones_like(model_state_dict[k], device="cpu")
+
+    for k in new_state_dict:
+        if "single_transformer_blocks.0" in k and k.endswith(".weight"):
+            print(f"{k=}")
 
     return new_state_dict
 
