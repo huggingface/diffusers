@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -162,6 +162,16 @@ class SkyReelsV2AttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
+
+class SkyReelsV2AttnProcessor2_0:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = (
+            "The SkyReelsV2AttnProcessor2_0 class is deprecated and will be removed in a future version. "
+            "Please use SkyReelsV2AttnProcessor instead. "
+        )
+        deprecate("SkyReelsV2AttnProcessor2_0", "1.0.0", deprecation_message, standard_warn=False)
+        return SkyReelsV2AttnProcessor(*args, **kwargs)
 
 
 class SkyReelsV2Attention(torch.nn.Module, AttentionModuleMixin):
