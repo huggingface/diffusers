@@ -838,6 +838,133 @@ class VaeImageProcessor(ConfigMixin):
         return image
 
 
+class InpaintProcessor(ConfigMixin):
+    """
+    Image processor for inpainting image and mask.
+    """
+    config_name = CONFIG_NAME
+
+    @register_to_config
+    def __init__(
+        self, 
+        do_resize: bool = True,
+        vae_scale_factor: int = 8,
+        vae_latent_channels: int = 4,
+        resample: str = "lanczos",
+        reducing_gap: int = None,
+        do_normalize: bool = True,
+        do_binarize: bool = False,
+        do_convert_grayscale: bool = False,
+        mask_do_normalize: bool = False, 
+        mask_do_binarize: bool = True, 
+        mask_do_convert_grayscale: bool = True,
+        ):
+
+        super().__init__()
+
+        self._image_processor = VaeImageProcessor(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor, 
+            vae_latent_channels=vae_latent_channels,
+            resample=resample,
+            reducing_gap=reducing_gap,
+            do_normalize=do_normalize,
+            do_binarize=do_binarize,
+            do_convert_grayscale=do_convert_grayscale,
+            )
+        self._mask_processor = VaeImageProcessor(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor, 
+            vae_latent_channels=vae_latent_channels,
+            resample=resample,
+            reducing_gap=reducing_gap,
+            do_normalize=mask_do_normalize, 
+            do_binarize=mask_do_binarize, 
+            do_convert_grayscale=mask_do_convert_grayscale, 
+            )
+
+    
+    def preprocess(
+        self,
+        image: PIL.Image.Image,
+        mask: PIL.Image.Image,
+        height:int,
+        width:int,
+        padding_mask_crop:Optional[int] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Preprocess the image and mask.
+        """
+        
+        if padding_mask_crop is not None:
+            crops_coords = self._image_processor.get_crop_region(
+                mask, width, height, pad=padding_mask_crop
+            )
+            resize_mode = "fill"
+        else:
+            crops_coords = None
+            resize_mode = "default"
+        
+        processed_image = self._image_processor.preprocess(
+            image,
+            height=height,
+            width=width,
+            crops_coords=crops_coords,
+            resize_mode=resize_mode,
+        )
+
+        processed_mask = self._mask_processor.preprocess(
+            mask,
+            height=height,
+            width=width,
+            resize_mode=resize_mode,
+            crops_coords=crops_coords,
+        )
+
+        
+        if crops_coords is not None:
+            postprocessing_kwargs = {
+                "crops_coords": crops_coords,
+                "original_image": image,
+                "original_mask": mask,
+            }
+        else:
+            postprocessing_kwargs = {
+                "crops_coords": None,
+                "original_image": None,
+                "original_mask": None,
+            }
+
+        return processed_image, processed_mask, postprocessing_kwargs
+
+    
+    def postprocess(
+        self,
+        image: torch.Tensor,
+        output_type: str = "pil",
+        original_image: Optional[PIL.Image.Image] = None,
+        original_mask: Optional[PIL.Image.Image] = None,
+        crops_coords: Optional[Tuple[int, int, int, int]] = None,
+    ) -> Tuple[PIL.Image.Image, PIL.Image.Image]:
+        """
+        Postprocess the image, optionally apply mask overlay
+        """
+        image = self._image_processor.postprocess(
+            image,
+            output_type=output_type,
+        )
+        # optionally apply the mask overlay
+        if crops_coords is not None and (original_image is None or original_mask is None):
+            raise ValueError("original_image and original_mask must be provided if crops_coords is provided")
+
+        elif crops_coords is not None:
+            image = [self._image_processor.apply_overlay(
+                original_mask, original_image, i, crops_coords
+            ) for i in image]
+        
+        return image
+
+
 class VaeImageProcessorLDM3D(VaeImageProcessor):
     """
     Image processor for VAE LDM3D.

@@ -414,9 +414,10 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
 class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
-    def __init__(self, input_name: str = "image", output_name: str = "image_latents"):
-        self.image_input_name = input_name
-        self.image_latents_output_name = output_name
+    def __init__(self, input_name: str = "image", output_name: str = "image_latents", include_image_processor: bool = True):
+        self._image_input_name = input_name
+        self._image_latents_output_name = output_name
+        self._include_image_processor = include_image_processor
         super().__init__()
 
     @property
@@ -425,20 +426,24 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [
+        components = [
             ComponentSpec("vae", AutoencoderKLQwenImage),
-            ComponentSpec(
-                "image_processor",
-                VaeImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config",
-            ),
         ]
+        if self._include_image_processor:
+            components.append(
+                ComponentSpec(
+                    "image_processor",
+                    VaeImageProcessor,
+                    config=FrozenDict({"vae_scale_factor": 16}),
+                    default_creation_method="from_config",
+                )
+            )
+        return components
 
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(self.image_input_name, required=True),
+            InputParam(self._image_input_name, required=True),
             InputParam("generator"),
         ]
 
@@ -446,7 +451,7 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
-                self.image_latents_output_name,
+                self._image_latents_output_name,
                 type_hint=torch.Tensor,
                 description="The latents representing the reference image",
             )
@@ -459,9 +464,10 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         device = components._execution_device
         dtype = components.vae.dtype
 
-        image = getattr(block_state, self.image_input_name)
+        image = getattr(block_state, self._image_input_name)
 
-        image = components.image_processor.preprocess(image)
+        if self._include_image_processor:
+            image = components.image_processor.preprocess(image)
         image = image.unsqueeze(2)
         image = image.to(device=device, dtype=dtype)
 
@@ -473,7 +479,7 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             latent_channels=components.num_channels_latents,
         )
 
-        setattr(block_state, self.image_latents_output_name, image_latents)
+        setattr(block_state, self._image_latents_output_name, image_latents)
 
         self.set_block_state(state, block_state)
 
