@@ -94,7 +94,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 pipeline.unet.load_lora_adapter(
     "jbilcke-hf/sdxl-cinematic-1",
     weight_name="pytorch_lora_weights.safetensors",
-    adapter_name="cinematic"
+    adapter_name="cinematic",
     prefix="unet"
 )
 # use cnmt in the prompt to trigger the LoRA
