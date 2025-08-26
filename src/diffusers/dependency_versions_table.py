@@ -42,6 +42,7 @@ deps = {
     "requests": "requests",
     "tensorboard": "tensorboard",
     "tiktoken": "tiktoken>=0.7.0",
+    "flax": "flax>=0.4.1",
     "torch": "torch>=1.4",
     "torchvision": "torchvision",
     "transformers": "transformers>=4.41.2",

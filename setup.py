@@ -84,6 +84,7 @@ To create the package for PyPI.
     you need to go back to main before executing this.
 """
 
+import os
 import re
 import sys
 
@@ -134,6 +135,7 @@ _deps = [
     "requests",
     "tensorboard",
     "tiktoken>=0.7.0",
+    "flax>=0.4.1",
     "torch>=1.4",
     "torchvision",
     "transformers>=4.41.2",
@@ -242,6 +244,11 @@ extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
 extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
+
+if os.name == "nt":  # windows
+    extras["flax"] = []  # jax is not supported on windows
+else:
+    extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
 
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]
