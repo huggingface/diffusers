@@ -251,7 +251,7 @@ else:
     extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
 
-extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]
+extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
 
 install_requires = [
     deps["importlib_metadata"],
