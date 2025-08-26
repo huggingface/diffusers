@@ -48,17 +48,17 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = Step1XEditPipeline.from_pretrained("stepfun-ai/Step1X-Edit-diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
+        ...     "https://github.com/stepfun-ai/Step1X-Edit/blob/main/examples/0000.jpg?raw=true"
         ... ).convert("RGB")
-        >>> prompt = "A cat holding a sign that says hello world"
+        >>> prompt = "Add pendant with a ruby around this girl's neck."
         
         >>> image = pipe(
                 image=image,
                 prompt=prompt, 
                 num_inference_steps=28,
-                size_level=512,
+                size_level=1024,
                 guidance_scale=6.0,
-                generator=torch.Generator().manual_seed(42),
+                generator=torch.Generator().manual_seed(1234),
             ).images[0]
         >>> image.save("output.png")
         ```
