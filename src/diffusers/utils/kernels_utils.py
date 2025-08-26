@@ -11,7 +11,7 @@ def _get_fa3_from_hub():
         from kernels import get_kernel
 
         try:
-            vllm_flash_attn3 = get_kernel(_DEFAULT_HUB_ID_FA3)
-            return vllm_flash_attn3
+            flash_attn_3_hub = get_kernel(_DEFAULT_HUB_ID_FA3)
+            return flash_attn_3_hub
         except Exception as e:
             raise e

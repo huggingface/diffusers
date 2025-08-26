@@ -540,7 +540,7 @@ def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torc
     return torch.empty_like(query), query.new_empty(lse_shape)
 
 
-@_custom_op("flash_attn_3_hub_func", mutates_args=(), device_types="cuda")
+@_custom_op("vllm_flash_attn3::_flash_attn_forward", mutates_args=(), device_types="cuda")
 def _wrapped_flash_attn_3_hub(
     query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -549,7 +549,7 @@ def _wrapped_flash_attn_3_hub(
     return out, lse
 
 
-@_register_fake("flash_attn_3_hub_func")
+@_register_fake("vllm_flash_attn3::_flash_attn_forward")
 def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     batch_size, seq_len, num_heads, head_dim = query.shape
     lse_shape = (batch_size, seq_len, num_heads)
