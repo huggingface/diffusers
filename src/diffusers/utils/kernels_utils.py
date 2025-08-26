@@ -13,5 +13,5 @@ def _get_fa3_from_hub():
         try:
             flash_attn_3_hub = get_kernel(_DEFAULT_HUB_ID_FA3)
             return flash_attn_3_hub
-        except Exception as e:
-            raise e
+        except Exception:
+            return None

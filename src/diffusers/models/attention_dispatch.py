@@ -374,6 +374,10 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
             raise RuntimeError(
                 f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
             )
+        if flash_attn_3_hub_func is None:
+            raise RuntimeError(
+                "`flash_attn_3_hub_func` wasn't available. Please double if `kernels` was able to successfully pull the FA3 kernel from kernels-community/vllm-flash-attn3."
+            )
     elif backend in [AttentionBackendName._FLASH_VARLEN_3_HUB]:
         raise NotImplementedError
 
