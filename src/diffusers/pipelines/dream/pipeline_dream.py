@@ -272,7 +272,7 @@ class DreamTextPipeline(DiffusionPipeline):
                 device=device,
             )
         else:
-            text_ids, attention_mask = None
+            text_ids, attention_mask = None, None
 
         # 4. Prepare latent variables (e.g. the initial sample) for generation
         total_batch_size = batch_size * num_texts_per_prompt
@@ -284,7 +284,7 @@ class DreamTextPipeline(DiffusionPipeline):
             device=device,
         )
 
-        if prompt_embeds is not None:
+        if prompt_embeds is None:
             prompt_embeds = self.transformer.embed_tokens(latents)
         else:
             # If prompt_embeds's seq len is not max_sequence_length, concat with embedding of mask tokens for the
