@@ -141,6 +141,9 @@ class DiffusersAutoQuantizer:
         if isinstance(quantization_config, dict):
             quantization_config = cls.from_dict(quantization_config)
 
+        if isinstance(quantization_config, NVIDIAModelOptConfig):
+            quantization_config.check_model_patching()
+
         if warning_msg != "":
             warnings.warn(warning_msg)
 

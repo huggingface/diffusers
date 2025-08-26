@@ -186,4 +186,5 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
 
     @property
     def is_serializable(self):
+        self.quantization_config.check_model_patching(operation="saving")
         return True

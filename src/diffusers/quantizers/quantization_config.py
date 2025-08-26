@@ -25,6 +25,7 @@ import importlib.metadata
 import inspect
 import json
 import os
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
@@ -269,7 +270,14 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         if bnb_4bit_quant_storage is None:
             self.bnb_4bit_quant_storage = torch.uint8
         elif isinstance(bnb_4bit_quant_storage, str):
-            if bnb_4bit_quant_storage not in ["float16", "float32", "int8", "uint8", "float64", "bfloat16"]:
+            if bnb_4bit_quant_storage not in [
+                "float16",
+                "float32",
+                "int8",
+                "uint8",
+                "float64",
+                "bfloat16",
+            ]:
                 raise ValueError(
                     "`bnb_4bit_quant_storage` must be a valid string (one of 'float16', 'float32', 'int8', 'uint8', 'float64', 'bfloat16') "
                 )
@@ -480,7 +488,12 @@ class TorchAoConfig(QuantizationConfigMixin):
         ```
     """
 
-    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, **kwargs) -> None:
+    def __init__(
+        self,
+        quant_type: str,
+        modules_to_not_convert: Optional[List[str]] = None,
+        **kwargs,
+    ) -> None:
         self.quant_method = QuantizationMethod.TORCHAO
         self.quant_type = quant_type
         self.modules_to_not_convert = modules_to_not_convert
@@ -807,6 +820,19 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         self.scale_block_quantize = scale_block_quantize
         self.modelopt_config = self.get_config_from_quant_type() if not modelopt_config else modelopt_config
         self.disable_conv_quantization = disable_conv_quantization
+
+    def check_model_patching(self, operation: str = "loading"):
+        # ModelOpt imports diffusers internally. This is here to prevent circular imports
+        from modelopt.torch.opt.plugins.huggingface import _PATCHED_CLASSES
+
+        if len(_PATCHED_CLASSES) == 0:
+            warning_msg = (
+                f"Not {operation} weights in modelopt format. This might cause unreliable behavior."
+                "Please make sure to run the following code before loading/saving model weights:\n\n"
+                "    from modelopt.torch.opt import enable_huggingface_checkpointing\n"
+                "    enable_huggingface_checkpointing()\n"
+            )
+            warnings.warn(warning_msg)
 
     def _normalize_quant_type(self, quant_type: str) -> str:
         """
