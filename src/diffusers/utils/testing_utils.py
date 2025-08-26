@@ -66,7 +66,10 @@ else:
 global_rng = random.Random()
 
 logger = get_logger(__name__)
-
+logger.warning(
+    "diffusers.utils.testing_utils' is deprecated and will be removed in a future version. "
+    "Please use `diffusers.utils.torch_utils` instead. "
+)
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
 ) > version.parse("0.5")
