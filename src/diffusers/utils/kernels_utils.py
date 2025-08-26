@@ -1,4 +1,8 @@
+from ..utils import get_logger
 from .import_utils import is_kernels_available
+
+
+logger = get_logger(__name__)
 
 
 _DEFAULT_HUB_ID_FA3 = "kernels-community/vllm-flash-attn3"
@@ -13,5 +17,6 @@ def _get_fa3_from_hub():
         try:
             flash_attn_3_hub = get_kernel(_DEFAULT_HUB_ID_FA3)
             return flash_attn_3_hub
-        except Exception:
-            return None
+        except Exception as e:
+            logger.error(f"An error occurred while fetching kernel '{_DEFAULT_HUB_ID_FA3}' from the Hub: {e}")
+            raise
