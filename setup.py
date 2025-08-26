@@ -255,6 +255,7 @@ install_requires = [
     deps["requests"],
     deps["safetensors"],
     deps["Pillow"],
+    deps["torch"],
 ]
 
 version_range_max = max(sys.version_info[1], 10) + 1
