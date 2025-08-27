@@ -14,7 +14,6 @@
 import importlib
 import inspect
 import re
-from contextlib import nullcontext
 from typing import Optional
 
 import torch
@@ -22,6 +21,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from typing_extensions import Self
 
 from .. import __version__
+from ..models.modeling_utils import ContextManagers, no_init_weights
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
 from ..utils.torch_utils import empty_device_cache
@@ -248,6 +248,9 @@ class FromOriginalModelMixin:
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
+            init_weights ('bool', *optional*, defaults to 'False'):
+                Whether to skip initializing model weights to speed up. If the model defines additional parameters that
+                are not included in the pre-trained weights, this should be set to True.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -297,6 +300,7 @@ class FromOriginalModelMixin:
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         device = kwargs.pop("device", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+        init_weights = kwargs.pop("init_weights", False)
 
         user_agent = {"diffusers": __version__, "file_type": "single_file", "framework": "pytorch"}
         # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
@@ -399,8 +403,13 @@ class FromOriginalModelMixin:
             model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
             diffusers_model_config.update(model_kwargs)
 
-        ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
-        with ctx():
+        init_contexts = []
+        if not init_weights:
+            init_contexts.append(no_init_weights())
+        if low_cpu_mem_usage:
+            init_contexts.append(init_empty_weights())
+
+        with ContextManagers(init_contexts):
             model = cls.from_config(diffusers_model_config)
 
         checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
@@ -443,6 +452,9 @@ class FromOriginalModelMixin:
             unexpected_keys = [
                 param_name for param_name in diffusers_format_checkpoint if param_name not in empty_state_dict
             ]
+            missing_keys = [
+                param_name for param_name in empty_state_dict if param_name not in diffusers_format_checkpoint
+            ]
             device_map = {"": param_device}
             load_model_dict_into_meta(
                 model,
@@ -455,7 +467,7 @@ class FromOriginalModelMixin:
             )
             empty_device_cache()
         else:
-            _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
+            missing_keys, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
         if model._keys_to_ignore_on_load_unexpected is not None:
             for pat in model._keys_to_ignore_on_load_unexpected:
@@ -465,6 +477,21 @@ class FromOriginalModelMixin:
             logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
+
+        if len(missing_keys) > 0:
+            if init_weights:
+                logger.warning(
+                    f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
+                    f" {pretrained_model_link_or_path_or_dict} and are newly initialized: {missing_keys}\nYou should probably"
+                    " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
+                )
+            else:
+                logger.warning(
+                    f"Some weights of {model.__class__.__name__} were not in the model checkpoint at"
+                    f" {pretrained_model_link_or_path_or_dict} and are not initialized: {missing_keys}\nThese weights are "
+                    "not initialized and may contain NaNs. If you need to train this model on a downstream task, "
+                    "please set 'init_weights=True.'"
+                )
 
         if hf_quantizer is not None:
             hf_quantizer.postprocess_model(model)
