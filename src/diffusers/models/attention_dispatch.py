@@ -616,6 +616,7 @@ def _cudnn_attention_forward_op(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _save_ctx: bool = True,
 ):
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for cuDNN attention.")
@@ -625,9 +626,9 @@ def _cudnn_attention_forward_op(
     # Contiguous is a must here! Calling cuDNN backend with aten ops produces incorrect results
     # if the input tensors are not contiguous.
     query = query.transpose(1, 2).contiguous()
-    tensors_to_save += (query, key, value)
     key = key.transpose(1, 2).contiguous()
     value = value.transpose(1, 2).contiguous()
+    tensors_to_save += (query, key, value)
 
     out, lse, cum_seq_q, cum_seq_k, max_q, max_k, philox_seed, philox_offset, debug_attn_mask = (
         torch.ops.aten._scaled_dot_product_cudnn_attention(
@@ -644,13 +645,14 @@ def _cudnn_attention_forward_op(
     )
 
     tensors_to_save += (out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
-    ctx.save_for_backward(*tensors_to_save)
-    ctx.dropout_p = dropout_p
-    ctx.is_causal = is_causal
-    ctx.scale = scale
-    ctx.attn_mask = attn_mask
-    ctx.max_q = max_q
-    ctx.max_k = max_k
+    if _save_ctx:
+        ctx.save_for_backward(*tensors_to_save)
+        ctx.dropout_p = dropout_p
+        ctx.is_causal = is_causal
+        ctx.scale = scale
+        ctx.attn_mask = attn_mask
+        ctx.max_q = max_q
+        ctx.max_k = max_k
 
     out = out.transpose(1, 2).contiguous()
     if lse is not None:
@@ -666,8 +668,7 @@ def _cudnn_attention_backward_op(
     *args,
     **kwargs,
 ):
-    saved_tensors = ctx.to_save
-    query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = saved_tensors
+    query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = ctx.saved_tensors
 
     grad_out = grad_out.transpose(1, 2).contiguous()
     key = key.transpose(1, 2).contiguous()
@@ -709,6 +710,7 @@ def _flash_attention_forward_op(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _save_ctx: bool = True,
 ):
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not yet supported for flash-attn 2.")
@@ -746,14 +748,15 @@ def _flash_attention_forward_op(
         )
         lse = lse.permute(0, 2, 1)
 
-    ctx.save_for_backward(query, key, value, out, lse, rng_state)
-    ctx.dropout_p = dropout_p
-    ctx.scale = scale
-    ctx.is_causal = is_causal
-    ctx.window_size = window_size
-    ctx.softcap = softcap
-    ctx.alibi_slopes = alibi_slopes
-    ctx.deterministic = deterministic
+    if _save_ctx:
+        ctx.save_for_backward(query, key, value, out, lse, rng_state)
+        ctx.dropout_p = dropout_p
+        ctx.scale = scale
+        ctx.is_causal = is_causal
+        ctx.window_size = window_size
+        ctx.softcap = softcap
+        ctx.alibi_slopes = alibi_slopes
+        ctx.deterministic = deterministic
 
     return (out, lse) if return_lse else out
 
@@ -764,8 +767,7 @@ def _flash_attention_backward_op(
     *args,
     **kwargs,
 ):
-    saved_tensors = ctx.to_save
-    query, key, value, out, lse, rng_state = saved_tensors
+    query, key, value, out, lse, rng_state = ctx.saved_tensors
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
     lse_d = _wrapped_flash_attn_backward(  # noqa: F841
@@ -808,6 +810,7 @@ def _sage_attention_forward_op(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _save_ctx: bool = True,
 ):
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not yet supported for Sage attention.")
@@ -829,8 +832,6 @@ def _sage_attention_forward_op(
     if return_lse:
         out, lse, *_ = out
         lse = lse.permute(0, 2, 1)
-
-    ctx.save_for_backward(query, key, value, out, lse)
 
     return (out, lse) if return_lse else out
 
@@ -892,15 +893,10 @@ class TemplatedRingAttention(torch.autograd.Function):
         next_rank = (rank + 1) % world_size
         prev_out = prev_lse = None
 
-        ctx.save_for_backward(query, key, value)
-        ctx.dropout_p = dropout_p
-        ctx.is_causal = is_causal
-        ctx.scale = scale
-        ctx.enable_gqa = enable_gqa
-        ctx.return_lse = return_lse
         ctx.forward_op = forward_op
         ctx.backward_op = backward_op
-        ctx.op_ctx = torch.autograd.function.FunctionCtx()
+        ctx.q_shape = query.shape
+        ctx.kv_shape = key.shape
 
         kv_buffer = torch.cat([key.flatten(), value.flatten()]).contiguous()
         kv_buffer = funcol.all_gather_tensor(kv_buffer, gather_dim=0, group=ring_mesh.get_group())
@@ -915,7 +911,7 @@ class TemplatedRingAttention(torch.autograd.Function):
                 next_rank = (next_rank + 1) % world_size
 
             out, lse = forward_op(
-                ctx.op_ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, True
+                ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, True, _save_ctx=i == 0
             )
 
             if parallel_config.convert_to_fp32:
@@ -947,14 +943,13 @@ class TemplatedRingAttention(torch.autograd.Function):
         next_rank = (rank + 1) % world_size
         next_ranks = list(range(1, world_size)) + [0]
 
-        query, key, value = ctx.saved_tensors
-
-        accum_dtype = torch.float32 if parallel_config.convert_to_fp32 else query.dtype
-        grad_query = torch.zeros_like(query, dtype=accum_dtype)
-        grad_key = torch.zeros_like(key, dtype=accum_dtype)
-        grad_value = torch.zeros_like(value, dtype=accum_dtype)
+        accum_dtype = torch.float32 if parallel_config.convert_to_fp32 else grad_out.dtype
+        grad_query = torch.zeros(ctx.q_shape, dtype=accum_dtype, device=grad_out.device)
+        grad_key = torch.zeros(ctx.kv_shape, dtype=accum_dtype, device=grad_out.device)
+        grad_value = torch.zeros(ctx.kv_shape, dtype=accum_dtype, device=grad_out.device)
         next_grad_kv = None
 
+        query, key, value, *_ = ctx.saved_tensors
         kv_buffer = torch.cat([key.flatten(), value.flatten()]).contiguous()
         kv_buffer = funcol.all_gather_tensor(kv_buffer, gather_dim=0, group=ring_mesh.get_group())
         kv_buffer = kv_buffer.chunk(world_size)
@@ -967,12 +962,7 @@ class TemplatedRingAttention(torch.autograd.Function):
                 value = kv[key_numel:].reshape_as(value)
                 next_rank = (next_rank + 1) % world_size
 
-            saved_tensors = list(ctx.op_ctx.to_save)
-            saved_tensors[1] = key
-            saved_tensors[2] = value
-            ctx.op_ctx.to_save = tuple(saved_tensors)
-
-            grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(ctx.op_ctx, grad_out)
+            grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(ctx, grad_out)
 
             if i > 0:
                 grad_kv_buffer = _wait_tensor(next_grad_kv)
@@ -987,6 +977,8 @@ class TemplatedRingAttention(torch.autograd.Function):
             if i < world_size - 1:
                 grad_kv_buffer = torch.cat([grad_key.flatten(), grad_value.flatten()]).contiguous()
                 next_grad_kv = funcol.permute_tensor(grad_kv_buffer, next_ranks, group=ring_mesh.get_group())
+
+        grad_query, grad_key, grad_value = (x.to(grad_out.dtype) for x in (grad_query, grad_key, grad_value))
 
         return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
 
@@ -1014,7 +1006,6 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
 
         ctx.forward_op = forward_op
         ctx.backward_op = backward_op
-        ctx.op_ctx = torch.autograd.function.FunctionCtx()
 
         B, S_Q_LOCAL, H, D = query.shape
         _, S_KV_LOCAL, _, _ = key.shape
@@ -1025,7 +1016,9 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         query, key, value = (_all_to_all_single(x, group) for x in (query, key, value))
         query, key, value = (x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
-        out = forward_op(ctx.op_ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse)
+        out = forward_op(
+            ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, _save_ctx=True
+        )
         if return_lse:
             out, lse, *_ = out
 
@@ -1060,7 +1053,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         grad_out = _all_to_all_single(grad_out, group)
         grad_out = grad_out.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
-        grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(ctx.op_ctx, grad_out)
+        grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(ctx, grad_out)
 
         grad_query, grad_key, grad_value = (
             x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
