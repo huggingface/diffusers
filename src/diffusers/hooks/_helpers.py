@@ -109,6 +109,7 @@ def _register_attention_processors_metadata():
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
     from ..models.transformers.transformer_flux import FluxAttnProcessor
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
+    from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
 
     # AttnProcessor2_0
     AttentionProcessorRegistry.register(
@@ -138,6 +139,12 @@ def _register_attention_processors_metadata():
     AttentionProcessorRegistry.register(
         model_class=FluxAttnProcessor,
         metadata=AttentionProcessorMetadata(skip_processor_output_fn=_skip_proc_output_fn_Attention_FluxAttnProcessor),
+    )
+
+    # QwenDoubleStreamAttnProcessor2
+    AttentionProcessorRegistry.register(
+        model_class=QwenDoubleStreamAttnProcessor2_0,
+        metadata=AttentionProcessorMetadata(skip_processor_output_fn=_skip_proc_output_fn_Attention_QwenDoubleStreamAttnProcessor2_0),
     )
 
 
@@ -298,4 +305,5 @@ _skip_proc_output_fn_Attention_CogView4AttnProcessor = _skip_attention___ret___h
 _skip_proc_output_fn_Attention_WanAttnProcessor2_0 = _skip_attention___ret___hidden_states
 # not sure what this is yet.
 _skip_proc_output_fn_Attention_FluxAttnProcessor = _skip_attention___ret___hidden_states
+_skip_proc_output_fn_Attention_QwenDoubleStreamAttnProcessor2_0 = _skip_attention___ret___hidden_states
 # fmt: on

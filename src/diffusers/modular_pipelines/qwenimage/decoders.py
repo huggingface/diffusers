@@ -22,7 +22,7 @@ from ...configuration_utils import FrozenDict
 from ...image_processor import InpaintProcessor, VaeImageProcessor
 from ...models import AutoencoderKLQwenImage
 from ...utils import logging
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline
 
@@ -183,3 +183,14 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
+    model_name = "qwenimage"
+    block_classes = [QwenImageDecodeDynamicStep(include_image_processor=False), QwenImageInpaintProcessImagesOutputStep()]
+    block_names = ["decode", "postprocess"]
+    
+    @property
+    def description(self):
+        return (
+            "Decode step that decodes the latents to images and postprocess the generated image, optional apply the mask overally to the original image."
+        )
