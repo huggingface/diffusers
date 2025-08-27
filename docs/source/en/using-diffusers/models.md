@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-## Models
+# Models
 
 A diffusion model relies on a few individual models working together to generate an output. These models are responsible for denoising, encoding inputs, and decoding latents into the actual outputs.
 
