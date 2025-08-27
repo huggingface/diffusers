@@ -357,7 +357,7 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=int(dim * 0.25))
         self.text_embedder = Magi1TextProjection(text_embed_dim, dim, adaln_dim=int(dim * 0.25))
-        
+
         self.enable_distillation = enable_distillation
 
     def forward(
@@ -392,112 +392,81 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         return temb, y_xattn, y_adaln
 
 
-# TODO: Verify this.
 class Magi1RotaryPosEmbed(nn.Module):
     """
     Rotary Position Embedding for MAGI-1 model.
 
     Args:
         dim (`int`): The embedding dimension.
-        attention_head_dim (`int`): The attention head dimension.
-        patch_size (`Tuple[int, int, int]`): Patch size for temporal, height, width dimensions.
         theta (`float`, *optional*, defaults to 10000.0): Base for the geometric progression.
     """
 
     def __init__(
         self,
         dim: int,
-        attention_head_dim: int = 128,
-        patch_size: Tuple[int, int, int] = (1, 2, 2),
         theta: float = 10000.0,
     ):
         super().__init__()
 
-        self.dim = dim
-        self.attention_head_dim = attention_head_dim
-        self.patch_size = patch_size
-        self.theta = theta
+        num_bands = dim // 8
+        exp = torch.arange(0, num_bands, dtype=torch.float32, device=torch.cuda.current_device()) / num_bands
+        bands = 1.0 / (theta**exp)
+        self.bands = nn.Parameter(bands)
 
-        self.bands = nn.Parameter(self._get_default_bands())
-
-    def _get_default_bands(self) -> torch.Tensor:
-        num_bands = self.dim // 8
-
-        exp = torch.arange(0, num_bands, dtype=torch.float32) / num_bands
-        bands = 1.0 / (self.theta**exp)
-
-        return bands
-
-    def _build_3d_grid(
-        self, feat_shape: List[int], ref_feat_shape: Optional[List[int]] = None, device: torch.device = None
-    ) -> torch.Tensor:
-        """Build 3D spatial grid matching original MAGI-1 implementation."""
-        T, H, W = feat_shape
-
-        t = torch.arange(T, device=device, dtype=torch.float32)
-        h = torch.arange(H, device=device, dtype=torch.float32)
-        w = torch.arange(W, device=device, dtype=torch.float32)
-
-        # Center alignment for H/W dimensions
-        h = h - (H - 1) / 2
-        w = w - (W - 1) / 2
-
-        # Handle reference shape rescaling (for fine-tuning)
-        if ref_feat_shape is not None:
-            ref_T, ref_H, ref_W = ref_feat_shape
-            t_rescaled = []
-            coords = [t, h, w]
-            shapes = [T, H, W]
-            ref_shapes = [ref_T, ref_H, ref_W]
-
-            for coord, shape, ref_shape in zip(coords, shapes, ref_shapes):
-                if shape == 1:
-                    assert ref_shape == 1, "ref_feat_shape must be 1 when feat_shape is 1"
-                    t_rescaled.append(coord)
-                else:
-                    t_rescaled.append(coord / (shape - 1) * (ref_shape - 1))
-            t, h, w = t_rescaled
-
-        # Create 3D meshgrid
-        try:
-            grid_t, grid_h, grid_w = torch.meshgrid(t, h, w, indexing="ij")
-        except TypeError:
-            # Fallback for older PyTorch versions
-            grid_t, grid_h, grid_w = torch.meshgrid(t, h, w)
-
-        # Stack into grid tensor: [T, H, W, 3]
-        grid = torch.stack([grid_t, grid_h, grid_w], dim=-1)
-        return grid
-
-    def forward(self, hidden_states: torch.Tensor, ref_feat_shape: Optional[List[int]] = None) -> torch.Tensor:
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        p_t, p_h, p_w = self.patch_size
-        ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
-
+    def forward(self, hidden_states: torch.Tensor, T_total: int) -> torch.Tensor:
+        # Rebuild bands and embeddings every call, use if target shape changes
         device = hidden_states.device
-        feat_shape = [ppf, pph, ppw]
+        batch_size, num_channels, num_frames, post_patch_height, post_patch_width = hidden_states.shape
+        feat_shape = [T_total, post_patch_height, post_patch_width]
 
-        # Build 3D spatial grid
-        grid = self._build_3d_grid(feat_shape, ref_feat_shape, device)  # [T, H, W, 3]
+        # Calculate rescale_factor for multi-resolution & multi aspect-ratio training
+        # the base_size [16*16] is A predefined size based on data:(256x256)  vae: (8,8,4) patch size: (1,1,2)
+        # This definition do not have any relationship with the actual input/model/setting.
+        # ref_feat_shape is used to calculate innner rescale factor, so it can be float.
+        rescale_factor = math.sqrt((post_patch_height * post_patch_width) / (16 * 16))
+        ref_feat_shape = [T_total, post_patch_height / rescale_factor, post_patch_width / rescale_factor]
+
+        f = torch.arange(num_frames, device=device, dtype=torch.float32)
+        h = torch.arange(post_patch_height, device=device, dtype=torch.float32)
+        w = torch.arange(post_patch_width, device=device, dtype=torch.float32)
+
+        # Align spatial center (H/2, W/2) to (0,0)
+        h = h - (post_patch_height - 1) / 2
+        w = w - (post_patch_width - 1) / 2
+
+        if ref_feat_shape is not None:
+            # eva's scheme for resizing rope embeddings (ref shape = pretrain)
+            # aligning to the endpoint e.g [0,1,2] -> [0, 0.4, 0.8, 1.2, 1.6, 2]
+            fhw_rescaled = []
+            fhw = [f, h, w]
+            for x, shape, ref_shape in zip(fhw, feat_shape, ref_feat_shape):
+                if shape == 1:  # Deal with image input
+                    if ref_shape != 1:
+                        raise ValueError("ref_feat_shape must be 1 when feat_shape is 1")
+                    fhw_rescaled.append(x)
+                else:
+                    fhw_rescaled.append(x / (shape - 1) * (ref_shape - 1))
+            f, h, w = fhw_rescaled
+
+        # Create 3D meshgrid & stack into grid tensor: [T, H, W, 3]
+        grid = torch.stack(torch.meshgrid(f, h, w, indexing="ij"), dim=-1)
         grid = grid.unsqueeze(-1)  # [T, H, W, 3, 1]
 
         # Apply frequency bands
-        bands = self.bands.to(device)  # [num_bands]
-        pos = grid * bands  # [T, H, W, 3, num_bands]
+        freqs = grid * self.bands  # [T, H, W, 3, num_bands]
 
-        # Compute sin/cos embeddings
-        pos_sin = pos.sin()
-        pos_cos = pos.cos()
+        freqs_cos = freqs.cos()
+        freqs_sin = freqs.sin()
 
-        # Concatenate sin and cos
-        embeddings = torch.cat([pos_sin, pos_cos], dim=-1)  # [T, H, W, 3, 2*num_bands]
+        # This would be much nicer as a .numel() call to torch.Size(), but torchscript sucks
+        num_spatial_dim = 1
+        for x in feat_shape:
+            num_spatial_dim *= x
 
-        # Reshape to sequence format: [seq_len, embed_dim]
-        seq_len = ppf * pph * ppw
-        embed_dim = 3 * 2 * self.bands.shape[0]  # 3 spatial dims * 2 (sin/cos) * num_bands
-        embeddings = embeddings.reshape(seq_len, embed_dim)
+        freqs_cos = freqs_cos.reshape(num_spatial_dim, -1)
+        freqs_sin = freqs_sin.reshape(num_spatial_dim, -1)
 
-        return embeddings
+        return torch.cat([freqs_sin, freqs_cos], dim=-1)
 
 
 class Magi1TransformerBlock(nn.Module):
@@ -648,8 +617,8 @@ class Magi1Transformer3DModel(
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "rope"]
-    _no_split_modules = ["Magi1TransformerBlock", "norm_out"]
-    _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out", "norm_q", "norm_k"]
+    _no_split_modules = ["Magi1TransformerBlock"]
+    _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out", "norm_q", "norm_k", "patch_embedding", "rope"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["Magi1TransformerBlock"]
 
@@ -667,7 +636,8 @@ class Magi1Transformer3DModel(
         ffn_dim: int = 12288,
         num_layers: int = 34,
         eps: float = 1e-6,
-        # pos_embed_seq_len: Optional[int] = None,
+        x_rescale_factor: int = 1,
+        half_channel_vae: bool = False,
         enable_distillation: bool = False,
     ) -> None:
         super().__init__()
@@ -676,8 +646,8 @@ class Magi1Transformer3DModel(
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
-        self.rope = Magi1RotaryPosEmbed(inner_dim // num_attention_heads, attention_head_dim, patch_size)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size, bias=False)
+        self.rope = Magi1RotaryPosEmbed(inner_dim // num_attention_heads)
 
         # 2. Condition embeddings
         self.condition_embedder = Magi1TimeTextImageEmbedding(
@@ -770,6 +740,8 @@ class Magi1Transformer3DModel(
         attention_kwargs: Optional[Dict[str, Any]] = None,
         condition_map: Optional[torch.Tensor] = None,
         denoising_range_num: Optional[int] = None,
+        slice_point: Optional[int] = 0,
+        kv_range: Optional[Tuple[int, int]] = None,
         num_steps: Optional[int] = None,
         distill_interval: Optional[int] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -788,16 +760,31 @@ class Magi1Transformer3DModel(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
+        if kv_range is None:
+            raise ValueError("Please ensure `kv_range` is provided")
+
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size
         post_patch_num_frames = num_frames // p_t
         post_patch_height = height // p_h
         post_patch_width = width // p_w
+        frame_in_range = post_patch_num_frames // denoising_range_num
+        prev_clean_T = frame_in_range * slice_point
+        T_total = post_patch_num_frames + prev_clean_T
 
-        rotary_emb = self.rope(hidden_states)
+        hidden_states = hidden_states * self.config.x_rescale_factor
 
-        # Patch embedding
+        if self.config.half_channel_vae:
+            if hidden_states.shape[1] != 16:
+                raise ValueError("When `config.half_channel_vae` is True, the input `hidden_states` must have 16 channels.")
+            hidden_states = torch.cat([hidden_states, hidden_states], dim=1)
+
+        # Patch & position embedding
         hidden_states = self.patch_embedding(hidden_states)
+        rotary_emb = self.rope(hidden_states, T_total)
+        # The shape of rotary_emb is (post_patch_num_frames*post_patch_height*post_patch_width, -1) aka (seq_length, head_dim), as post_patch_num_frames is the first dimension, we can directly cut it.
+        rotary_emb = rotary_emb[-(post_patch_num_frames * post_patch_height * post_patch_width) :]
+
         hidden_states = hidden_states.flatten(2).transpose(1, 2)  # (B, T*H*W, C)
 
         # Generate condition_map if not provided
