@@ -23,8 +23,6 @@ Pipelines rely on [torch.randn](https://pytorch.org/docs/stable/generated/torch.
 > [!TIP]
 > If reproducibility is important to your use case, we recommend always using a CPU `Generator`. The performance loss is often negligible and you'll generate more similar values.
 
-The `Generator` object should be passed to the pipeline instead of an integer seed. `Generator` maintains a *random state* that is consumed and modified when used. Once consumed, the same `Generator` object produces different results in subsequent calls, even across different pipelines, because it's *state* has changed.
-
 <hfoptions id="generator">
 <hfoption id="GPU">
 
@@ -61,6 +59,16 @@ print(np.abs(image).sum())
 
 </hfoption>
 </hfoptions>
+
+The `Generator` object should be passed to the pipeline instead of an integer seed. `Generator` maintains a *random state* that is consumed and modified when used. Once consumed, the same `Generator` object produces different results in subsequent calls, even across different pipelines, because it's *state* has changed.
+
+```py
+generator = torch.manual_seed(0)
+
+for _ in range(5):
+-    image = pipeline(prompt, generator=generator)
++    image = pipeline(prompt, generator=torch.manual_seed(0))
+```
 
 ## Deterministic algorithms
 
