@@ -17,21 +17,14 @@ from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     QwenImageControlNetPrepareInputsStep,
-    QwenImagePrepareLatentsWithStrengthStep,
+    QwenImageCreateMaskLatentsStep,
     QwenImageEditRoPEInputsStep,
-    QwenImageRoPEInputsStep,
     QwenImagePackLatentsDynamicStep,
     QwenImagePrepareLatentsStep,
+    QwenImagePrepareLatentsWithStrengthStep,
+    QwenImageRoPEInputsStep,
     QwenImageSetTimestepsStep,
     QwenImageSetTimestepsWithStrengthStep,
-    QwenImageCreateMaskLatentsStep,
-)
-
-from .input_output_processor import (
-    QwenImageEditResizeStep,
-    QwenImageInputsDynamicStep,
-    QwenImageInpaintProcessImagesInputStep,
-    QwenImageInpaintProcessImagesOutputStep,
 )
 from .decoders import QwenImageDecodeDynamicStep
 from .denoise import (
@@ -41,6 +34,12 @@ from .denoise import (
     QwenImageInpaintDenoiseStep,
 )
 from .encoders import QwenImageEditTextEncoderStep, QwenImageTextEncoderStep, QwenImageVaeEncoderDynamicStep
+from .input_output_processor import (
+    QwenImageEditResizeStep,
+    QwenImageInpaintProcessImagesInputStep,
+    QwenImageInpaintProcessImagesOutputStep,
+    QwenImageInputsDynamicStep,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -54,15 +53,10 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
         - Creates `image_latents`.
 
     Components:
-        image_processor (`InpaintProcessor`) [subfolder=]
-        vae (`AutoencoderKLQwenImage`) [subfolder=]
+        image_processor (`InpaintProcessor`) [subfolder=] vae (`AutoencoderKLQwenImage`) [subfolder=]
 
     Inputs:
-        image (`None`):
-        mask_image (`None`):
-        height (`None`):
-        width (`None`):
-        padding_mask_crop (`None`, optional):
+        image (`None`): mask_image (`None`): height (`None`): width (`None`): padding_mask_crop (`None`, optional):
         generator (`None`, optional):
 
     New Outputs:
@@ -78,7 +72,9 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
 
     block_classes = [
         QwenImageInpaintProcessImagesInputStep,
-        QwenImageVaeEncoderDynamicStep(input_name="image", output_name="image_latents", include_image_processor=False),  # encode
+        QwenImageVaeEncoderDynamicStep(
+            input_name="image", output_name="image_latents", include_image_processor=False
+        ),  # encode
     ]
 
     block_names = ["preprocess", "encode"]
@@ -104,14 +100,11 @@ class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
         scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
 
     Inputs:
-        height (`None`, optional):
-        width (`None`, optional):
-        num_images_per_prompt (`None`, optional, defaults to 1):
+        height (`None`, optional): width (`None`, optional): num_images_per_prompt (`None`, optional, defaults to 1):
         batch_size (`int`):
-            Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-            generated in input step.
-        image_latents (`None`, optional):
-        latents (`Tensor`):
+            Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+            be generated in input step.
+        image_latents (`None`, optional): latents (`Tensor`):
             The initial random noised, can be generated in prepare latent step.
         timesteps (`Tensor`):
             The timesteps to use for the denoising process. Can be generated in set_timesteps step.
@@ -190,7 +183,10 @@ INPAINT_BLOCKS = InsertableDict(
 
 CONTROLNET_BLOCKS = InsertableDict(
     [
-        ("controlnet_vae_encoder",  QwenImageVaeEncoderDynamicStep(input_name="control_image", output_name="control_image_latents")),
+        (
+            "controlnet_vae_encoder",
+            QwenImageVaeEncoderDynamicStep(input_name="control_image", output_name="control_image_latents"),
+        ),
         ("controlnet_before_denoise", QwenImageControlnetBeforeDenoiseStep()),
         (
             "controlnet_denoise_loop_before",
@@ -204,7 +200,10 @@ EDIT_BLOCKS = InsertableDict(
     [
         ("image_resize", QwenImageEditResizeStep()),
         ("text_encoder", QwenImageEditTextEncoderStep()),
-        ("vae_encoder", QwenImageVaeEncoderDynamicStep(input_name="image", output_name="image_latents", do_resize=False)),
+        (
+            "vae_encoder",
+            QwenImageVaeEncoderDynamicStep(input_name="image", output_name="image_latents", do_resize=False),
+        ),
         ("input", QwenImageInputsDynamicStep(image_latent_input_names=["image_latents"])),
         ("prepare_image_latents", QwenImagePackLatentsDynamicStep("image_latents")),
         ("prepare_latents", QwenImagePrepareLatentsStep()),

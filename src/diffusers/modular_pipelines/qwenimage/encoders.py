@@ -414,9 +414,17 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
 class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
-    def __init__(self, input_name: str = "image", output_name: str = "image_latents", include_image_processor: bool = True, **image_processor_kwargs):
+    def __init__(
+        self,
+        input_name: str = "image",
+        output_name: str = "image_latents",
+        include_image_processor: bool = True,
+        **image_processor_kwargs,
+    ):
         if not include_image_processor and len(image_processor_kwargs) > 0:
-            logger.warning(f"these kwargs will be ignored: {image_processor_kwargs} since image_processor is not used in this block")
+            logger.warning(
+                f"these kwargs will be ignored: {image_processor_kwargs} since image_processor is not used in this block"
+            )
 
         self._image_input_name = input_name
         self._image_latents_output_name = output_name
@@ -488,13 +496,17 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             image_processor = getattr(components, f"{self._image_input_name}_processor")
             self.check_inputs(block_state.height, block_state.width, components.vae_scale_factor)
 
-            if not image_processor.config.do_resize and (block_state.height is not None or block_state.width is not None):
-                logger.warning(f"height and width are provided but image_processor.config.do_resize is False, these will be ignored")
+            if not image_processor.config.do_resize and (
+                block_state.height is not None or block_state.width is not None
+            ):
+                logger.warning(
+                    "height and width are provided but image_processor.config.do_resize is False, these will be ignored"
+                )
 
             height = block_state.height or components.default_height
             width = block_state.width or components.default_width
             image = image_processor.preprocess(image, height=height, width=width)
- 
+
         image = image.unsqueeze(2)
         image = image.to(device=device, dtype=dtype)
 

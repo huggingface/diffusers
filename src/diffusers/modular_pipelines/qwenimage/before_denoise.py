@@ -18,10 +18,7 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import torch
 
-from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor
 from ...models import QwenImageControlNetModel, QwenImageMultiControlNetModel
-from ...pipelines.qwenimage.pipeline_qwenimage_edit import calculate_dimensions
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -243,27 +240,49 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="latents", required=True, type_hint=torch.Tensor, description="The initial random noised, can be generated in prepare latent step."),
-            InputParam(name="image_latents", required=True, type_hint=torch.Tensor, description="The image latents to use for the denoising process. Can be generated in vae encoder + pack latents step."),
-            InputParam(name="timesteps", required=True, type_hint=torch.Tensor, description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",),
-            InputParam(name="batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in expand textinput step."),
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial random noised, can be generated in prepare latent step.",
+            ),
+            InputParam(
+                name="image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The image latents to use for the denoising process. Can be generated in vae encoder + pack latents step.",
+            ),
+            InputParam(
+                name="timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
+            ),
+            InputParam(
+                name="batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in expand textinput step.",
+            ),
             InputParam(name="num_images_per_prompt", required=True),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="initial_noise", type_hint=torch.Tensor, description="The initial random noised used for inpainting denoising."),
+            OutputParam(
+                name="initial_noise",
+                type_hint=torch.Tensor,
+                description="The initial random noised used for inpainting denoising.",
+            ),
         ]
-    
-    
+
     @staticmethod
     def check_inputs(image_latents, latents, batch_size):
-
         if image_latents.shape[0] != batch_size:
             raise ValueError(
                 f"`image_latents` must have have batch size {batch_size}, but got {image_latents.shape[0]}"
@@ -271,17 +290,12 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
 
         if image_latents.ndim != 3:
             raise ValueError(f"`image_latents` must have 3 dimensions (patchified), but got {image_latents.ndim}")
-        
-        
+
         if latents.shape[0] != batch_size:
-            raise ValueError(
-                f"`latents` must have have batch size {batch_size}, but got {latents.shape[0]}"
-            )
-        
-    
+            raise ValueError(f"`latents` must have have batch size {batch_size}, but got {latents.shape[0]}")
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
-        
         block_state = self.get_block_state(state)
         final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
@@ -290,43 +304,52 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
             latents=block_state.latents,
             batch_size=final_batch_size,
         )
-        
+
         # prepare latent timestep
         latent_timestep = block_state.timesteps[:1].repeat(final_batch_size)
-        
+
         # make copy of initial_noise
         block_state.initial_noise = block_state.latents
 
         # scale noise
-        block_state.latents = components.scheduler.scale_noise(block_state.image_latents, latent_timestep, block_state.latents)
+        block_state.latents = components.scheduler.scale_noise(
+            block_state.image_latents, latent_timestep, block_state.latents
+        )
 
         self.set_block_state(state, block_state)
-        
-        return components, state    
+
+        return components, state
 
 
 class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
     model_name = "qwenimage"
-    
+
     @property
     def description(self) -> str:
         return "Step that create the mask latents for the inpainting process. Should be run with the pachify latents step."
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="mask_image", required=True, type_hint=torch.Tensor, description="The mask to use for the inpainting process."),
+            InputParam(
+                name="mask_image",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The mask to use for the inpainting process.",
+            ),
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
             InputParam(name="dtype", required=True),
         ]
-    
+
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="mask", type_hint=torch.Tensor, description="The mask to use for the inpainting process."),
+            OutputParam(
+                name="mask", type_hint=torch.Tensor, description="The mask to use for the inpainting process."
+            ),
         ]
-    
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -342,14 +365,14 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
         block_state.mask = torch.nn.functional.interpolate(
             block_state.mask_image,
             size=(height_latents, width_latents),
-        ) 
+        )
 
         block_state.mask = block_state.mask.unsqueeze(2)
         block_state.mask = block_state.mask.repeat(1, components.num_channels_latents, 1, 1, 1)
         block_state.mask = block_state.mask.to(device=device, dtype=block_state.dtype)
-        
+
         self.set_block_state(state, block_state)
-        
+
         return components, state
 
 
@@ -381,14 +404,14 @@ class QwenImagePackLatentsDynamicStep(ModularPipelineBlocks):
             input_names = [input_names]
         self._latents_input_names = input_names
         super().__init__()
-    
+
     @staticmethod
     def check_input_shape(latents_input, latents_input_name, batch_size):
         if latents_input is not None and latents_input.shape[0] != 1 and latents_input.shape[0] != batch_size:
             raise ValueError(
                 f"`{latents_input_name}` must have have batch size 1 or {batch_size}, but got {latents_input.shape[0]}"
             )
-        
+
         if latents_input.ndim != 5 and latents_input.ndim != 4:
             raise ValueError(f"`{latents_input_name}` must have 4 or 5 dimensions, but got {latents_input.ndim}")
 
@@ -526,10 +549,11 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(
-                name="timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+                name="timesteps",
+                type_hint=torch.Tensor,
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
         ]
-
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -609,9 +633,14 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-
         block_state.img_shapes = [
-            [(1, block_state.height // components.vae_scale_factor // 2, block_state.width // components.vae_scale_factor // 2)]
+            [
+                (
+                    1,
+                    block_state.height // components.vae_scale_factor // 2,
+                    block_state.width // components.vae_scale_factor // 2,
+                )
+            ]
             * block_state.batch_size
         ]
         block_state.txt_seq_lens = (

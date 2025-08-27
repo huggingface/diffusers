@@ -12,18 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple
 
-import numpy as np
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor, InpaintProcessor
-from ...models import QwenImageControlNetModel, QwenImageMultiControlNetModel
+from ...image_processor import InpaintProcessor, VaeImageProcessor
 from ...pipelines.qwenimage.pipeline_qwenimage_edit import calculate_dimensions
-from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline
@@ -81,7 +76,6 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     def description(self) -> str:
         return "Image Mask step that resize the image to the target area while maintaining the aspect ratio."
 
-
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
@@ -102,15 +96,19 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
             InputParam("width"),
             InputParam("padding_mask_crop"),
         ]
-    
+
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(name="original_image", type_hint=torch.Tensor, description="The original image"),
             OutputParam(name="original_mask", type_hint=torch.Tensor, description="The original mask"),
-            OutputParam(name="crop_coords", type_hint=List[Tuple[int, int]], description="The crop coordinates to use for the preprocess/postprocess of the image and mask",),
+            OutputParam(
+                name="crop_coords",
+                type_hint=List[Tuple[int, int]],
+                description="The crop coordinates to use for the preprocess/postprocess of the image and mask",
+            ),
         ]
-    
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
@@ -130,7 +128,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
             block_state.original_image = postprocessing_kwargs["original_image"]
             block_state.original_mask = postprocessing_kwargs["original_mask"]
             block_state.crop_coords = postprocessing_kwargs["crops_coords"]
-        
+
         self.set_block_state(state, block_state)
         return components, state
 
@@ -147,36 +145,35 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
             "  2. Adjusts batch dimension for default text inputs: `prompt_embeds`, `prompt_embeds_mask`, `negative_prompt_embeds`, and `negative_prompt_embeds_mask`\n"
             "  3. Verifies `height` and `width` are divisible by vae_scale_factor * 2 if provided\n\n"
         )
-        
+
         # Dynamic configuration section
         dynamic_section = "This is a dynamic block that you can configure to:\n\n"
-        
+
         # Additional inputs configuration
         additional_inputs_info = ""
         if self._additional_input_names:
             additional_inputs_info = f"* Adjust batch dimension for additional inputs by passing `additional_input_names` when initializing the block. Currently configured to process: {self._additional_input_names}\n"
         else:
             additional_inputs_info = "* Adjust batch dimension for additional inputs by passing `additional_input_names` when initializing the block\n"
-        
+
         # Image latent configuration
         image_latent_info = ""
         if self._image_latent_input_names:
             image_latent_info = f"* Use {self._image_latent_input_names} to update `height` and `width` if not defined. Currently configured to use: {self._image_latent_input_names}\n"
         else:
             image_latent_info = "* Use image latents to update `height` and `width` if not defined by passing `image_latent_input_names` when initializing the block\n"
-        
+
         # Placement guidance
         placement_section = "\nThis block should be placed right after all the encoder steps (e.g., text_encoder, image_encoder, vae_encoder)."
-        
-        return default_section + dynamic_section + additional_inputs_info + image_latent_info + placement_section
 
+        return default_section + dynamic_section + additional_inputs_info + image_latent_info + placement_section
 
     @property
     def inputs(self) -> List[InputParam]:
         additional_inputs = []
         for input_name in self._additional_input_names:
             additional_inputs.append(InputParam(name=input_name, required=True))
-        
+
         for image_latent_input_name in self._image_latent_input_names:
             additional_inputs.append(InputParam(name=image_latent_input_name))
 
@@ -206,7 +203,15 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    def check_inputs(prompt_embeds, prompt_embeds_mask, negative_prompt_embeds, negative_prompt_embeds_mask, height, width, vae_scale_factor):
+    def check_inputs(
+        prompt_embeds,
+        prompt_embeds_mask,
+        negative_prompt_embeds,
+        negative_prompt_embeds_mask,
+        height,
+        width,
+        vae_scale_factor,
+    ):
         if negative_prompt_embeds is not None and negative_prompt_embeds_mask is None:
             raise ValueError("`negative_prompt_embeds_mask` is required when `negative_prompt_embeds` is not None")
 
@@ -224,21 +229,18 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
         ):
             raise ValueError("`negative_prompt_embeds_mask` must have the same batch size as `prompt_embeds`")
 
-
         if height is not None and height % (vae_scale_factor * 2) != 0:
             raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
 
         if width is not None and width % (vae_scale_factor * 2) != 0:
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
-    
-    
     def __init__(self, additional_input_names: List[str] = [], image_latent_input_names: List[str] = []):
         if not isinstance(additional_input_names, list):
             additional_input_names = [additional_input_names]
         if not isinstance(image_latent_input_names, list):
             image_latent_input_names = [image_latent_input_names]
-        
+
         self._additional_input_names = additional_input_names
         self._image_latent_input_names = image_latent_input_names
         super().__init__()
@@ -295,13 +297,15 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
                 input_tensor = getattr(block_state, input_name)
                 # make sure input tensor e.g. image_latents has batch size 1 or batch_size same as prompts
                 if input_tensor.shape[0] != 1 and input_tensor.shape[0] != block_state.batch_size:
-                    raise ValueError(f"`{input_name}` must have have batch size 1 or {block_state.batch_size}, but got {input_tensor.shape[0]}")
+                    raise ValueError(
+                        f"`{input_name}` must have have batch size 1 or {block_state.batch_size}, but got {input_tensor.shape[0]}"
+                    )
                 # expand the tensor to match the batch_size * num_images_per_prompt
                 repeat_pattern = [final_batch_size // input_tensor.shape[0]] + [1] * (input_tensor.dim() - 1)
                 input_tensor = input_tensor.repeat(*repeat_pattern)
 
                 setattr(block_state, input_name, input_tensor)
-        
+
         if self._image_latent_input_names:
             for image_latent_input_name in self._image_latent_input_names:
                 image_latent_tensor = getattr(block_state, image_latent_input_name)
@@ -327,7 +331,6 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     def description(self) -> str:
         return "postprocess the generated image, optional apply the mask overally to the original image.."
 
-
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
@@ -342,12 +345,12 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("images", required=True, description= "the generated image from decoders step"),
+            InputParam("images", required=True, description="the generated image from decoders step"),
             InputParam("original_image"),
             InputParam("original_mask"),
             InputParam("crop_coords"),
         ]
-    
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)

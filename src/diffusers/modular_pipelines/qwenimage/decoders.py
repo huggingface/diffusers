@@ -103,7 +103,7 @@ class QwenImageDecodeDynamicStep(ModularPipelineBlocks):
     def check_inputs(output_type):
         if output_type not in ["pil", "np", "pt"]:
             raise ValueError(f"Invalid output_type: {output_type}")
-    
+
     def __init__(self, include_image_processor: bool = True):
         self._include_image_processor = include_image_processor
         super().__init__()
@@ -118,7 +118,9 @@ class QwenImageDecodeDynamicStep(ModularPipelineBlocks):
         block_state.width = block_state.width or components.default_width
 
         # YiYi Notes: remove support for output_type = "latents', we can just skip decode/encode step in modular
-        block_state.latents = unpack_latents(block_state.latents, block_state.height, block_state.width, components.vae_scale_factor)
+        block_state.latents = unpack_latents(
+            block_state.latents, block_state.height, block_state.width, components.vae_scale_factor
+        )
         block_state.latents = block_state.latents.to(components.vae.dtype)
 
         latents_mean = (
@@ -131,7 +133,7 @@ class QwenImageDecodeDynamicStep(ModularPipelineBlocks):
         ).to(block_state.latents.device, block_state.latents.dtype)
         block_state.latents = block_state.latents / latents_std + latents_mean
         block_state.images = components.vae.decode(block_state.latents, return_dict=False)[0][:, :, 0]
-        
+
         if self._include_image_processor:
             block_state.images = components.image_processor.postprocess(
                 block_state.images, output_type=block_state.output_type

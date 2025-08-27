@@ -842,11 +842,12 @@ class InpaintProcessor(ConfigMixin):
     """
     Image processor for inpainting image and mask.
     """
+
     config_name = CONFIG_NAME
 
     @register_to_config
     def __init__(
-        self, 
+        self,
         do_resize: bool = True,
         vae_scale_factor: int = 8,
         vae_latent_channels: int = 4,
@@ -855,42 +856,40 @@ class InpaintProcessor(ConfigMixin):
         do_normalize: bool = True,
         do_binarize: bool = False,
         do_convert_grayscale: bool = False,
-        mask_do_normalize: bool = False, 
-        mask_do_binarize: bool = True, 
+        mask_do_normalize: bool = False,
+        mask_do_binarize: bool = True,
         mask_do_convert_grayscale: bool = True,
-        ):
-
+    ):
         super().__init__()
 
         self._image_processor = VaeImageProcessor(
             do_resize=do_resize,
-            vae_scale_factor=vae_scale_factor, 
+            vae_scale_factor=vae_scale_factor,
             vae_latent_channels=vae_latent_channels,
             resample=resample,
             reducing_gap=reducing_gap,
             do_normalize=do_normalize,
             do_binarize=do_binarize,
             do_convert_grayscale=do_convert_grayscale,
-            )
+        )
         self._mask_processor = VaeImageProcessor(
             do_resize=do_resize,
-            vae_scale_factor=vae_scale_factor, 
+            vae_scale_factor=vae_scale_factor,
             vae_latent_channels=vae_latent_channels,
             resample=resample,
             reducing_gap=reducing_gap,
-            do_normalize=mask_do_normalize, 
-            do_binarize=mask_do_binarize, 
-            do_convert_grayscale=mask_do_convert_grayscale, 
-            )
+            do_normalize=mask_do_normalize,
+            do_binarize=mask_do_binarize,
+            do_convert_grayscale=mask_do_convert_grayscale,
+        )
 
-    
     def preprocess(
         self,
         image: PIL.Image.Image,
         mask: PIL.Image.Image = None,
-        height:int = None,
-        width:int = None,
-        padding_mask_crop:Optional[int] = None,
+        height: int = None,
+        width: int = None,
+        padding_mask_crop: Optional[int] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Preprocess the image and mask.
@@ -903,14 +902,12 @@ class InpaintProcessor(ConfigMixin):
             return self._image_processor.preprocess(image, height=height, width=width)
 
         if padding_mask_crop is not None:
-            crops_coords = self._image_processor.get_crop_region(
-                mask, width, height, pad=padding_mask_crop
-            )
+            crops_coords = self._image_processor.get_crop_region(mask, width, height, pad=padding_mask_crop)
             resize_mode = "fill"
         else:
             crops_coords = None
             resize_mode = "default"
-        
+
         processed_image = self._image_processor.preprocess(
             image,
             height=height,
@@ -918,7 +915,6 @@ class InpaintProcessor(ConfigMixin):
             crops_coords=crops_coords,
             resize_mode=resize_mode,
         )
-
 
         processed_mask = self._mask_processor.preprocess(
             mask,
@@ -928,7 +924,6 @@ class InpaintProcessor(ConfigMixin):
             crops_coords=crops_coords,
         )
 
-        
         if crops_coords is not None:
             postprocessing_kwargs = {
                 "crops_coords": crops_coords,
@@ -944,7 +939,6 @@ class InpaintProcessor(ConfigMixin):
 
         return processed_image, processed_mask, postprocessing_kwargs
 
-    
     def postprocess(
         self,
         image: torch.Tensor,
@@ -965,10 +959,10 @@ class InpaintProcessor(ConfigMixin):
             raise ValueError("original_image and original_mask must be provided if crops_coords is provided")
 
         elif crops_coords is not None:
-            image = [self._image_processor.apply_overlay(
-                original_mask, original_image, i, crops_coords
-            ) for i in image]
-        
+            image = [
+                self._image_processor.apply_overlay(original_mask, original_image, i, crops_coords) for i in image
+            ]
+
         return image
 
 

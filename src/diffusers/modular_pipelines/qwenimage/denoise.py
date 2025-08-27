@@ -419,7 +419,7 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
             "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
             "object (e.g. `QwenImageDenoiseLoopWrapper`)"
         )
-    
+
     @property
     def inputs(self) -> List[InputParam]:
         return [
@@ -449,10 +449,8 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
             ),
         ]
 
-
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        
         block_state.init_latents_proper = block_state.image_latents
         if i < len(block_state.timesteps) - 1:
             block_state.noise_timestep = block_state.timesteps[i + 1]
@@ -567,6 +565,7 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageLoopAfterDenoiserInpaint`\n"
             "This block supports inpainting tasks."
         )
+
 
 # composing the controlnet denoising loops
 class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
