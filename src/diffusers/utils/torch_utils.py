@@ -86,6 +86,126 @@ def randn_tensor(
     return latents
 
 
+def rand_tensor(
+    shape: Union[Tuple, List],
+    generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
+    dtype: Optional["torch.dtype"] = None,
+    layout: Optional["torch.layout"] = None,
+):
+    """A helper function to create random tensors on the desired `device` with the desired `dtype`. When
+    passing a list of generators, you can seed each batch size individually. If CPU generators are passed, the tensor
+    is always created on the CPU. This is analogous to `randn_tensor`, except it creates random tensors from the
+    uniform distribution over [0, 1] using `torch.rand`.
+    """
+    # device on which tensor is created defaults to device
+    if isinstance(device, str):
+        device = torch.device(device)
+    rand_device = device
+    batch_size = shape[0]
+
+    layout = layout or torch.strided
+    device = device or torch.device("cpu")
+
+    if generator is not None:
+        gen_device_type = generator.device.type if not isinstance(generator, list) else generator[0].device.type
+        if gen_device_type != device.type and gen_device_type == "cpu":
+            rand_device = "cpu"
+            if device != "mps":
+                logger.info(
+                    f"The passed generator was created on 'cpu' even though a tensor on {device} was expected."
+                    f" Tensors will be created on 'cpu' and then moved to {device}. Note that one can probably"
+                    f" slightly speed up this function by passing a generator that was created on the {device} device."
+                )
+        elif gen_device_type != device.type and gen_device_type == "cuda":
+            raise ValueError(f"Cannot generate a {device} tensor from a generator of type {gen_device_type}.")
+
+    # make sure generator list of length 1 is treated like a non-list
+    if isinstance(generator, list) and len(generator) == 1:
+        generator = generator[0]
+
+    if isinstance(generator, list):
+        shape = (1,) + shape[1:]
+        latents = [
+            torch.rand(shape, generator=generator[i], device=rand_device, dtype=dtype, layout=layout)
+            for i in range(batch_size)
+        ]
+        latents = torch.cat(latents, dim=0).to(device)
+    else:
+        latents = torch.rand(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
+
+    return latents
+
+
+def multinomial_tensor(
+    logits: torch.Tensor,
+    num_samples: int,
+    replacement: bool = False,
+    generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
+    squeeze_trailing_dim: bool = True,
+):
+    """
+    Creates a tensor drawn from the multinomial distribution specified by the (possibly unnormalized) probabilities
+    given by `logits`. This is to analogous to `randn_tensor`, wrapping `torch.multinomial` rather than `torch.randn`.
+
+    In general, if `logits` has shape [..., num_categories], where the ... represents leading batch dimensions, the
+    output will have shape [..., num_samples]. `logits` is assumed to have at least one leading batch dimension.
+    """
+    batch_size = logits.shape[0]
+    num_cats = logits.shape[-1]
+
+    device = device or torch.device("cpu")
+
+    if generator is not None:
+        gen_device = generator.device if not isinstance(generator, list) else generator[0].device
+        gen_device_type = gen_device.type
+        if gen_device_type != device.type and gen_device_type == "cpu":
+            if device != "mps":
+                logger.info(
+                    f"The passed generator was created on 'cpu' even though a tensor on {device} was expected."
+                    f" Tensors will be created on 'cpu' and then moved to {device}. Note that one can probably"
+                    f" slightly speed up this function by passing a generator that was created on the {device} device."
+                )
+        elif gen_device_type != device.type and gen_device_type == "cuda":
+            raise ValueError(f"Cannot generate a {device} tensor from a generator of type {gen_device_type}.")
+
+    # make sure generator list of length 1 is treated like a non-list
+    if isinstance(generator, list) and len(generator) == 1:
+        generator = generator[0]
+
+    # Handle the case where generator is on CPU
+    logits_ = logits.to(gen_device) if generator is not None else logits
+
+    # Multinomial is not implemented for half precision on CPU
+    if logits_.device.type == "cpu" and logits_.dtype != torch.float32:
+        logits_ = logits_.float()
+
+    if isinstance(generator, list):
+        sample = []
+        original_shape = logits.shape[1:-1]
+        for i in range(batch_size):
+            logits_instance = logits_[i]
+            if logits_instance.ndim > 2:
+                logits_instance = logits_instance.reshape(-1, num_cats)
+            sample_instance = torch.multinomial(logits_instance, num_samples, replacement, generator=generator[i])
+            if logits_instance.ndim > 2:
+                sample_instance = sample_instance.view(*original_shape, num_samples)
+        sample = torch.stack(sample, dim=0).to(device)
+    else:
+        if logits.ndim > 2:
+            original_shape = logits.shape[:-1]
+            logits_ = logits_.reshape(-1, logits.size(-1))
+        sample = torch.multinomial(logits_, num_samples, replacement, generator=generator).to(device)
+        if logits.ndim > 2:
+            sample = sample.view(*original_shape, num_samples)
+
+    if squeeze_trailing_dim:
+        sample = sample.squeeze(-1)
+
+    return sample
+
+
 def is_compiled_module(module) -> bool:
     """Check whether the module was compiled with torch.compile()"""
     if is_torch_version("<", "2.0.0") or not hasattr(torch, "_dynamo"):

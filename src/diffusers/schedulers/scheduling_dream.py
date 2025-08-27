@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
+from ..utils.torch_utils import multinomial_tensor, rand_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -75,7 +76,7 @@ def sample_tokens(
     top_k: Optional[int] = None,
     margin_confidence: bool = False,
     neg_entropy: bool = False,
-    generator: Optional[torch.Generator] = None,
+    generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
  ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Samples from a sequence of logits of shape [..., vocab_size] and returns both the sampled sequence (as the second
@@ -91,19 +92,11 @@ def sample_tokens(
         logits = top_k_logits(logits, top_k)
 
     probs = torch.softmax(logits, dim=-1)
-    device = probs.device
-    probs_ = probs.to(generator.device) if generator is not None else probs  # handles when generator is on CPU
-    if probs_.device.type == "cpu" and probs_.dtype != torch.float32:
-        probs_ = probs_.float()  # multinomial is not implemented for cpu half precision
-    if probs.ndim > 2:
-        probs_ = probs_.reshape(-1, probs.size(-1))  # [B, L, V] --> [B * L, V]
 
     if temperature > 0:
         try:
             # Sample x0 ~ Cat(probs)
-            x0 = torch.multinomial(probs_, 1, generator=generator).to(device=device)
-            if probs.ndim > 2:
-                x0 = x0[:, 0].view(*probs.shape[:-1])  # [B * L, 1] --> [B, L]
+            x0 = multinomial_tensor(probs, 1, generator=generator, device=logits.device)
             confidence = torch.gather(probs, -1, x0.unsqueeze(-1)).squeeze(-1)  # [B, L]
         except:
             confidence, x0 = probs.max(dim=-1)
@@ -349,6 +342,7 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
         timestep: Union[float, torch.Tensor],
         sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
+        noise: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[DreamMaskedDiffusionSchedulerOutput, Tuple]:
         """
@@ -364,6 +358,9 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
+            noise (`torch.Tensor`, *optional*):
+                Allows the noise to be specified directly as an alternative to generating noise with the generator.
+                Note that this noise should drawn from the uniform distribution over [0, 1].
             return_dict (`bool`):
                 Whether or not to return a [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] or
                 tuple.
@@ -396,7 +393,9 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         # TODO: mask logits (model_output) beforehand? might make it more efficient?
         if self.config.logit_sampling_alg == "origin":
-            to_unmask_mask = torch.rand(*sample.shape, generator=generator, device=sample.device) < unmask_prob
+            if noise is None:
+                noise = rand_tensor(sample.shape, generator=generator, device=sample.device)
+            to_unmask_mask = noise < unmask_prob
             confidence, pred_original_sample = sample_tokens(
                 model_output, temperature=temperature, top_p=top_p, top_k=top_k, generator=generator
             )
@@ -437,9 +436,7 @@ class DreamMaskedDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 else:
                     full_confidence = full_confidence / self.config.alg_temperature
                     full_confidence = F.softmax(full_confidence, dim=-1)
-                    unmask_indices = torch.multinomial(
-                        full_confidence, num_samples=num_tokens_to_unmask, generator=generator
-                    )
+                    unmask_indices = multinomial_tensor(full_confidence, num_tokens_to_unmask, generator=generator)
                 unmask_indices = unmask_indices.to(sample.device)
 
                 row_indices = torch.arange(sample.size(0), device=sample.device).unsqueeze(1).expand_as(unmask_indices)
