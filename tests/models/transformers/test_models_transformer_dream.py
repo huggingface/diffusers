@@ -60,7 +60,7 @@ class DreamTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "num_layers": 1,
+            "num_layers": 2,
             "attention_head_dim": 16,
             "num_attention_heads": 4,
             "num_attention_kv_heads": 2,
