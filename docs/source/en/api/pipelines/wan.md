@@ -63,14 +63,17 @@ from diffusers import AutoModel, WanPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
+from diffusers.utils.torch_utils import get_device
 from transformers import UMT5EncoderModel
+
+device = get_device()
 
 text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
 vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
 transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 
 # group-offloading
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 apply_group_offloading(text_encoder,
     onload_device=onload_device,
@@ -92,7 +95,7 @@ pipeline = WanPipeline.from_pretrained(
     text_encoder=text_encoder,
     torch_dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 prompt = """
 The camera rushes from far to near in a low-angle shot, 
@@ -128,7 +131,10 @@ import numpy as np
 from diffusers import AutoModel, WanPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
+from diffusers.utils.torch_utils import get_device
 from transformers import UMT5EncoderModel
+
+device = get_device()
 
 text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
 vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
@@ -141,7 +147,7 @@ pipeline = WanPipeline.from_pretrained(
     text_encoder=text_encoder,
     torch_dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -187,8 +193,10 @@ import torch
 import torchvision.transforms.functional as TF
 from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
+from diffusers.utils.torch_utils import get_device
 from transformers import CLIPVisionModel
 
+device = get_device()
 
 model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers"
 image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
@@ -196,7 +204,7 @@ vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=to
 pipe = WanImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
 last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
@@ -262,6 +270,9 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
   from diffusers import AutoModel, WanPipeline
   from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
   from diffusers.utils import export_to_video
+  from diffusers.utils.torch_utils import get_device
+
+  device = get_device()
 
   vae = AutoModel.from_pretrained(
       "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
@@ -272,7 +283,7 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
   pipeline.scheduler = UniPCMultistepScheduler.from_config(
       pipeline.scheduler.config, flow_shift=5.0
   )
-  pipeline.to("cuda")
+  pipeline.to(device)
 
   pipeline.load_lora_weights("benjamin-paine/steamboat-willie-1.3b", adapter_name="steamboat-willie")
   pipeline.set_adapters("steamboat-willie")
