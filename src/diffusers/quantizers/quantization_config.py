@@ -428,6 +428,10 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
 
+    def __repr__(self):
+        config_dict = self.to_dict()
+        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
+
 
 @dataclass
 class TorchAoConfig(QuantizationConfigMixin):
@@ -724,3 +728,7 @@ class QuantoConfig(QuantizationConfigMixin):
         accepted_weights = ["float8", "int8", "int4", "int2"]
         if self.weights_dtype not in accepted_weights:
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
+
+    def __repr__(self):
+        config_dict = self.to_dict()
+        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
