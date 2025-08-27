@@ -17,7 +17,6 @@
 import functools
 import importlib
 import inspect
-import math
 import os
 from array import array
 from collections import OrderedDict, defaultdict
@@ -112,9 +111,6 @@ def _determine_device_map(
 
         device_map_kwargs["max_memory"] = max_memory
         device_map = infer_auto_device_map(model, dtype=target_dtype, **device_map_kwargs)
-
-        if hf_quantizer is not None:
-            hf_quantizer.validate_environment(device_map=device_map)
 
     return device_map
 
@@ -717,27 +713,39 @@ def _expand_device_map(device_map, param_names):
 
 
 # Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
-def _caching_allocator_warmup(model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype) -> None:
+def _caching_allocator_warmup(
+    model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype, hf_quantizer: Optional[DiffusersQuantizer]
+) -> None:
     """
     This function warm-ups the caching allocator based on the size of the model tensors that will reside on each
     device. It allows to have one large call to Malloc, instead of recursively calling it later when loading the model,
     which is actually the loading speed bottleneck. Calling this function allows to cut the model loading time by a
     very large margin.
     """
-    # Remove disk and cpu devices, and cast to proper torch.device
+    factor = 2 if hf_quantizer is None else hf_quantizer.get_cuda_warm_up_factor()
+
+    # Keep only accelerator devices
     accelerator_device_map = {
         param: torch.device(device)
         for param, device in expanded_device_map.items()
         if str(device) not in ["cpu", "disk"]
     }
-    parameter_count = defaultdict(lambda: 0)
+    if not accelerator_device_map:
+        return
+
+    elements_per_device = defaultdict(int)
     for param_name, device in accelerator_device_map.items():
         try:
-            param = model.get_parameter(param_name)
+            p = model.get_parameter(param_name)
         except AttributeError:
-            param = model.get_buffer(param_name)
-        parameter_count[device] += math.prod(param.shape)
+            try:
+                p = model.get_buffer(param_name)
+            except AttributeError:
+                raise AttributeError(f"Parameter or buffer with name={param_name} not found in model")
+        # TODO: account for TP when needed.
+        elements_per_device[device] += p.numel()
 
     # This will kick off the caching allocator to avoid having to Malloc afterwards
-    for device, param_count in parameter_count.items():
-        _ = torch.empty(param_count, dtype=dtype, device=device, requires_grad=False)
+    for device, elem_count in elements_per_device.items():
+        warmup_elems = max(1, elem_count // factor)
+        _ = torch.empty(warmup_elems, dtype=dtype, device=device, requires_grad=False)

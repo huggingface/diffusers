@@ -117,26 +117,26 @@ if _CAN_USE_XFORMERS_ATTN:
 else:
     xops = None
 
-
+# Version guard for PyTorch compatibility - custom_op was added in PyTorch 2.4
 if torch.__version__ >= "2.4.0":
     _custom_op = torch.library.custom_op
     _register_fake = torch.library.register_fake
 else:
 
-    def _custom_op_no_op(name, fn=None, /, *, mutates_args, device_types=None, schema=None):
+    def custom_op_no_op(name, fn=None, /, *, mutates_args, device_types=None, schema=None):
         def wrap(func):
             return func
 
         return wrap if fn is None else fn
 
-    def _register_fake_no_op(op, fn=None, /, *, lib=None, _stacklevel=1):
+    def register_fake_no_op(op, fn=None, /, *, lib=None, _stacklevel=1):
         def wrap(func):
             return func
 
         return wrap if fn is None else fn
 
-    _custom_op = _custom_op_no_op
-    _register_fake = _register_fake_no_op
+    _custom_op = custom_op_no_op
+    _register_fake = register_fake_no_op
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -529,9 +529,6 @@ def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
 
 # ===== torch op registrations =====
 # Registrations are required for fullgraph tracing compatibility
-
-
-# TODO: library.custom_op and register_fake probably need version guards?
 # TODO: this is only required because the beta release FA3 does not have it. There is a PR adding
 # this but it was never merged: https://github.com/Dao-AILab/flash-attention/pull/1590
 @_custom_op("_diffusers_flash_attn_3::_flash_attn_forward", mutates_args=(), device_types="cuda")

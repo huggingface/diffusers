@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import functools
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -25,7 +25,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import FeedForward
+from ..attention import AttentionMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
@@ -161,9 +161,9 @@ class QwenEmbedRope(nn.Module):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
-        pos_index = torch.arange(1024)
-        neg_index = torch.arange(1024).flip(0) * -1 - 1
-        pos_freqs = torch.cat(
+        pos_index = torch.arange(4096)
+        neg_index = torch.arange(4096).flip(0) * -1 - 1
+        self.pos_freqs = torch.cat(
             [
                 self.rope_params(pos_index, self.axes_dim[0], self.theta),
                 self.rope_params(pos_index, self.axes_dim[1], self.theta),
@@ -171,7 +171,7 @@ class QwenEmbedRope(nn.Module):
             ],
             dim=1,
         )
-        neg_freqs = torch.cat(
+        self.neg_freqs = torch.cat(
             [
                 self.rope_params(neg_index, self.axes_dim[0], self.theta),
                 self.rope_params(neg_index, self.axes_dim[1], self.theta),
@@ -180,10 +180,8 @@ class QwenEmbedRope(nn.Module):
             dim=1,
         )
         self.rope_cache = {}
-        self.register_buffer("pos_freqs", pos_freqs, persistent=False)
-        self.register_buffer("neg_freqs", neg_freqs, persistent=False)
 
-        # 是否使用 scale rope
+        # DO NOT USING REGISTER BUFFER HERE, IT WILL CAUSE COMPLEX NUMBERS LOSE ITS IMAGINARY PART
         self.scale_rope = scale_rope
 
     def rope_params(self, index, dim, theta=10000):
@@ -201,35 +199,48 @@ class QwenEmbedRope(nn.Module):
         Args: video_fhw: [frame, height, width] a list of 3 integers representing the shape of the video Args:
         txt_length: [bs] a list of 1 integers representing the length of the text
         """
+        if self.pos_freqs.device != device:
+            self.pos_freqs = self.pos_freqs.to(device)
+            self.neg_freqs = self.neg_freqs.to(device)
+
         if isinstance(video_fhw, list):
             video_fhw = video_fhw[0]
-        frame, height, width = video_fhw
-        rope_key = f"{frame}_{height}_{width}"
+        if not isinstance(video_fhw, list):
+            video_fhw = [video_fhw]
 
-        if not torch.compiler.is_compiling():
-            if rope_key not in self.rope_cache:
-                self.rope_cache[rope_key] = self._compute_video_freqs(frame, height, width)
-            vid_freqs = self.rope_cache[rope_key]
-        else:
-            vid_freqs = self._compute_video_freqs(frame, height, width)
+        vid_freqs = []
+        max_vid_index = 0
+        for idx, fhw in enumerate(video_fhw):
+            frame, height, width = fhw
+            rope_key = f"{idx}_{height}_{width}"
 
-        if self.scale_rope:
-            max_vid_index = max(height // 2, width // 2)
-        else:
-            max_vid_index = max(height, width)
+            if not torch.compiler.is_compiling():
+                if rope_key not in self.rope_cache:
+                    self.rope_cache[rope_key] = self._compute_video_freqs(frame, height, width, idx)
+                video_freq = self.rope_cache[rope_key]
+            else:
+                video_freq = self._compute_video_freqs(frame, height, width, idx)
+            video_freq = video_freq.to(device)
+            vid_freqs.append(video_freq)
+
+            if self.scale_rope:
+                max_vid_index = max(height // 2, width // 2, max_vid_index)
+            else:
+                max_vid_index = max(height, width, max_vid_index)
 
         max_len = max(txt_seq_lens)
         txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + max_len, ...]
+        vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
 
     @functools.lru_cache(maxsize=None)
-    def _compute_video_freqs(self, frame, height, width):
+    def _compute_video_freqs(self, frame, height, width, idx=0):
         seq_lens = frame * height * width
         freqs_pos = self.pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
         freqs_neg = self.neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
 
-        freqs_frame = freqs_pos[0][:frame].view(frame, 1, 1, -1).expand(frame, height, width, -1)
+        freqs_frame = freqs_pos[0][idx : idx + frame].view(frame, 1, 1, -1).expand(frame, height, width, -1)
         if self.scale_rope:
             freqs_height = torch.cat([freqs_neg[1][-(height - height // 2) :], freqs_pos[1][: height // 2]], dim=0)
             freqs_height = freqs_height.view(1, height, 1, -1).expand(frame, height, width, -1)
@@ -459,7 +470,9 @@ class QwenImageTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class QwenImageTransformer2DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     """
     The Transformer model introduced in Qwen.
 
@@ -542,6 +555,7 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         txt_seq_lens: Optional[List[int]] = None,
         guidance: torch.Tensor = None,  # TODO: this should probably be removed
         attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_block_samples=None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
@@ -620,6 +634,12 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
                     image_rotary_emb=image_rotary_emb,
                     joint_attention_kwargs=attention_kwargs,
                 )
+
+            # controlnet residual
+            if controlnet_block_samples is not None:
+                interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
+                interval_control = int(np.ceil(interval_control))
+                hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
 
         # Use only the image part (hidden_states) from the dual-stream blocks
         hidden_states = self.norm_out(hidden_states, temb)
