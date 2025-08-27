@@ -631,6 +631,10 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         negative_txt_seq_lens = (
             negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
         )
+        image_rotary_emb = self.transformer.pos_embed(img_shapes, txt_seq_lens, device=latents.device)
+        neg_image_rotary_emb = None
+        if do_true_cfg:
+            neg_image_rotary_emb = self.transformer.pos_embed(img_shapes, negative_txt_seq_lens, device=latents.device)
 
         # 6. Denoising loop
         self.scheduler.set_begin_index(0)
@@ -649,8 +653,7 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                         guidance=guidance,
                         encoder_hidden_states_mask=prompt_embeds_mask,
                         encoder_hidden_states=prompt_embeds,
-                        img_shapes=img_shapes,
-                        txt_seq_lens=txt_seq_lens,
+                        image_rotary_emb=image_rotary_emb,
                         attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
@@ -663,8 +666,7 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                             guidance=guidance,
                             encoder_hidden_states_mask=negative_prompt_embeds_mask,
                             encoder_hidden_states=negative_prompt_embeds,
-                            img_shapes=img_shapes,
-                            txt_seq_lens=negative_txt_seq_lens,
+                            image_rotary_emb=neg_image_rotary_emb,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,
                         )[0]

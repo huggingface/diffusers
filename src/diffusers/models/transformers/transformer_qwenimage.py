@@ -557,6 +557,7 @@ class QwenImageTransformer2DModel(
         attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_block_samples=None,
         return_dict: bool = True,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
         The [`QwenTransformer2DModel`] forward method.
@@ -611,8 +612,8 @@ class QwenImageTransformer2DModel(
             if guidance is None
             else self.time_text_embed(timestep, guidance, hidden_states)
         )
-
-        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
+        if image_rotary_emb is None:
+            image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
