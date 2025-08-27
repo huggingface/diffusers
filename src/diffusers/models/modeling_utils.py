@@ -595,7 +595,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 attention as backend.
         """
         from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _check_attention_backend_requirements
+        from .attention_dispatch import (
+            AttentionBackendName,
+            _check_attention_backend_requirements,
+            _ensure_fa3_hub_loaded,
+        )
 
         # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
@@ -608,6 +612,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
         backend = AttentionBackendName(backend)
         _check_attention_backend_requirements(backend)
+        # TODO: clean this once it gets exhausted.
+        if "_flash_3_hub" in backend:
+            # We ensure it's preloaded to reduce overhead and also to avoid compilation errors.
+            _ensure_fa3_hub_loaded()
 
         attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
         for module in self.modules():

@@ -17,7 +17,6 @@ import functools
 import inspect
 import math
 from enum import Enum
-from functools import lru_cache
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -145,6 +144,9 @@ _SAGE_ATTENTION_PV_ACCUM_DTYPE = Literal["fp32", "fp32+fp32"]
 _SAGE_ATTENTION_QK_QUANT_GRAN = Literal["per_thread", "per_warp"]
 _SAGE_ATTENTION_QUANTIZATION_BACKEND = Literal["cuda", "triton"]
 
+flash_attn_3_hub_func = None
+__fa3_hub_loaded = False
+
 
 class AttentionBackendName(str, Enum):
     # EAGER = "eager"
@@ -210,20 +212,20 @@ class _AttentionBackendRegistry:
         return list(cls._backends.keys())
 
 
-@lru_cache(maxsize=None)
-def _load_fa3_hub():
+def _ensure_fa3_hub_loaded():
+    global __fa3_hub_loaded
+    if __fa3_hub_loaded:
+        return
     from ..utils.kernels_utils import _get_fa3_from_hub
 
-    fa3_hub = _get_fa3_from_hub()  # won't re-download if already present
-    if fa3_hub is None:
+    fa3_hub_module = _get_fa3_from_hub()  # doesn't retrigger download if already available.
+    if fa3_hub_module is None:
         raise RuntimeError(
             "Failed to load FlashAttention-3 kernels from the Hub. Please ensure the wheel is available for your platform."
         )
-    return fa3_hub
-
-
-def flash_attn_3_hub_func(*args, **kwargs):
-    return _load_fa3_hub().flash_attn_func(*args, **kwargs)
+    global flash_attn_3_hub_func
+    flash_attn_3_hub_func = fa3_hub_module.flash_attn_func
+    __fa3_hub_loaded = True
 
 
 @contextlib.contextmanager
@@ -540,20 +542,20 @@ def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torc
     return torch.empty_like(query), query.new_empty(lse_shape)
 
 
-@_custom_op("vllm_flash_attn3::flash_attn", mutates_args=(), device_types="cuda")
-def _wrapped_flash_attn_3_hub(
-    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    out, lse = flash_attn_3_hub_func(query, key, value)
-    lse = lse.permute(0, 2, 1)
-    return out, lse
+# @_custom_op("vllm_flash_attn3::flash_attn", mutates_args=(), device_types="cuda")
+# def _wrapped_flash_attn_3_hub(
+#     query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
+# ) -> Tuple[torch.Tensor, torch.Tensor]:
+#     out, lse = flash_attn_3_hub_func(query, key, value)
+#     lse = lse.permute(0, 2, 1)
+#     return out, lse
 
 
-@_register_fake("vllm_flash_attn3::flash_attn")
-def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    batch_size, seq_len, num_heads, head_dim = query.shape
-    lse_shape = (batch_size, seq_len, num_heads)
-    return torch.empty_like(query), query.new_empty(lse_shape)
+# @_register_fake("vllm_flash_attn3::flash_attn")
+# def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+#     batch_size, seq_len, num_heads, head_dim = query.shape
+#     lse_shape = (batch_size, seq_len, num_heads)
+#     return torch.empty_like(query), query.new_empty(lse_shape)
 
 
 # ===== Attention backends =====
