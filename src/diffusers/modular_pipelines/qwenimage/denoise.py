@@ -610,5 +610,4 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageEditLoopBeforeDenoiser`\n"
             " - `QwenImageEditLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
-            "This block supports text2img and img2img tasks."
         )

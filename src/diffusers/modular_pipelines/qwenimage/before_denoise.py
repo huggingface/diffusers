@@ -129,7 +129,7 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Prepare latents step that prepares the latents for the text-to-image generation process"
+        return "Prepare initial random noise for the generation process"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -358,7 +358,7 @@ class QwenImagePackLatentsDynamicStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that pachify the latents inputs. Should be used with outputs from vae encoder step. If height and width are not provided, It will be updated based on the height and width of the latents."
+        return "Step that pachify the latents inputs. Should be used with outputs from vae encoder step."
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -367,8 +367,6 @@ class QwenImagePackLatentsDynamicStep(ModularPipelineBlocks):
             additional_inputs.append(InputParam(name=input_name))
 
         return [
-            InputParam(name="height"),
-            InputParam(name="width"),
             InputParam(name="num_images_per_prompt", default=1),
             InputParam(
                 name="batch_size",
@@ -378,11 +376,10 @@ class QwenImagePackLatentsDynamicStep(ModularPipelineBlocks):
             ),
         ] + additional_inputs
 
-    def __init__(self, input_names: List[str] = ["image_latents"], update_height_width: bool = True):
+    def __init__(self, input_names: List[str] = ["image_latents"]):
         if not isinstance(input_names, list):
             input_names = [input_names]
         self._latents_input_names = input_names
-        self._update_height_width = update_height_width
         super().__init__()
     
     @staticmethod
@@ -424,11 +421,6 @@ class QwenImagePackLatentsDynamicStep(ModularPipelineBlocks):
                 height=height_latents,
                 width=width_latents,
             )
-
-            if self._update_height_width and block_state.height is None:
-                block_state.height = height_latents * components.vae_scale_factor
-            if self._update_height_width and block_state.width is None:
-                block_state.width = width_latents * components.vae_scale_factor
 
             setattr(block_state, input_name, latents_input)
 
@@ -580,7 +572,7 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that prepares the additional inputs for the text-to-image generation process"
+        return "Step that prepares the RoPE inputs for the denoising process"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -641,7 +633,7 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that prepares the additional inputs for the text-to-image generation process"
+        return "Step that prepares the RoPE inputs for the text-to-image generation process. This is used in QwenImage Edit."
 
     @property
     def inputs(self) -> List[InputParam]:

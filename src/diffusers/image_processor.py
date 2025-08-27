@@ -887,15 +887,21 @@ class InpaintProcessor(ConfigMixin):
     def preprocess(
         self,
         image: PIL.Image.Image,
-        mask: PIL.Image.Image,
-        height:int,
-        width:int,
+        mask: PIL.Image.Image = None,
+        height:int = None,
+        width:int = None,
         padding_mask_crop:Optional[int] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Preprocess the image and mask.
         """
-        
+        if mask is None and padding_mask_crop is not None:
+            raise ValueError("mask must be provided if padding_mask_crop is provided")
+
+        # if mask is None, same behavior as regular image processor
+        if mask is None:
+            return self._image_processor.preprocess(image, height=height, width=width)
+
         if padding_mask_crop is not None:
             crops_coords = self._image_processor.get_crop_region(
                 mask, width, height, pad=padding_mask_crop
@@ -912,6 +918,7 @@ class InpaintProcessor(ConfigMixin):
             crops_coords=crops_coords,
             resize_mode=resize_mode,
         )
+
 
         processed_mask = self._mask_processor.preprocess(
             mask,

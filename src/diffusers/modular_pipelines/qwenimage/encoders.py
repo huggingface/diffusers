@@ -414,10 +414,14 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
 class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
-    def __init__(self, input_name: str = "image", output_name: str = "image_latents", include_image_processor: bool = True):
+    def __init__(self, input_name: str = "image", output_name: str = "image_latents", include_image_processor: bool = True, **image_processor_kwargs):
+        if not include_image_processor and len(image_processor_kwargs) > 0:
+            logger.warning(f"these kwargs will be ignored: {image_processor_kwargs} since image_processor is not used in this block")
+
         self._image_input_name = input_name
         self._image_latents_output_name = output_name
         self._include_image_processor = include_image_processor
+        self._image_processor_kwargs = image_processor_kwargs
         super().__init__()
 
     @property
@@ -430,11 +434,13 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             ComponentSpec("vae", AutoencoderKLQwenImage),
         ]
         if self._include_image_processor:
+            image_processor_config = {"vae_scale_factor": 16}
+            image_processor_config.update(self._image_processor_kwargs)
             components.append(
                 ComponentSpec(
-                    "image_processor",
+                    f"{self._image_input_name}_processor",
                     VaeImageProcessor,
-                    config=FrozenDict({"vae_scale_factor": 16}),
+                    config=FrozenDict(image_processor_config),
                     default_creation_method="from_config",
                 )
             )
@@ -442,10 +448,14 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [
+        inputs = [
             InputParam(self._image_input_name, required=True),
             InputParam("generator"),
         ]
+        if self._include_image_processor:
+            inputs.append(InputParam("height"))
+            inputs.append(InputParam("width"))
+        return inputs
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
@@ -457,6 +467,14 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             )
         ]
 
+    @staticmethod
+    def check_inputs(height, width, vae_scale_factor):
+        if height is not None and height % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
+
+        if width is not None and width % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -467,7 +485,16 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         image = getattr(block_state, self._image_input_name)
 
         if self._include_image_processor:
-            image = components.image_processor.preprocess(image)
+            image_processor = getattr(components, f"{self._image_input_name}_processor")
+            self.check_inputs(block_state.height, block_state.width, components.vae_scale_factor)
+
+            if not image_processor.config.do_resize and (block_state.height is not None or block_state.width is not None):
+                logger.warning(f"height and width are provided but image_processor.config.do_resize is False, these will be ignored")
+
+            height = block_state.height or components.default_height
+            width = block_state.width or components.default_width
+            image = image_processor.preprocess(image, height=height, width=width)
+ 
         image = image.unsqueeze(2)
         image = image.to(device=device, dtype=dtype)
 
