@@ -21,7 +21,7 @@ import torch
 from ...models import QwenImageControlNetModel, QwenImageMultiControlNetModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor, unwrap_module
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline
 
@@ -119,6 +119,93 @@ def pack_latents(latents, batch_size, num_channels_latents, height, width):
     latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
 
     return latents
+
+
+# Prepare Latents steps
+
+
+class QwenImagePackLatentsDynamicStep(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    @property
+    def description(self) -> str:
+        return "Step that patchifies latents and expands batch dimension. Works with outputs from QwenImageVaeEncoderDynamicStep."
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        additional_inputs = []
+        for input_name in self._latents_input_names:
+            additional_inputs.append(InputParam(name=input_name))
+
+        return [
+            InputParam(name="num_images_per_prompt", default=1),
+            InputParam(
+                name="batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
+            ),
+        ] + additional_inputs
+
+    def __init__(self, input_names: List[str] = ["image_latents"]):
+        """Initialize a dynamic latents packing step.
+
+        Args:
+            input_names (List[str], optional): Names of latent tensors to patchify and expand.
+                Can be a single string or list of strings. Defaults to ["image_latents"]. Examples: ["image_latents"],
+                ["control_image_latents"]
+
+        """
+        if not isinstance(input_names, list):
+            input_names = [input_names]
+        self._latents_input_names = input_names
+        super().__init__()
+
+    @staticmethod
+    def check_input_shape(latents_input, latents_input_name, batch_size):
+        if latents_input is not None and latents_input.shape[0] != 1 and latents_input.shape[0] != batch_size:
+            raise ValueError(
+                f"`{latents_input_name}` must have have batch size 1 or {batch_size}, but got {latents_input.shape[0]}"
+            )
+
+        if latents_input.ndim != 5 and latents_input.ndim != 4:
+            raise ValueError(f"`{latents_input_name}` must have 4 or 5 dimensions, but got {latents_input.ndim}")
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
+
+        for input_name in self._latents_input_names:
+            latents_input = getattr(block_state, input_name)
+
+            self.check_input_shape(
+                latents_input=latents_input,
+                latents_input_name=input_name,
+                batch_size=block_state.batch_size,
+            )
+
+            if latents_input.ndim == 4:
+                latents_input = latents_input.unsqueeze(2)
+
+            latents_input = latents_input.repeat(final_batch_size // latents_input.shape[0], 1, 1, 1, 1)
+
+            height_latents, width_latents = latents_input.shape[3:]
+
+            latents_input = pack_latents(
+                latents=latents_input,
+                batch_size=latents_input.shape[0],
+                num_channels_latents=components.num_channels_latents,
+                height=height_latents,
+                width=width_latents,
+            )
+
+            setattr(block_state, input_name, latents_input)
+
+        self.set_block_state(state, block_state)
+
+        return components, state
 
 
 class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
@@ -233,7 +320,7 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that add noise to the image latents for the image-to-image/inpainting process. Should be run after prepare latents step."
+        return "Step that adds noise to image latents for image-to-image/inpainting. Should be run after set_timesteps, prepare_latents. Both noise and image latents should alreadybe patchified."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -326,7 +413,7 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that create the mask latents for the inpainting process. Should be run with the pachify latents step."
+        return "Step that creates mask latents from preprocessed mask_image by interpolating to latent space. Output is not patchified."
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -376,80 +463,57 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-class QwenImagePackLatentsDynamicStep(ModularPipelineBlocks):
+class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
+    """This step prepares the latents/image_latents and mask inputs for the inpainting denoising step. It:
+     - Patchify the image latents.
+     - Add noise to the image latents to create the `latents` input for the denoiser.
+     - Create the latents `mask` based on the processed `mask_image`.
+     - Patchify the `mask` to match the shape of the image latents.
+
+    Components:
+        scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+    Inputs:
+        height (`None`, optional): width (`None`, optional): num_images_per_prompt (`None`, optional, defaults to 1):
+        batch_size (`int`):
+            Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+            be generated in input step.
+        image_latents (`None`, optional): latents (`Tensor`):
+            The initial random noised, can be generated in prepare latent step.
+        timesteps (`Tensor`):
+            The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+        mask_image (`Tensor`):
+            The mask image to use for the inpainting process.
+
+    Outputs:
+        init_noise (`Tensor`):
+            The initial random noised used for inpainting denoising.
+        mask (`Tensor`):
+          The mask latents to use for the inpainting process.
+    """
+
+    block_classes = [
+        QwenImagePackLatentsDynamicStep("image_latents"),
+        QwenImagePrepareLatentsWithStrengthStep,
+        QwenImageCreateMaskLatentsStep,
+        QwenImagePackLatentsDynamicStep("mask"),
+    ]
+
+    block_names = ["pack_image_latents", "add_noise_to_latents", "create_mask_latents", "pack_mask"]
 
     @property
     def description(self) -> str:
-        return "Step that pachify the latents inputs. Should be used with outputs from vae encoder step."
+        return (
+            "This step prepares the latents/image_latents and mask inputs for the inpainting denoising step. It:\n"
+            " - Patchify the image latents.\n"
+            " - Add noise to the image latents to create the latents input for the denoiser.\n"
+            " - Create the latents `mask` based on the processedmask image.\n"
+            " - Patchify the mask latents to match the shape of the image latents."
+        )
 
-    @property
-    def inputs(self) -> List[InputParam]:
-        additional_inputs = []
-        for input_name in self._latents_input_names:
-            additional_inputs.append(InputParam(name=input_name))
 
-        return [
-            InputParam(name="num_images_per_prompt", default=1),
-            InputParam(
-                name="batch_size",
-                required=True,
-                type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
-            ),
-        ] + additional_inputs
-
-    def __init__(self, input_names: List[str] = ["image_latents"]):
-        if not isinstance(input_names, list):
-            input_names = [input_names]
-        self._latents_input_names = input_names
-        super().__init__()
-
-    @staticmethod
-    def check_input_shape(latents_input, latents_input_name, batch_size):
-        if latents_input is not None and latents_input.shape[0] != 1 and latents_input.shape[0] != batch_size:
-            raise ValueError(
-                f"`{latents_input_name}` must have have batch size 1 or {batch_size}, but got {latents_input.shape[0]}"
-            )
-
-        if latents_input.ndim != 5 and latents_input.ndim != 4:
-            raise ValueError(f"`{latents_input_name}` must have 4 or 5 dimensions, but got {latents_input.ndim}")
-
-    @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-
-        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
-
-        for input_name in self._latents_input_names:
-            latents_input = getattr(block_state, input_name)
-
-            self.check_input_shape(
-                latents_input=latents_input,
-                latents_input_name=input_name,
-                batch_size=block_state.batch_size,
-            )
-
-            if latents_input.ndim == 4:
-                latents_input = latents_input.unsqueeze(2)
-
-            latents_input = latents_input.repeat(final_batch_size // latents_input.shape[0], 1, 1, 1, 1)
-
-            height_latents, width_latents = latents_input.shape[3:]
-
-            latents_input = pack_latents(
-                latents=latents_input,
-                batch_size=latents_input.shape[0],
-                num_channels_latents=components.num_channels_latents,
-                height=height_latents,
-                width=width_latents,
-            )
-
-            setattr(block_state, input_name, latents_input)
-
-        self.set_block_state(state, block_state)
-
-        return components, state
+# Set Timesteps steps
 
 
 class QwenImageSetTimestepsStep(ModularPipelineBlocks):
@@ -591,6 +655,11 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
         return components, state
 
 
+# other inputs for denoiser
+
+## RoPE inputs for denoiser
+
+
 class QwenImageRoPEInputsStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -728,7 +797,8 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         return components, state
 
 
-class QwenImageControlNetPrepareInputsStep(ModularPipelineBlocks):
+## ControlNet inputs for denoiser
+class QwenImageControlNetAdditionalInputsStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     @property
@@ -809,3 +879,18 @@ class QwenImageControlNetPrepareInputsStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
 
         return components, state
+
+
+class QwenImageControlNetInputsStep(SequentialPipelineBlocks):
+    model_name = "qwenimage"
+
+    block_classes = [
+        QwenImagePackLatentsDynamicStep("control_image_latents"),  # prepare control image latents
+        QwenImageControlNetAdditionalInputsStep,  # prepare the controlnet inputs e.g. controlnet_keep, controlnet_conditioning_scale, etc.
+    ]
+
+    block_names = ["prepare_control_image_latent", "prepare_controlnet_inputs"]
+
+    @property
+    def description(self) -> str:
+        return "Step that prepares the controlnet inputs. Insert before the Denoise Step, after set_timesteps step."

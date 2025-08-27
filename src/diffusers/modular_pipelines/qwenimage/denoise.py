@@ -96,7 +96,7 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
-class QwenImageControlNetLoopBeforeDenoiser(ModularPipelineBlocks):
+class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     @property
@@ -571,7 +571,7 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
 class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
     block_classes = [
         QwenImageLoopBeforeDenoiser,
-        QwenImageControlNetLoopBeforeDenoiser,
+        QwenImageLoopBeforeDenoiserControlNet,
         QwenImageLoopDenoiser,
         QwenImageLoopAfterDenoiser,
     ]
@@ -584,10 +584,42 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
             " - `QwenImageLoopBeforeDenoiser`\n"
-            " - `QwenImageControlNetLoopBeforeDenoiser`\n"
+            " - `QwenImageLoopBeforeDenoiserControlNet`\n"
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
             "This block supports text2img tasks."
+        )
+
+
+# composing the controlnet denoising loops
+class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
+    block_classes = [
+        QwenImageLoopBeforeDenoiser,
+        QwenImageLoopBeforeDenoiserControlNet,
+        QwenImageLoopDenoiser,
+        QwenImageLoopAfterDenoiser,
+        QwenImageLoopAfterDenoiserInpaint,
+    ]
+    block_names = [
+        "before_denoiser",
+        "before_denoiser_controlnet",
+        "denoiser",
+        "after_denoiser",
+        "after_denoiser_inpaint",
+    ]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. \n"
+            "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            " - `QwenImageLoopBeforeDenoiser`\n"
+            " - `QwenImageLoopBeforeDenoiserControlNet`\n"
+            " - `QwenImageLoopDenoiser`\n"
+            " - `QwenImageLoopAfterDenoiser`\n"
+            " - `QwenImageLoopAfterDenoiserInpaint`\n"
+            "This block supports inpainting tasks with controlnet."
         )
 
 

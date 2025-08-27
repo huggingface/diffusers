@@ -23,7 +23,7 @@ from ...image_processor import InpaintProcessor, VaeImageProcessor
 from ...models import AutoencoderKLQwenImage
 from ...pipelines.qwenimage.pipeline_qwenimage_edit import calculate_dimensions
 from ...utils import logging
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline
 
@@ -344,7 +344,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Text Encoder step that generate text_embeddings to guide the image generation"
+        return "Text Encoder step that processes both prompt and image together to generate text embeddings for guiding image generation"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -462,7 +462,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Image Mask step that resize the image to the target area while maintaining the aspect ratio."
+        return "Image Preprocess step for inpainting task. This processes the image and mask inputs together."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -531,6 +531,32 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         include_image_processor: bool = True,
         **image_processor_kwargs,
     ):
+        """Initialize a dynamic VAE encoder step for converting images to latent representations.
+
+        Args:
+            input_name (str, optional): Name of the input image tensor. Defaults to "image".
+                Examples: "image", "control_image", "reference_image"
+            output_name (str, optional): Name of the output latent tensor. Defaults to "image_latents".
+                Examples: "image_latents", "control_image_latents", "reference_image_latents"
+            include_image_processor (bool, optional): Whether to include preprocessing step before encoding.
+                If True, will resize and preprocess the image. If False, expects preprocessed image. Defaults to True.
+            **image_processor_kwargs: Additional kwargs to configure the image processor.
+                Common options:
+                - vae_scale_factor (int): Scale factor for VAE compression. Defaults to 16.
+                - do_resize (bool): Whether to resize images. Defaults to True.
+
+        Examples:
+            # Basic usage with default settings QwenImageVaeEncoderDynamicStep()
+
+            # Custom input/output names for control image QwenImageVaeEncoderDynamicStep(
+                input_name="control_image", output_name="control_image_latents"
+            )
+
+            # Without preprocessing (for already preprocessed images)
+            QwenImageVaeEncoderDynamicStep(include_image_processor=False)
+
+            # With custom processor configuration QwenImageVaeEncoderDynamicStep(vae_scale_factor=8)
+        """
         if not include_image_processor and len(image_processor_kwargs) > 0:
             logger.warning(
                 f"these kwargs will be ignored: {image_processor_kwargs} since image_processor is not used in this block"
@@ -544,7 +570,24 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Vae Encoder step that encode the input image into a latent representation. Optionally update height and width based on image size."
+        # Dynamic configuration info
+        preprocessor_info = ""
+        if self._include_image_processor:
+            processor_config = f"vae_scale_factor: {self._image_processor_kwargs.get('vae_scale_factor', 16)}"
+            if self._image_processor_kwargs:
+                additional_configs = [
+                    f"{k}: {v}" for k, v in self._image_processor_kwargs.items() if k != "vae_scale_factor"
+                ]
+                if additional_configs:
+                    processor_config += f", {', '.join(additional_configs)}"
+            preprocessor_info = f" (includes preprocessor with config: {processor_config})"
+        else:
+            preprocessor_info = " (no preprocessor)"
+
+        return (
+            f"Dynamic VAE Encoder step that converts {self._image_input_name} into latent representations {self._image_latents_output_name}.\n\n"
+            f"Configuration: {preprocessor_info}\n\n"
+        )
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -633,3 +676,46 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
 
         return components, state
+
+
+class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
+    model_name = "qwenimage"
+
+    """This step is used for processing image and mask inputs forinpainting tasks. It:
+        - Processes and updates `image` and `mask_image`.
+        - Creates `image_latents`.
+
+    Components:
+        image_processor (`InpaintProcessor`) [subfolder=] vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+    Inputs:
+        image (`None`): mask_image (`None`): height (`None`): width (`None`): padding_mask_crop (`None`, optional):
+        generator (`None`, optional):
+
+    New Outputs:
+        original_image (`Tensor`):
+            The original image
+        original_mask (`Tensor`):
+            The original mask_imagge
+        crop_coords (`List`):
+            The crop coordinates to use for the preprocess/postprocess of the image and mask
+        image_latents (`Tensor`):
+            The latents representing the reference image
+    """
+
+    block_classes = [
+        QwenImageInpaintProcessImagesInputStep,
+        QwenImageVaeEncoderDynamicStep(
+            input_name="image", output_name="image_latents", include_image_processor=False
+        ),  # encode
+    ]
+
+    block_names = ["preprocess", "encode"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "This step is used for processing image and mask inputs for inpainting tasks. It:\n"
+            " - Processes and updates `image` and `mask_image`.\n"
+            " - Creates `image_latents`."
+        )

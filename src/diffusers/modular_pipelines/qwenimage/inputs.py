@@ -28,33 +28,30 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
     def description(self) -> str:
         # Default behavior section
         default_section = (
-            "Input processing step that performs the following by default:\n"
+            "Input processing step that:\n"
             "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
-            "  2. Adjusts batch dimension for default text inputs: `prompt_embeds`, `prompt_embeds_mask`, `negative_prompt_embeds`, and `negative_prompt_embeds_mask`\n"
-            "  3. Verifies `height` and `width` are divisible by vae_scale_factor * 2 if provided\n\n"
+            "  2. Adjusts batch dimension for default text inputs: `prompt_embeds`, `prompt_embeds_mask`, `negative_prompt_embeds`, and `negative_prompt_embeds_mask`"
         )
 
-        # Dynamic configuration section
-        dynamic_section = "This is a dynamic block that you can configure to:\n\n"
-
-        # Additional inputs configuration
+        # Additional inputs info
         additional_inputs_info = ""
         if self._additional_input_names:
-            additional_inputs_info = f"* Adjust batch dimension for additional inputs by passing `additional_input_names` when initializing the block. Currently configured to process: {self._additional_input_names}\n"
-        else:
-            additional_inputs_info = "* Adjust batch dimension for additional inputs by passing `additional_input_names` when initializing the block\n"
+            additional_inputs_info = f", and additional inputs: {self._additional_input_names}"
+
+        default_section += additional_inputs_info + "\n"
+        default_section += "  3. Verifies `height` and `width` are divisible by vae_scale_factor * 2 if provided\n"
 
         # Image latent configuration
         image_latent_info = ""
         if self._image_latent_input_names:
-            image_latent_info = f"* Use {self._image_latent_input_names} to update `height` and `width` if not defined. Currently configured to use: {self._image_latent_input_names}\n"
-        else:
-            image_latent_info = "* Use image latents to update `height` and `width` if not defined by passing `image_latent_input_names` when initializing the block\n"
+            image_latent_info = (
+                f"  4. Updates `height` and `width` based on {self._image_latent_input_names[0]} if not provided\n"
+            )
 
         # Placement guidance
         placement_section = "\nThis block should be placed right after all the encoder steps (e.g., text_encoder, image_encoder, vae_encoder)."
 
-        return default_section + dynamic_section + additional_inputs_info + image_latent_info + placement_section
+        return default_section + image_latent_info + placement_section
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -124,6 +121,43 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     def __init__(self, additional_input_names: List[str] = [], image_latent_input_names: List[str] = []):
+        """Initialize a dynamic input processing block for standardizing conditional inputs.
+
+        In modular pipelines, blocks are usually arranged in this sequence: encoders first (text_encoder,
+        image_encoder, vae_encoder), then before_denoise steps (prepare latents, setup timesteps). This block should be
+        placed after all encoder steps to process and standardize all conditional inputs that will be passed to
+        subsequent blocks.
+
+        This block handles common input processing tasks:
+        - Adjusts batch dimensions for text inputs (prompt_embeds, prompt_embeds_mask, etc.) and any additional inputs
+        - Determines dtype from text embeddings
+        - Updates height/width to match image inputs (unless user explicitly provides different values)
+        - Standardizes conditional inputs for the rest of the pipeline
+
+        Args:
+            additional_input_names (List[str], optional): Names of additional conditional input tensors to process.
+                These tensors will have their batch dimensions adjusted to match the final batch size. Can be a single
+                string or list of strings. Defaults to []. Examples: ["image_latents"], ["control_image_latents",
+                "reference_image"]
+            image_latent_input_names (List[str], optional): Names of image latent tensors to use for
+                determining height/width if not explicitly provided. Can be a single string or list of strings.
+                Defaults to []. Examples: ["image_latents"], ["control_image_latents"]
+
+        Examples:
+            # Basic usage - only processes default text embeddings QwenImageExpandInputsDynamicStep()
+
+            # this will repeat the image latents to match the batch size of prompts
+            QwenImageExpandInputsDynamicStep(additional_input_names=["image_latents"])
+
+            # this will use the image latents to determine height/width
+            QwenImageExpandInputsDynamicStep(image_latent_input_names=["image_latents"])
+
+            # expand the batch dimension for multiple additional inputs and use image latents for height/width
+            QwenImageExpandInputsDynamicStep(
+                additional_input_names=["image_latents", "control_image_latents"],
+                image_latent_input_names=["image_latents"]
+            )
+        """
         if not isinstance(additional_input_names, list):
             additional_input_names = [additional_input_names]
         if not isinstance(image_latent_input_names, list):
