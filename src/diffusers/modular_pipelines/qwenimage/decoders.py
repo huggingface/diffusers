@@ -184,13 +184,15 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
+
 class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
-    block_classes = [QwenImageDecodeDynamicStep(include_image_processor=False), QwenImageInpaintProcessImagesOutputStep()]
+    block_classes = [
+        QwenImageDecodeDynamicStep(include_image_processor=False),
+        QwenImageInpaintProcessImagesOutputStep(),
+    ]
     block_names = ["decode", "postprocess"]
-    
+
     @property
     def description(self):
-        return (
-            "Decode step that decodes the latents to images and postprocess the generated image, optional apply the mask overally to the original image."
-        )
+        return "Decode step that decodes the latents to images and postprocess the generated image, optional apply the mask overally to the original image."

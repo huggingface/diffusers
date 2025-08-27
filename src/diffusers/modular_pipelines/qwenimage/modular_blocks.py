@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
+from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     QwenImageControlNetInputsStep,
@@ -26,12 +27,12 @@ from .before_denoise import (
 )
 from .decoders import QwenImageDecodeDynamicStep, QwenImageInpaintDecodeStep
 from .denoise import (
+    QwenImageControlNetDenoiseStep,
     QwenImageDenoiseStep,
     QwenImageEditDenoiseStep,
+    QwenImageInpaintControlNetDenoiseStep,
     QwenImageInpaintDenoiseStep,
     QwenImageLoopBeforeDenoiserControlNet,
-    QwenImageControlNetDenoiseStep,
-    QwenImageInpaintControlNetDenoiseStep,
 )
 from .encoders import (
     QwenImageEditResizeStep,
@@ -41,13 +42,13 @@ from .encoders import (
     QwenImageVaeEncoderDynamicStep,
 )
 from .inputs import QwenImageInputsDynamicStep
-from ..modular_pipeline import SequentialPipelineBlocks, AutoPipelineBlocks
 
 
 logger = logging.get_logger(__name__)
 
 
 # 1. vae encoders
+
 
 # YiYi TODO: should we add support for img2img?
 class QwenImageAutoVaeEncoderStep(AutoPipelineBlocks):
@@ -78,8 +79,10 @@ class QwenImageControlNetAutoVaeEncoderStep(AutoPipelineBlocks):
             + " - `QwenImageVaeEncoderDynamicStep` (controlnet) is used when `control_image` is provided.\n"
             + " - if `control_image` is not provided, step will be skipped."
         )
-    
+
+
 # 2. before denoise
+
 
 class QwenImageBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
@@ -87,8 +90,8 @@ class QwenImageBeforeDenoiseStep(SequentialPipelineBlocks):
         QwenImageInputsDynamicStep(),
         QwenImagePrepareLatentsStep(),
         QwenImageSetTimestepsStep(),
-        QwenImageRoPEInputsStep()
-        ]
+        QwenImageRoPEInputsStep(),
+    ]
     block_names = ["inputs", "prepare_latents", "set_timesteps", "prepare_rope_inputs"]
 
     @property
@@ -111,7 +114,7 @@ class QwenImageInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
         QwenImageSetTimestepsWithStrengthStep(),
         QwenImageInpaintPrepareLatentsStep(),
         QwenImageRoPEInputsStep(),
-        ]
+    ]
     block_names = ["inputs", "prepare_latents", "set_timesteps", "prepare_inpaint_latents", "prepare_rope_inputs"]
 
     @property
@@ -126,12 +129,13 @@ class QwenImageInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
             + " - `QwenImageRoPEInputsStep` is used to prepare the RoPE inputs\n"
         )
 
+
 # for text2image and inpaint tasks
 class QwenImageAutoBeforeDenoiseStep(AutoPipelineBlocks):
     block_classes = [QwenImageInpaintBeforeDenoiseStep, QwenImageBeforeDenoiseStep]
     block_names = ["inpaint", "text2image"]
     block_trigger_inputs = ["mask_image", None]
-    
+
     @property
     def description(self):
         return (
@@ -139,13 +143,14 @@ class QwenImageAutoBeforeDenoiseStep(AutoPipelineBlocks):
             + "This is an auto pipeline block that works for text2img, inpainting tasks.\n"
             + " - `QwenImageInpaintBeforeDenoiseStep` (inpaint) is used when `mask_image` is provided.\n"
             + " - `QwenImageBeforeDenoiseStep` (text2img) is used when `mask_image` is not provided.\n"
-        )  
+        )
+
 
 class QwenImageAutoControlNetInputsStep(AutoPipelineBlocks):
     block_classes = [QwenImageControlNetInputsStep]
     block_names = ["controlnet"]
     block_trigger_inputs = ["control_image"]
-    
+
     @property
     def description(self):
         return (
@@ -154,13 +159,15 @@ class QwenImageAutoControlNetInputsStep(AutoPipelineBlocks):
             + " - if `control_image` is not provided, step will be skipped."
         )
 
+
 # 3. denoise
+
 
 class QwenImageControlNetAutoDenoiseStep(AutoPipelineBlocks):
     block_classes = [QwenImageInpaintControlNetDenoiseStep, QwenImageControlNetDenoiseStep]
     block_names = ["inpaint_denoise", "denoise"]
     block_trigger_inputs = ["mask", None]
-    
+
     @property
     def description(self):
         return (
@@ -169,11 +176,16 @@ class QwenImageControlNetAutoDenoiseStep(AutoPipelineBlocks):
             + " - `QwenImageControlNetDenoiseStep` (text2image) is used when `mask` is not provided.\n"
         )
 
+
 class QwenImageAutoDenoiseStep(AutoPipelineBlocks):
-    block_classes = [QwenImageControlNetAutoDenoiseStep, QwenImageInpaintDenoiseStep, QwenImageDenoiseStep,]
+    block_classes = [
+        QwenImageControlNetAutoDenoiseStep,
+        QwenImageInpaintDenoiseStep,
+        QwenImageDenoiseStep,
+    ]
     block_names = ["controlnet_denoise", "inpaint_denoise", "denoise"]
     block_trigger_inputs = ["control_image_latents", "mask", None]
-    
+
     @property
     def description(self):
         return (
@@ -189,7 +201,7 @@ class QwenImageAutoDecodeStep(AutoPipelineBlocks):
     block_classes = [QwenImageInpaintDecodeStep, QwenImageDecodeDynamicStep()]
     block_names = ["inpaint_decode", "decode"]
     block_trigger_inputs = ["mask", None]
-    
+
     @property
     def description(self):
         return (
@@ -197,6 +209,7 @@ class QwenImageAutoDecodeStep(AutoPipelineBlocks):
             + " - `QwenImageInpaintDecodeStep` (inpaint) is used when `mask` is provided.\n"
             + " - `QwenImageDecodeDynamicStep` (text2image) is used when `mask` is not provided.\n"
         )
+
 
 TEXT2IMAGE_BLOCKS = InsertableDict(
     [
@@ -240,7 +253,7 @@ CONTROLNET_BLOCKS = InsertableDict(
 )
 
 AUTO_BLOCKS = InsertableDict(
-    [   
+    [
         ("text_encoder", QwenImageTextEncoderStep()),
         ("vae_encoder", QwenImageAutoVaeEncoderStep()),
         ("controlnet_vae_encoder", QwenImageControlNetAutoVaeEncoderStep()),

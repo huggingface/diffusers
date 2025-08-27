@@ -108,8 +108,8 @@ def _register_attention_processors_metadata():
     from ..models.attention_processor import AttnProcessor2_0
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
     from ..models.transformers.transformer_flux import FluxAttnProcessor
-    from ..models.transformers.transformer_wan import WanAttnProcessor2_0
     from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
+    from ..models.transformers.transformer_wan import WanAttnProcessor2_0
 
     # AttnProcessor2_0
     AttentionProcessorRegistry.register(
@@ -144,7 +144,9 @@ def _register_attention_processors_metadata():
     # QwenDoubleStreamAttnProcessor2
     AttentionProcessorRegistry.register(
         model_class=QwenDoubleStreamAttnProcessor2_0,
-        metadata=AttentionProcessorMetadata(skip_processor_output_fn=_skip_proc_output_fn_Attention_QwenDoubleStreamAttnProcessor2_0),
+        metadata=AttentionProcessorMetadata(
+            skip_processor_output_fn=_skip_proc_output_fn_Attention_QwenDoubleStreamAttnProcessor2_0
+        ),
     )
 
 
