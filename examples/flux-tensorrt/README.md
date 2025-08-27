@@ -4,11 +4,6 @@ This project provides **TensorRT-accelerated pipelines** for Flux models, enabli
 
 ## ✅ Supported Pipelines
 - ✅ `FluxPipeline` (Supported)
-- ⏳ `FluxImg2ImgPipeline` (Coming soon)
-- ⏳ `FluxInpaintPipeline` (Coming soon)
-- ⏳ `FluxFillPipeline` (Coming soon)
-- ⏳ `FluxKontextPipeline` (Coming soon)
-- ⏳ `FluxKontextInpaintPipeline` (Coming soon)
 
 ---
 
