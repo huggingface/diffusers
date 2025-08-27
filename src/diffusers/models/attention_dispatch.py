@@ -856,6 +856,19 @@ def _wait_tensor(tensor):
     return tensor
 
 
+def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
+    shape = x.shape
+    # HACK: We need to flatten because despite making tensors contiguous, torch single-file-ization
+    # to benchmark triton codegen fails somewhere:
+    # buf25 = torch.ops._c10d_functional.all_to_all_single.default(buf24, [1, 1], [1, 1], '3')
+    # ValueError: Tensors must be contiguous
+    x = x.flatten()
+    x = funcol.all_to_all_single(x, None, None, group)
+    x = x.reshape(shape)
+    x = _wait_tensor(x)
+    return x
+
+
 class TemplatedRingAttention(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -1003,28 +1016,26 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx.op_ctx = torch.autograd.function.FunctionCtx()
 
-        B, S_LOCAL, H, D = query.shape
+        B, S_Q_LOCAL, H, D = query.shape
+        _, S_KV_LOCAL, _, _ = key.shape
         H_LOCAL = H // world_size
-        query, key, value = (
-            x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-            for x in (query, key, value)
-        )
-        query, key, value = (
-            _wait_tensor(funcol.all_to_all_single(x, None, None, group=group)) for x in (query, key, value)
-        )
+        query = query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        value = value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        query, key, value = (_all_to_all_single(x, group) for x in (query, key, value))
         query, key, value = (x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
         out = forward_op(ctx.op_ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse)
         if return_lse:
             out, lse, *_ = out
 
-        out = out.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-        out = _wait_tensor(funcol.all_to_all_single(out, None, None, group=group))
+        out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
+        out = _all_to_all_single(out, group)
         out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
 
         if return_lse:
-            lse = lse.reshape(B, world_size, S_LOCAL, H_LOCAL).permute(1, 3, 0, 2).contiguous()
-            lse = _wait_tensor(funcol.all_to_all_single(lse, None, None, group=group))
+            lse = lse.reshape(B, world_size, S_Q_LOCAL, H_LOCAL).permute(1, 3, 0, 2).contiguous()
+            lse = _all_to_all_single(lse, group)
             lse = lse.flatten(0, 1).permute(1, 2, 0).contiguous()
         else:
             lse = None
@@ -1046,7 +1057,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         H_LOCAL = H // world_size
 
         grad_out = grad_out.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        grad_out = _wait_tensor(funcol.all_to_all_single(grad_out, None, None, group=group))
+        grad_out = _all_to_all_single(grad_out, group)
         grad_out = grad_out.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
         grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(ctx.op_ctx, grad_out)
@@ -1055,10 +1066,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
             x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
             for x in (grad_query_op, grad_key_op, grad_value_op)
         )
-        grad_query, grad_key, grad_value = (
-            _wait_tensor(funcol.all_to_all_single(x, None, None, group=group))
-            for x in (grad_query, grad_key, grad_value)
-        )
+        grad_query, grad_key, grad_value = (_all_to_all_single(x, group) for x in (grad_query, grad_key, grad_value))
         grad_query, grad_key, grad_value = (
             x.flatten(0, 1).permute(1, 2, 0, 3).contiguous() for x in (grad_query, grad_key, grad_value)
         )
