@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -618,7 +618,15 @@ class Magi1Transformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "rope"]
     _no_split_modules = ["Magi1TransformerBlock"]
-    _keep_in_fp32_modules = ["condition_embedder", "scale_shift_table", "norm_out", "norm_q", "norm_k", "patch_embedding", "rope"]
+    _keep_in_fp32_modules = [
+        "condition_embedder",
+        "scale_shift_table",
+        "norm_out",
+        "norm_q",
+        "norm_k",
+        "patch_embedding",
+        "rope",
+    ]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["Magi1TransformerBlock"]
 
@@ -776,7 +784,9 @@ class Magi1Transformer3DModel(
 
         if self.config.half_channel_vae:
             if hidden_states.shape[1] != 16:
-                raise ValueError("When `config.half_channel_vae` is True, the input `hidden_states` must have 16 channels.")
+                raise ValueError(
+                    "When `config.half_channel_vae` is True, the input `hidden_states` must have 16 channels."
+                )
             hidden_states = torch.cat([hidden_states, hidden_states], dim=1)
 
         # Patch & position embedding
