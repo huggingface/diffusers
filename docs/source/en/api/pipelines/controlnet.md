@@ -72,11 +72,3 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 ## StableDiffusionPipelineOutput
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
-
-## FlaxStableDiffusionControlNetPipeline
-[[autodoc]] FlaxStableDiffusionControlNetPipeline
-	- all
-	- __call__
-
-## FlaxStableDiffusionControlNetPipelineOutput
-[[autodoc]] pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput
