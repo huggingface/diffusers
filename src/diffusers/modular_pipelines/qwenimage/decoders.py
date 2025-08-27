@@ -19,7 +19,7 @@ import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor
+from ...image_processor import InpaintProcessor, VaeImageProcessor
 from ...models import AutoencoderKLQwenImage
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -138,6 +138,48 @@ class QwenImageDecodeDynamicStep(ModularPipelineBlocks):
             block_state.images = components.image_processor.postprocess(
                 block_state.images, output_type=block_state.output_type
             )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    @property
+    def description(self) -> str:
+        return "postprocess the generated image, optional apply the mask overally to the original image.."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_mask_processor",
+                InpaintProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("images", required=True, description="the generated image from decoders step"),
+            InputParam("original_image"),
+            InputParam("original_mask"),
+            InputParam("crop_coords"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        block_state.images = components.image_mask_processor.postprocess(
+            image=block_state.images,
+            original_image=block_state.original_image,
+            original_mask=block_state.original_mask,
+            crops_coords=block_state.crop_coords,
+        )
 
         self.set_block_state(state, block_state)
         return components, state

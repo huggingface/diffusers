@@ -12,125 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Tuple
+from typing import List
 
 import torch
 
-from ...configuration_utils import FrozenDict
-from ...image_processor import InpaintProcessor, VaeImageProcessor
-from ...pipelines.qwenimage.pipeline_qwenimage_edit import calculate_dimensions
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline
-
-
-class QwenImageEditResizeStep(ModularPipelineBlocks):
-    model_name = "qwenimage"
-
-    @property
-    def description(self) -> str:
-        return "Image Resize step that resize the image to the target area while maintaining the aspect ratio."
-
-    @property
-    def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec(
-                "image_resize_processor",
-                VaeImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config",
-            ),
-        ]
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam(name="image", required=True, type_hint=torch.Tensor, description="The image to resize"),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
-        block_state = self.get_block_state(state)
-
-        images = block_state.image
-        if not isinstance(images, list):
-            images = [images]
-
-        image_width, image_height = images[0].size
-        calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_width / image_height)
-
-        resized_images = [
-            components.image_processor.resize(image, height=calculated_height, width=calculated_width)
-            for image in images
-        ]
-
-        block_state.image = resized_images
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
-    model_name = "qwenimage"
-
-    @property
-    def description(self) -> str:
-        return "Image Mask step that resize the image to the target area while maintaining the aspect ratio."
-
-    @property
-    def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec(
-                "image_mask_processor",
-                InpaintProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config",
-            ),
-        ]
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("image", required=True),
-            InputParam("mask_image", required=True),
-            InputParam("height"),
-            InputParam("width"),
-            InputParam("padding_mask_crop"),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam(name="original_image", type_hint=torch.Tensor, description="The original image"),
-            OutputParam(name="original_mask", type_hint=torch.Tensor, description="The original mask"),
-            OutputParam(
-                name="crop_coords",
-                type_hint=List[Tuple[int, int]],
-                description="The crop coordinates to use for the preprocess/postprocess of the image and mask",
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
-        block_state = self.get_block_state(state)
-
-        block_state.height = block_state.height or components.default_height
-        block_state.width = block_state.width or components.default_width
-
-        block_state.image, block_state.mask_image, postprocessing_kwargs = components.image_mask_processor.preprocess(
-            image=block_state.image,
-            mask=block_state.mask_image,
-            height=block_state.height,
-            width=block_state.width,
-            padding_mask_crop=block_state.padding_mask_crop,
-        )
-
-        if postprocessing_kwargs:
-            block_state.original_image = postprocessing_kwargs["original_image"]
-            block_state.original_mask = postprocessing_kwargs["original_mask"]
-            block_state.crop_coords = postprocessing_kwargs["crops_coords"]
-
-        self.set_block_state(state, block_state)
-        return components, state
 
 
 class QwenImageInputsDynamicStep(ModularPipelineBlocks):
@@ -321,46 +209,4 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
 
-        return components, state
-
-
-class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
-    model_name = "qwenimage"
-
-    @property
-    def description(self) -> str:
-        return "postprocess the generated image, optional apply the mask overally to the original image.."
-
-    @property
-    def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec(
-                "image_mask_processor",
-                InpaintProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config",
-            ),
-        ]
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("images", required=True, description="the generated image from decoders step"),
-            InputParam("original_image"),
-            InputParam("original_mask"),
-            InputParam("crop_coords"),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
-        block_state = self.get_block_state(state)
-
-        block_state.images = components.image_mask_processor.postprocess(
-            image=block_state.images,
-            original_image=block_state.original_image,
-            original_mask=block_state.original_mask,
-            crops_coords=block_state.crop_coords,
-        )
-
-        self.set_block_state(state, block_state)
         return components, state

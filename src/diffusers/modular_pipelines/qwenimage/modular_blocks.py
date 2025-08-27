@@ -26,20 +26,21 @@ from .before_denoise import (
     QwenImageSetTimestepsStep,
     QwenImageSetTimestepsWithStrengthStep,
 )
-from .decoders import QwenImageDecodeDynamicStep
+from .decoders import QwenImageDecodeDynamicStep, QwenImageInpaintProcessImagesOutputStep
 from .denoise import (
     QwenImageControlNetLoopBeforeDenoiser,
     QwenImageDenoiseStep,
     QwenImageEditDenoiseStep,
     QwenImageInpaintDenoiseStep,
 )
-from .encoders import QwenImageEditTextEncoderStep, QwenImageTextEncoderStep, QwenImageVaeEncoderDynamicStep
-from .input_output_processor import (
+from .encoders import (
     QwenImageEditResizeStep,
+    QwenImageEditTextEncoderStep,
     QwenImageInpaintProcessImagesInputStep,
-    QwenImageInpaintProcessImagesOutputStep,
-    QwenImageInputsDynamicStep,
+    QwenImageTextEncoderStep,
+    QwenImageVaeEncoderDynamicStep,
 )
+from .inputs import QwenImageInputsDynamicStep
 
 
 logger = logging.get_logger(__name__)
