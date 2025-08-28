@@ -22,7 +22,6 @@ import torch
 import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..models.embeddings import (
     ImageProjection,
     IPAdapterFaceIDImageProjection,
@@ -31,7 +30,8 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
+from ..models.model_loading_utils import load_model_dict_into_meta
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -44,6 +44,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
+from ..utils.torch_utils import empty_device_cache
 from .lora_base import _func_optionally_disable_offloading
 from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
 from .utils import AttnProcsLayers
@@ -132,6 +133,8 @@ class UNet2DConditionLoadersMixin:
         )
         ```
         """
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -752,6 +755,7 @@ class UNet2DConditionLoadersMixin:
         else:
             device_map = {"": self.device}
             load_model_dict_into_meta(image_projection, updated_state_dict, device_map=device_map, dtype=self.dtype)
+            empty_device_cache()
 
         return image_projection
 
@@ -848,6 +852,8 @@ class UNet2DConditionLoadersMixin:
                     load_model_dict_into_meta(attn_procs[name], value_dict, device_map=device_map, dtype=dtype)
 
                 key_id += 2
+
+        empty_device_cache()
 
         return attn_procs
 

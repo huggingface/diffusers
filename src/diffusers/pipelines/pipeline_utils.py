@@ -108,7 +108,7 @@ LIBRARIES = []
 for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
 
-SUPPORTED_DEVICE_MAP = ["balanced"]
+SUPPORTED_DEVICE_MAP = ["balanced"] + [get_device()]
 
 logger = logging.get_logger(__name__)
 
@@ -710,8 +710,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
+        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
+        auth login`.
 
         </Tip>
 
@@ -988,12 +988,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         _maybe_warn_for_wrong_component_in_quant_config(init_dict, quantization_config)
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 7.1 device_map shenanigans
-            if final_device_map is not None and len(final_device_map) > 0:
-                component_device = final_device_map.get(name, None)
-                if component_device is not None:
-                    current_device_map = {"": component_device}
-                else:
-                    current_device_map = None
+            if final_device_map is not None:
+                if isinstance(final_device_map, dict) and len(final_device_map) > 0:
+                    component_device = final_device_map.get(name, None)
+                    if component_device is not None:
+                        current_device_map = {"": component_device}
+                    else:
+                        current_device_map = None
+                elif isinstance(final_device_map, str):
+                    current_device_map = final_device_map
 
             # 7.2 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
@@ -1096,6 +1099,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         if device_map is not None:
             setattr(model, "hf_device_map", final_device_map)
+        if quantization_config is not None:
+            setattr(model, "quantization_config", quantization_config)
         return model
 
     @property
@@ -1428,8 +1433,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`.
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
+        auth login
 
         </Tip>
 
@@ -1703,6 +1708,36 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")
         return signature_types
+
+    @property
+    def parameters(self) -> Dict[str, Any]:
+        r"""
+        The `self.parameters` property can be useful to run different pipelines with the same weights and
+        configurations without reallocating additional memory.
+
+        Returns (`dict`):
+            A dictionary containing all the optional parameters needed to initialize the pipeline.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import (
+        ...     StableDiffusionPipeline,
+        ...     StableDiffusionImg2ImgPipeline,
+        ...     StableDiffusionInpaintPipeline,
+        ... )
+
+        >>> text2img = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
+        >>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components, **text2img.parameters)
+        >>> inpaint = StableDiffusionInpaintPipeline(**text2img.components, **text2img.parameters)
+        ```
+        """
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        pipeline_parameters = {
+            k: self.config[k] for k in self.config.keys() if not k.startswith("_") and k in optional_parameters
+        }
+
+        return pipeline_parameters
 
     @property
     def components(self) -> Dict[str, Any]:
@@ -1986,11 +2021,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             f"{'' if k.startswith('_') else '_'}{k}": v for k, v in original_config.items() if k not in pipeline_kwargs
         }
 
+        optional_components = (
+            pipeline._optional_components
+            if hasattr(pipeline, "_optional_components") and pipeline._optional_components
+            else []
+        )
         missing_modules = (
-            set(expected_modules)
-            - set(pipeline._optional_components)
-            - set(pipeline_kwargs.keys())
-            - set(true_optional_modules)
+            set(expected_modules) - set(optional_components) - set(pipeline_kwargs.keys()) - set(true_optional_modules)
         )
 
         if len(missing_modules) > 0:
