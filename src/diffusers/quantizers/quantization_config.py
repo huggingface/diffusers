@@ -46,6 +46,7 @@ class QuantizationMethod(str, Enum):
     GGUF = "gguf"
     TORCHAO = "torchao"
     QUANTO = "quanto"
+    NUNCHAKU = "nunchaku"
 
 
 if is_torchao_available():
@@ -724,3 +725,72 @@ class QuantoConfig(QuantizationConfigMixin):
         accepted_weights = ["float8", "int8", "int4", "int2"]
         if self.weights_dtype not in accepted_weights:
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
+
+
+class NunchakuConfig(QuantizationConfigMixin):
+    """
+    This is a wrapper class about all possible attributes and features that you can play with a model that has been
+    loaded using `nunchaku`.
+
+    Args:
+       TODO
+       modules_to_not_convert (`list`, *optional*, default to `None`):
+            The list of modules to not quantize, useful for quantizing models that explicitly require to have some
+            modules left in their original precision (e.g. `norm` layers in Qwen-Image).
+    """
+
+    def __init__(
+        self,
+        method: str = "svdquant",
+        weight_dtype: str = "int4",
+        weight_scale_dtype: str = None,
+        weight_group_size: int = 64,
+        activation_dtype: str = "int4",
+        activation_scale_dtype: str = None,
+        activation_group_size: int = 64,
+        rank: int = 32,
+        modules_to_not_convert: Optional[List[str]] = None,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.NUNCHAKU
+        self.method = method
+        self.weight_dtype = weight_dtype
+        self.weight_scale_dtype = weight_scale_dtype
+        self.weight_group_size = weight_group_size
+        self.activation_dtype = activation_dtype
+        self.activation_scale_dtype = activation_scale_dtype
+        self.activation_group_size = activation_group_size
+        self.rank = rank
+        self.modules_to_not_convert = modules_to_not_convert
+
+        self.post_init()
+
+    def post_init(self):
+        r"""
+        Safety checker that arguments are correct. Hardware checks were largely adapted from the official `nunchaku`
+        codebase.
+        """
+        from ..utils.torch_utils import get_device
+
+        device = get_device()
+        if isinstance(device, str):
+            device = torch.device(device)
+        capability = torch.cuda.get_device_capability(0 if device.index is None else device.index)
+        sm = f"{capability[0]}{capability[1]}"
+        if sm == "120":  # you can only use the fp4 models
+            if self.weight_dtype != "fp4_e2m1_all":
+                raise ValueError('Please use "fp4" quantization for Blackwell GPUs.')
+        elif sm in ["75", "80", "86", "89"]:
+            if self.weight_dtype != "int4":
+                raise ValueError('Please use "int4" quantization for Turing, Ampere and Ada GPUs.')
+        else:
+            raise ValueError(
+                f"Unsupported GPU architecture {sm} due to the lack of 4-bit tensorcores. "
+                "Please use a Turing, Ampere, Ada or Blackwell GPU for this quantization configuration."
+            )
+
+        # TODO: should there be a check for rank?
+
+    def __repr__(self):
+        config_dict = self.to_dict()
+        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"

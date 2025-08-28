@@ -2189,6 +2189,105 @@ def convert_animatediff_checkpoint_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
+# Adapted from https://github.com/nunchaku-tech/nunchaku/blob/3ec299f439f9986a69ded320798cab4e258c871d/nunchaku/models/transformers/transformer_flux_v2.py#L395
+def convert_nunchaku_flux_to_diffusers(checkpoint, **kwargs):
+    from .single_file_utils_nunchaku import _unpack_qkv_state_dict
+
+    _SMOOTH_ORIG_RE = re.compile(r"\.smooth_orig(\.|$)")
+    _SMOOTH_RE = re.compile(r"\.smooth(\.|$)")
+
+    new_state_dict = {}
+    model_state_dict = kwargs["model_state_dict"]
+
+    ckpt_keys = list(checkpoint.keys())
+    for k in ckpt_keys:
+        if "qweight" in k:
+            # only the shape information of this tensor is needed
+            v = checkpoint[k]
+            # if the tensor has qweight, but does not have low-rank branch, we need to add some artificial tensors
+            for t in ["lora_up", "lora_down"]:
+                new_k = k.replace(".qweight", f".{t}")
+                if new_k not in ckpt_keys:
+                    oc, ic = v.shape
+                    ic = ic * 2  # v is packed into INT8, so we need to double the size
+                    checkpoint[k.replace(".qweight", f".{t}")] = torch.zeros(
+                        (0, ic) if t == "lora_down" else (oc, 0), device=v.device, dtype=torch.bfloat16
+                    )
+
+    for k, v in checkpoint.items():
+        new_k = k  # start with original, then apply independent replacements
+
+        if k.startswith("single_transformer_blocks."):
+            # attention / qkv / norms
+            new_k = new_k.replace(".qkv_proj.", ".attn.to_qkv.")
+            new_k = new_k.replace(".out_proj.", ".proj_out.")
+            new_k = new_k.replace(".norm_k.", ".attn.norm_k.")
+            new_k = new_k.replace(".norm_q.", ".attn.norm_q.")
+
+            # mlp heads
+            new_k = new_k.replace(".mlp_fc1.", ".proj_mlp.")
+            new_k = new_k.replace(".mlp_fc2.", ".proj_out.")
+
+            # smooth params (use regex to avoid substring collisions)
+            new_k = _SMOOTH_ORIG_RE.sub(r".smooth_factor_orig\1", new_k)
+            new_k = _SMOOTH_RE.sub(r".smooth_factor\1", new_k)
+
+            # lora -> proj
+            new_k = new_k.replace(".lora_down", ".proj_down")
+            new_k = new_k.replace(".lora_up", ".proj_up")
+
+        elif k.startswith("transformer_blocks."):
+            # feed-forward (context & base)
+            new_k = new_k.replace(".mlp_context_fc1.", ".ff_context.net.0.proj.")
+            new_k = new_k.replace(".mlp_context_fc2.", ".ff_context.net.2.")
+            new_k = new_k.replace(".mlp_fc1.", ".ff.net.0.proj.")
+            new_k = new_k.replace(".mlp_fc2.", ".ff.net.2.")
+
+            # attention projections
+            new_k = new_k.replace(".qkv_proj_context.", ".attn.add_qkv_proj.")
+            new_k = new_k.replace(".qkv_proj.", ".attn.to_qkv.")
+            new_k = new_k.replace(".out_proj.", ".attn.to_out.0.")
+            new_k = new_k.replace(".out_proj_context.", ".attn.to_add_out.")
+
+            # norms
+            new_k = new_k.replace(".norm_k.", ".attn.norm_k.")
+            new_k = new_k.replace(".norm_q.", ".attn.norm_q.")
+            new_k = new_k.replace(".norm_added_k.", ".attn.norm_added_k.")
+            new_k = new_k.replace(".norm_added_q.", ".attn.norm_added_q.")
+
+            # smooth params
+            new_k = _SMOOTH_ORIG_RE.sub(r".smooth_factor_orig\1", new_k)
+            new_k = _SMOOTH_RE.sub(r".smooth_factor\1", new_k)
+
+            # lora -> proj
+            new_k = new_k.replace(".lora_down", ".proj_down")
+            new_k = new_k.replace(".lora_up", ".proj_up")
+
+        new_state_dict[new_k] = v
+
+    new_state_dict = _unpack_qkv_state_dict(new_state_dict)
+
+    # some remnant keys need to be patched
+    new_sd_keys = list(new_state_dict.keys())
+    for k in new_sd_keys:
+        if "qweight" in k:
+            no_qweight_k = ".".join(k.split(".qweight")[:-1])
+            for unexpected_k in ["wzeros"]:
+                unexpected_k = no_qweight_k + f".{unexpected_k}"
+                if unexpected_k in new_sd_keys:
+                    _ = new_state_dict.pop(unexpected_k)
+    for k in model_state_dict:
+        if k not in new_state_dict:
+            # CPU device for now
+            new_state_dict[k] = torch.ones_like(model_state_dict[k], device="cpu")
+
+    for k in new_state_dict:
+        if "single_transformer_blocks.0" in k and k.endswith(".weight"):
+            print(f"{k=}")
+
+    return new_state_dict
+
+
 def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())

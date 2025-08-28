@@ -23,6 +23,7 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
+from ..quantizers.quantization_config import NunchakuConfig
 from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
@@ -42,6 +43,7 @@ from .single_file_utils import (
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
+    convert_nunchaku_flux_to_diffusers,
     convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
@@ -188,6 +190,23 @@ def _get_mapping_function_kwargs(mapping_fn, **kwargs):
             mapping_kwargs[parameter] = kwargs[parameter]
 
     return mapping_kwargs
+
+
+def _maybe_determine_modules_to_not_convert(quantization_config, state_dict):
+    if quantization_config is None:
+        return None
+    else:
+        is_nunchaku = quantization_config.quant_method == "nunchaku"
+        if not is_nunchaku:
+            return None
+        else:
+            no_qweight = set()
+            for key in state_dict:
+                if key.endswith(".weight"):
+                    # module name is everything except the last piece after "."
+                    module_name = ".".join(key.split(".")[:-1])
+                    no_qweight.add(module_name)
+            return sorted(no_qweight)
 
 
 class FromOriginalModelMixin:
@@ -404,8 +423,14 @@ class FromOriginalModelMixin:
             model = cls.from_config(diffusers_model_config)
 
         checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
-
-        if _should_convert_state_dict_to_diffusers(model.state_dict(), checkpoint):
+        model_state_dict = model.state_dict()
+        # TODO: Only flux nunchaku checkpoint for now. Unify with how checkpoint mappers are done.
+        # For `nunchaku` checkpoints, we might want to determine the `modules_to_not_convert`.
+        if quantization_config is not None and quantization_config.quant_method == "nunchaku":
+            diffusers_format_checkpoint = convert_nunchaku_flux_to_diffusers(
+                checkpoint, model_state_dict=model_state_dict
+            )
+        elif _should_convert_state_dict_to_diffusers(model_state_dict, checkpoint):
             diffusers_format_checkpoint = checkpoint_mapping_fn(
                 config=diffusers_model_config, checkpoint=checkpoint, **checkpoint_mapping_kwargs
             )
@@ -416,6 +441,27 @@ class FromOriginalModelMixin:
             raise SingleFileComponentError(
                 f"Failed to load {mapping_class_name}. Weights for this component appear to be missing in the checkpoint."
             )
+
+        # This step is better off here than above because `diffusers_format_checkpoint` holds the keys we expect.
+        # We can move it to a separate function as well.
+        if quantization_config is not None:
+            original_modules_to_not_convert = quantization_config.modules_to_not_convert or []
+            determined_modules_to_not_convert = _maybe_determine_modules_to_not_convert(
+                quantization_config, checkpoint
+            )
+            if determined_modules_to_not_convert:
+                determined_modules_to_not_convert.extend(original_modules_to_not_convert)
+                determined_modules_to_not_convert = list(set(determined_modules_to_not_convert))
+                logger.debug(
+                    f"`modules_to_not_convert` in the quantization_config was updated from {quantization_config.modules_to_not_convert} to {determined_modules_to_not_convert}."
+                )
+                modified_quant_config = quantization_config.to_dict()
+                modified_quant_config["modules_to_not_convert"] = determined_modules_to_not_convert
+                # TODO: figure out a better way.
+                modified_quant_config = NunchakuConfig.from_dict(modified_quant_config)
+                setattr(hf_quantizer, "quantization_config", modified_quant_config)
+                logger.debug("TODO")
+
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
             (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
@@ -443,6 +489,12 @@ class FromOriginalModelMixin:
             unexpected_keys = [
                 param_name for param_name in diffusers_format_checkpoint if param_name not in empty_state_dict
             ]
+            for k in unexpected_keys:
+                if "single_transformer_blocks.0" in k:
+                    print(f"Unexpected {k=}")
+            for k in empty_state_dict:
+                if "single_transformer_blocks.0" in k:
+                    print(f"model {k=}")
             device_map = {"": param_device}
             load_model_dict_into_meta(
                 model,
