@@ -344,7 +344,7 @@ class ModularPipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdirname:
             base_pipe.save_pretrained(tmpdirname)
             pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_default_components(torch_dtype=torch.float32)
+            pipe.load_components(torch_dtype=torch.float32)
             pipe.to(torch_device)
 
         pipes.append(pipe)

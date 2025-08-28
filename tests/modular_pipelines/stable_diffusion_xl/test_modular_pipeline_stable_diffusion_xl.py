@@ -67,7 +67,7 @@ class SDXLModularTests:
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
         pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
-        pipeline.load_default_components(torch_dtype=torch_dtype)
+        pipeline.load_components(torch_dtype=torch_dtype)
         return pipeline
 
     def get_dummy_inputs(self, device, seed=0):
@@ -158,7 +158,7 @@ class SDXLModularIPAdapterTests:
         blocks = self.pipeline_blocks_class()
         _ = blocks.sub_blocks.pop("ip_adapter")
         pipe = blocks.init_pipeline(self.repo)
-        pipe.load_default_components(torch_dtype=torch.float32)
+        pipe.load_components(torch_dtype=torch.float32)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         cross_attention_dim = pipe.unet.config.get("cross_attention_dim")
