@@ -1998,8 +1998,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         Args:
             names: List of component names to load. If None, will load all components with
-                   default_creation_method == "from_pretrained". If provided as a list or string,
-                   will load only the specified components.
+                   default_creation_method == "from_pretrained". If provided as a list or string, will load only the
+                   specified components.
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
              - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
              - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
