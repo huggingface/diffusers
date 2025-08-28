@@ -44,15 +44,3 @@ model = AutoencoderKL.from_single_file(url)
 ## DecoderOutput
 
 [[autodoc]] models.autoencoders.vae.DecoderOutput
-
-## FlaxAutoencoderKL
-
-[[autodoc]] FlaxAutoencoderKL
-
-## FlaxAutoencoderKLOutput
-
-[[autodoc]] models.vae_flax.FlaxAutoencoderKLOutput
-
-## FlaxDecoderOutput
-
-[[autodoc]] models.vae_flax.FlaxDecoderOutput
