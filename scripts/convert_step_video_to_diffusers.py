@@ -97,6 +97,27 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "StepVideo-T2V-30B-Turbo":
+        config = {
+            "model_id": "stepfun-ai/stepvideo-t2v-turbo",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
     elif model_type == "StepVideo-TI2V-30B":
         config = {
             "model_id": "stepfun-ai/stepvideo-ti2v",
