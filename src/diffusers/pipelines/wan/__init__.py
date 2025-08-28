@@ -26,6 +26,7 @@ else:
     _import_structure["pipeline_wan_i2v"] = ["WanImageToVideoPipeline"]
     _import_structure["pipeline_wan_vace"] = ["WanVACEPipeline"]
     _import_structure["pipeline_wan_video2video"] = ["WanVideoToVideoPipeline"]
+    _import_structure["pipeline_wan_low_noise_upscale"] = ["WanLowNoiseUpscalePipeline", "upscale_image"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -38,6 +39,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_wan_i2v import WanImageToVideoPipeline
         from .pipeline_wan_vace import WanVACEPipeline
         from .pipeline_wan_video2video import WanVideoToVideoPipeline
+        from .pipeline_wan_low_noise_upscale import WanLowNoiseUpscalePipeline, upscale_image
 
 else:
     import sys

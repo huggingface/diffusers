@@ -592,12 +592,14 @@ else:
             "VisualClozePipeline",
             "VQDiffusionPipeline",
             "WanImageToVideoPipeline",
+            "WanLowNoiseUpscalePipeline",
             "WanPipeline",
             "WanVACEPipeline",
             "WanVideoToVideoPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "upscale_image",
         ]
     )
 
