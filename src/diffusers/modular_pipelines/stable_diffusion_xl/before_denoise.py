@@ -22,12 +22,12 @@ from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, ControlNetModel, ControlNetUnionModel, UNet2DConditionModel
-from ...pipelines.controlnet.multicontrolnet import MultiControlNetModel
+from ...models.controlnets.multicontrolnet import MultiControlNetModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import (
-    PipelineBlock,
+    ModularPipelineBlocks,
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
@@ -195,7 +195,7 @@ def prepare_latents_img2img(
     return latents
 
 
-class StableDiffusionXLInputStep(PipelineBlock):
+class StableDiffusionXLInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -213,11 +213,6 @@ class StableDiffusionXLInputStep(PipelineBlock):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "prompt_embeds",
                 required=True,
@@ -394,7 +389,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
+class StableDiffusionXLImg2ImgSetTimestepsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -421,11 +416,6 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
             InputParam("denoising_start"),
             # YiYi TODO: do we need num_images_per_prompt here?
             InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "batch_size",
                 required=True,
@@ -543,7 +533,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLSetTimestepsStep(PipelineBlock):
+class StableDiffusionXLSetTimestepsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -611,7 +601,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
+class StableDiffusionXLInpaintPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -640,11 +630,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
                 "`num_inference_steps`. A value of 1, therefore, essentially ignores `image`. Note that in the case of "
                 "`denoising_start` being declared as an integer, the value of `strength` will be ignored.",
             ),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam("generator"),
             InputParam(
                 "batch_size",
@@ -744,8 +729,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         timestep=None,
         is_strength_max=True,
         add_noise=True,
-        return_noise=False,
-        return_image_latents=False,
     ):
         shape = (
             batch_size,
@@ -768,7 +751,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         if image.shape[1] == 4:
             image_latents = image.to(device=device, dtype=dtype)
             image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
-        elif return_image_latents or (latents is None and not is_strength_max):
+        elif latents is None and not is_strength_max:
             image = image.to(device=device, dtype=dtype)
             image_latents = self._encode_vae_image(components, image=image, generator=generator)
             image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
@@ -786,13 +769,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             latents = image_latents.to(device)
 
-        outputs = (latents,)
-
-        if return_noise:
-            outputs += (noise,)
-
-        if return_image_latents:
-            outputs += (image_latents,)
+        outputs = (latents, noise, image_latents)
 
         return outputs
 
@@ -864,7 +841,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         block_state.height = block_state.image_latents.shape[-2] * components.vae_scale_factor
         block_state.width = block_state.image_latents.shape[-1] * components.vae_scale_factor
 
-        block_state.latents, block_state.noise = self.prepare_latents_inpaint(
+        block_state.latents, block_state.noise, block_state.image_latents = self.prepare_latents_inpaint(
             components,
             block_state.batch_size * block_state.num_images_per_prompt,
             components.num_channels_latents,
@@ -878,8 +855,6 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
             timestep=block_state.latent_timestep,
             is_strength_max=block_state.is_strength_max,
             add_noise=block_state.add_noise,
-            return_noise=True,
-            return_image_latents=False,
         )
 
         # 7. Prepare mask latent variables
@@ -900,7 +875,7 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
+class StableDiffusionXLImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -920,11 +895,6 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
             InputParam("latents"),
             InputParam("num_images_per_prompt", default=1),
             InputParam("denoising_start"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("generator"),
             InputParam(
                 "latent_timestep",
@@ -981,7 +951,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
+class StableDiffusionXLPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1002,11 +972,6 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
             InputParam("width"),
             InputParam("latents"),
             InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("generator"),
             InputParam(
                 "batch_size",
@@ -1092,7 +1057,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
+class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1129,11 +1094,6 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
             InputParam("num_images_per_prompt", default=1),
             InputParam("aesthetic_score", default=6.0),
             InputParam("negative_aesthetic_score", default=2.0),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam(
                 "latents",
                 required=True,
@@ -1316,7 +1276,7 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
+class StableDiffusionXLPrepareAdditionalConditioningStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1345,11 +1305,6 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
             InputParam("crops_coords_top_left", default=(0, 0)),
             InputParam("negative_crops_coords_top_left", default=(0, 0)),
             InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam(
                 "latents",
                 required=True,
@@ -1499,7 +1454,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLControlNetInputStep(PipelineBlock):
+class StableDiffusionXLControlNetInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1527,11 +1482,6 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
             InputParam("controlnet_conditioning_scale", default=1.0),
             InputParam("guess_mode", default=False),
             InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "latents",
                 required=True,
@@ -1718,7 +1668,7 @@ class StableDiffusionXLControlNetInputStep(PipelineBlock):
         return components, state
 
 
-class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
+class StableDiffusionXLControlNetUnionInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -1747,11 +1697,6 @@ class StableDiffusionXLControlNetUnionInputStep(PipelineBlock):
             InputParam("controlnet_conditioning_scale", default=1.0),
             InputParam("guess_mode", default=False),
             InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam(
                 "latents",
                 required=True,

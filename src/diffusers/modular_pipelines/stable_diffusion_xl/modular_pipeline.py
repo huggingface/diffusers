@@ -247,10 +247,6 @@ SDXL_INPUTS_SCHEMA = {
     "control_mode": InputParam(
         "control_mode", type_hint=List[int], required=True, description="Control mode for union controlnet"
     ),
-}
-
-
-SDXL_INTERMEDIATE_INPUTS_SCHEMA = {
     "prompt_embeds": InputParam(
         "prompt_embeds",
         type_hint=torch.Tensor,
@@ -270,13 +266,6 @@ SDXL_INTERMEDIATE_INPUTS_SCHEMA = {
     "dtype": InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
     "preprocess_kwargs": InputParam(
         "preprocess_kwargs", type_hint=Optional[dict], description="Kwargs for ImageProcessor"
-    ),
-    "latents": InputParam(
-        "latents", type_hint=torch.Tensor, required=True, description="Initial latents for denoising process"
-    ),
-    "timesteps": InputParam("timesteps", type_hint=torch.Tensor, required=True, description="Timesteps for inference"),
-    "num_inference_steps": InputParam(
-        "num_inference_steps", type_hint=int, required=True, description="Number of denoising steps"
     ),
     "latent_timestep": InputParam(
         "latent_timestep", type_hint=torch.Tensor, required=True, description="Initial noise level timestep"
