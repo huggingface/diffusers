@@ -1,4 +1,4 @@
-# Copyright 2025 StepFun Inc. All Rights Reserved.
+# Copyright 2025 The StepFun Inc. and The HuggingFace Team. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
