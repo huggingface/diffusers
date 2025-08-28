@@ -505,11 +505,13 @@ class Magi1TransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
-        condition_map: torch.Tensor,
+        temb_map: torch.Tensor,
+        y_encoder_attention_flat: torch.Tensor,
+        meta_args: torch.Tensor,
     ) -> torch.Tensor:
         residual = hidden_states.float()
 
-        # [bs, sq, h] --> [sq, bs, q + qx + k + v]
+        # [B, SQ, C] --> [SQ, B, q + qx + k + v]
         mixed_qqkv = self.norm1(hidden_states.transpose(0, 1))
 
         # 1. Self-attention
@@ -527,7 +529,7 @@ class Magi1TransformerBlock(nn.Module):
 
         # Residual connection for self-attention
         original_dtype = hidden_states.dtype
-        hidden_states = range_mod_pytorch(hidden_states.float(), condition_map, gate_msa)
+        hidden_states = range_mod_pytorch(hidden_states.float(), temb_map, gate_msa)
         hidden_states = self.norm2(hidden_states)
         hidden_states = hidden_states + residual
         residual = hidden_states
@@ -538,7 +540,7 @@ class Magi1TransformerBlock(nn.Module):
 
         # Residual connection for MLP
         original_dtype = hidden_states.dtype
-        hidden_states = range_mod_pytorch(hidden_states.float(), condition_map, gate_mlp)
+        hidden_states = range_mod_pytorch(hidden_states.float(), temb_map, gate_mlp)
         hidden_states = self.norm4(hidden_states)
         hidden_states = hidden_states + residual
         hidden_states = hidden_states.to(original_dtype)
@@ -648,55 +650,6 @@ class Magi1Transformer3DModel(
 
         self.gradient_checkpointing = False
 
-    def _generate_condition_map(
-        self, batch_size: int, seq_len: int, denoising_range_num: int, device: torch.device
-    ) -> torch.Tensor:
-        """
-        Generate condition map that determines which condition to use for each token.
-
-        Args:
-            batch_size: Batch size
-            seq_len: Sequence length (T*H*W after patching)
-            denoising_range_num: Number of denoising ranges
-            device: Device to create tensor on
-
-        Returns:
-            condition_map: (seq_len, batch_size) tensor mapping tokens to conditions
-        """
-        seqlen_per_chunk = seq_len // denoising_range_num
-        condition_map = torch.arange(batch_size * denoising_range_num, device=device)
-        condition_map = torch.repeat_interleave(condition_map, seqlen_per_chunk)
-
-        # Handle remainder if seq_len is not perfectly divisible
-        remainder = seq_len % denoising_range_num
-        if remainder > 0:
-            # Extend the last chunk indices for remaining tokens
-            last_indices = torch.full((remainder,), batch_size * denoising_range_num - 1, device=device)
-            condition_map = torch.cat([condition_map, last_indices])
-
-        condition_map = condition_map.reshape(batch_size, -1).transpose(0, 1).contiguous()
-        return condition_map
-
-    def _apply_attention_mask(self, y_xattn: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        """
-        Apply attention mask to cross-attention inputs, flattening variable-length sequences.
-
-        Args:
-            y_xattn: Cross-attention embeddings (B, seq_len, dim)
-            attention_mask: Attention mask (B, seq_len)
-
-        Returns:
-            y_xattn_flat: Flattened valid tokens (total_valid_tokens, dim)
-        """
-        # Ensure mask is boolean
-        if attention_mask.dtype != torch.bool:
-            attention_mask = attention_mask.bool()
-
-        # Flatten and select valid tokens
-        y_xattn_flat = torch.masked_select(y_xattn, attention_mask.unsqueeze(-1)).reshape(-1, y_xattn.shape[-1])
-
-        return y_xattn_flat
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -705,12 +658,15 @@ class Magi1Transformer3DModel(
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
-        condition_map: Optional[torch.Tensor] = None,
         denoising_range_num: Optional[int] = None,
+        range_num: Optional[int] = None,
         slice_point: Optional[int] = 0,
         kv_range: Optional[Tuple[int, int]] = None,
         num_steps: Optional[int] = None,
         distill_interval: Optional[int] = None,
+        extract_prefix_video_feature: Optional[bool] = False,
+        fwd_extra_1st_chunk: Optional[bool] = False,
+        distill_nearly_clean_chunk: Optional[bool] = False,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
@@ -754,41 +710,145 @@ class Magi1Transformer3DModel(
         # The shape of rotary_emb is (post_patch_num_frames*post_patch_height*post_patch_width, -1) aka (seq_length, head_dim), as post_patch_num_frames is the first dimension, we can directly cut it.
         rotary_emb = rotary_emb[-(post_patch_num_frames * post_patch_height * post_patch_width) :]
 
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)  # (B, T*H*W, C)
+        hidden_states = hidden_states.flatten(2).transpose(
+            1, 2
+        )  # (B, post_patch_num_frames * post_patch_height * post_patch_width, C)
 
-        # Generate condition_map if not provided
-        if condition_map is None:
-            condition_map = self._generate_condition_map(
-                batch_size,
-                post_patch_num_frames * post_patch_height * post_patch_width,
-                denoising_range_num or 1,
-                hidden_states.device,
-            )
-
-        timestep_shape = timestep.shape
-        temb, y_xattn, y_adaln = self.condition_embedder(
+        temb, y_encoder_attention, y_adaln = self.condition_embedder(
             timestep.flatten(),
             encoder_hidden_states,
-            num_steps=num_steps,
-            distill_interval=distill_interval,
+            num_steps,
+            distill_interval,
         )
 
-        temb = temb.reshape(*timestep_shape, -1) + y_adaln
+        temb = temb.reshape(batch_size, denoising_range_num, -1) + y_adaln
 
-        # Handle attention masking for variable-length sequences
-        if encoder_attention_mask is not None:
-            # Apply masking to flatten variable-length sequences
-            encoder_hidden_states = self._apply_attention_mask(y_xattn, encoder_attention_mask)
+        seqlen_per_chunk = (post_patch_num_frames * post_patch_height * post_patch_width) // denoising_range_num
+        temb_map = torch.arange(batch_size * denoising_range_num, device=hidden_states.device)
+        temb_map = torch.repeat_interleave(temb_map, seqlen_per_chunk)
+        temb_map = temb_map.reshape(batch_size, -1).transpose(0, 1).contiguous()
+
+        encoder_attention_mask = encoder_attention_mask.squeeze(1).squeeze(1)
+        # y_encoder_attention_flat: (total_token, D)
+        y_encoder_attention_flat = torch.masked_select(
+            y_encoder_attention.squeeze(1), encoder_attention_mask.unsqueeze(-1).bool()
+        ).reshape(-1, y_encoder_attention.shape[-1])
+        encoder_attention_mask_for_cuda_graph = None
+
+        # (N * denoising_range_num, L)
+        encoder_attention_mask = encoder_attention_mask.reshape(encoder_attention_mask.shape[0], -1)
+        y_index = torch.sum(encoder_attention_mask, dim=-1)
+        clip_token_nums = post_patch_height * post_patch_width * frame_in_range
+
+        cu_seqlens_q = torch.tensor(
+            [0] + ([clip_token_nums] * denoising_range_num * batch_size),
+            dtype=torch.int64,
+            device=hidden_states.device,
+        )
+        cu_seqlens_k = torch.cat([y_index.new_tensor([0]), y_index]).to(torch.int64).to(hidden_states.device)
+        cu_seqlens_q = cu_seqlens_q.cumsum(-1).to(torch.int32)
+        cu_seqlens_k = cu_seqlens_k.cumsum(-1).to(torch.int32)
+        if cu_seqlens_q.shape != cu_seqlens_k.shape:
+            raise ValueError(f"cu_seqlens_q.shape: {cu_seqlens_q.shape} != cu_seqlens_k.shape: {cu_seqlens_k.shape}")
+
+        encoder_attention_q_ranges = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
+        encoder_attention_k_ranges = torch.cat([cu_seqlens_k[:-1].unsqueeze(1), cu_seqlens_k[1:].unsqueeze(1)], dim=1)
+        if encoder_attention_q_ranges.shape != encoder_attention_k_ranges.shape:
+            raise ValueError(
+                f"encoder_attention_q_ranges.shape: {encoder_attention_q_ranges.shape} != encoder_attention_k_ranges.shape: {encoder_attention_k_ranges.shape}"
+            )
+
+        cross_attn_params = {
+            "q_ranges": encoder_attention_q_ranges,
+            "kv_ranges": encoder_attention_k_ranges,
+            "cu_seqlens_q": cu_seqlens_q,
+            "cu_seqlens_kv": cu_seqlens_k,
+            "max_seqlen_q": clip_token_nums,
+            "max_seqlen_kv": 800,
+        }
+
+        # Prepare self attention related q/kv range
+        q_range = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
+        flat_kv = torch.unique(kv_range, sorted=True)
+        max_seqlen_k = (flat_kv[-1] - flat_kv[0]).cpu().item()
+
+        ardf_meta = {
+            "clip_token_nums": clip_token_nums,
+            "slice_point": slice_point,
+            "range_num": range_num,
+            "denoising_range_num": denoising_range_num,
+            "q_range": q_range,
+            "k_range": kv_range,
+            "max_seqlen_q": clip_token_nums,
+            "max_seqlen_k": max_seqlen_k,
+        }
+
+        hidden_states = hidden_states.to(self.config.dtype)
+        temb = temb.to(self.model_config.params_dtype)
+        y_encoder_attention_flat = y_encoder_attention_flat.to(self.model_config.params_dtype)
+
+        self_attn_params = {
+            "q_range": q_range,
+            "k_range": kv_range,
+            "np_q_range": q_range.cpu().numpy(),
+            "np_k_range": kv_range.cpu().numpy(),
+            "max_seqlen_q": clip_token_nums,
+            "max_seqlen_k": max_seqlen_k,
+        }
+
+        # (hidden_states, temb_map, rotary_emb, cp_pad_size, cp_split_sizes, self_attn_params, cross_attn_params) = cp_pre_process(
+        #     self.engine_config.cp_size,
+        #     self.engine_config.cp_strategy,
+        #     hidden_states,
+        #     temb_map,
+        #     rotary_emb,
+        #     encoder_attention_mask_for_cuda_graph,
+        #     ardf_meta,
+        #     self_attn_params,
+        #     cross_attn_params,
+        # )
+
+        meta_args = {
+            "H": post_patch_height,
+            "W": post_patch_width,
+            # "cp_pad_size": cp_pad_size,
+            # "cp_split_sizes": cp_split_sizes,
+            "slice_point": ardf_meta["slice_point"],
+            "denoising_range_num": ardf_meta["denoising_range_num"],
+            "range_num": ardf_meta["range_num"],
+            "extract_prefix_video_feature": extract_prefix_video_feature,
+            "fwd_extra_1st_chunk": fwd_extra_1st_chunk,
+            "distill_nearly_clean_chunk": distill_nearly_clean_chunk,
+            "clip_token_nums": ardf_meta["clip_token_nums"],
+            "enable_cuda_graph": encoder_attention_mask_for_cuda_graph is not None,
+            "self_attn_params": self_attn_params,
+            "cross_attn_params": cross_attn_params,
+        }
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.blocks:
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, temb, rotary_emb, condition_map
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    rotary_emb,
+                    temb_map,
+                    y_encoder_attention_flat,
+                    meta_args,
                 )
         else:
             for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, temb, rotary_emb, condition_map)
+                hidden_states = block(
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    rotary_emb,
+                    temb_map,
+                    y_encoder_attention_flat,
+                    meta_args,
+                )
 
         hidden_states = self.norm_out(hidden_states)
         hidden_states = self.proj_out(hidden_states)
