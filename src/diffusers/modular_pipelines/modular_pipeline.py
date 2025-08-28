@@ -299,7 +299,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     def from_pretrained(
         cls,
         pretrained_model_name_or_path: str,
-        trust_remote_code: Optional[bool] = None,
+        trust_remote_code: bool = False,
         **kwargs,
     ):
         hub_kwargs_names = [
