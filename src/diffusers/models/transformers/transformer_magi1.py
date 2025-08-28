@@ -282,44 +282,6 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
 
 
-class Magi1ImageEmbedding(torch.nn.Module):
-    """
-    Image embedding layer for the MAGI-1 model.
-
-    This module processes image conditioning features for image-to-video generation tasks. It applies layer
-    normalization, a feed-forward transformation, and optional positional embeddings to prepare image features for
-    cross-attention.
-
-    Args:
-        in_features (`int`): Input feature dimension.
-        out_features (`int`): Output feature dimension.
-        pos_embed_seq_len (`int`, optional): Sequence length for positional embeddings.
-            If provided, learnable positional embeddings will be added to the input.
-    """
-
-    def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
-        super().__init__()
-
-        self.norm1 = FP32LayerNorm(in_features)
-        self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
-        self.norm2 = FP32LayerNorm(out_features)
-        # if pos_embed_seq_len is not None:
-        #     self.pos_embed = nn.Parameter(torch.zeros(1, pos_embed_seq_len, in_features))
-        # else:
-        #     self.pos_embed = None
-
-    def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
-        # if self.pos_embed is not None:
-        #     batch_size, seq_len, embed_dim = encoder_hidden_states_image.shape
-        #     encoder_hidden_states_image = encoder_hidden_states_image.view(-1, 2 * seq_len, embed_dim)
-        #     encoder_hidden_states_image = encoder_hidden_states_image + self.pos_embed
-
-        hidden_states = self.norm1(encoder_hidden_states_image)
-        hidden_states = self.ff(hidden_states)
-        hidden_states = self.norm2(hidden_states)
-        return hidden_states
-
-
 class Magi1TextProjection(nn.Module):
     """
     Projects caption embeddings.
@@ -336,20 +298,18 @@ class Magi1TextProjection(nn.Module):
         return caption_xattn, caption_adaln
 
 
-class Magi1TimeTextImageEmbedding(nn.Module):
+class Magi1TimeTextEmbedding(nn.Module):
     """
-    Combined time, text, and image embedding module for the MAGI-1 model.
+    Combined time, text embedding module for the MAGI-1 model.
 
-    This module handles the encoding of three types of conditioning inputs:
+    This module handles the encoding of two types of conditioning inputs:
     1. Timestep embeddings for diffusion process control
     2. Text embeddings for text-to-video generation
-    3. Optional image embeddings for image-to-video generation
 
     Args:
         dim (`int`): Hidden dimension of the transformer model.
         time_freq_dim (`int`): Dimension for sinusoidal time embeddings.
         text_embed_dim (`int`): Input dimension of text embeddings.
-        pos_embed_seq_len (`int`, optional): Sequence length for image positional embeddings.
         enable_distillation (`bool`, optional): Enable distillation timestep adjustments.
     """
 
@@ -358,7 +318,6 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         dim: int,
         time_freq_dim: int,
         text_embed_dim: int,
-        pos_embed_seq_len: Optional[int] = None,
         enable_distillation: bool = False,
     ):
         super().__init__()
@@ -373,7 +332,6 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
         num_steps: Optional[int] = None,
         distill_interval: Optional[int] = None,
     ):
@@ -618,10 +576,6 @@ class Magi1Transformer3DModel(
             The number of transformer layers to use.
         eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
-        image_embed_dim (`Optional[int]`, defaults to `None`):
-            Dimension of image embeddings for image-to-video tasks.
-        # pos_embed_seq_len (`Optional[int]`, defaults to `None`):
-        #     Sequence length for positional embeddings in image conditioning.
     """
 
     _supports_gradient_checkpointing = True
@@ -667,18 +621,14 @@ class Magi1Transformer3DModel(
         self.rope = Magi1RotaryPosEmbed(inner_dim // num_attention_heads)
 
         # 2. Condition embeddings
-        self.condition_embedder = Magi1TimeTextImageEmbedding(
+        self.condition_embedder = Magi1TimeTextEmbedding(
             dim=inner_dim,
             time_freq_dim=freq_dim,
             text_embed_dim=cross_attention_dim,
-            # pos_embed_seq_len=pos_embed_seq_len,
             enable_distillation=enable_distillation,
         )
 
         # 3. Transformer blocks
-        # For image-to-video tasks, we may need additional projections
-        # added_kv_proj_dim = image_embed_dim if image_embed_dim is not None else None
-
         self.blocks = nn.ModuleList(
             [
                 Magi1TransformerBlock(
