@@ -1541,17 +1541,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             params[input_param.name] = input_param.default
         return params
 
-    def load_default_components(self, **kwargs):
-        """
-        Load from_pretrained components using the loading specs in the config dict.
-
-        Args:
-            **kwargs: Additional arguments passed to `from_pretrained` method, e.g. torch_dtype, cache_dir, etc.
-        """
-        # Consolidated into load_components - just call it without names parameter
-        logger.warning("`load_default_components` is deprecated. Please use `load_components()` instead")
-        self.load_components(**kwargs)
-
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(
