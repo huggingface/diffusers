@@ -38,6 +38,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
+    _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_kl_wan"] = ["AutoencoderKLWan"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
@@ -50,6 +51,10 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_hunyuan"] = [
         "HunyuanDiT2DControlNetModel",
         "HunyuanDiT2DMultiControlNetModel",
+    ]
+    _import_structure["controlnets.controlnet_qwenimage"] = [
+        "QwenImageControlNetModel",
+        "QwenImageMultiControlNetModel",
     ]
     _import_structure["controlnets.controlnet_sana"] = ["SanaControlNetModel"]
     _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
@@ -75,6 +80,7 @@ if is_torch_available():
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
+    _import_structure["transformers.transformer_bria"] = ["BriaTransformer2DModel"]
     _import_structure["transformers.transformer_chroma"] = ["ChromaTransformer2DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
     _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
@@ -88,6 +94,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
+    _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
@@ -126,6 +133,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
+            AutoencoderKLQwenImage,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
@@ -144,6 +152,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DMultiControlNetModel,
             MultiControlNetModel,
             MultiControlNetUnionModel,
+            QwenImageControlNetModel,
+            QwenImageMultiControlNetModel,
             SanaControlNetModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
@@ -155,6 +165,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
+            BriaTransformer2DModel,
             ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
@@ -177,6 +188,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            QwenImageTransformer2DModel,
             SanaTransformer2DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,

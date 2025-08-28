@@ -54,10 +54,6 @@ To check a specific pipeline or model output, refer to its corresponding API doc
 
 [[autodoc]] pipelines.ImagePipelineOutput
 
-## FlaxImagePipelineOutput
-
-[[autodoc]] pipelines.pipeline_flax_utils.FlaxImagePipelineOutput
-
 ## AudioPipelineOutput
 
 [[autodoc]] pipelines.AudioPipelineOutput

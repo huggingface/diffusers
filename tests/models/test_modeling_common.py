@@ -36,12 +36,12 @@ import safetensors.torch
 import torch
 import torch.nn as nn
 from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
-from huggingface_hub import ModelCard, delete_repo, snapshot_download
+from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_load_from_cache
 from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 
-from diffusers.models import SD3Transformer2DModel, UNet2DConditionModel
+from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor,
     AttnProcessor2_0,
@@ -75,7 +75,6 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_accelerator,
     require_torch_accelerator_with_training,
-    require_torch_gpu,
     require_torch_multi_accelerator,
     require_torch_version_greater,
     run_test_in_subprocess,
@@ -291,6 +290,54 @@ class ModelUtilsTest(unittest.TestCase):
         for p1, p2 in zip(orig_model.parameters(), model.parameters()):
             if p1.data.ne(p2.data).sum() > 0:
                 assert False, "Parameters not the same!"
+
+    def test_local_files_only_with_sharded_checkpoint(self):
+        repo_id = "hf-internal-testing/tiny-flux-sharded"
+        error_response = mock.Mock(
+            status_code=500,
+            headers={},
+            raise_for_status=mock.Mock(side_effect=HTTPError),
+            json=mock.Mock(return_value={}),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = FluxTransformer2DModel.from_pretrained(repo_id, subfolder="transformer", cache_dir=tmpdir)
+
+            with mock.patch("requests.Session.get", return_value=error_response):
+                # Should fail with local_files_only=False (network required)
+                # We would make a network call with model_info
+                with self.assertRaises(OSError):
+                    FluxTransformer2DModel.from_pretrained(
+                        repo_id, subfolder="transformer", cache_dir=tmpdir, local_files_only=False
+                    )
+
+                # Should succeed with local_files_only=True (uses cache)
+                # model_info call skipped
+                local_model = FluxTransformer2DModel.from_pretrained(
+                    repo_id, subfolder="transformer", cache_dir=tmpdir, local_files_only=True
+                )
+
+            assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), local_model.parameters())), (
+                "Model parameters don't match!"
+            )
+
+            # Remove a shard file
+            cached_shard_file = try_to_load_from_cache(
+                repo_id, filename="transformer/diffusion_pytorch_model-00001-of-00002.safetensors", cache_dir=tmpdir
+            )
+            os.remove(cached_shard_file)
+
+            # Attempting to load from cache should raise an error
+            with self.assertRaises(OSError) as context:
+                FluxTransformer2DModel.from_pretrained(
+                    repo_id, subfolder="transformer", cache_dir=tmpdir, local_files_only=True
+                )
+
+            # Verify error mentions the missing shard
+            error_msg = str(context.exception)
+            assert cached_shard_file in error_msg or "required according to the checkpoint index" in error_msg, (
+                f"Expected error about missing shard, got: {error_msg}"
+            )
 
     @unittest.skip("Flaky behaviour on CI. Re-enable after migrating to new runners")
     @unittest.skipIf(torch_device == "mps", reason="Test not supported for MPS.")
@@ -1430,6 +1477,41 @@ class ModelTesterMixin:
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
     @require_torch_accelerator
+    def test_sharded_checkpoints_with_parallel_loading(self):
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_persistent_sizes(model)[""]
+        max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
+            self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
+
+            # Now check if the right number of shards exists. First, let's get the number of shards.
+            # Since this number can be dependent on the model being tested, it's important that we calculate it
+            # instead of hardcoding it.
+            expected_num_shards = caculate_expected_num_shards(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME))
+            actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
+            self.assertTrue(actual_num_shards == expected_num_shards)
+
+            # Load with parallel loading
+            os.environ["HF_ENABLE_PARALLEL_LOADING"] = "yes"
+            new_model = self.model_class.from_pretrained(tmp_dir).eval()
+            new_model = new_model.to(torch_device)
+
+            torch.manual_seed(0)
+            if "generator" in inputs_dict:
+                _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            new_output = new_model(**inputs_dict)
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+            # set to no.
+            os.environ["HF_ENABLE_PARALLEL_LOADING"] = "no"
+
+    @require_torch_accelerator
     def test_sharded_checkpoints_device_map(self):
         if self.model_class._no_split_modules is None:
             pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
@@ -1531,7 +1613,8 @@ class ModelTesterMixin:
 
     @torch.no_grad()
     def test_layerwise_casting_inference(self):
-        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
 
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1545,7 +1628,7 @@ class ModelTesterMixin:
             if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
                 patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
             for name, submodule in module.named_modules():
-                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                if not isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     continue
                 dtype_to_check = storage_dtype
                 if any(re.search(pattern, name) for pattern in patterns_to_check):
@@ -1711,6 +1794,11 @@ class ModelTesterMixin:
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
+        if self.model_class.__name__ == "QwenImageTransformer2DModel":
+            pytest.skip(
+                "QwenImageTransformer2DModel doesn't support group offloading with disk. Needs to be investigated."
+            )
+
         def _has_generator_arg(model):
             sig = inspect.signature(model.forward)
             params = sig.parameters
@@ -1829,8 +1917,8 @@ class ModelTesterMixin:
 
         assert msg_substring in str(err_ctx.exception)
 
-    @parameterized.expand([0, "cuda", torch.device("cuda")])
-    @require_torch_gpu
+    @parameterized.expand([0, torch_device, torch.device(torch_device)])
+    @require_torch_accelerator
     def test_passing_non_dict_device_map_works(self, device_map):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).eval()
@@ -1839,8 +1927,8 @@ class ModelTesterMixin:
             loaded_model = self.model_class.from_pretrained(tmpdir, device_map=device_map)
             _ = loaded_model(**inputs_dict)
 
-    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
-    @require_torch_gpu
+    @parameterized.expand([("", torch_device), ("", torch.device(torch_device))])
+    @require_torch_accelerator
     def test_passing_dict_device_map_works(self, name, device):
         # There are other valid dict-based `device_map` values too. It's best to refer to
         # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
@@ -1945,10 +2033,11 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
 
-@require_torch_gpu
+@require_torch_accelerator
 @require_torch_2
 @is_torch_compile
 @slow
+@require_torch_version_greater("2.7.1")
 class TorchCompileTesterMixin:
     different_shapes_for_compilation = None
 
@@ -2013,7 +2102,7 @@ class TorchCompileTesterMixin:
         model.eval()
         # TODO: Can test for other group offloading kwargs later if needed.
         group_offload_kwargs = {
-            "onload_device": "cuda",
+            "onload_device": torch_device,
             "offload_device": "cpu",
             "offload_type": "block_level",
             "num_blocks_per_group": 1,
@@ -2047,6 +2136,7 @@ class TorchCompileTesterMixin:
 @require_torch_accelerator
 @require_peft_backend
 @require_peft_version_greater("0.14.0")
+@require_torch_version_greater("2.7.1")
 @is_torch_compile
 class LoraHotSwappingForModelTesterMixin:
     """Test that hotswapping does not result in recompilation on the model directly.

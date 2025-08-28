@@ -5,23 +5,23 @@
   - local: installation
     title: Installation
   - local: quicktour
-    title: Quicktour
+    title: Quickstart
   - local: stable_diffusion
-    title: Effective and efficient diffusion
+    title: Basic performance
 
-- title: DiffusionPipeline
+- title: Pipelines
   isExpanded: false
   sections:
   - local: using-diffusers/loading
-    title: Load pipelines
+    title: DiffusionPipeline
   - local: tutorials/autopipeline
     title: AutoPipeline
   - local: using-diffusers/custom_pipeline_overview
-    title: Load community pipelines and components
+    title: Community pipelines and components
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
-    title: Reproducible pipelines
+    title: Reproducibility
   - local: using-diffusers/schedulers
     title: Load schedulers and models
   - local: using-diffusers/scheduler_features
@@ -62,8 +62,6 @@
     title: Scheduler features
   - local: using-diffusers/callback
     title: Pipeline callbacks
-  - local: using-diffusers/reusing_seeds
-    title: Reproducible pipelines
   - local: using-diffusers/image_quality
     title: Controlling image quality
 
@@ -77,7 +75,7 @@
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/speed-memory-optims
-    title: Compile and offloading quantized models
+    title: Compiling and offloading quantized models
   - title: Community optimizations
     sections:
     - local: optimization/pruna
@@ -112,22 +110,24 @@
   sections:
   - local: modular_diffusers/overview
     title: Overview
-  - local: modular_diffusers/modular_pipeline
-    title: Modular Pipeline
-  - local: modular_diffusers/components_manager
-    title: Components Manager
+  - local: modular_diffusers/quickstart
+    title: Quickstart
   - local: modular_diffusers/modular_diffusers_states
-    title: Modular Diffusers States
+    title: States
   - local: modular_diffusers/pipeline_block
-    title: Pipeline Block
+    title: ModularPipelineBlocks
   - local: modular_diffusers/sequential_pipeline_blocks
-    title: Sequential Pipeline Blocks
+    title: SequentialPipelineBlocks
   - local: modular_diffusers/loop_sequential_pipeline_blocks
-    title: Loop Sequential Pipeline Blocks
+    title: LoopSequentialPipelineBlocks
   - local: modular_diffusers/auto_pipeline_blocks
-    title: Auto Pipeline Blocks
-  - local: modular_diffusers/end_to_end_guide
-    title: End-to-End Example
+    title: AutoPipelineBlocks
+  - local: modular_diffusers/modular_pipeline
+    title: ModularPipeline
+  - local: modular_diffusers/components_manager
+    title: ComponentsManager
+  - local: modular_diffusers/guiders
+    title: Guiders
 
 - title: Training
   isExpanded: false
@@ -179,7 +179,7 @@
   isExpanded: false
   sections:
   - local: quantization/overview
-    title: Getting Started
+    title: Getting started
   - local: quantization/bitsandbytes
     title: bitsandbytes
   - local: quantization/gguf
@@ -192,8 +192,6 @@
 - title: Model accelerators and hardware
   isExpanded: false
   sections:
-  - local: using-diffusers/stable_diffusion_jax_how_to
-    title: JAX/Flax
   - local: optimization/onnx
     title: ONNX
   - local: optimization/open_vino
@@ -282,6 +280,18 @@
       title: Outputs
     - local: api/quantization
       title: Quantization
+  - title: Modular
+    sections:
+    - local: api/modular_diffusers/pipeline
+      title: Pipeline
+    - local: api/modular_diffusers/pipeline_blocks
+      title: Blocks
+    - local: api/modular_diffusers/pipeline_states
+      title: States
+    - local: api/modular_diffusers/pipeline_components
+      title: Components and configs
+    - local: api/modular_diffusers/guiders
+      title: Guiders
   - title: Loaders
     sections:
     - local: api/loaders/ip_adapter
@@ -326,6 +336,8 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/bria_transformer
+        title: BriaTransformer2DModel
       - local: api/models/chroma_transformer
         title: ChromaTransformer2DModel
       - local: api/models/cogvideox_transformer3d
@@ -366,6 +378,8 @@
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
         title: PriorTransformer
+      - local: api/models/qwenimage_transformer2d
+        title: QwenImageTransformer2DModel
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
       - local: api/models/sd3_transformer2d
@@ -418,6 +432,8 @@
         title: AutoencoderKLMagvit
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
+      - local: api/models/autoencoderkl_qwenimage
+        title: AutoencoderKLQwenImage
       - local: api/models/autoencoder_kl_wan
         title: AutoencoderKLWan
       - local: api/models/consistency_decoder_vae
@@ -450,6 +466,8 @@
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
       title: BLIP-Diffusion
+    - local: api/pipelines/bria_3_2
+      title: Bria 3.2
     - local: api/pipelines/chroma
       title: Chroma
     - local: api/pipelines/cogvideox
@@ -554,6 +572,8 @@
       title: PixArt-α
     - local: api/pipelines/pixart_sigma
       title: PixArt-Σ
+    - local: api/pipelines/qwenimage
+      title: QwenImage
     - local: api/pipelines/sana
       title: Sana
     - local: api/pipelines/sana_sprint

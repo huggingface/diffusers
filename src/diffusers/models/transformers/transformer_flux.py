@@ -22,8 +22,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.import_utils import is_torch_npu_available
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -354,25 +353,13 @@ class FluxSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        if is_torch_npu_available():
-            from ..attention_processor import FluxAttnProcessor2_0_NPU
-
-            deprecation_message = (
-                "Defaulting to FluxAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
-                "should be set explicitly using the `set_attn_processor` method."
-            )
-            deprecate("npu_processor", "0.34.0", deprecation_message)
-            processor = FluxAttnProcessor2_0_NPU()
-        else:
-            processor = FluxAttnProcessor()
-
         self.attn = FluxAttention(
             query_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             out_dim=dim,
             bias=True,
-            processor=processor,
+            processor=FluxAttnProcessor(),
             eps=1e-6,
             pre_only=True,
         )
@@ -384,7 +371,7 @@ class FluxSingleTransformerBlock(nn.Module):
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         text_seq_len = encoder_hidden_states.shape[1]
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 

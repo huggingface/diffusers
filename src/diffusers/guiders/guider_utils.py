@@ -20,7 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin
-from ..utils import PushToHubMixin, get_logger
+from ..utils import BaseOutput, PushToHubMixin, get_logger
 
 
 if TYPE_CHECKING:
@@ -249,8 +249,8 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`. You can also activate the special
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
+        auth login`. You can also activate the special
         ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
         firewalled environment.
 
@@ -282,6 +282,12 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
+
+
+class GuiderOutput(BaseOutput):
+    pred: torch.Tensor
+    pred_cond: Optional[torch.Tensor]
+    pred_uncond: Optional[torch.Tensor]
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
