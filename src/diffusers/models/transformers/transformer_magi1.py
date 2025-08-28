@@ -121,13 +121,22 @@ class Magi1AttnProcessor:
                 freqs_cos: torch.Tensor,
                 freqs_sin: torch.Tensor,
             ):
-                x1, x2 = hidden_states.unflatten(-1, (-1, 2)).unbind(-1)
-                cos = freqs_cos[..., 0::2]
-                sin = freqs_sin[..., 1::2]
-                out = torch.empty_like(hidden_states)
-                out[..., 0::2] = x1 * cos - x2 * sin
-                out[..., 1::2] = x1 * sin + x2 * cos
-                return out.type_as(hidden_states)
+                ro_dim = freqs_cos.shape[-1] * 2
+                if ro_dim > hidden_states.shape[-1]:
+                    raise ValueError(
+                        f"Expected query's or key's head_dim to have at least {ro_dim} dimensions, but got {hidden_states.shape[-1]}"
+                    )
+                cos = torch.repeat_interleave(freqs_cos, 2, dim=-1).unsqueeze(-2)
+                sin = torch.repeat_interleave(freqs_sin, 2, dim=-1).unsqueeze(-2)
+                x1, x2 = hidden_states.chunk(2, dim=-1)
+                hidden_states_rotated_half = torch.cat([-x2, x1], dim=-1)
+                return torch.cat(
+                    [
+                        hidden_states[..., :ro_dim] * cos + hidden_states_rotated_half * sin,
+                        hidden_states[..., ro_dim:],
+                    ],
+                    dim=-1,
+                )
 
             query = apply_rotary_emb(query, *rotary_emb)
             key = apply_rotary_emb(key, *rotary_emb)
@@ -466,7 +475,7 @@ class Magi1RotaryPosEmbed(nn.Module):
         freqs_cos = freqs_cos.reshape(num_spatial_dim, -1)
         freqs_sin = freqs_sin.reshape(num_spatial_dim, -1)
 
-        return torch.cat([freqs_sin, freqs_cos], dim=-1)
+        return freqs_cos, freqs_sin
 
 
 class Magi1TransformerBlock(nn.Module):
