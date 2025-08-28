@@ -51,3 +51,13 @@ If you're interested in using one of the official checkpoints for a task, explor
 ## StableDiffusionPipelineOutput
 
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
+
+## FlaxStableDiffusionPipeline
+
+[[autodoc]] FlaxStableDiffusionPipeline
+	- all
+	- __call__
+
+## FlaxStableDiffusionPipelineOutput
+
+[[autodoc]] pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput

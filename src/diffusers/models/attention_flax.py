@@ -19,11 +19,6 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-from ..utils import logging
-
-
-logger = logging.get_logger(__name__)
-
 
 def _query_chunk_attention(query, key, value, precision, key_chunk_size: int = 4096):
     """Multi-head dot product attention with a limited number of queries."""
@@ -156,11 +151,6 @@ class FlaxAttention(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
-        logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
-            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
-        )
-
         inner_dim = self.dim_head * self.heads
         self.scale = self.dim_head**-0.5
 
@@ -287,11 +277,6 @@ class FlaxBasicTransformerBlock(nn.Module):
     split_head_dim: bool = False
 
     def setup(self):
-        logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
-            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
-        )
-
         # self attention (or cross_attention if only_cross_attention is True)
         self.attn1 = FlaxAttention(
             self.dim,
@@ -380,11 +365,6 @@ class FlaxTransformer2DModel(nn.Module):
     split_head_dim: bool = False
 
     def setup(self):
-        logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
-            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
-        )
-
         self.norm = nn.GroupNorm(num_groups=32, epsilon=1e-5)
 
         inner_dim = self.n_heads * self.d_head
@@ -474,11 +454,6 @@ class FlaxFeedForward(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
-        logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
-            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
-        )
-
         # The second linear layer needs to be called
         # net_2 for now to match the index of the Sequential layer
         self.net_0 = FlaxGEGLU(self.dim, self.dropout, self.dtype)
@@ -509,11 +484,6 @@ class FlaxGEGLU(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
-        logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
-            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
-        )
-
         inner_dim = self.dim * 4
         self.proj = nn.Dense(inner_dim * 2, dtype=self.dtype)
         self.dropout_layer = nn.Dropout(rate=self.dropout)

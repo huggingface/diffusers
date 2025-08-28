@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
 
 from ...configuration_utils import ConfigMixin, flax_register_to_config
-from ...utils import BaseOutput, logging
+from ...utils import BaseOutput
 from ..embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
 from ..modeling_flax_utils import FlaxModelMixin
 from .unet_2d_blocks_flax import (
@@ -30,9 +30,6 @@ from .unet_2d_blocks_flax import (
     FlaxUNetMidBlock2DCrossAttn,
     FlaxUpBlock2D,
 )
-
-
-logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -166,11 +163,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         return self.init(rngs, sample, timesteps, encoder_hidden_states, added_cond_kwargs)["params"]
 
     def setup(self) -> None:
-        logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
-            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
-        )
-
         block_out_channels = self.block_out_channels
         time_embed_dim = block_out_channels[0] * 4
 

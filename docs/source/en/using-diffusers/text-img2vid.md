@@ -287,7 +287,7 @@ export_to_video(output, "output.mp4", fps=16)
 
 ## Reduce memory usage
 
-Recent video models like [`HunyuanVideoPipeline`] and [`WanPipeline`], which have 10B+ parameters, require a lot of memory and it often exceeds the memory available on consumer hardware. Diffusers offers several techniques for reducing the memory requirements of these large models.
+Recent video models like [`HunyuanVideoPipeline`] and [`WanPipeline`], which have 10B+ parameters, require a lot of memory and it often exceeds the memory availabe on consumer hardware. Diffusers offers several techniques for reducing the memory requirements of these large models.
 
 > [!TIP]
 > Refer to the [Reduce memory usage](../optimization/memory) guide for more details about other memory saving techniques.

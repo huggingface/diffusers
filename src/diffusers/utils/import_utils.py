@@ -70,11 +70,10 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[b
                 # Fallback for Python < 3.10
                 for dist in importlib_metadata.distributions():
                     _top_level_declared = (dist.read_text("top_level.txt") or "").split()
-                    # Infer top-level package names from file structure
-                    _inferred_opt_names = {
+                    _infered_opt_names = {
                         f.parts[0] if len(f.parts) > 1 else inspect.getmodulename(f) for f in (dist.files or [])
                     } - {None}
-                    _top_level_inferred = filter(lambda name: "." not in name, _inferred_opt_names)
+                    _top_level_inferred = filter(lambda name: "." not in name, _infered_opt_names)
                     for pkg in _top_level_declared or _top_level_inferred:
                         _package_map[pkg].append(dist.metadata["Name"])
             except Exception as _:
@@ -120,7 +119,7 @@ if USE_SAFETENSORS in ENV_VARS_TRUE_AND_AUTO_VALUES:
     _safetensors_available, _safetensors_version = _is_package_available("safetensors")
 
 else:
-    logger.info("Disabling Safetensors because USE_SAFETENSORS is set")
+    logger.info("Disabling Safetensors because USE_TF is set")
     _safetensors_available = False
 
 _onnxruntime_version = "N/A"
