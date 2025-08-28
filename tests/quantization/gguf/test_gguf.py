@@ -20,7 +20,8 @@ from diffusers import (
     WanVACETransformer3DModel,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     backend_max_memory_allocated,
@@ -38,7 +39,6 @@ from diffusers.utils.testing_utils import (
     require_torch_version_greater,
     torch_device,
 )
-
 from ..test_torch_compile_utils import QuantCompileTests
 
 
