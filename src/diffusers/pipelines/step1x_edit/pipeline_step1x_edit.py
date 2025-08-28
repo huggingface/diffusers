@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import Step1XEditPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = Step1XEditPipeline.from_pretrained("stepfun-ai/Step1X-Edit-diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = Step1XEditPipeline.from_pretrained("stepfun-ai/Step1X-Edit-v1p1-diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> image = load_image(
         ...     "https://github.com/stepfun-ai/Step1X-Edit/blob/main/examples/0000.jpg?raw=true"
