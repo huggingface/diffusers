@@ -59,52 +59,8 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "attn2.norm_k_img": "attn2.norm_added_k",
 }
 
-VACE_TRANSFORMER_KEYS_RENAME_DICT = {
-    "time_embedding.0": "condition_embedder.time_embedder.linear_1",
-    "time_embedding.2": "condition_embedder.time_embedder.linear_2",
-    "text_embedding.0": "condition_embedder.text_embedder.linear_1",
-    "text_embedding.2": "condition_embedder.text_embedder.linear_2",
-    "time_projection.1": "condition_embedder.time_proj",
-    "head.modulation": "scale_shift_table",
-    "head.head": "proj_out",
-    "modulation": "scale_shift_table",
-    "ffn.0": "ffn.net.0.proj",
-    "ffn.2": "ffn.net.2",
-    # Hack to swap the layer names
-    # The original model calls the norms in following order: norm1, norm3, norm2
-    # We convert it to: norm1, norm2, norm3
-    "norm2": "norm__placeholder",
-    "norm3": "norm2",
-    "norm__placeholder": "norm3",
-    # # For the I2V model
-    # "img_emb.proj.0": "condition_embedder.image_embedder.norm1",
-    # "img_emb.proj.1": "condition_embedder.image_embedder.ff.net.0.proj",
-    # "img_emb.proj.3": "condition_embedder.image_embedder.ff.net.2",
-    # "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
-    # # for the FLF2V model
-    # "img_emb.emb_pos": "condition_embedder.image_embedder.pos_embed",
-    # Add attention component mappings
-    "self_attn.q": "attn1.to_q",
-    "self_attn.k": "attn1.to_k",
-    "self_attn.v": "attn1.to_v",
-    "self_attn.o": "attn1.to_out.0",
-    "self_attn.norm_q": "attn1.norm_q",
-    "self_attn.norm_k": "attn1.norm_k",
-    "cross_attn.q": "attn2.to_q",
-    "cross_attn.k": "attn2.to_k",
-    "cross_attn.v": "attn2.to_v",
-    "cross_attn.o": "attn2.to_out.0",
-    "cross_attn.norm_q": "attn2.norm_q",
-    "cross_attn.norm_k": "attn2.norm_k",
-    "attn2.to_k_img": "attn2.add_k_proj",
-    "attn2.to_v_img": "attn2.add_v_proj",
-    "attn2.norm_k_img": "attn2.norm_added_k",
-    "before_proj": "proj_in",
-    "after_proj": "proj_out",
-}
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
-VACE_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 
 
 def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
@@ -120,9 +76,9 @@ def load_sharded_safetensors(dir: pathlib.Path):
 
 
 def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
-    if model_type == "Wan-T2V-1.3B":
+    if model_type == "StepVideo-T2V-30B":
         config = {
-            "model_id": "StevenZhang/Wan2.1-T2V-1.3B-Diff",
+            "model_id": "stepfun-ai/stepvideo-t2v",
             "diffusers_config": {
                 "added_kv_proj_dim": None,
                 "attention_head_dim": 128,
@@ -141,9 +97,9 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan-T2V-14B":
+    elif model_type == "StepVideo-TI2V-30B":
         config = {
-            "model_id": "StevenZhang/Wan2.1-T2V-14B-Diff",
+            "model_id": "stepfun-ai/stepvideo-ti2v",
             "diffusers_config": {
                 "added_kv_proj_dim": None,
                 "attention_head_dim": 128,
@@ -162,183 +118,7 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan-I2V-14B-480p":
-        config = {
-            "model_id": "StevenZhang/Wan2.1-I2V-14B-480P-Diff",
-            "diffusers_config": {
-                "image_dim": 1280,
-                "added_kv_proj_dim": 5120,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 13824,
-                "freq_dim": 256,
-                "in_channels": 36,
-                "num_attention_heads": 40,
-                "num_layers": 40,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-            },
-        }
-        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan-I2V-14B-720p":
-        config = {
-            "model_id": "StevenZhang/Wan2.1-I2V-14B-720P-Diff",
-            "diffusers_config": {
-                "image_dim": 1280,
-                "added_kv_proj_dim": 5120,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 13824,
-                "freq_dim": 256,
-                "in_channels": 36,
-                "num_attention_heads": 40,
-                "num_layers": 40,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-            },
-        }
-        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan-FLF2V-14B-720P":
-        config = {
-            "model_id": "ypyp/Wan2.1-FLF2V-14B-720P",  # This is just a placeholder
-            "diffusers_config": {
-                "image_dim": 1280,
-                "added_kv_proj_dim": 5120,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 13824,
-                "freq_dim": 256,
-                "in_channels": 36,
-                "num_attention_heads": 40,
-                "num_layers": 40,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-                "rope_max_seq_len": 1024,
-                "pos_embed_seq_len": 257 * 2,
-            },
-        }
-        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan-VACE-1.3B":
-        config = {
-            "model_id": "Wan-AI/Wan2.1-VACE-1.3B",
-            "diffusers_config": {
-                "added_kv_proj_dim": None,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 8960,
-                "freq_dim": 256,
-                "in_channels": 16,
-                "num_attention_heads": 12,
-                "num_layers": 30,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-                "vace_layers": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28],
-                "vace_in_channels": 96,
-            },
-        }
-        RENAME_DICT = VACE_TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = VACE_TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan-VACE-14B":
-        config = {
-            "model_id": "Wan-AI/Wan2.1-VACE-14B",
-            "diffusers_config": {
-                "added_kv_proj_dim": None,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 13824,
-                "freq_dim": 256,
-                "in_channels": 16,
-                "num_attention_heads": 40,
-                "num_layers": 40,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-                "vace_layers": [0, 5, 10, 15, 20, 25, 30, 35],
-                "vace_in_channels": 96,
-            },
-        }
-        RENAME_DICT = VACE_TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = VACE_TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan2.2-I2V-14B-720p":
-        config = {
-            "model_id": "Wan-AI/Wan2.2-I2V-A14B",
-            "diffusers_config": {
-                "added_kv_proj_dim": None,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 13824,
-                "freq_dim": 256,
-                "in_channels": 36,
-                "num_attention_heads": 40,
-                "num_layers": 40,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-            },
-        }
-        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan2.2-T2V-A14B":
-        config = {
-            "model_id": "Wan-AI/Wan2.2-T2V-A14B",
-            "diffusers_config": {
-                "added_kv_proj_dim": None,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 13824,
-                "freq_dim": 256,
-                "in_channels": 16,
-                "num_attention_heads": 40,
-                "num_layers": 40,
-                "out_channels": 16,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-            },
-        }
-        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif model_type == "Wan2.2-TI2V-5B":
-        config = {
-            "model_id": "Wan-AI/Wan2.2-TI2V-5B",
-            "diffusers_config": {
-                "added_kv_proj_dim": None,
-                "attention_head_dim": 128,
-                "cross_attn_norm": True,
-                "eps": 1e-06,
-                "ffn_dim": 14336,
-                "freq_dim": 256,
-                "in_channels": 48,
-                "num_attention_heads": 24,
-                "num_layers": 30,
-                "out_channels": 48,
-                "patch_size": [1, 2, 2],
-                "qk_norm": "rms_norm_across_heads",
-                "text_dim": 4096,
-            },
-        }
-        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+
     return config, RENAME_DICT, SPECIAL_KEYS_REMAP
 
 
@@ -374,7 +154,7 @@ def convert_transformer(model_type: str, stage: str = None):
 
 
 def convert_vae():
-    vae_ckpt_path = hf_hub_download("Wan-AI/Wan2.1-T2V-14B", "Wan2.1_VAE.pth")
+    vae_ckpt_path = hf_hub_download("stepfun-ai/stepvideo-t2v", "vae/vae_v2.safetensors")
     old_state_dict = torch.load(vae_ckpt_path, weights_only=True)
     new_state_dict = {}
 

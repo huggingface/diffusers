@@ -39,6 +39,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
+    _import_structure["autoencoders.autoencoder_kl_step_video"] = ["AutoencoderKLStepVideo"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_kl_wan"] = ["AutoencoderKLWan"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
@@ -135,6 +136,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
+            AutoencoderKLStepVideo,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,

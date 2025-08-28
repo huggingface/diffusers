@@ -840,7 +840,7 @@ class DiagonalGaussianDistribution(object):
             return x
 
 
-class AutoencoderKL(nn.Module):
+class AutoencoderKLStepVideo(nn.Module):
     @with_empty_init
     def __init__(
         self,
