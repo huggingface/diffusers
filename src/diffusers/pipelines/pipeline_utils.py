@@ -108,7 +108,13 @@ LIBRARIES = []
 for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
 
-SUPPORTED_DEVICE_MAP = ["balanced"] + [get_device()]
+# Supported high-level device placement strategies for pipeline loading.
+# Strings here are forwarded to sub-model loaders which leverage Accelerate for sharding/offload.
+SUPPORTED_DEVICE_MAP = [
+    "balanced",          # pipeline-level component balancing (current behavior)
+    "sequential",        # fill devices in order (Accelerate semantics)
+    "auto",              # Accelerate best-effort automatic mapping
+] + [get_device()]
 
 logger = logging.get_logger(__name__)
 
