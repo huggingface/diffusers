@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import PIL
 import regex as re
 import torch
-from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
+from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -50,19 +50,13 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> import numpy as np
-        >>> from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
+        >>> from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
-        >>> from transformers import CLIPVisionModel
 
-        >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers, Wan-AI/Wan2.1-I2V-14B-720P-Diffusers
-        >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
-        >>> image_encoder = CLIPVisionModel.from_pretrained(
-        ...     model_id, subfolder="image_encoder", torch_dtype=torch.float32
-        ... )
+        >>> # Available models: Wan-AI/Wan2.2-S2V-14B-Diffusers
+        >>> model_id = "Wan-AI/Wan2.2-S2V-14B-Diffusers"
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = WanImageToVideoPipeline.from_pretrained(
-        ...     model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = WanSpeechToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> image = load_image(
@@ -139,11 +133,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
-        image_encoder ([`CLIPVisionModel`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModel), specifically
-            the
-            [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large)
-            variant.
         transformer ([`WanTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         scheduler ([`UniPCMultistepScheduler`]):
@@ -152,7 +141,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
     """
 
-    model_cpu_offload_seq = "text_encoder->image_encoder->audio_encoder->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->audio_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
     _optional_components = ["transformer", "image_encoder", "image_processor"]
 
@@ -162,8 +151,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        image_processor: CLIPImageProcessor = None,
-        image_encoder: CLIPVisionModel = None,
         transformer: WanS2VTransformer3DModel = None,
         audio_encoder: WanAudioEncoder = None,
         expand_timesteps: bool = False,
@@ -174,10 +161,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            image_encoder=image_encoder,
             transformer=transformer,
             scheduler=scheduler,
-            image_processor=image_processor,
             audio_encoder=audio_encoder,
         )
         self.register_to_config(expand_timesteps=expand_timesteps)
@@ -185,7 +170,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
-        self.image_processor = image_processor
 
     def _get_t5_prompt_embeds(
         self,
@@ -375,12 +359,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
-        if self.config.boundary_ratio is None and guidance_scale_2 is not None:
-            raise ValueError("`guidance_scale_2` is only supported when the pipeline's `boundary_ratio` is not None.")
-
-        if self.config.boundary_ratio is not None and image_embeds is not None:
-            raise ValueError("Cannot forward `image_embeds` when the pipeline's `boundary_ratio` is not configured.")
-
     def prepare_latents(
         self,
         image: PipelineImageInput,
@@ -552,10 +530,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
-            guidance_scale_2 (`float`, *optional*, defaults to `None`):
-                Guidance scale for the low-noise stage transformer (`transformer_2`). If `None` and the pipeline's
-                `boundary_ratio` is not None, uses the same value as `guidance_scale`. Only used when `transformer_2`
-                and the pipeline's `boundary_ratio` are not None.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -628,9 +602,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
 
-        if self.config.boundary_ratio is not None and guidance_scale_2 is None:
-            guidance_scale_2 = guidance_scale
-
         self._guidance_scale = guidance_scale
         self._guidance_scale_2 = guidance_scale_2
         self._attention_kwargs = attention_kwargs
@@ -660,20 +631,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         # Encode image embedding
-        transformer_dtype = self.transformer.dtype if self.transformer is not None else self.transformer_2.dtype
+        transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
-
-        # only wan 2.1 i2v transformer accepts image_embeds
-        if self.transformer is not None and self.transformer.config.image_dim is not None:
-            if image_embeds is None:
-                if last_image is None:
-                    image_embeds = self.encode_image(image, device)
-                else:
-                    image_embeds = self.encode_image([image, last_image], device)
-            image_embeds = image_embeds.repeat(batch_size, 1, 1)
-            image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -682,10 +643,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
-        if last_image is not None:
-            last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
-                device, dtype=torch.float32
-            )
 
         latents_outputs = self.prepare_latents(
             image,
@@ -710,26 +667,12 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        if self.config.boundary_ratio is not None:
-            boundary_timestep = self.config.boundary_ratio * self.scheduler.config.num_train_timesteps
-        else:
-            boundary_timestep = None
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 self._current_timestep = t
-
-                if boundary_timestep is None or t >= boundary_timestep:
-                    # wan2.1 or high-noise stage in wan2.2
-                    current_model = self.transformer
-                    current_guidance_scale = guidance_scale
-                else:
-                    # low-noise stage in wan2.2
-                    current_model = self.transformer_2
-                    current_guidance_scale = guidance_scale_2
 
                 if self.config.expand_timesteps:
                     latent_model_input = (1 - first_frame_mask) * condition + first_frame_mask * latents
@@ -743,8 +686,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
                     timestep = t.expand(latents.shape[0])
 
-                with current_model.cache_context("cond"):
-                    noise_pred = current_model(
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
                         encoder_hidden_states=prompt_embeds,
@@ -754,8 +697,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     )[0]
 
                 if self.do_classifier_free_guidance:
-                    with current_model.cache_context("uncond"):
-                        noise_uncond = current_model(
+                    with self.transformer.cache_context("uncond"):
+                        noise_uncond = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=negative_prompt_embeds,
@@ -763,7 +706,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
-                        noise_pred = noise_uncond + current_guidance_scale * (noise_pred - noise_uncond)
+                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
