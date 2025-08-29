@@ -27,17 +27,18 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.pipelines.bria import BriaPipeline
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    numpy_cosine_similarity_distance,
-    require_accelerator,
-    require_torch_gpu,
-    slow,
-    torch_device,
-)
 
 # from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
 from tests.pipelines.test_pipelines_common import PipelineTesterMixin, to_np
+
+from ...testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    numpy_cosine_similarity_distance,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 
 
 enable_full_determinism()
@@ -149,7 +150,7 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             assert (output_height, output_width) == (expected_height, expected_width)
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
-    @require_accelerator
+    @require_torch_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -237,7 +238,7 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class BriaPipelineSlowTests(unittest.TestCase):
     pipeline_class = BriaPipeline
     repo_id = "briaai/BRIA-3.2"
@@ -245,12 +246,12 @@ class BriaPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         generator = torch.Generator(device="cpu").manual_seed(seed)

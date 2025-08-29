@@ -106,10 +106,20 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 
 [[autodoc]] pipelines.StableDiffusionMixin.disable_freeu
 
-## FlaxDiffusionPipeline
-
-[[autodoc]] pipelines.pipeline_flax_utils.FlaxDiffusionPipeline
-
 ## PushToHubMixin
 
 [[autodoc]] utils.PushToHubMixin
+
+## Callbacks
+
+[[autodoc]] callbacks.PipelineCallback
+
+[[autodoc]] callbacks.SDCFGCutoffCallback
+
+[[autodoc]] callbacks.SDXLCFGCutoffCallback
+
+[[autodoc]] callbacks.SDXLControlnetCFGCutoffCallback
+
+[[autodoc]] callbacks.IPAdapterScaleCutoffCallback
+
+[[autodoc]] callbacks.SD3CFGCutoffCallback
