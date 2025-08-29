@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from ...models import DreamTransformer1DModel
 from ...schedulers import DreamMaskedDiffusionScheduler
+from ...text_processor import TokenizerTextProcessor
 from ...utils import is_torch_xla_available, logging
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import DreamTextPipelineOutput
@@ -47,6 +48,7 @@ class DreamTextPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
+        self.text_processor = TokenizerTextProcessor()
         # 131072 in original code
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 512
@@ -185,7 +187,7 @@ class DreamTextPipeline(DiffusionPipeline):
         max_sequence_length: int = 512,
         apply_chat_template: bool = False,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        output_type: str = "pil",  # TODO: replace with options appropriate for text
+        output_type: str = "str",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -222,8 +224,8 @@ class DreamTextPipeline(DiffusionPipeline):
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            output_type (`str`, *optional*, defaults to `"str"`):
+                The output format of the generated text. Choose between `str`, `np`, `pt`, or `latents`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -364,9 +366,7 @@ class DreamTextPipeline(DiffusionPipeline):
         if output_type == "latent":
             texts = latents
         else:
-            # TODO: should there be a text_processor class analogous to e.g. VaeImageProcessor???
-            texts = self.tokenizer.batch_decode(latents)
-            # TODO: if prompt or other conditioning is supplied, remove prompts from generated texts???
+            texts = self.text_processor.postprocess(self.tokenizer, latents, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
