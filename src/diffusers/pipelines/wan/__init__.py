@@ -22,6 +22,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["audio_encoder"] = ["WanAudioEncoder"]
     _import_structure["pipeline_wan"] = ["WanPipeline"]
     _import_structure["pipeline_wan_i2v"] = ["WanImageToVideoPipeline"]
     _import_structure["pipeline_wan_s2v"] = ["WanSpeechToVideoPipeline"]
@@ -35,6 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .audio_encoder import WanAudioEncoder
         from .pipeline_wan import WanPipeline
         from .pipeline_wan_i2v import WanImageToVideoPipeline
         from .pipeline_wan_s2v import WanSpeechToVideoPipeline

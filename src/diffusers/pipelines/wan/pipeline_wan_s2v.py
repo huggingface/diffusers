@@ -29,6 +29,7 @@ from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .audio_encoder import WanAudioEncoder
 from .pipeline_output import WanPipelineOutput
 
 
@@ -164,6 +165,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image_processor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModel = None,
         transformer: WanS2VTransformer3DModel = None,
+        audio_encoder: WanAudioEncoder = None,
         expand_timesteps: bool = False,
     ):
         super().__init__()
@@ -176,6 +178,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             transformer=transformer,
             scheduler=scheduler,
             image_processor=image_processor,
+            audio_encoder=audio_encoder,
         )
         self.register_to_config(expand_timesteps=expand_timesteps)
 

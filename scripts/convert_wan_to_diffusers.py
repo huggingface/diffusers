@@ -19,6 +19,7 @@ from diffusers import (
     WanVACEPipeline,
     WanVACETransformer3DModel,
 )
+from diffusers.pipelines.wan.audio_encoder import WanAudioEncoder
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
@@ -1009,12 +1010,14 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
     elif "S2V" in args.model_type:
+        audio_encoder = WanAudioEncoder.from_pretrained("facebook/wav2vec2-base-960h")
         pipe = WanSpeechToVideoPipeline(
             transformer=transformer,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             vae=vae,
             scheduler=scheduler,
+            audio_encoder=audio_encoder,
         )
     else:
         pipe = WanPipeline(
