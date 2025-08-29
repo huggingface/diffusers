@@ -733,7 +733,6 @@ class Magi1Transformer3DModel(
         y_encoder_attention_flat = torch.masked_select(
             y_encoder_attention.squeeze(1), encoder_attention_mask.unsqueeze(-1).bool()
         ).reshape(-1, y_encoder_attention.shape[-1])
-        encoder_attention_mask_for_cuda_graph = None
 
         # (N * denoising_range_num, L)
         encoder_attention_mask = encoder_attention_mask.reshape(encoder_attention_mask.shape[0], -1)
@@ -758,36 +757,16 @@ class Magi1Transformer3DModel(
                 f"encoder_attention_q_ranges.shape: {encoder_attention_q_ranges.shape} != encoder_attention_k_ranges.shape: {encoder_attention_k_ranges.shape}"
             )
 
-        cross_attn_params = {
-            "q_ranges": encoder_attention_q_ranges,
-            "kv_ranges": encoder_attention_k_ranges,
-            "cu_seqlens_q": cu_seqlens_q,
-            "cu_seqlens_kv": cu_seqlens_k,
-            "max_seqlen_q": clip_token_nums,
-            "max_seqlen_kv": 800,
-        }
-
         # Prepare self attention related q/kv range
         q_range = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
         flat_kv = torch.unique(kv_range, sorted=True)
         max_seqlen_k = (flat_kv[-1] - flat_kv[0]).cpu().item()
 
-        ardf_meta = {
-            "clip_token_nums": clip_token_nums,
-            "slice_point": slice_point,
-            "range_num": range_num,
-            "denoising_range_num": denoising_range_num,
-            "q_range": q_range,
-            "k_range": kv_range,
-            "max_seqlen_q": clip_token_nums,
-            "max_seqlen_k": max_seqlen_k,
-        }
-
         hidden_states = hidden_states.to(self.config.dtype)
         temb = temb.to(self.model_config.params_dtype)
         y_encoder_attention_flat = y_encoder_attention_flat.to(self.model_config.params_dtype)
 
-        self_attn_params = {
+        self_attention_kwargs = {
             "q_range": q_range,
             "k_range": kv_range,
             "np_q_range": q_range.cpu().numpy(),
@@ -796,33 +775,27 @@ class Magi1Transformer3DModel(
             "max_seqlen_k": max_seqlen_k,
         }
 
-        # (hidden_states, temb_map, rotary_emb, cp_pad_size, cp_split_sizes, self_attn_params, cross_attn_params) = cp_pre_process(
-        #     self.engine_config.cp_size,
-        #     self.engine_config.cp_strategy,
-        #     hidden_states,
-        #     temb_map,
-        #     rotary_emb,
-        #     encoder_attention_mask_for_cuda_graph,
-        #     ardf_meta,
-        #     self_attn_params,
-        #     cross_attn_params,
-        # )
+        encoder_attention_kwargs = {
+            "q_ranges": encoder_attention_q_ranges,
+            "kv_ranges": encoder_attention_k_ranges,
+            "cu_seqlens_q": cu_seqlens_q,
+            "cu_seqlens_kv": cu_seqlens_k,
+            "max_seqlen_q": clip_token_nums,
+            "max_seqlen_kv": 800,
+        }
 
-        meta_args = {
+        transformer_block_kwargs = {
             "H": post_patch_height,
             "W": post_patch_width,
-            # "cp_pad_size": cp_pad_size,
-            # "cp_split_sizes": cp_split_sizes,
-            "slice_point": ardf_meta["slice_point"],
-            "denoising_range_num": ardf_meta["denoising_range_num"],
-            "range_num": ardf_meta["range_num"],
+            "slice_point": slice_point,
+            "denoising_range_num": denoising_range_num,
+            "range_num": range_num,
             "extract_prefix_video_feature": extract_prefix_video_feature,
             "fwd_extra_1st_chunk": fwd_extra_1st_chunk,
             "distill_nearly_clean_chunk": distill_nearly_clean_chunk,
-            "clip_token_nums": ardf_meta["clip_token_nums"],
-            "enable_cuda_graph": encoder_attention_mask_for_cuda_graph is not None,
-            "self_attn_params": self_attn_params,
-            "cross_attn_params": cross_attn_params,
+            "clip_token_nums": clip_token_nums,
+            "self_attention_kwargs": self_attention_kwargs,
+            "encoder_attention_kwargs": encoder_attention_kwargs,
         }
 
         # 4. Transformer blocks
@@ -836,7 +809,7 @@ class Magi1Transformer3DModel(
                     rotary_emb,
                     temb_map,
                     y_encoder_attention_flat,
-                    meta_args,
+                    transformer_block_kwargs,
                 )
         else:
             for block in self.blocks:
@@ -847,7 +820,7 @@ class Magi1Transformer3DModel(
                     rotary_emb,
                     temb_map,
                     y_encoder_attention_flat,
-                    meta_args,
+                    transformer_block_kwargs,
                 )
 
         hidden_states = self.norm_out(hidden_states)
