@@ -176,7 +176,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             transformer=transformer,
             scheduler=scheduler,
             image_processor=image_processor,
-            audio_encoder=audio_encoder
         )
         self.register_to_config(expand_timesteps=expand_timesteps)
 
