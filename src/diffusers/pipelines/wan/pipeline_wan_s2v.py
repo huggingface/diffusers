@@ -23,7 +23,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
-from ...models import AutoencoderKLWan, WanTransformer3DModel
+from ...models import AutoencoderKLWan, WanS2VTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -124,9 +124,9 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
+class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Pipeline for image-to-video generation using Wan.
+    Pipeline for image-and-sound-to-video generation using Wan.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -149,20 +149,11 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
-        transformer_2 ([`WanTransformer3DModel`], *optional*):
-            Conditional Transformer to denoise the input latents during the low-noise stage. In two-stage denoising,
-            `transformer` handles high-noise stages and `transformer_2` handles low-noise stages. If not provided, only
-            `transformer` is used.
-        boundary_ratio (`float`, *optional*, defaults to `None`):
-            Ratio of total timesteps to use as the boundary for switching between transformers in two-stage denoising.
-            The actual boundary timestep is calculated as `boundary_ratio * num_train_timesteps`. When provided,
-            `transformer` handles timesteps >= boundary_timestep and `transformer_2` handles timesteps <
-            boundary_timestep. If `None`, only `transformer` is used for the entire denoising process.
     """
 
-    model_cpu_offload_seq = "text_encoder->image_encoder->transformer->transformer_2->vae"
+    model_cpu_offload_seq = "text_encoder->image_encoder->audio_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-    _optional_components = ["transformer", "transformer_2", "image_encoder", "image_processor"]
+    _optional_components = ["transformer", "image_encoder", "image_processor"]
 
     def __init__(
         self,
@@ -172,9 +163,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         scheduler: FlowMatchEulerDiscreteScheduler,
         image_processor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModel = None,
-        transformer: WanTransformer3DModel = None,
-        transformer_2: WanTransformer3DModel = None,
-        boundary_ratio: Optional[float] = None,
+        transformer: WanS2VTransformer3DModel = None,
         expand_timesteps: bool = False,
     ):
         super().__init__()
@@ -187,9 +176,9 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             transformer=transformer,
             scheduler=scheduler,
             image_processor=image_processor,
-            transformer_2=transformer_2,
+            audio_encoder=audio_encoder
         )
-        self.register_to_config(boundary_ratio=boundary_ratio, expand_timesteps=expand_timesteps)
+        self.register_to_config(expand_timesteps=expand_timesteps)
 
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
