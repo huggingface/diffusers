@@ -5,7 +5,8 @@ import unittest
 from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
 from diffusers.models.attention_processor import Attention
 from diffusers.utils import is_optimum_quanto_available, is_torch_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     backend_reset_peak_memory_stats,
     enable_full_determinism,
