@@ -20,6 +20,7 @@ import regex as re
 import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
+from ...audio_processor import PipelineAudioInput
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
@@ -51,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import numpy as np
         >>> from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
-        >>> from diffusers.utils import export_to_video, load_image
+        >>> from diffusers.utils import export_to_video, load_image, load_audio
 
         >>> # Available models: Wan-AI/Wan2.2-S2V-14B-Diffusers
         >>> model_id = "Wan-AI/Wan2.2-S2V-14B-Diffusers"
@@ -73,10 +74,12 @@ EXAMPLE_DOC_STRING = """
         ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
         ... )
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+        >>> audio = load_audio(...)
 
         >>> output = pipe(
-        ...     image=image,
         ...     prompt=prompt,
+        ...     image=image,
+        ...     audio=audio,
         ...     negative_prompt=negative_prompt,
         ...     height=height,
         ...     width=width,
@@ -121,7 +124,7 @@ def retrieve_latents(
 
 class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Pipeline for image-and-sound-to-video generation using Wan.
+    Pipeline for prompt-image-sound-to-video generation using Wan-T2V.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -133,12 +136,14 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
-        transformer ([`WanTransformer3DModel`]):
+        transformer ([`WanT2VTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         scheduler ([`UniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+        audio_encoder ([`WanAudioEncoder`]):
+            Audio Encoder to process audio inputs.
     """
 
     model_cpu_offload_seq = "text_encoder->audio_encoder->transformer->vae"
@@ -153,7 +158,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         scheduler: FlowMatchEulerDiscreteScheduler,
         transformer: WanS2VTransformer3DModel = None,
         audio_encoder: WanAudioEncoder = None,
-        expand_timesteps: bool = False,
     ):
         super().__init__()
 
@@ -165,7 +169,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             scheduler=scheduler,
             audio_encoder=audio_encoder,
         )
-        self.register_to_config(expand_timesteps=expand_timesteps)
 
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
@@ -212,15 +215,15 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds
 
-    def encode_image(
+    def encode_audio(
         self,
-        image: PipelineImageInput,
+        audio: PipelineAudioInput,
         device: Optional[torch.device] = None,
     ):
         device = device or self._execution_device
-        image = self.image_processor(images=image, return_tensors="pt").to(device)
-        image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-2]
+        # audio = self.audio_processor(audios=audio, return_tensors="pt").to(device)
+        audio_embeds = self.audio_encoder(**audio, output_hidden_states=True)
+        return audio_embeds.hidden_states[-2]
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
@@ -315,7 +318,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         negative_prompt_embeds=None,
         image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
-        guidance_scale_2=None,
+        audio=None,
+        audio_embeds=None,
     ):
         if image is not None and image_embeds is not None:
             raise ValueError(
@@ -358,6 +362,17 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+        if audio is not None and audio_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `audio`: {audio} and `audio_embeds`: {audio_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif audio is None and audio_embeds is None:
+            raise ValueError(
+                "Provide either `audio` or `audio_embeds`. Cannot leave both `audio` and `audio_embeds` undefined."
+            )
+        elif audio is not None and not isinstance(audio, (torch.Tensor, list)):
+            raise ValueError(f"`audio` has to be of type `torch.Tensor` or `list` but is {type(audio)}")
 
     def prepare_latents(
         self,
@@ -371,7 +386,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-        last_image: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
@@ -391,19 +405,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
 
-        if self.config.expand_timesteps:
-            video_condition = image
+        video_condition = torch.cat(
+            [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+        )
 
-        elif last_image is None:
-            video_condition = torch.cat(
-                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
-            )
-        else:
-            last_image = last_image.unsqueeze(2)
-            video_condition = torch.cat(
-                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image],
-                dim=2,
-            )
         video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
 
         latents_mean = (
@@ -427,19 +432,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latent_condition = latent_condition.to(dtype)
         latent_condition = (latent_condition - latents_mean) * latents_std
 
-        if self.config.expand_timesteps:
-            first_frame_mask = torch.ones(
-                1, 1, num_latent_frames, latent_height, latent_width, dtype=dtype, device=device
-            )
-            first_frame_mask[:, :, 0] = 0
-            return latents, latent_condition, first_frame_mask
-
         mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
 
-        if last_image is None:
-            mask_lat_size[:, :, list(range(1, num_frames))] = 0
-        else:
-            mask_lat_size[:, :, list(range(1, num_frames - 1))] = 0
+        mask_lat_size[:, :, list(range(1, num_frames))] = 0
         first_frame_mask = mask_lat_size[:, :, 0:1]
         first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
@@ -480,19 +475,19 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
+        audio: PipelineAudioInput = None,
         height: int = 480,
         width: int = 832,
         num_frames: int = 81,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        guidance_scale_2: Optional[float] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         image_embeds: Optional[torch.Tensor] = None,
-        last_image: Optional[torch.Tensor] = None,
+        audio_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -515,6 +510,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
+            audio (`PipelineAudioInput`, *optional*):
+                The audio input to condition the generation on. Must be an audio, a list of audios or a `torch.Tensor`.
             height (`int`, defaults to `480`):
                 The height of the generated video.
             width (`int`, defaults to `832`):
@@ -548,6 +545,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             image_embeds (`torch.Tensor`, *optional*):
                 Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not provided,
                 image embeddings are generated from the `image` input argument.
+            audio_embeds (`torch.Tensor`, *optional*):
+                Pre-generated audio embeddings. Can be used to easily tweak audio inputs (weighting). If not provided,
+                audio embeddings are generated from the `audio` input argument.
             output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -592,7 +592,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds,
             image_embeds,
             callback_on_step_end_tensor_inputs,
-            guidance_scale_2,
+            audio,
+            audio_embeds,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -603,7 +604,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_frames = max(num_frames, 1)
 
         self._guidance_scale = guidance_scale
-        self._guidance_scale_2 = guidance_scale_2
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
@@ -636,6 +636,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
+        if audio_embeds is None:
+            audio_embeds = self.encode_audio(audio, device)
+        audio_embeds = audio_embeds.repeat(batch_size, 1, 1)
+        audio_embeds = audio_embeds.to(transformer_dtype)
+
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
@@ -655,13 +660,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device,
             generator,
             latents,
-            last_image,
         )
-        if self.config.expand_timesteps:
-            # wan 2.2 5b i2v use firt_frame_mask to mask timesteps
-            latents, condition, first_frame_mask = latents_outputs
-        else:
-            latents, condition = latents_outputs
+
+        latents, condition = latents_outputs
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -674,17 +675,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 self._current_timestep = t
 
-                if self.config.expand_timesteps:
-                    latent_model_input = (1 - first_frame_mask) * condition + first_frame_mask * latents
-                    latent_model_input = latent_model_input.to(transformer_dtype)
-
-                    # seq_len: num_latent_frames * (latent_height // patch_size) * (latent_width // patch_size)
-                    temp_ts = (first_frame_mask[0][0][:, ::2, ::2] * t).flatten()
-                    # batch_size, seq_len
-                    timestep = temp_ts.unsqueeze(0).expand(latents.shape[0], -1)
-                else:
-                    latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
-                    timestep = t.expand(latents.shape[0])
+                latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
+                timestep = t.expand(latents.shape[0])
 
                 with self.transformer.cache_context("cond"):
                     noise_pred = self.transformer(
@@ -729,9 +721,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     xm.mark_step()
 
         self._current_timestep = None
-
-        if self.config.expand_timesteps:
-            latents = (1 - first_frame_mask) * condition + first_frame_mask * latents
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype)
