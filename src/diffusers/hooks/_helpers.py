@@ -133,6 +133,7 @@ def _register_attention_processors_metadata():
             skip_processor_output_fn=_skip_proc_output_fn_Attention_WanAttnProcessor2_0,
         ),
     )
+
     # FluxAttnProcessor
     AttentionProcessorRegistry.register(
         model_class=FluxAttnProcessor,
@@ -143,6 +144,7 @@ def _register_attention_processors_metadata():
 def _register_transformer_blocks_metadata():
     from ..models.attention import BasicTransformerBlock
     from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
+    from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
     from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
     from ..models.transformers.transformer_hunyuan_video import (
@@ -153,11 +155,19 @@ def _register_transformer_blocks_metadata():
     )
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
+    from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
 
     # BasicTransformerBlock
     TransformerBlockRegistry.register(
         model_class=BasicTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=BriaTransformerBlock,
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=None,
@@ -252,6 +262,15 @@ def _register_transformer_blocks_metadata():
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=None,
+        ),
+    )
+
+    # QwenImage
+    TransformerBlockRegistry.register(
+        model_class=QwenImageTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
         ),
     )
 
