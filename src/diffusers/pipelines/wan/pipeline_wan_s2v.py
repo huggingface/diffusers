@@ -13,12 +13,15 @@
 # limitations under the License.
 
 import html
+import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import PIL
 import regex as re
 import torch
-from transformers import AutoTokenizer, UMT5EncoderModel
+import torch.nn.functional as F
+from transformers import AutoTokenizer, UMT5EncoderModel, Wav2Vec2ForCTC, Wav2Vec2Processor
 
 from ...audio_processor import PipelineAudioInput
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -30,7 +33,6 @@ from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .audio_encoder import WanAudioEncoder
 from .pipeline_output import WanPipelineOutput
 
 
@@ -108,6 +110,42 @@ def prompt_clean(text):
     return text
 
 
+def get_sample_indices(original_fps, total_frames, target_fps, num_sample, fixed_start=None):
+    required_duration = num_sample / target_fps
+    required_origin_frames = int(np.ceil(required_duration * original_fps))
+    if required_duration > total_frames / original_fps:
+        raise ValueError("required_duration must be less than video length")
+
+    if fixed_start is not None and fixed_start >= 0:
+        start_frame = fixed_start
+    else:
+        max_start = total_frames - required_origin_frames
+        if max_start < 0:
+            raise ValueError("video length is too short")
+        start_frame = np.random.randint(0, max_start + 1)
+    start_time = start_frame / original_fps
+
+    end_time = start_time + required_duration
+    time_points = np.linspace(start_time, end_time, num_sample, endpoint=False)
+
+    frame_indices = np.round(np.array(time_points) * original_fps).astype(int)
+    frame_indices = np.clip(frame_indices, 0, total_frames - 1)
+    return frame_indices
+
+
+def linear_interpolation(features, input_fps, output_fps, output_len=None):
+    """
+    features: shape=[1, T, 512] input_fps: fps for audio, f_a output_fps: fps for video, f_m output_len: video length
+    """
+    features = features.transpose(1, 2)  # [1, 512, T]
+    seq_len = features.shape[2] / float(input_fps)  # T/f_a
+    output_len = int(seq_len * output_fps)  # f_m*T/f_a
+    output_features = F.interpolate(
+        features, size=output_len, align_corners=True, mode="linear"
+    )  # [1, 512, output_len]
+    return output_features.transpose(1, 2)  # [1, output_len, 512]
+
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -124,7 +162,7 @@ def retrieve_latents(
 
 class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Pipeline for prompt-image-sound-to-video generation using Wan-T2V.
+    Pipeline for prompt-image-audio-to-video generation using Wan2.2-S2V.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -142,13 +180,14 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
-        audio_encoder ([`WanAudioEncoder`]):
+        audio_encoder ([`Wav2Vec2ForCTC`]):
             Audio Encoder to process audio inputs.
+        audio_processor ([`Wav2Vec2Processor`]):
+            Audio Processor to preprocess audio inputs.
     """
 
     model_cpu_offload_seq = "text_encoder->audio_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-    _optional_components = ["transformer", "image_encoder", "image_processor"]
 
     def __init__(
         self,
@@ -156,8 +195,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        transformer: WanS2VTransformer3DModel = None,
-        audio_encoder: WanAudioEncoder = None,
+        transformer: WanS2VTransformer3DModel,
+        audio_encoder: Wav2Vec2ForCTC,
+        audio_processor: Wav2Vec2Processor,
     ):
         super().__init__()
 
@@ -168,11 +208,13 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             transformer=transformer,
             scheduler=scheduler,
             audio_encoder=audio_encoder,
+            audio_processor=audio_processor,
         )
 
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.audio_processor = audio_processor
 
     def _get_t5_prompt_embeds(
         self,
@@ -218,12 +260,79 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def encode_audio(
         self,
         audio: PipelineAudioInput,
+        sampling_rate: int,
+        infer_frames: int,
+        fps: int = 16,
         device: Optional[torch.device] = None,
     ):
         device = device or self._execution_device
-        # audio = self.audio_processor(audios=audio, return_tensors="pt").to(device)
-        audio_embeds = self.audio_encoder(**audio, output_hidden_states=True)
-        return audio_embeds.hidden_states[-2]
+        video_rate = 30
+        audio_sample_m = 0
+
+        input_values = self.audio_processor(audio, sampling_rate=sampling_rate, return_tensors="pt").input_values
+
+        # retrieve logits & take argmax
+        res = self.audio_encoder(input_values.to(self.audio_encoder.device), output_hidden_states=True)
+        feat = torch.cat(res.hidden_states)
+
+        feat = linear_interpolation(feat, input_fps=50, output_fps=30)
+
+        audio_embed = feat.to(torch.float32)  # Encoding for the motion
+
+        num_layers, audio_frame_num, audio_dim = audio_embed.shape
+
+        if num_layers > 1:
+            return_all_layers = True
+        else:
+            return_all_layers = False
+
+        scale = video_rate / fps
+
+        num_repeat = int(audio_frame_num / (infer_frames * scale)) + 1
+
+        bucket_num = num_repeat * infer_frames
+        padd_audio_num = math.ceil(num_repeat * infer_frames / fps * video_rate) - audio_frame_num
+        batch_idx = get_sample_indices(
+            original_fps=video_rate,
+            total_frames=audio_frame_num + padd_audio_num,
+            target_fps=fps,
+            num_sample=bucket_num,
+            fixed_start=0,
+        )
+        batch_audio_eb = []
+        audio_sample_stride = int(self.video_rate / fps)
+        for bi in batch_idx:
+            if bi < audio_frame_num:
+                chosen_idx = list(
+                    range(
+                        bi - audio_sample_m * audio_sample_stride,
+                        bi + (audio_sample_m + 1) * audio_sample_stride,
+                        audio_sample_stride,
+                    )
+                )
+                chosen_idx = [0 if c < 0 else c for c in chosen_idx]
+                chosen_idx = [audio_frame_num - 1 if c >= audio_frame_num else c for c in chosen_idx]
+
+                if return_all_layers:
+                    frame_audio_embed = audio_embed[:, chosen_idx].flatten(start_dim=-2, end_dim=-1)
+                else:
+                    frame_audio_embed = audio_embed[0][chosen_idx].flatten()
+            else:
+                frame_audio_embed = (
+                    torch.zeros([audio_dim * (2 * audio_sample_m + 1)], device=audio_embed.device)
+                    if not return_all_layers
+                    else torch.zeros([num_layers, audio_dim * (2 * audio_sample_m + 1)], device=audio_embed.device)
+                )
+            batch_audio_eb.append(frame_audio_embed)
+        audio_embed_bucket = torch.cat([c.unsqueeze(0) for c in batch_audio_eb], dim=0)
+
+        audio_embed_bucket = audio_embed_bucket.to(self.device, self.param_dtype)
+        audio_embed_bucket = audio_embed_bucket.unsqueeze(0)
+        if len(audio_embed_bucket.shape) == 3:
+            audio_embed_bucket = audio_embed_bucket.permute(0, 2, 1)
+        elif len(audio_embed_bucket.shape) == 4:
+            audio_embed_bucket = audio_embed_bucket.permute(0, 2, 3, 1)
+        return audio_embed_bucket, num_repeat
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(

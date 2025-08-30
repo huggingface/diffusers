@@ -15,62 +15,57 @@
 from typing import List, Union
 
 import numpy as np
-import PIL.Image
 import torch
 
 
 PipelineAudioInput = Union[
-    PIL.Image.Image,  # librosa?
     np.ndarray,
     torch.Tensor,
-    List[PIL.Image.Image],  # librosa?
     List[np.ndarray],
     List[torch.Tensor],
 ]
 
 
-def is_valid_image(image) -> bool:
+def is_valid_audio(audio) -> bool:
     r"""
-    Checks if the input is a valid image.
+    Checks if the input is a valid audio.
 
-    A valid image can be:
-    - A `PIL.Image.Image`.
+    A valid audio can be:
     - A 2D or 3D `np.ndarray` or `torch.Tensor` (grayscale or color image).
 
     Args:
-        image (`Union[PIL.Image.Image, np.ndarray, torch.Tensor]`):
-            The image to validate. It can be a PIL image, a NumPy array, or a torch tensor.
+        audio (`Union[np.ndarray, torch.Tensor]`):
+            The audio to validate. It can be a NumPy array or a torch tensor.
 
     Returns:
         `bool`:
-            `True` if the input is a valid image, `False` otherwise.
+            `True` if the input is a valid audio, `False` otherwise.
     """
-    return isinstance(image, PIL.Image.Image) or isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim in (2, 3)
+    return isinstance(audio, (np.ndarray, torch.Tensor)) and audio.ndim in (2, 3)
 
 
-def is_valid_image_imagelist(images):
+def is_valid_audio_audiolist(audios):
     r"""
-    Checks if the input is a valid image or list of images.
+    Checks if the input is a valid audio or list of audios.
 
     The input can be one of the following formats:
-    - A 4D tensor or numpy array (batch of images).
-    - A valid single image: `PIL.Image.Image`, 2D `np.ndarray` or `torch.Tensor` (grayscale image), 3D `np.ndarray` or
-      `torch.Tensor`.
-    - A list of valid images.
+    - A 4D tensor or numpy array (batch of audios).
+    - A valid single audio: 2D `np.ndarray` or `torch.Tensor` (grayscale audio), 3D `np.ndarray` or `torch.Tensor`.
+    - A list of valid audios.
 
     Args:
-        images (`Union[np.ndarray, torch.Tensor, PIL.Image.Image, List]`):
-            The image(s) to check. Can be a batch of images (4D tensor/array), a single image, or a list of valid
-            images.
+        audios (`Union[np.ndarray, torch.Tensor, List]`):
+            The audio(s) to check. Can be a batch of audios (4D tensor/array), a single audio, or a list of valid
+            audios.
 
     Returns:
         `bool`:
             `True` if the input is valid, `False` otherwise.
     """
-    if isinstance(images, (np.ndarray, torch.Tensor)) and images.ndim == 4:
+    if isinstance(audios, (np.ndarray, torch.Tensor)) and audios.ndim == 4:
         return True
-    elif is_valid_image(images):
+    elif is_valid_audio(audios):
         return True
-    elif isinstance(images, list):
-        return all(is_valid_image(image) for image in images)
+    elif isinstance(audios, list):
+        return all(is_valid_audio(audio) for audio in audios)
     return False

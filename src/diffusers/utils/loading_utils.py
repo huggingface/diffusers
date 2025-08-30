@@ -3,6 +3,8 @@ import tempfile
 from typing import Any, Callable, List, Optional, Tuple, Union
 from urllib.parse import unquote, urlparse
 
+import librosa
+import numpy
 import PIL.Image
 import PIL.ImageOps
 import requests
@@ -136,6 +138,51 @@ def load_video(
         pil_images = convert_method(pil_images)
 
     return pil_images
+
+
+def load_audio(
+    audio: Union[str, numpy.ndarray], convert_method: Optional[Callable[[numpy.ndarray], numpy.ndarray]] = None
+) -> numpy.ndarray:
+    """
+    Loads `audio` to a numpy array.
+
+    Args:
+        audio (`str` or `numpy.ndarray`):
+            The audio to convert to the numpy array format.
+        convert_method (Callable[[numpy.ndarray], numpy.ndarray], *optional*):
+            A conversion method to apply to the audio after loading it. When set to `None` the audio will be converted
+            to a specific format.
+
+    Returns:
+        `numpy.ndarray`:
+            A Librosa audio object.
+        `int`:
+            The sample rate of the audio.
+    """
+    if isinstance(audio, str):
+        if audio.startswith("http://") or audio.startswith("https://"):
+            audio = PIL.Image.open(requests.get(audio, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT).raw)
+        elif os.path.isfile(audio):
+            audio, sample_rate = librosa.load(audio, sr=16000)
+        else:
+            raise ValueError(
+                f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {audio} is not a valid path."
+            )
+    elif isinstance(audio, numpy.ndarray):
+        audio = audio
+    else:
+        raise ValueError(
+            "Incorrect format used for the audio. Should be a URL linking to an audio, a local path, or a PIL audio."
+        )
+
+    # audio = PIL.ImageOps.exif_transpose(audio)
+
+    if convert_method is not None:
+        audio = convert_method(audio)
+    else:
+        audio = audio.convert("RGB")
+
+    return audio, sample_rate
 
 
 # Taken from `transformers`.
