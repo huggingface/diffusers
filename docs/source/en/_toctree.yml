@@ -27,7 +27,7 @@
   - local: using-diffusers/scheduler_features
     title: Scheduler features
   - local: using-diffusers/other-formats
-    title: Model files and layouts
+    title: Model formats
   - local: using-diffusers/push_to_hub
     title: Push files to the Hub
 
