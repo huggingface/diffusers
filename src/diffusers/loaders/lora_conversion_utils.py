@@ -2207,10 +2207,10 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     up_key = ".lora_up.weight"
     a_key = ".lora_A.weight"
     b_key = ".lora_B.weight"
-    
+
     has_lora_arrow = any(down_key in k or up_key in k for k in all_keys)
     has_lora_letter = any(a_key in k or b_key in k for k in all_keys)
-    
+
     if has_lora_arrow:
         def get_alpha_scales(down_weight, alpha_key):
             rank = down_weight.shape[0]
@@ -2234,7 +2234,7 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
                 scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
                 converted_state_dict[diffusers_down_key] = down_weight * scale_down
                 converted_state_dict[diffusers_up_key] = up_weight * scale_up
-    
+
     # Already in diffusers format (lora_A/lora_B), just pop
     elif has_lora_letter:
         for k in all_keys:
@@ -2242,7 +2242,7 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
                 converted_state_dict[k] = state_dict.pop(k)
             elif ".alpha" in k:
                 state_dict.pop(k)
-    
+
     if len(state_dict) > 0:
         raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
 
