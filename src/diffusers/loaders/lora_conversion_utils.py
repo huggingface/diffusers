@@ -2212,6 +2212,7 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     has_lora_letter = any(a_key in k or b_key in k for k in all_keys)
 
     if has_lora_arrow:
+
         def get_alpha_scales(down_weight, alpha_key):
             rank = down_weight.shape[0]
             alpha = state_dict.pop(alpha_key).item()
