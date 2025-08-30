@@ -5608,6 +5608,20 @@ class XLAFluxFlashAttnProcessor2_0:
         processor._attention_backend = "_native_xla"
         return processor
 
+class Step1XEditAttnProcessor2_0_NPU:
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = (
+            "Step1XEditAttnProcessor2_0_NPU is deprecated and will be removed in a future version. An "
+            "alternative solution to use NPU Flash Attention will be provided in the future."
+        )
+        deprecate("Step1XEditAttnProcessor2_0_NPU", "1.0.0", deprecation_message, standard_warn=False)
+
+        from .transformers.transformer_flux import Step1XEditAttnProcessor
+
+        processor = Step1XEditAttnProcessor()
+        processor._attention_backend = "_native_npu"
+        return processor
+
 
 ADDED_KV_ATTENTION_PROCESSORS = (
     AttnAddedKVProcessor,
@@ -5668,6 +5682,7 @@ AttentionProcessor = Union[
     SanaMultiscaleLinearAttention,
     SanaMultiscaleAttnProcessor2_0,
     SanaMultiscaleAttentionProjection,
+    Step1XEditAttnProcessor2_0_NPU,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
     IPAdapterXFormersAttnProcessor,
