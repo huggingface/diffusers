@@ -158,3 +158,24 @@ class ChromaPipelineFastTests(
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
+
+
+class ChromaPipelineAttentionMaskTests(unittest.TestCase):
+    def setUp(self):
+        self.pipe = ChromaPipeline.from_pretrained(
+            "lodestones/Chroma1-Base",
+            torch_dtype=torch.float16,
+        )
+
+    def test_attention_mask_dtype_is_bool_short_prompt(self):
+        prompt_embeds, attn_mask = self.pipe._get_t5_prompt_embeds("man")
+        self.assertEqual(attn_mask.dtype, torch.bool, f"Expected bool, got {attn_mask.dtype}")
+        self.assertGreater(prompt_embeds.shape[0], 0)
+        self.assertGreater(prompt_embeds.shape[1], 0)
+
+    def test_attention_mask_dtype_is_bool_long_prompt(self):
+        long_prompt = "a detailed portrait of a man standing in a garden with flowers and trees"
+        prompt_embeds, attn_mask = self.pipe._get_t5_prompt_embeds(long_prompt)
+        self.assertEqual(attn_mask.dtype, torch.bool, f"Expected bool, got {attn_mask.dtype}")
+        self.assertGreater(prompt_embeds.shape[0], 0)
+        self.assertGreater(prompt_embeds.shape[1], 0)
