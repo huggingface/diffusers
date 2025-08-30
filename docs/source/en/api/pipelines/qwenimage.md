@@ -122,7 +122,7 @@ The `guidance_scale` parameter in the pipeline is there to support future guidan
 
 ## QwenImageEditInpaintPipeline
 
-[[autodoc]] QwenImageEditPipeline
+[[autodoc]] QwenImageEditInpaintPipeline
   - all
   - __call__
 
