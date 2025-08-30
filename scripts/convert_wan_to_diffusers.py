@@ -6,13 +6,22 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download, snapshot_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPVisionModelWithProjection,
+    UMT5EncoderModel,
+    Wav2Vec2ForCTC,
+    Wav2Vec2Processor,
+)
 
 from diffusers import (
     AutoencoderKLWan,
     UniPCMultistepScheduler,
     WanImageToVideoPipeline,
     WanPipeline,
+    WanS2VTransformer3DModel,
+    WanSpeechToVideoPipeline,
     WanTransformer3DModel,
     WanVACEPipeline,
     WanVACETransformer3DModel,
@@ -341,6 +350,27 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "Wan2.2-S2V-14B":
+        config = {
+            "model_id": "Wan-AI/Wan2.2-S2V-14B",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 14336,
+                "freq_dim": 256,
+                "in_channels": 48,
+                "num_attention_heads": 24,
+                "num_layers": 30,
+                "out_channels": 48,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            },
+        }
+        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, RENAME_DICT, SPECIAL_KEYS_REMAP
 
 
@@ -357,7 +387,9 @@ def convert_transformer(model_type: str, stage: str = None):
     original_state_dict = load_sharded_safetensors(model_dir)
 
     with init_empty_weights():
-        if "VACE" not in model_type:
+        if "S2V" in model_type:
+            transformer = WanS2VTransformer3DModel.from_config(diffusers_config)
+        elif "VACE" not in model_type:
             transformer = WanTransformer3DModel.from_config(diffusers_config)
         else:
             transformer = WanVACETransformer3DModel.from_config(diffusers_config)
@@ -903,7 +935,7 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type:
+    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type and "S2V" not in args.model_type:
         transformer = convert_transformer(args.model_type, stage="high_noise_model")
         transformer_2 = convert_transformer(args.model_type, stage="low_noise_model")
     else:
@@ -919,7 +951,7 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     if "FLF2V" in args.model_type:
         flow_shift = 16.0
-    elif "TI2V" in args.model_type:
+    elif "TI2V" in args.model_type or "S2V" in args.model_type:
         flow_shift = 5.0
     else:
         flow_shift = 3.0
@@ -983,6 +1015,22 @@ if __name__ == "__main__":
             vae=vae,
             scheduler=scheduler,
         )
+    elif "S2V" in args.model_type:
+        audio_encoder = Wav2Vec2ForCTC.from_pretrained(
+            "Wan-AI/Wan2.2-S2V-14B", subfolder="wav2vec2-large-xlsr-53-english"
+        )
+        audio_processor = Wav2Vec2Processor.from_pretrained(
+            "Wan-AI/Wan2.2-S2V-14B", subfolder="wav2vec2-large-xlsr-53-english"
+        )
+        pipe = WanSpeechToVideoPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+            audio_encoder=audio_encoder,
+            audio_processor=audio_processor,
+        )
     else:
         pipe = WanPipeline(
             transformer=transformer,
@@ -992,4 +1040,4 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
 
-    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    pipe.save_pretrained(args.output_path, push_to_hub=True, safe_serialization=True, max_shard_size="5GB")

@@ -99,6 +99,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
+    _import_structure["transformers.transformer_wan_s2v"] = ["WanS2VTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
@@ -196,6 +197,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
+            WanS2VTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
         )
