@@ -2129,7 +2129,7 @@ def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_pref
 
 
 def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
-    has_diffusion_model = any(k.startswith("diffusion_model." for k in state_dict)
+    has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
     if has_diffusion_model:
         state_dict = {k.removeprefix("diffusion_model."): v for k, v in state_dict.items()}
     
