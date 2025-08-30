@@ -20,13 +20,8 @@ To generate the documentation, you first have to build it. Several packages are 
 you can install them with the following command, at the root of the code repository:
 
 ```bash
+pip install --no-cache-dir --upgrade pip
 pip install -e ".[docs]"
-```
-
-Then you need to install our open source documentation builder tool:
-
-```bash
-pip install git+https://github.com/huggingface/doc-builder
 ```
 
 ---
@@ -57,12 +52,14 @@ For example:
 doc-builder preview diffusers docs/source/en
 ```
 
-The docs will be viewable at [http://localhost:3000](http://localhost:3000). You can also preview the docs once you have opened a PR. You will see a bot add a comment to a link where the documentation with your changes lives.
+The docs will be viewable at [http://localhost:5173](http://localhost:5173). You can also preview the docs once you have opened a PR. You will see a bot add a comment to a link where the documentation with your changes lives.
 
 ---
 **NOTE**
 
 The `preview` command only works with existing doc files. When you add a completely new file, you need to update `_toctree.yml` & restart `preview` command (`ctrl-c` to stop it & call `doc-builder preview ...` again).
+
+If the preview won't works, for example, Mac user without GPU or pytorch issue, there is [an alternative](https://github.com/huggingface/doc-builder/issues/614#issuecomment-3182446282) to generate html files and you can check those files via you own browser.
 
 ---
 
