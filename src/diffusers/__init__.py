@@ -494,6 +494,7 @@ else:
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
             "QwenImageControlNetPipeline",
+            "QwenImageEditInpaintPipeline",
             "QwenImageEditPipeline",
             "QwenImageImg2ImgPipeline",
             "QwenImageInpaintPipeline",
