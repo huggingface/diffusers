@@ -5,6 +5,7 @@ import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, ChromaPipeline, ChromaTransformer2DModel, FlowMatchEulerDiscreteScheduler
+from diffusers.utils.testing_utils import slow
 
 from ...testing_utils import torch_device
 from ..test_pipelines_common import FluxIPAdapterTesterMixin, PipelineTesterMixin, check_qkv_fused_layers_exist
@@ -167,12 +168,14 @@ class ChromaPipelineAttentionMaskTests(unittest.TestCase):
             torch_dtype=torch.float16,
         )
 
+    @slow
     def test_attention_mask_dtype_is_bool_short_prompt(self):
         prompt_embeds, attn_mask = self.pipe._get_t5_prompt_embeds("man")
         self.assertEqual(attn_mask.dtype, torch.bool, f"Expected bool, got {attn_mask.dtype}")
         self.assertGreater(prompt_embeds.shape[0], 0)
         self.assertGreater(prompt_embeds.shape[1], 0)
 
+    @slow
     def test_attention_mask_dtype_is_bool_long_prompt(self):
         long_prompt = "a detailed portrait of a man standing in a garden with flowers and trees"
         prompt_embeds, attn_mask = self.pipe._get_t5_prompt_embeds(long_prompt)
