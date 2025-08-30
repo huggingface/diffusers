@@ -1771,7 +1771,7 @@ class QwenImageEditInpaintPipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
-        
+
 class QwenImageControlNetPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 

@@ -17,8 +17,8 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import torch
 import PIL.Image
+import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
@@ -51,12 +51,15 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = QwenImageEditInpaintPipeline.from_pretrained("Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-         >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+        >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
         >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
         >>> source = load_image(img_url)
         >>> mask = load_image(mask_url)
-        >>> image = pipe(prompt=prompt, negative_prompt=" ", image=source, mask_image=mask, strength=1.0, num_inference_steps=50).images[0]
+        >>> image = pipe(
+        ...     prompt=prompt, negative_prompt=" ", image=source, mask_image=mask, strength=1.0, num_inference_steps=50
+        ... ).images[0]
         >>> image.save("qwenimage_inpainting.png")
         ```
 """
@@ -148,6 +151,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.calculate_dimensions
 def calculate_dimensions(target_area, ratio):
@@ -716,7 +720,7 @@ class QwenImageEditInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. This is set to 1024 by default for the best results.  
+                The width in pixels of the generated image. This is set to 1024 by default for the best results.
             padding_mask_crop (`int`, *optional*, defaults to `None`):
                 The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to
                 image and mask_image. If `padding_mask_crop` is not `None`, it will first find a rectangular region
@@ -792,7 +796,7 @@ class QwenImageEditInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         """
         image_size = image[0].size if isinstance(image, list) else image.size
         calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
-        
+
         # height and width are the same as the calculated height and width
         height = calculated_height
         width = calculated_width
@@ -834,7 +838,7 @@ class QwenImageEditInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        # 3. Preprocess image   
+        # 3. Preprocess image
         if padding_mask_crop is not None:
             crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
             resize_mode = "fill"
@@ -847,7 +851,11 @@ class QwenImageEditInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             original_image = image
             prompt_image = image
             image = self.image_processor.preprocess(
-                image, height=calculated_height, width=calculated_width, crops_coords=crops_coords, resize_mode=resize_mode
+                image,
+                height=calculated_height,
+                width=calculated_width,
+                crops_coords=crops_coords,
+                resize_mode=resize_mode,
             )
             image = image.to(dtype=torch.float32)
 
