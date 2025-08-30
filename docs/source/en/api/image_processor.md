@@ -20,6 +20,12 @@ All pipelines with [`VaeImageProcessor`] accept PIL Image, PyTorch tensor, or Nu
 
 [[autodoc]] image_processor.VaeImageProcessor
 
+## InpaintProcessor
+
+The [`InpaintProcessor`] accepts `mask` and `image` inputs and process them together. Optionally, it can accept padding_mask_crop and apply mask overlay.
+
+[[autodoc]] image_processor.InpaintProcessor
+
 ## VaeImageProcessorLDM3D
 
 The [`VaeImageProcessorLDM3D`] accepts RGB and depth inputs and returns RGB and depth outputs.
