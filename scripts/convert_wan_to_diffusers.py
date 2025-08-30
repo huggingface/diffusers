@@ -6,7 +6,7 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download, snapshot_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel, Wav2Vec2Processor, Wav2Vec2ForCTC
 
 from diffusers import (
     AutoencoderKLWan,
@@ -19,7 +19,6 @@ from diffusers import (
     WanVACEPipeline,
     WanVACETransformer3DModel,
 )
-from diffusers.pipelines.wan.audio_encoder import WanAudioEncoder
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
@@ -945,7 +944,7 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     if "FLF2V" in args.model_type:
         flow_shift = 16.0
-    elif "TI2V" in args.model_type:
+    elif "TI2V" in args.model_type or "S2V" in args.model_type:
         flow_shift = 5.0
     else:
         flow_shift = 3.0
@@ -1010,7 +1009,8 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
     elif "S2V" in args.model_type:
-        audio_encoder = WanAudioEncoder.from_pretrained("facebook/wav2vec2-base-960h")
+        audio_encoder = Wav2Vec2ForCTC.from_pretrained("Wan-AI/Wan2.2-S2V-14B", subfolder="wav2vec2-large-xlsr-53-english")
+        audio_processor = Wav2Vec2Processor.from_pretrained("Wan-AI/Wan2.2-S2V-14B", subfolder="wav2vec2-large-xlsr-53-english")
         pipe = WanSpeechToVideoPipeline(
             transformer=transformer,
             text_encoder=text_encoder,
@@ -1018,6 +1018,7 @@ if __name__ == "__main__":
             vae=vae,
             scheduler=scheduler,
             audio_encoder=audio_encoder,
+            audio_processor=audio_processor,
         )
     else:
         pipe = WanPipeline(
@@ -1028,4 +1029,7 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
 
-    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    pipe.save_pretrained(args.output_path,
+                         push_to_hub=True,
+                         safe_serialization=True,
+                         max_shard_size="5GB")

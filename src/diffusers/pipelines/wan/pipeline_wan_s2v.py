@@ -17,6 +17,7 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from PIL import Image
 import PIL
 import regex as re
 import torch
@@ -582,9 +583,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def __call__(
         self,
         image: PipelineImageInput,
-        prompt: Union[str, List[str]] = None,
+        audio: PipelineAudioInput,
+        prompt: Union[str, List[str]],
         negative_prompt: Union[str, List[str]] = None,
-        audio: PipelineAudioInput = None,
+        pose_video: Optional[List[Image.Image]] = None,
         height: int = 480,
         width: int = 832,
         num_frames: int = 81,
@@ -612,15 +614,17 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         Args:
             image (`PipelineImageInput`):
                 The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
-            prompt (`str` or `List[str]`, *optional*):
+            audio (`PipelineAudioInput`):
+                The audio input to condition the generation on. Must be an audio, a list of audios or a `torch.Tensor`.
+            prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            audio (`PipelineAudioInput`, *optional*):
-                The audio input to condition the generation on. Must be an audio, a list of audios or a `torch.Tensor`.
+            pose_video (`List[Image.Image]`, *optional*):
+                A list of PIL images representing the pose video to condition the generation on.
             height (`int`, defaults to `480`):
                 The height of the generated video.
             width (`int`, defaults to `832`):
