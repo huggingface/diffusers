@@ -343,7 +343,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
         do_classifier_free_guidance: bool = True,
-        num_videos_per_prompt: int = 1,
+        num_videos_per_prompt: Optional[int] = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: int = 226,
@@ -442,7 +442,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             raise ValueError(
                 "Provide either `image` or `prompt_embeds`. Cannot leave both `image` and `image_embeds` undefined."
             )
-        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
+        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, Image.Image):
             raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -502,7 +502,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         pose_video: Optional[List[Image.Image]] = None,
         num_repeat: Optional[int] = 1,
         sampling_fps: Optional[int] = 16
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor]
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
@@ -863,7 +863,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         if audio_embeds is None:
-            audio_embeds, num_repeat = self.encode_audio(audio, sampling_rate, num_frames, sample_fps, device)
+            audio_embeds, num_repeat = self.encode_audio(audio, sampling_rate, num_frames, sampling_fps, device)
         # TODO: num_repeat_input vs. num_repeat?
         if num_repeat_input is None or num_repeat_input > num_repeat:
             num_repeat_input = num_repeat
