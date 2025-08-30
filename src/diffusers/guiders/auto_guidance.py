@@ -82,15 +82,15 @@ class AutoGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-        if auto_guidance_layers is None and auto_guidance_config is None:
+        is_layer_or_config_provided = auto_guidance_layers is not None or auto_guidance_config is not None
+        is_layer_and_config_provided = auto_guidance_layers is not None and auto_guidance_config is not None
+        if not is_layer_or_config_provided:
             raise ValueError(
-                "Either `auto_guidance_layers` or `auto_guidance_config` must be provided to enable Skip Layer Guidance."
+                "Either `auto_guidance_layers` or `auto_guidance_config` must be provided to enable AutoGuidance."
             )
-        if auto_guidance_layers is not None and auto_guidance_config is not None:
+        if is_layer_and_config_provided:
             raise ValueError("Only one of `auto_guidance_layers` or `auto_guidance_config` can be provided.")
-        if (dropout is None and auto_guidance_layers is not None) or (
-            dropout is not None and auto_guidance_layers is None
-        ):
+        if auto_guidance_config is None and dropout is None:
             raise ValueError("`dropout` must be provided if `auto_guidance_layers` is provided.")
 
         if auto_guidance_layers is not None:

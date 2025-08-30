@@ -173,9 +173,9 @@ print(dd_blocks)
 
 ## ModularPipeline
 
-Convert the [`SequentialPipelineBlocks`] into a [`ModularPipeline`] with the [`ModularPipeline.init_pipeline`] method. This initializes the expected components to load from a `modular_model_index.json` file. Explicitly load the components by calling [`ModularPipeline.load_default_components`].
+Convert the [`SequentialPipelineBlocks`] into a [`ModularPipeline`] with the [`ModularPipeline.init_pipeline`] method. This initializes the expected components to load from a `modular_model_index.json` file. Explicitly load the components by calling [`ModularPipeline.load_components`].
 
-It is a good idea to initialize the [`ComponentManager`] with the pipeline to help manage the different components. Once you call [`~ModularPipeline.load_default_components`], the components are registered to the [`ComponentManager`] and can be shared between workflows. The example below uses the `collection` argument to assign the components a `"diffdiff"` label for better organization.
+It is a good idea to initialize the [`ComponentManager`] with the pipeline to help manage the different components. Once you call [`~ModularPipeline.load_components`], the components are registered to the [`ComponentManager`] and can be shared between workflows. The example below uses the `collection` argument to assign the components a `"diffdiff"` label for better organization.
 
 ```py
 from diffusers.modular_pipelines import ComponentsManager
@@ -209,11 +209,11 @@ Use the [`sub_blocks.insert`] method to insert it into the [`ModularPipeline`]. 
 dd_blocks.sub_blocks.insert("ip_adapter", ip_adapter_block, 0)
 ```
 
-Call [`~ModularPipeline.init_pipeline`] to initialize a [`ModularPipeline`] and use [`~ModularPipeline.load_default_components`] to load the model components. Load and set the IP-Adapter to run the pipeline.
+Call [`~ModularPipeline.init_pipeline`] to initialize a [`ModularPipeline`] and use [`~ModularPipeline.load_components`] to load the model components. Load and set the IP-Adapter to run the pipeline.
 
 ```py
 dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_default_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(torch_dtype=torch.float16)
 dd_pipeline.loader.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 dd_pipeline.loader.set_ip_adapter_scale(0.6)
 dd_pipeline = dd_pipeline.to(device)
@@ -260,14 +260,14 @@ class SDXLDiffDiffControlNetDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
 controlnet_denoise_block = SDXLDiffDiffControlNetDenoiseStep()
 ```
 
-Insert the `controlnet_input` block and replace the `denoise` block with the new `controlnet_denoise_block`. Initialize a [`ModularPipeline`] and [`~ModularPipeline.load_default_components`] into it.
+Insert the `controlnet_input` block and replace the `denoise` block with the new `controlnet_denoise_block`. Initialize a [`ModularPipeline`] and [`~ModularPipeline.load_components`] into it.
 
 ```py
 dd_blocks.sub_blocks.insert("controlnet_input", control_input_block, 7)
 dd_blocks.sub_blocks["denoise"] = controlnet_denoise_block
 
 dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_default_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(torch_dtype=torch.float16)
 dd_pipeline = dd_pipeline.to(device)
 
 control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_tomato_canny.jpeg")
@@ -320,7 +320,7 @@ Call [`SequentialPipelineBlocks.from_blocks_dict`] to create a [`SequentialPipel
 ```py
 dd_auto_blocks = SequentialPipelineBlocks.from_blocks_dict(DIFFDIFF_AUTO_BLOCKS)
 dd_pipeline = dd_auto_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_default_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(torch_dtype=torch.float16)
 ```
 
 ## Share
@@ -340,5 +340,5 @@ from diffusers.modular_pipelines import ModularPipeline, ComponentsManager
 components = ComponentsManager()
 
 diffdiff_pipeline = ModularPipeline.from_pretrained("YiYiXu/modular-diffdiff-0704", trust_remote_code=True, components_manager=components, collection="diffdiff")
-diffdiff_pipeline.load_default_components(torch_dtype=torch.float16)
+diffdiff_pipeline.load_components(torch_dtype=torch.float16)
 ```

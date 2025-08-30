@@ -24,10 +24,10 @@ from diffusers import (
     SkyReelsV2Transformer3DModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
 )
-
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     PipelineTesterMixin,

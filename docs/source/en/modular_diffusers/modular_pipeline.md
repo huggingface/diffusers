@@ -29,7 +29,7 @@ blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
-pipeline.load_default_components(torch_dtype=torch.float16)
+pipeline.load_components(torch_dtype=torch.float16)
 pipeline.to("cuda")
 
 image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", output="images")[0]
@@ -49,7 +49,7 @@ blocks = SequentialPipelineBlocks.from_blocks_dict(IMAGE2IMAGE_BLOCKS)
 modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
-pipeline.load_default_components(torch_dtype=torch.float16)
+pipeline.load_components(torch_dtype=torch.float16)
 pipeline.to("cuda")
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
@@ -73,7 +73,7 @@ blocks = SequentialPipelineBlocks.from_blocks_dict(INPAINT_BLOCKS)
 modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
-pipeline.load_default_components(torch_dtype=torch.float16)
+pipeline.load_components(torch_dtype=torch.float16)
 pipeline.to("cuda")
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
@@ -176,15 +176,15 @@ diffdiff_pipeline = ModularPipeline.from_pretrained(modular_repo_id, trust_remot
 
 ## Loading components
 
-A [`ModularPipeline`] doesn't automatically instantiate with components. It only loads the configuration and component specifications. You can load all components with [`~ModularPipeline.load_default_components`] or only load specific components with [`~ModularPipeline.load_components`].
+A [`ModularPipeline`] doesn't automatically instantiate with components. It only loads the configuration and component specifications. You can load all components with [`~ModularPipeline.load_components`] or only load specific components with [`~ModularPipeline.load_components`].
 
 <hfoptions id="load">
-<hfoption id="load_default_components">
+<hfoption id="load_components">
 
 ```py
 import torch
 
-t2i_pipeline.load_default_components(torch_dtype=torch.float16)
+t2i_pipeline.load_components(torch_dtype=torch.float16)
 t2i_pipeline.to("cuda")
 ```
 

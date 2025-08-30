@@ -59,7 +59,10 @@ from diffusers.utils import (
     logging,
 )
 from diffusers.utils.hub_utils import _add_variant
-from diffusers.utils.testing_utils import (
+from diffusers.utils.torch_utils import get_torch_cuda_device_capability
+
+from ..others.test_utils import TOKEN, USER, is_staging_test
+from ..testing_utils import (
     CaptureLogger,
     _check_safetensors_serialization,
     backend_empty_cache,
@@ -82,9 +85,6 @@ from diffusers.utils.testing_utils import (
     torch_all_close,
     torch_device,
 )
-from diffusers.utils.torch_utils import get_torch_cuda_device_capability
-
-from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 if is_peft_available():
