@@ -266,7 +266,7 @@ pipe = WanSpeechToVideoPipeline.from_pretrained(
 pipe.to("cuda")
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
-audio = load_audio("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
+audio, sampling_rate = load_audio("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
 pose_video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_pose_video.mp4")
 
 def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
@@ -282,7 +282,8 @@ first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
 prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
 
 output = pipe(
-    image=first_frame, audio=audio, prompt=prompt, height=height, width=width, guidance_scale=5.0,
+    image=first_frame, audio=audio, sampling_rate=sampling_rate,
+    prompt=prompt, height=height, width=width, guidance_scale=5.0,
     # pose_video=pose_video
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)

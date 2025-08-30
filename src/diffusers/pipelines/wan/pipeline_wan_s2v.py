@@ -17,11 +17,11 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from PIL import Image
 import PIL
 import regex as re
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from transformers import AutoTokenizer, UMT5EncoderModel, Wav2Vec2ForCTC, Wav2Vec2Processor
 
 from ...audio_processor import PipelineAudioInput
@@ -216,6 +216,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.audio_processor = audio_processor
+        self.motion_frames = 73
+        self.drop_first_motion = True
 
     def _get_t5_prompt_embeds(
         self,
@@ -262,7 +264,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         audio: PipelineAudioInput,
         sampling_rate: int,
-        infer_frames: int,
+        num_frames: int,
         fps: int = 16,
         device: Optional[torch.device] = None,
     ):
@@ -289,10 +291,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         scale = video_rate / fps
 
-        num_repeat = int(audio_frame_num / (infer_frames * scale)) + 1
+        num_repeat = int(audio_frame_num / (num_frames * scale)) + 1
 
-        bucket_num = num_repeat * infer_frames
-        padd_audio_num = math.ceil(num_repeat * infer_frames / fps * video_rate) - audio_frame_num
+        bucket_num = num_repeat * num_frames
+        padd_audio_num = math.ceil(num_repeat * num_frames / fps * video_rate) - audio_frame_num
         batch_idx = get_sample_indices(
             original_fps=video_rate,
             total_frames=audio_frame_num + padd_audio_num,
@@ -496,6 +498,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        init_first_frame: Optional[bool] = False,
+        pose_video: Optional[List[Image.Image]] = None,
+        num_repeat: Optional[int] = 1,
+        sampling_fps: Optional[int] = 16
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
@@ -507,6 +513,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
+
+        motion_latents = torch.zeros([1, 3, self.motion_frames, height, width], dtype=dtype, device=device)
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -542,6 +550,21 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latent_condition = latent_condition.to(dtype)
         latent_condition = (latent_condition - latents_mean) * latents_std
 
+        # Encode motion latents
+        videos_last_frames = motion_latents.detach()
+        if init_first_frame:
+            self.drop_first_motion = False
+            motion_latents[:, :, -6:] = video_condition
+        motion_latents = torch.stack(self.vae.encode(motion_latents))
+
+        # Get pose condition input if needed
+        COND = self.load_pose_condition(
+            pose_video,
+            num_repeat,
+            num_frames,
+            (height, width),
+            sampling_fps)
+
         mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
 
         mask_lat_size[:, :, list(range(1, num_frames))] = 0
@@ -552,7 +575,89 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         mask_lat_size = mask_lat_size.transpose(1, 2)
         mask_lat_size = mask_lat_size.to(latent_condition.device)
 
-        return latents, torch.concat([mask_lat_size, latent_condition], dim=1)
+        return (latents, torch.concat([mask_lat_size, latent_condition], dim=1)), motion_latents
+
+    def load_pose_condition(self, pose_video, num_repeat, infer_frames, size, sampling_fps):
+        HEIGHT, WIDTH = size
+        if not pose_video is None:
+            pose_seq = self.read_last_n_frames(
+                pose_video,
+                n_frames=infer_frames * num_repeat,
+                target_fps=sampling_fps,
+                reverse=True)
+
+            resize_opreat = transforms.Resize(min(HEIGHT, WIDTH))
+            crop_opreat = transforms.CenterCrop((HEIGHT, WIDTH))
+            tensor_trans = transforms.ToTensor()
+
+            cond_tensor = torch.from_numpy(pose_seq)
+            cond_tensor = cond_tensor.permute(0, 3, 1, 2) / 255.0 * 2 - 1.0
+            cond_tensor = crop_opreat(resize_opreat(cond_tensor)).permute(
+                1, 0, 2, 3).unsqueeze(0)
+
+            padding_frame_num = num_repeat * infer_frames - cond_tensor.shape[2]
+            cond_tensor = torch.cat([
+                cond_tensor,
+                - torch.ones([1, 3, padding_frame_num, HEIGHT, WIDTH])
+            ],
+                                    dim=2)
+
+            cond_tensors = torch.chunk(cond_tensor, num_repeat, dim=2)
+        else:
+            cond_tensors = [-torch.ones([1, 3, infer_frames, HEIGHT, WIDTH])]
+
+        COND = []
+        for r in range(len(cond_tensors)):
+            cond = cond_tensors[r]
+            cond = torch.cat([cond[:, :, 0:1].repeat(1, 1, 1, 1, 1), cond],
+                             dim=2)
+            cond_lat = torch.stack(
+                self.vae.encode(
+                    cond.to(dtype=self.param_dtype,
+                            device=self.device)))[:, :,
+                                                  1:].cpu()  # for mem save
+            COND.append(cond_lat)
+
+        return COND
+
+    def read_last_n_frames(self,
+                           video_path,
+                           n_frames,
+                           target_fps=16,
+                           reverse=False):
+        """
+        Read the last `n_frames` from a video at the specified frame rate.
+
+        Parameters:
+            video_path (str): Path to the video file.
+            n_frames (int): Number of frames to read.
+            target_fps (int, optional): Target sampling frame rate. Defaults to 16.
+            reverse (bool, optional): Whether to read frames in reverse order.
+                                    If True, reads the first `n_frames` instead of the last ones.
+
+        Returns:
+            np.ndarray: A NumPy array of shape [n_frames, H, W, 3], representing the sampled video frames.
+        """
+        vr = VideoReader(video_path)
+        original_fps = vr.get_avg_fps()
+        total_frames = len(vr)
+
+        interval = max(1, round(original_fps / target_fps))
+
+        required_span = (n_frames - 1) * interval
+
+        start_frame = max(0, total_frames - required_span -
+                          1) if not reverse else 0
+
+        sampled_indices = []
+        for i in range(n_frames):
+            indice = start_frame + i * interval
+            if indice >= total_frames:
+                break
+            else:
+                sampled_indices.append(indice)
+
+        return vr.get_batch(sampled_indices).asnumpy()
 
     @property
     def guidance_scale(self):
@@ -584,12 +689,13 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         image: PipelineImageInput,
         audio: PipelineAudioInput,
+        sampling_rate: int,
         prompt: Union[str, List[str]],
         negative_prompt: Union[str, List[str]] = None,
         pose_video: Optional[List[Image.Image]] = None,
         height: int = 480,
         width: int = 832,
-        num_frames: int = 81,
+        num_frames: int = 80,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
@@ -607,6 +713,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        init_first_frame: bool = False,
+        sampling_fps: int = 16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -616,6 +724,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
             audio (`PipelineAudioInput`):
                 The audio input to condition the generation on. Must be an audio, a list of audios or a `torch.Tensor`.
+            sampling_rate (`int`):
+                The sampling rate of the audio input.
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -629,8 +739,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The height of the generated video.
             width (`int`, defaults to `832`):
                 The width of the generated video.
-            num_frames (`int`, defaults to `81`):
-                The number of frames in the generated video.
+            num_frames (`int`, defaults to `80`):
+                The number of frames in the generated video. The number should be a multiple of 4.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -681,6 +791,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             max_sequence_length (`int`, defaults to `512`):
                 The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
                 truncated. If the prompt is shorter, it will be padded to this length.
+            init_first_frame (`bool`, *optional*, defaults to False):
+                Whether to use the reference image as the first frame (i.e., standard image-to-video generation).
+            sampling_fps (`int`, *optional*, defaults to 16):
+                The frame rate (in frames per second) at which the generated video will be sampled.
 
         Examples:
 
@@ -743,16 +857,20 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device=device,
         )
 
-        # Encode image embedding
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         if audio_embeds is None:
-            audio_embeds = self.encode_audio(audio, device)
+            audio_embeds, num_repeat = self.encode_audio(audio, sampling_rate, num_frames, sample_fps, device)
+        # TODO: num_repeat_input vs. num_repeat?
+        if num_repeat_input is None or num_repeat_input > num_repeat:
+            num_repeat_input = num_repeat
         audio_embeds = audio_embeds.repeat(batch_size, 1, 1)
         audio_embeds = audio_embeds.to(transformer_dtype)
+
+        latent_motion_frames = (self.motion_frames + 3) // 4
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -762,7 +880,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
 
-        latents_outputs = self.prepare_latents(
+        latents_outputs, motion_latents = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -773,6 +891,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device,
             generator,
             latents,
+            init_first_frame,
+            pose_video,
+            num_repeat_input,
+            sampling_fps
         )
 
         latents, condition = latents_outputs
