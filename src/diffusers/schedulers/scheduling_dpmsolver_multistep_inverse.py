@@ -299,7 +299,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.use_flow_sigmas:
             alphas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)
             sigmas = 1.0 - alphas
-            sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1].copy()
+            sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1][
+                ::-1
+            ].copy()
             timesteps = (sigmas * self.config.num_train_timesteps).copy()
             sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         else:
