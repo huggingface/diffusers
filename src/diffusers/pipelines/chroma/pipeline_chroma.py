@@ -233,7 +233,7 @@ class ChromaPipeline(
         )
         text_input_ids = text_inputs.input_ids
         attention_mask = text_inputs.attention_mask.clone()
-        attention_mask = attention_mask.bool()  # fix here mine
+        attention_mask = attention_mask.bool()
 
         # Chroma requires the attention mask to include one padding token
         seq_lengths = attention_mask.sum(dim=1)
@@ -584,7 +584,6 @@ class ChromaPipeline(
             [attention_mask, torch.ones(batch_size, sequence_length, device=attention_mask.device, dtype=torch.bool)],
             dim=1,
         )
-        # attention_mask = attention_mask.to(dtype)
 
         return attention_mask
 
