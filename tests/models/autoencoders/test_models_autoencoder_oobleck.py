@@ -21,7 +21,8 @@ from datasets import load_dataset
 from parameterized import parameterized
 
 from diffusers import AutoencoderOobleck
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -29,7 +30,6 @@ from diffusers.utils.testing_utils import (
     torch_all_close,
     torch_device,
 )
-
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 

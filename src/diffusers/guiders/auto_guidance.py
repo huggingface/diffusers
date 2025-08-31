@@ -20,7 +20,7 @@ import torch
 from ..configuration_utils import register_to_config
 from ..hooks import HookRegistry, LayerSkipConfig
 from ..hooks.layer_skip import _apply_layer_skip_hook
-from .guider_utils import BaseGuidance, rescale_noise_cfg
+from .guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
@@ -82,15 +82,15 @@ class AutoGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-        if auto_guidance_layers is None and auto_guidance_config is None:
+        is_layer_or_config_provided = auto_guidance_layers is not None or auto_guidance_config is not None
+        is_layer_and_config_provided = auto_guidance_layers is not None and auto_guidance_config is not None
+        if not is_layer_or_config_provided:
             raise ValueError(
-                "Either `auto_guidance_layers` or `auto_guidance_config` must be provided to enable Skip Layer Guidance."
+                "Either `auto_guidance_layers` or `auto_guidance_config` must be provided to enable AutoGuidance."
             )
-        if auto_guidance_layers is not None and auto_guidance_config is not None:
+        if is_layer_and_config_provided:
             raise ValueError("Only one of `auto_guidance_layers` or `auto_guidance_config` can be provided.")
-        if (dropout is None and auto_guidance_layers is not None) or (
-            dropout is not None and auto_guidance_layers is None
-        ):
+        if auto_guidance_config is None and dropout is None:
             raise ValueError("`dropout` must be provided if `auto_guidance_layers` is provided.")
 
         if auto_guidance_layers is not None:
@@ -145,7 +145,7 @@ class AutoGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
         pred = None
 
         if not self._is_ag_enabled():
@@ -158,7 +158,7 @@ class AutoGuidance(BaseGuidance):
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
-        return pred, {}
+        return GuiderOutput(pred=pred, pred_cond=pred_cond, pred_uncond=pred_uncond)
 
     @property
     def is_conditional(self) -> bool:

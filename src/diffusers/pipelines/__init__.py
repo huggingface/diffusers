@@ -393,6 +393,8 @@ else:
         "QwenImageImg2ImgPipeline",
         "QwenImageInpaintPipeline",
         "QwenImageEditPipeline",
+        "QwenImageEditInpaintPipeline",
+        "QwenImageControlNetPipeline",
     ]
 try:
     if not is_onnx_available():
@@ -712,6 +714,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .qwenimage import (
+            QwenImageControlNetPipeline,
+            QwenImageEditInpaintPipeline,
             QwenImageEditPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
