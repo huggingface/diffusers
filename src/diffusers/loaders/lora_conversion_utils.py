@@ -2237,7 +2237,7 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
                 converted_state_dict[diffusers_up_key] = up_weight * scale_up
 
     # Already in diffusers format (lora_A/lora_B), just pop
-    elif has_lora_letter:
+    elif has_diffusers_lora_id:
         for k in all_keys:
             if a_key in k or b_key in k:
                 converted_state_dict[k] = state_dict.pop(k)
