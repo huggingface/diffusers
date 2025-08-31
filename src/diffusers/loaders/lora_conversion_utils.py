@@ -2211,7 +2211,7 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     has_non_diffusers_lora_id = any(down_key in k or up_key in k for k in all_keys)
     has_diffusers_lora_id = any(a_key in k or b_key in k for k in all_keys)
 
-    if has_lora_arrow:
+    if has_non_diffusers_lora_id:
 
         def get_alpha_scales(down_weight, alpha_key):
             rank = down_weight.shape[0]
