@@ -20,13 +20,13 @@ from diffusers import (
     FluxControlNetModel,
     FluxTransformer2DModel,
 )
-from diffusers.utils.testing_utils import (
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     torch_device,
 )
-from diffusers.utils.torch_utils import randn_tensor
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
