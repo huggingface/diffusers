@@ -1136,6 +1136,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPipeline,
             QwenImageControlNetPipeline,
             QwenImageEditPipeline,
+            QwenImageEditInpaintPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
             QwenImagePipeline,
