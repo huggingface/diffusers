@@ -2208,8 +2208,8 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     a_key = ".lora_A.weight"
     b_key = ".lora_B.weight"
 
-    has_lora_arrow = any(down_key in k or up_key in k for k in all_keys)
-    has_lora_letter = any(a_key in k or b_key in k for k in all_keys)
+    has_non_diffusers_lora_id = any(down_key in k or up_key in k for k in all_keys)
+    has_diffusers_lora_id = any(a_key in k or b_key in k for k in all_keys)
 
     if has_lora_arrow:
 
