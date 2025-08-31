@@ -1772,7 +1772,7 @@ class QwenImageControlNetPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class QwenImageEditPipeline(metaclass=DummyObject):
+class QwenImageEditInpaintPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1787,7 +1787,7 @@ class QwenImageEditPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class QwenImageEditInpaintPipeline(metaclass=DummyObject):
+class QwenImageEditPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
