@@ -932,7 +932,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             audio_embeds=audio_embeds_input,
                             motion_frames=[self.motion_frames, latent_motion_frames],
                             drop_motion_frames=self.drop_first_motion and r == 0,
-                            max_seq_len=max_seq_len,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
@@ -948,7 +947,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 audio_embeds=0.0 * audio_embeds_input,
                                 motion_frames=[self.motion_frames, latent_motion_frames],
                                 drop_motion_frames=self.drop_first_motion and r == 0,
-                                max_seq_len=max_seq_len,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]
