@@ -132,7 +132,7 @@ _deps = [
     "gguf>=0.10.0",
     "torchao>=0.7.0",
     "bitsandbytes>=0.43.3",
-    "nvidia_modelopt[hf]>=0.27.0",
+    "nvidia_modelopt[hf]>=0.33.1",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
