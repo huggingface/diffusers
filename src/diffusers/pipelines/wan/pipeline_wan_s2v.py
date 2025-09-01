@@ -560,7 +560,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         videos_last_latents = motion_latents.detach()
 
         # Get pose condition input if needed
-        pose_condition = self.load_pose_condition(pose_video, num_chunks, num_frames_per_chunk, (height, width), sampling_fps)
+        pose_condition = self.load_pose_condition(
+            pose_video, num_chunks, num_frames_per_chunk, (height, width), sampling_fps
+        )
 
         return (latents, latent_condition), motion_latents, videos_last_latents, pose_condition
 
@@ -712,7 +714,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             width (`int`, defaults to `832`):
                 The width of the generated video.
             num_frames_per_chunk (`int`, defaults to `81`):
-                The number of frames in each chunk of the generated video. `num_frames_per_chunk` - 1 should be a multiple of 4.
+                The number of frames in each chunk of the generated video. `num_frames_per_chunk` - 1 should be a
+                multiple of 4.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -768,8 +771,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             sampling_fps (`int`, *optional*, defaults to 16):
                 The frame rate (in frames per second) at which the generated video will be sampled.
             num_chunks (`int`, *optional*, defaults to None):
-                The number of chunks to process. If not provided, the number of chunks will be
-                determined by the audio input to generate whole audio. E.g., If the input audio has 4 chunks, then user can set num_chunks=1 to see 1 out of 4 chunks only without generating the whole video.
+                The number of chunks to process. If not provided, the number of chunks will be determined by the audio
+                input to generate whole audio. E.g., If the input audio has 4 chunks, then user can set num_chunks=1 to
+                see 1 out of 4 chunks only without generating the whole video.
         Examples:
 
         Returns:
@@ -801,7 +805,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             logger.warning(
                 f"`num_frames_per_chunk - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
             )
-            num_frames_per_chunk = num_frames_per_chunk // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+            num_frames_per_chunk = (
+                num_frames_per_chunk // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+            )
         num_frames_per_chunk = max(num_frames_per_chunk, 1)
 
         self._guidance_scale = guidance_scale
