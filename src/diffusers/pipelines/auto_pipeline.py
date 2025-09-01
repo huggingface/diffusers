@@ -91,6 +91,14 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .qwenimage import (
+    QwenImageControlNetPipeline,
+    QwenImageEditInpaintPipeline,
+    QwenImageEditPipeline,
+    QwenImageImg2ImgPipeline,
+    QwenImageInpaintPipeline,
+    QwenImagePipeline,
+)
 from .sana import SanaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
@@ -109,15 +117,6 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
-
-from .qwenimage import (
-    QwenImagePipeline, 
-    QwenImageInpaintPipeline, 
-    QwenImageImg2ImgPipeline,
-    QwenImageEditPipeline,
-    QwenImageEditInpaintPipeline,
-    QwenImageControlNetPipeline,
-)
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(

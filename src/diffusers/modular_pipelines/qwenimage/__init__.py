@@ -25,9 +25,9 @@ else:
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
         "CONTROLNET_BLOCKS",
+        "EDIT_BLOCKS",
         "INPAINT_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
-        "EDIT_BLOCKS",
         "QwenImageAutoBlocks",
     ]
     _import_structure["modular_pipeline"] = ["QwenImageModularPipeline"]
@@ -45,9 +45,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_blocks import (
             ALL_BLOCKS,
             CONTROLNET_BLOCKS,
+            EDIT_BLOCKS,
             INPAINT_BLOCKS,
             TEXT2IMAGE_BLOCKS,
-            EDIT_BLOCKS,
             QwenImageAutoBlocks,
         )
         from .modular_pipeline import QwenImageModularPipeline

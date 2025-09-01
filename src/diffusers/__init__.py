@@ -372,12 +372,12 @@ else:
         [
             "FluxAutoBlocks",
             "FluxModularPipeline",
+            "QwenImageAutoBlocks",
             "QwenImageModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
             "WanAutoBlocks",
             "WanModularPipeline",
-            "QwenImageAutoBlocks",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -1019,9 +1019,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             FluxAutoBlocks,
             FluxModularPipeline,
+            QwenImageAutoBlocks,
             QwenImageModularPipeline,
             StableDiffusionXLAutoBlocks,
-            QwenImageAutoBlocks,
             StableDiffusionXLModularPipeline,
             WanAutoBlocks,
             WanModularPipeline,

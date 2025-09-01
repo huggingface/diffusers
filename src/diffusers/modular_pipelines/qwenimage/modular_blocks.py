@@ -64,6 +64,7 @@ class QwenImageOptionalInpaintVaeEncoderStep(AutoPipelineBlocks):
             + " - if `mask_image` is not provided, step will be skipped."
         )
 
+
 class QwenImageOptionalControlNetVaeEncoderStep(AutoPipelineBlocks):
     block_classes = [QwenImageVaeEncoderDynamicStep(input_name="control_image", output_name="control_image_latents")]
     block_names = ["controlnet"]
@@ -220,8 +221,16 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
         QwenImageAutoDenoiseStep(),
         QwenImageAutoDecodeStep(),
     ]
-    block_names = ["text_encoder", "vae_encoder", "controlnet_vae_encoder", "before_denoise", "controlnet_inputs", "denoise", "decode"]
-    
+    block_names = [
+        "text_encoder",
+        "vae_encoder",
+        "controlnet_vae_encoder",
+        "before_denoise",
+        "controlnet_inputs",
+        "denoise",
+        "decode",
+    ]
+
     @property
     def description(self):
         return (
