@@ -50,8 +50,7 @@ logger = logging.get_logger(__name__)
 # 1. vae encoders
 
 
-# YiYi TODO: should we add support for img2img?
-class QwenImageAutoVaeEncoderStep(AutoPipelineBlocks):
+class QwenImageOptionalInpaintVaeEncoderStep(AutoPipelineBlocks):
     block_classes = [QwenImageInpaintVaeEncoderStep]
     block_names = ["inpaint"]
     block_trigger_inputs = ["mask_image"]
@@ -65,8 +64,7 @@ class QwenImageAutoVaeEncoderStep(AutoPipelineBlocks):
             + " - if `mask_image` is not provided, step will be skipped."
         )
 
-
-class QwenImageControlNetAutoVaeEncoderStep(AutoPipelineBlocks):
+class QwenImageOptionalControlNetVaeEncoderStep(AutoPipelineBlocks):
     block_classes = [QwenImageVaeEncoderDynamicStep(input_name="control_image", output_name="control_image_latents")]
     block_names = ["controlnet"]
     block_trigger_inputs = ["control_image"]
@@ -146,7 +144,7 @@ class QwenImageAutoBeforeDenoiseStep(AutoPipelineBlocks):
         )
 
 
-class QwenImageAutoControlNetInputsStep(AutoPipelineBlocks):
+class QwenImageOptionalControlNetInputsStep(AutoPipelineBlocks):
     block_classes = [QwenImageControlNetInputsStep]
     block_names = ["controlnet"]
     block_trigger_inputs = ["control_image"]
@@ -161,8 +159,6 @@ class QwenImageAutoControlNetInputsStep(AutoPipelineBlocks):
 
 
 # 3. denoise
-
-
 class QwenImageControlNetAutoDenoiseStep(AutoPipelineBlocks):
     block_classes = [QwenImageInpaintControlNetDenoiseStep, QwenImageControlNetDenoiseStep]
     block_names = ["inpaint_denoise", "denoise"]
@@ -211,6 +207,32 @@ class QwenImageAutoDecodeStep(AutoPipelineBlocks):
         )
 
 
+# Auto Pipelines Blocks
+
+
+class QwenImageAutoBlocks(SequentialPipelineBlocks):
+    block_classes = [
+        QwenImageTextEncoderStep(),
+        QwenImageOptionalInpaintVaeEncoderStep(),
+        QwenImageOptionalControlNetVaeEncoderStep(),
+        QwenImageAutoBeforeDenoiseStep(),
+        QwenImageOptionalControlNetInputsStep(),
+        QwenImageAutoDenoiseStep(),
+        QwenImageAutoDecodeStep(),
+    ]
+    block_names = ["text_encoder", "vae_encoder", "controlnet_vae_encoder", "before_denoise", "controlnet_inputs", "denoise", "decode"]
+    
+    @property
+    def description(self):
+        return (
+            "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using QwenImage.\n"
+            + "- for image-to-image generation, you need to provide `image`\n"
+            + "- for inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop` \n"
+            + "- to run the controlnet workflow, you need to provide `control_image`\n"
+            + "- for text-to-image generation, all you need to provide is `prompt`"
+        )
+
+
 TEXT2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", QwenImageTextEncoderStep()),
@@ -255,10 +277,10 @@ CONTROLNET_BLOCKS = InsertableDict(
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", QwenImageTextEncoderStep()),
-        ("vae_encoder", QwenImageAutoVaeEncoderStep()),
-        ("controlnet_vae_encoder", QwenImageControlNetAutoVaeEncoderStep()),
+        ("vae_encoder", QwenImageOptionalInpaintVaeEncoderStep()),
+        ("controlnet_vae_encoder", QwenImageOptionalControlNetVaeEncoderStep()),
         ("before_denoise", QwenImageAutoBeforeDenoiseStep()),
-        ("controlnet_inputs", QwenImageAutoControlNetInputsStep()),
+        ("controlnet_inputs", QwenImageOptionalControlNetInputsStep()),
         ("denoise", QwenImageAutoDenoiseStep()),
         ("decode", QwenImageAutoDecodeStep()),
     ]

@@ -27,6 +27,8 @@ else:
         "CONTROLNET_BLOCKS",
         "INPAINT_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
+        "EDIT_BLOCKS",
+        "QwenImageAutoBlocks",
     ]
     _import_structure["modular_pipeline"] = ["QwenImageModularPipeline"]
 
@@ -45,6 +47,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CONTROLNET_BLOCKS,
             INPAINT_BLOCKS,
             TEXT2IMAGE_BLOCKS,
+            EDIT_BLOCKS,
+            QwenImageAutoBlocks,
         )
         from .modular_pipeline import QwenImageModularPipeline
 else:

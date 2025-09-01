@@ -65,6 +65,7 @@ MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
         ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
         ("WanModularPipeline", "WanAutoBlocks"),
         ("FluxModularPipeline", "FluxAutoBlocks"),
+        ("QwenImageModularPipeline", "QwenImageAutoBlocks"),
     ]
 )
 
