@@ -76,6 +76,8 @@ if DIFFUSERS_ENABLE_HUB_KERNELS:
 
     flash_attn_interface_hub = _get_fa3_from_hub()
     flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
+else:
+    flash_attn_3_func_hub = None
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
