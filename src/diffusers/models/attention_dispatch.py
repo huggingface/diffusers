@@ -17,7 +17,6 @@ import functools
 import inspect
 import math
 from enum import Enum
-from functools import lru_cache
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -37,7 +36,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ENABLE_HUB_KERNELS
 
 
 _REQUIRED_FLASH_VERSION = "2.6.3"
@@ -54,7 +53,6 @@ _CAN_USE_NPU_ATTN = is_torch_npu_available()
 _CAN_USE_XLA_ATTN = is_torch_xla_available() and is_torch_xla_version(">=", _REQUIRED_XLA_VERSION)
 _CAN_USE_XFORMERS_ATTN = is_xformers_available() and is_xformers_version(">=", _REQUIRED_XFORMERS_VERSION)
 
-
 if _CAN_USE_FLASH_ATTN:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
 else:
@@ -69,6 +67,15 @@ else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
 
+if DIFFUSERS_ENABLE_HUB_KERNELS:
+    if not is_kernels_available():
+        raise ImportError(
+            "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
+        )
+    from ..utils.kernels_utils import _get_fa3_from_hub
+
+    flash_attn_interface_hub = _get_fa3_from_hub()
+    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -208,22 +215,6 @@ class _AttentionBackendRegistry:
     @classmethod
     def list_backends(cls):
         return list(cls._backends.keys())
-
-
-@lru_cache(maxsize=None)
-def _load_fa3_hub():
-    from ..utils.kernels_utils import _get_fa3_from_hub
-
-    fa3_hub = _get_fa3_from_hub()  # won't re-download if already present
-    if fa3_hub is None:
-        raise RuntimeError(
-            "Failed to load FlashAttention-3 kernels from the Hub. Please ensure the wheel is available for your platform."
-        )
-    return fa3_hub
-
-
-def flash_attn_3_hub_func(*args, **kwargs):
-    return _load_fa3_hub().flash_attn_func(*args, **kwargs)
 
 
 @contextlib.contextmanager
@@ -540,22 +531,6 @@ def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torc
     return torch.empty_like(query), query.new_empty(lse_shape)
 
 
-@_custom_op("vllm_flash_attn3::flash_attn", mutates_args=(), device_types="cuda")
-def _wrapped_flash_attn_3_hub(
-    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    out, lse = flash_attn_3_hub_func(query, key, value)
-    lse = lse.permute(0, 2, 1)
-    return out, lse
-
-
-@_register_fake("vllm_flash_attn3::flash_attn")
-def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    batch_size, seq_len, num_heads, head_dim = query.shape
-    lse_shape = (batch_size, seq_len, num_heads)
-    return torch.empty_like(query), query.new_empty(lse_shape)
-
-
 # ===== Attention backends =====
 
 
@@ -714,7 +689,7 @@ def _flash_attention_3_hub(
     deterministic: bool = False,
     return_attn_probs: bool = False,
 ) -> torch.Tensor:
-    out, lse, *_ = flash_attn_3_hub_func(
+    out, lse, *_ = flash_attn_3_func_hub(
         q=query,
         k=key,
         v=value,

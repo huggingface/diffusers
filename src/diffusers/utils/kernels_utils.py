@@ -5,7 +5,7 @@ from .import_utils import is_kernels_available
 logger = get_logger(__name__)
 
 
-_DEFAULT_HUB_ID_FA3 = "kernels-community/vllm-flash-attn3"
+_DEFAULT_HUB_ID_FA3 = "kernels-community/flash-attn3"
 
 
 def _get_fa3_from_hub():
@@ -15,7 +15,8 @@ def _get_fa3_from_hub():
         from kernels import get_kernel
 
         try:
-            flash_attn_3_hub = get_kernel(_DEFAULT_HUB_ID_FA3)
+            # TODO: temporary revision for now. Remove when merged upstream into `main`.
+            flash_attn_3_hub = get_kernel(_DEFAULT_HUB_ID_FA3, revision="fake-ops")
             return flash_attn_3_hub
         except Exception as e:
             logger.error(f"An error occurred while fetching kernel '{_DEFAULT_HUB_ID_FA3}' from the Hub: {e}")
