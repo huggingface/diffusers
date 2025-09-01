@@ -281,7 +281,21 @@ User Prompt:'''
             text = self.processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True, add_vision_id=True
             )
-            image_inputs = [imgs]
+            imgs = imgs.convert("RGB")
+            min_pixels = 4 * 28 * 28
+            max_pixels = 16384 * 28 * 28
+            width, height = imgs.size
+            h_bar = max(28, round(height / 28) * 28)
+            w_bar = max(28, round(width / 28) * 28)
+            if h_bar * w_bar > max_pixels:
+                beta = math.sqrt((height * width) / max_pixels)
+                h_bar = math.floor(height / beta / 28) * 28
+                w_bar = math.floor(width / beta / 28) * 28
+            elif h_bar * w_bar < min_pixels:
+                beta = math.sqrt(min_pixels / (height * width))
+                h_bar = math.ceil(height * beta / 28) * 28
+                w_bar = math.ceil(width * beta / 28) * 28
+            image_inputs = [imgs.resize((w_bar, h_bar))]
 
             inputs = self.processor(
                 text=[text],
