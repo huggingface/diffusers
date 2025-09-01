@@ -1053,6 +1053,21 @@ class OmniGenTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class ParallelConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class PixArtTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1475,6 +1490,10 @@ class WanVACETransformer3DModel(metaclass=DummyObject):
 
 def attention_backend(*args, **kwargs):
     requires_backends(attention_backend, ["torch"])
+
+
+def enable_parallelism(*args, **kwargs):
+    requires_backends(enable_parallelism, ["torch"])
 
 
 class ComponentsManager(metaclass=DummyObject):
