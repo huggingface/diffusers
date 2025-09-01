@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [ControlNet](https://hf.co/papers/2302.05543) models are adapters trained on top of another pretrained model. It allows for a greater degree of control over image generation by conditioning the model with an additional input image. The input image can be a canny edge, depth map, human pose, and many more.
 
-If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing`, `gradient_accumulation_steps`, and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing or xFormers. You should have a GPU with >30GB of memory if you want to train faster with Flax.
+If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing`, `gradient_accumulation_steps`, and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers).
 
 This guide will explore the [train_controlnet.py](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
 
@@ -28,45 +28,10 @@ pip install .
 
 Then navigate to the example folder containing the training script and install the required dependencies for the script you're using:
 
-<hfoptions id="installation">
-<hfoption id="PyTorch">
 ```bash
 cd examples/controlnet
 pip install -r requirements.txt
 ```
-</hfoption>
-<hfoption id="Flax">
-
-If you have access to a TPU, the Flax training script runs even faster! Let's run the training script on the [Google Cloud TPU VM](https://cloud.google.com/tpu/docs/run-calculation-jax). Create a single TPU v4-8 VM and connect to it:
-
-```bash
-ZONE=us-central2-b
-TPU_TYPE=v4-8
-VM_NAME=hg_flax
-
-gcloud alpha compute tpus tpu-vm create $VM_NAME \
- --zone $ZONE \
- --accelerator-type $TPU_TYPE \
- --version  tpu-vm-v4-base
-
-gcloud alpha compute tpus tpu-vm ssh $VM_NAME --zone $ZONE -- \
-```
-
-Install JAX 0.4.5:
-
-```bash
-pip install "jax[tpu]==0.4.5" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-```
-
-Then install the required dependencies for the Flax script:
-
-```bash
-cd examples/controlnet
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
-</hfoptions>
 
 <Tip>
 
@@ -120,7 +85,7 @@ Many of the basic and important parameters are described in the [Text-to-image](
 
 ### Min-SNR weighting
 
-The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
+The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch.
 
 Add the `--snr_gamma` parameter and set it to the recommended value of 5.0:
 
@@ -272,9 +237,6 @@ That's it! You don't need to add any additional parameters to your training comm
 </hfoption>
 </hfoptions>
 
-<hfoptions id="training-inference">
-<hfoption id="PyTorch">
-
 ```bash
 export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path/to/save/model"
@@ -291,47 +253,6 @@ accelerate launch train_controlnet.py \
  --gradient_accumulation_steps=4 \
  --push_to_hub
 ```
-
-</hfoption>
-<hfoption id="Flax">
-
-With Flax, you can [profile your code](https://jax.readthedocs.io/en/latest/profiling.html) by adding the `--profile_steps==5` parameter to your training command. Install the Tensorboard profile plugin:
-
-```bash
-pip install tensorflow tensorboard-plugin-profile
-tensorboard --logdir runs/fill-circle-100steps-20230411_165612/
-```
-
-Then you can inspect the profile at [http://localhost:6006/#profile](http://localhost:6006/#profile).
-
-<Tip warning={true}>
-
-If you run into version conflicts with the plugin, try uninstalling and reinstalling all versions of TensorFlow and Tensorboard. The debugging functionality of the profile plugin is still experimental, and not all views are fully functional. The `trace_viewer` cuts off events after 1M, which can result in all your device traces getting lost if for example, you profile the compilation step by accident.
-
-</Tip>
-
-```bash
-python3 train_controlnet_flax.py \
- --pretrained_model_name_or_path=$MODEL_DIR \
- --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
- --resolution=512 \
- --learning_rate=1e-5 \
- --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
- --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
- --validation_steps=1000 \
- --train_batch_size=2 \
- --revision="non-ema" \
- --from_pt \
- --report_to="wandb" \
- --tracker_project_name=$HUB_MODEL_ID \
- --num_train_epochs=11 \
- --push_to_hub \
- --hub_model_id=$HUB_MODEL_ID
-```
-
-</hfoption>
-</hfoptions>
 
 Once training is complete, you can use your newly trained model for inference!
 
