@@ -1139,7 +1139,7 @@ def main(args):
                 variant=args.variant,
                 torch_dtype=torch_dtype,
             )
-            pipeline = FluxKontextPipeline.from_pretrained(
+            pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 transformer=transformer,
                 torch_dtype=torch_dtype,
