@@ -37,7 +37,7 @@ limitations under the License.
 
 ## Installation
 
-We recommend installing 🤗 Diffusers in a virtual environment from PyPI or Conda. For more details about installing [PyTorch](https://pytorch.org/get-started/locally/) and [Flax](https://flax.readthedocs.io/en/latest/#installation), please refer to their official documentation.
+We recommend installing 🤗 Diffusers in a virtual environment from PyPI or Conda. For more details about installing [PyTorch](https://pytorch.org/get-started/locally/), please refer to their official documentation.
 
 ### PyTorch
 
@@ -51,14 +51,6 @@ With `conda` (maintained by the community):
 
 ```sh
 conda install -c conda-forge diffusers
-```
-
-### Flax
-
-With `pip` (official package):
-
-```bash
-pip install --upgrade diffusers[flax]
 ```
 
 ### Apple Silicon (M1/M2) support

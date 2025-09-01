@@ -28,7 +28,8 @@ from diffusers import (
     LEditsPPPipelineStableDiffusion,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     enable_full_determinism,

@@ -127,6 +127,7 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -392,6 +393,8 @@ else:
         "QwenImageImg2ImgPipeline",
         "QwenImageInpaintPipeline",
         "QwenImageEditPipeline",
+        "QwenImageEditInpaintPipeline",
+        "QwenImageControlNetPipeline",
     ]
 try:
     if not is_onnx_available():
@@ -552,6 +555,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
+        from .bria import BriaPipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
@@ -710,6 +714,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .qwenimage import (
+            QwenImageControlNetPipeline,
+            QwenImageEditInpaintPipeline,
             QwenImageEditPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,

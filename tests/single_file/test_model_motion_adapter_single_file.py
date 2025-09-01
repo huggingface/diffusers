@@ -18,7 +18,8 @@ import unittest
 from diffusers import (
     MotionAdapter,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     enable_full_determinism,
 )
 
