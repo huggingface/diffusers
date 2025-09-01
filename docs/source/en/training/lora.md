@@ -38,24 +38,10 @@ pip install .
 
 Navigate to the example folder with the training script and install the required dependencies for the script you're using:
 
-<hfoptions id="installation">
-<hfoption id="PyTorch">
-
 ```bash
 cd examples/text_to_image
 pip install -r requirements.txt
 ```
-
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/text_to_image
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
-</hfoptions>
 
 <Tip>
 

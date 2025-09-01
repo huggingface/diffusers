@@ -49,6 +49,7 @@ from .lora_conversion_utils import (
     _convert_non_diffusers_lora_to_diffusers,
     _convert_non_diffusers_ltxv_lora_to_diffusers,
     _convert_non_diffusers_lumina2_lora_to_diffusers,
+    _convert_non_diffusers_qwen_lora_to_diffusers,
     _convert_non_diffusers_wan_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
@@ -5064,7 +5065,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`WanTransformer3DModel`]. Specific to [`WanPipeline`] and `[WanImageToVideoPipeline`].
     """
 
-    _lora_loadable_modules = ["transformer"]
+    _lora_loadable_modules = ["transformer", "transformer_2"]
     transformer_name = TRANSFORMER_NAME
 
     @classmethod
@@ -5269,15 +5270,35 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_transformer(
-            state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
+        if load_into_transformer_2:
+            if not hasattr(self, "transformer_2"):
+                raise AttributeError(
+                    f"'{type(self).__name__}' object has no attribute transformer_2"
+                    "Note that Wan2.1 models do not have a transformer_2 component."
+                    "Ensure the model has a transformer_2 component before setting load_into_transformer_2=True."
+                )
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=self.transformer_2,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+        else:
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->WanTransformer3DModel
@@ -5667,15 +5688,35 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_transformer(
-            state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
+        if load_into_transformer_2:
+            if not hasattr(self, "transformer_2"):
+                raise AttributeError(
+                    f"'{type(self).__name__}' object has no attribute transformer_2"
+                    "Note that Wan2.1 models do not have a transformer_2 component."
+                    "Ensure the model has a transformer_2 component before setting load_into_transformer_2=True."
+                )
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=self.transformer_2,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+        else:
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->SkyReelsV2Transformer3DModel
@@ -6548,7 +6589,6 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -6641,6 +6681,11 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        has_alphas_in_sd = any(k.endswith(".alpha") for k in state_dict)
+        has_lora_unet = any(k.startswith("lora_unet_") for k in state_dict)
+        if has_alphas_in_sd or has_lora_unet:
+            state_dict = _convert_non_diffusers_qwen_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out

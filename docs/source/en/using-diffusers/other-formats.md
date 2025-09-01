@@ -176,7 +176,7 @@ Benefits of using the Diffusers-multifolder layout include:
     ).to("cuda")
     turbo_pipeline.scheduler = EulerDiscreteScheduler.from_config(
         turbo_pipeline.scheduler.config,
-        timestep+spacing="trailing"
+        timestep_spacing="trailing"
     )
     image = turbo_pipeline(
         "an astronaut riding a unicorn on mars",
@@ -267,6 +267,7 @@ pipe = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_d
 save_folder = "flux-dev"
 pipe.save_pretrained("flux-dev")
 export_folder_as_dduf("flux-dev.dduf", folder_path=save_folder)
+```
 
 > [!TIP]
 > Packaging and loading quantized checkpoints in the DDUF format is supported as long as they respect the multi-folder structure.

@@ -817,7 +817,11 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
     # has both `peft` and non-peft state dict.
     has_peft_state_dict = any(k.startswith("transformer.") for k in state_dict)
     if has_peft_state_dict:
-        state_dict = {k: v for k, v in state_dict.items() if k.startswith("transformer.")}
+        state_dict = {
+            k.replace("lora_down.weight", "lora_A.weight").replace("lora_up.weight", "lora_B.weight"): v
+            for k, v in state_dict.items()
+            if k.startswith("transformer.")
+        }
         return state_dict
 
     # Another weird one.
@@ -1829,6 +1833,17 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
         k.startswith("time_projection") and k.endswith(".weight") for k in original_state_dict
     )
 
+    def get_alpha_scales(down_weight, alpha_key):
+        rank = down_weight.shape[0]
+        alpha = original_state_dict.pop(alpha_key).item()
+        scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+        return scale_down, scale_up
+
     for key in list(original_state_dict.keys()):
         if key.endswith((".diff", ".diff_b")) and "norm" in key:
             # NOTE: we don't support this because norm layer diff keys are just zeroed values. We can support it
@@ -1848,15 +1863,26 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     for i in range(min_block, max_block + 1):
         # Self-attention
         for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
-            original_key = f"blocks.{i}.self_attn.{o}.{lora_down_key}.weight"
-            converted_key = f"blocks.{i}.attn1.{c}.lora_A.weight"
-            if original_key in original_state_dict:
-                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+            alpha_key = f"blocks.{i}.self_attn.{o}.alpha"
+            has_alpha = alpha_key in original_state_dict
+            original_key_A = f"blocks.{i}.self_attn.{o}.{lora_down_key}.weight"
+            converted_key_A = f"blocks.{i}.attn1.{c}.lora_A.weight"
 
-            original_key = f"blocks.{i}.self_attn.{o}.{lora_up_key}.weight"
-            converted_key = f"blocks.{i}.attn1.{c}.lora_B.weight"
-            if original_key in original_state_dict:
-                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+            original_key_B = f"blocks.{i}.self_attn.{o}.{lora_up_key}.weight"
+            converted_key_B = f"blocks.{i}.attn1.{c}.lora_B.weight"
+
+            if has_alpha:
+                down_weight = original_state_dict.pop(original_key_A)
+                up_weight = original_state_dict.pop(original_key_B)
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                converted_state_dict[converted_key_A] = down_weight * scale_down
+                converted_state_dict[converted_key_B] = up_weight * scale_up
+
+            else:
+                if original_key_A in original_state_dict:
+                    converted_state_dict[converted_key_A] = original_state_dict.pop(original_key_A)
+                if original_key_B in original_state_dict:
+                    converted_state_dict[converted_key_B] = original_state_dict.pop(original_key_B)
 
             original_key = f"blocks.{i}.self_attn.{o}.diff_b"
             converted_key = f"blocks.{i}.attn1.{c}.lora_B.bias"
@@ -1865,15 +1891,24 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
         # Cross-attention
         for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
-            original_key = f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
-            converted_key = f"blocks.{i}.attn2.{c}.lora_A.weight"
-            if original_key in original_state_dict:
-                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+            alpha_key = f"blocks.{i}.cross_attn.{o}.alpha"
+            has_alpha = alpha_key in original_state_dict
+            original_key_A = f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
+            converted_key_A = f"blocks.{i}.attn2.{c}.lora_A.weight"
 
-            original_key = f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
-            converted_key = f"blocks.{i}.attn2.{c}.lora_B.weight"
-            if original_key in original_state_dict:
-                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+            original_key_B = f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
+            converted_key_B = f"blocks.{i}.attn2.{c}.lora_B.weight"
+
+            if original_key_A in original_state_dict:
+                down_weight = original_state_dict.pop(original_key_A)
+                converted_state_dict[converted_key_A] = down_weight
+            if original_key_B in original_state_dict:
+                up_weight = original_state_dict.pop(original_key_B)
+                converted_state_dict[converted_key_B] = up_weight
+            if has_alpha:
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                converted_state_dict[converted_key_A] *= scale_down
+                converted_state_dict[converted_key_B] *= scale_up
 
             original_key = f"blocks.{i}.cross_attn.{o}.diff_b"
             converted_key = f"blocks.{i}.attn2.{c}.lora_B.bias"
@@ -1882,15 +1917,24 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
         if is_i2v_lora:
             for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
-                original_key = f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
-                converted_key = f"blocks.{i}.attn2.{c}.lora_A.weight"
-                if original_key in original_state_dict:
-                    converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+                alpha_key = f"blocks.{i}.cross_attn.{o}.alpha"
+                has_alpha = alpha_key in original_state_dict
+                original_key_A = f"blocks.{i}.cross_attn.{o}.{lora_down_key}.weight"
+                converted_key_A = f"blocks.{i}.attn2.{c}.lora_A.weight"
 
-                original_key = f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
-                converted_key = f"blocks.{i}.attn2.{c}.lora_B.weight"
-                if original_key in original_state_dict:
-                    converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+                original_key_B = f"blocks.{i}.cross_attn.{o}.{lora_up_key}.weight"
+                converted_key_B = f"blocks.{i}.attn2.{c}.lora_B.weight"
+
+                if original_key_A in original_state_dict:
+                    down_weight = original_state_dict.pop(original_key_A)
+                    converted_state_dict[converted_key_A] = down_weight
+                if original_key_B in original_state_dict:
+                    up_weight = original_state_dict.pop(original_key_B)
+                    converted_state_dict[converted_key_B] = up_weight
+                if has_alpha:
+                    scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                    converted_state_dict[converted_key_A] *= scale_down
+                    converted_state_dict[converted_key_B] *= scale_up
 
                 original_key = f"blocks.{i}.cross_attn.{o}.diff_b"
                 converted_key = f"blocks.{i}.attn2.{c}.lora_B.bias"
@@ -1899,15 +1943,24 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
         # FFN
         for o, c in zip(["ffn.0", "ffn.2"], ["net.0.proj", "net.2"]):
-            original_key = f"blocks.{i}.{o}.{lora_down_key}.weight"
-            converted_key = f"blocks.{i}.ffn.{c}.lora_A.weight"
-            if original_key in original_state_dict:
-                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+            alpha_key = f"blocks.{i}.{o}.alpha"
+            has_alpha = alpha_key in original_state_dict
+            original_key_A = f"blocks.{i}.{o}.{lora_down_key}.weight"
+            converted_key_A = f"blocks.{i}.ffn.{c}.lora_A.weight"
 
-            original_key = f"blocks.{i}.{o}.{lora_up_key}.weight"
-            converted_key = f"blocks.{i}.ffn.{c}.lora_B.weight"
-            if original_key in original_state_dict:
-                converted_state_dict[converted_key] = original_state_dict.pop(original_key)
+            original_key_B = f"blocks.{i}.{o}.{lora_up_key}.weight"
+            converted_key_B = f"blocks.{i}.ffn.{c}.lora_B.weight"
+
+            if original_key_A in original_state_dict:
+                down_weight = original_state_dict.pop(original_key_A)
+                converted_state_dict[converted_key_A] = down_weight
+            if original_key_B in original_state_dict:
+                up_weight = original_state_dict.pop(original_key_B)
+                converted_state_dict[converted_key_B] = up_weight
+            if has_alpha:
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                converted_state_dict[converted_key_A] *= scale_down
+                converted_state_dict[converted_key_B] *= scale_up
 
             original_key = f"blocks.{i}.{o}.diff_b"
             converted_key = f"blocks.{i}.ffn.{c}.lora_B.bias"
@@ -2071,5 +2124,109 @@ def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_pref
     if not all(k.startswith(f"{non_diffusers_prefix}.") for k in state_dict):
         raise ValueError("Invalid LoRA state dict for LTX-Video.")
     converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
+    converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+    return converted_state_dict
+
+
+def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
+    has_lora_unet = any(k.startswith("lora_unet_") for k in state_dict)
+    if has_lora_unet:
+        state_dict = {k.removeprefix("lora_unet_"): v for k, v in state_dict.items()}
+
+        def convert_key(key: str) -> str:
+            prefix = "transformer_blocks"
+            if "." in key:
+                base, suffix = key.rsplit(".", 1)
+            else:
+                base, suffix = key, ""
+
+            start = f"{prefix}_"
+            rest = base[len(start) :]
+
+            if "." in rest:
+                head, tail = rest.split(".", 1)
+                tail = "." + tail
+            else:
+                head, tail = rest, ""
+
+            # Protected n-grams that must keep their internal underscores
+            protected = {
+                # pairs
+                ("to", "q"),
+                ("to", "k"),
+                ("to", "v"),
+                ("to", "out"),
+                ("add", "q"),
+                ("add", "k"),
+                ("add", "v"),
+                ("txt", "mlp"),
+                ("img", "mlp"),
+                ("txt", "mod"),
+                ("img", "mod"),
+                # triplets
+                ("add", "q", "proj"),
+                ("add", "k", "proj"),
+                ("add", "v", "proj"),
+                ("to", "add", "out"),
+            }
+
+            prot_by_len = {}
+            for ng in protected:
+                prot_by_len.setdefault(len(ng), set()).add(ng)
+
+            parts = head.split("_")
+            merged = []
+            i = 0
+            lengths_desc = sorted(prot_by_len.keys(), reverse=True)
+
+            while i < len(parts):
+                matched = False
+                for L in lengths_desc:
+                    if i + L <= len(parts) and tuple(parts[i : i + L]) in prot_by_len[L]:
+                        merged.append("_".join(parts[i : i + L]))
+                        i += L
+                        matched = True
+                        break
+                if not matched:
+                    merged.append(parts[i])
+                    i += 1
+
+            head_converted = ".".join(merged)
+            converted_base = f"{prefix}.{head_converted}{tail}"
+            return converted_base + (("." + suffix) if suffix else "")
+
+        state_dict = {convert_key(k): v for k, v in state_dict.items()}
+
+    converted_state_dict = {}
+    all_keys = list(state_dict.keys())
+    down_key = ".lora_down.weight"
+    up_key = ".lora_up.weight"
+
+    def get_alpha_scales(down_weight, alpha_key):
+        rank = down_weight.shape[0]
+        alpha = state_dict.pop(alpha_key).item()
+        scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+        return scale_down, scale_up
+
+    for k in all_keys:
+        if k.endswith(down_key):
+            diffusers_down_key = k.replace(down_key, ".lora_A.weight")
+            diffusers_up_key = k.replace(down_key, up_key).replace(up_key, ".lora_B.weight")
+            alpha_key = k.replace(down_key, ".alpha")
+
+            down_weight = state_dict.pop(k)
+            up_weight = state_dict.pop(k.replace(down_key, up_key))
+            scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+            converted_state_dict[diffusers_down_key] = down_weight * scale_down
+            converted_state_dict[diffusers_up_key] = up_weight * scale_up
+
+    if len(state_dict) > 0:
+        raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
+
     converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
     return converted_state_dict

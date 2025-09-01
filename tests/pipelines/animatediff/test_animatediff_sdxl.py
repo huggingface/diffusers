@@ -14,8 +14,8 @@ from diffusers import (
     UNetMotionModel,
 )
 from diffusers.utils import is_xformers_available, logging
-from diffusers.utils.testing_utils import require_accelerator, torch_device
 
+from ...testing_utils import require_accelerator, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
