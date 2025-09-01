@@ -1132,16 +1132,8 @@ def main(args):
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
 
-            transformer = FluxTransformer2DModel.from_pretrained(
-                args.pretrained_model_name_or_path,
-                subfolder="transformer",
-                revision=args.revision,
-                variant=args.variant,
-                torch_dtype=torch_dtype,
-            )
             pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
-                transformer=transformer,
                 torch_dtype=torch_dtype,
                 revision=args.revision,
                 variant=args.variant,
