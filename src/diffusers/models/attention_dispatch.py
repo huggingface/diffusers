@@ -691,7 +691,7 @@ def _flash_attention_3_hub(
     deterministic: bool = False,
     return_attn_probs: bool = False,
 ) -> torch.Tensor:
-    out, lse, *_ = flash_attn_3_func_hub(
+    out = flash_attn_3_func_hub(
         q=query,
         k=key,
         v=value,
@@ -708,6 +708,7 @@ def _flash_attention_3_hub(
         deterministic=deterministic,
         sm_margin=0,
     )
+    lse = None
     return (out, lse) if return_attn_probs else out
 
 
