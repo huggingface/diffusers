@@ -14,14 +14,16 @@
 
 import html
 import math
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import PIL
 import regex as re
 import torch
 import torch.nn.functional as F
+from decord import VideoReader
 from PIL import Image
+from torchvision import transforms
 from transformers import AutoTokenizer, UMT5EncoderModel, Wav2Vec2ForCTC, Wav2Vec2Processor
 
 from ...audio_processor import PipelineAudioInput
@@ -29,7 +31,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanS2VTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -195,7 +197,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: UniPCMultistepScheduler,
         transformer: WanS2VTransformer3DModel,
         audio_encoder: Wav2Vec2ForCTC,
         audio_processor: Wav2Vec2Processor,
@@ -343,7 +345,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
         do_classifier_free_guidance: bool = True,
-        num_videos_per_prompt: Optional[int] = 1,
+        num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: int = 226,
@@ -493,17 +495,17 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents: int = 16,
         height: int = 480,
         width: int = 832,
-        num_frames: int = 81,
+        num_frames_per_chunk: int = 81,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         init_first_frame: Optional[bool] = False,
         pose_video: Optional[List[Image.Image]] = None,
-        num_repeat: Optional[int] = 1,
-        sampling_fps: Optional[int] = 16
-    ) -> Tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor]
-        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        num_chunks: Optional[int] = 1,
+        sampling_fps: Optional[int] = 16,
+    ) -> Tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor]:
+        num_latent_frames = (num_frames_per_chunk - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
 
@@ -514,7 +516,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        motion_latents = torch.zeros([1, 3, self.motion_frames, height, width], dtype=dtype, device=device)
+        motion_pixels = torch.zeros([1, 3, self.motion_frames, height, width], dtype=dtype, device=device)
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -524,7 +526,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
 
         video_condition = torch.cat(
-            [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+            [image, image.new_zeros(image.shape[0], image.shape[1], num_frames_per_chunk - 1, height, width)], dim=2
         )
 
         video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
@@ -551,80 +553,50 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latent_condition = (latent_condition - latents_mean) * latents_std
 
         # Encode motion latents
-        videos_last_frames = motion_latents.detach()
         if init_first_frame:
             self.drop_first_motion = False
-            motion_latents[:, :, -6:] = video_condition
-        motion_latents = torch.stack(self.vae.encode(motion_latents))
+            motion_pixels[:, :, -6:] = video_condition
+        motion_latents = torch.stack(self.vae.encode(motion_pixels))
+        videos_last_latents = motion_latents.detach()
 
         # Get pose condition input if needed
-        COND = self.load_pose_condition(
-            pose_video,
-            num_repeat,
-            num_frames,
-            (height, width),
-            sampling_fps)
+        pose_condition = self.load_pose_condition(pose_video, num_chunks, num_frames_per_chunk, (height, width), sampling_fps)
 
-        mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
+        return (latents, latent_condition), motion_latents, videos_last_latents, pose_condition
 
-        mask_lat_size[:, :, list(range(1, num_frames))] = 0
-        first_frame_mask = mask_lat_size[:, :, 0:1]
-        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
-        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(batch_size, -1, self.vae_scale_factor_temporal, latent_height, latent_width)
-        mask_lat_size = mask_lat_size.transpose(1, 2)
-        mask_lat_size = mask_lat_size.to(latent_condition.device)
-
-        return (latents, torch.concat([mask_lat_size, latent_condition], dim=1)), motion_latents
-
-    def load_pose_condition(self, pose_video, num_repeat, infer_frames, size, sampling_fps):
+    def load_pose_condition(self, pose_video, num_chunks, num_frames_per_chunk, size, sampling_fps):
         HEIGHT, WIDTH = size
-        if not pose_video is None:
+        if pose_video is not None:
             pose_seq = self.read_last_n_frames(
-                pose_video,
-                n_frames=infer_frames * num_repeat,
-                target_fps=sampling_fps,
-                reverse=True)
+                pose_video, n_frames=num_frames_per_chunk * num_chunks, target_fps=sampling_fps, reverse=True
+            )
 
             resize_opreat = transforms.Resize(min(HEIGHT, WIDTH))
             crop_opreat = transforms.CenterCrop((HEIGHT, WIDTH))
-            tensor_trans = transforms.ToTensor()
 
             cond_tensor = torch.from_numpy(pose_seq)
             cond_tensor = cond_tensor.permute(0, 3, 1, 2) / 255.0 * 2 - 1.0
-            cond_tensor = crop_opreat(resize_opreat(cond_tensor)).permute(
-                1, 0, 2, 3).unsqueeze(0)
+            cond_tensor = crop_opreat(resize_opreat(cond_tensor)).permute(1, 0, 2, 3).unsqueeze(0)
 
-            padding_frame_num = num_repeat * infer_frames - cond_tensor.shape[2]
-            cond_tensor = torch.cat([
-                cond_tensor,
-                - torch.ones([1, 3, padding_frame_num, HEIGHT, WIDTH])
-            ],
-                                    dim=2)
+            padding_frame_num = num_chunks * num_frames_per_chunk - cond_tensor.shape[2]
+            cond_tensor = torch.cat([cond_tensor, -torch.ones([1, 3, padding_frame_num, HEIGHT, WIDTH])], dim=2)
 
-            cond_tensors = torch.chunk(cond_tensor, num_repeat, dim=2)
+            cond_tensors = torch.chunk(cond_tensor, num_chunks, dim=2)
         else:
-            cond_tensors = [-torch.ones([1, 3, infer_frames, HEIGHT, WIDTH])]
+            cond_tensors = [-torch.ones([1, 3, num_frames_per_chunk, HEIGHT, WIDTH])]
 
-        COND = []
+        pose_condition = []
         for r in range(len(cond_tensors)):
             cond = cond_tensors[r]
-            cond = torch.cat([cond[:, :, 0:1].repeat(1, 1, 1, 1, 1), cond],
-                             dim=2)
-            cond_lat = torch.stack(
-                self.vae.encode(
-                    cond.to(dtype=self.param_dtype,
-                            device=self.device)))[:, :,
-                                                  1:].cpu()  # for mem save
-            COND.append(cond_lat)
+            cond = torch.cat([cond[:, :, 0:1].repeat(1, 1, 1, 1, 1), cond], dim=2)
+            cond_lat = torch.stack(self.vae.encode(cond.to(dtype=self.param_dtype, device=self.device)))[
+                :, :, 1:
+            ].cpu()  # for mem save
+            pose_condition.append(cond_lat)
 
-        return COND
+        return pose_condition
 
-    def read_last_n_frames(self,
-                           video_path,
-                           n_frames,
-                           target_fps=16,
-                           reverse=False):
+    def read_last_n_frames(self, video_path, n_frames, target_fps=16, reverse=False):
         """
         Read the last `n_frames` from a video at the specified frame rate.
 
@@ -646,8 +618,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         required_span = (n_frames - 1) * interval
 
-        start_frame = max(0, total_frames - required_span -
-                          1) if not reverse else 0
+        start_frame = max(0, total_frames - required_span - 1) if not reverse else 0
 
         sampled_indices = []
         for i in range(n_frames):
@@ -695,7 +666,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         pose_video: Optional[List[Image.Image]] = None,
         height: int = 480,
         width: int = 832,
-        num_frames: int = 80,
+        num_frames_per_chunk: int = 81,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
@@ -715,6 +686,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         max_sequence_length: int = 512,
         init_first_frame: bool = False,
         sampling_fps: int = 16,
+        num_chunks: Optional[int] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -739,8 +711,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The height of the generated video.
             width (`int`, defaults to `832`):
                 The width of the generated video.
-            num_frames (`int`, defaults to `80`):
-                The number of frames in the generated video. The number should be a multiple of 4.
+            num_frames_per_chunk (`int`, defaults to `81`):
+                The number of frames in each chunk of the generated video. `num_frames_per_chunk` - 1 should be a multiple of 4.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -795,7 +767,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Whether to use the reference image as the first frame (i.e., standard image-to-video generation).
             sampling_fps (`int`, *optional*, defaults to 16):
                 The frame rate (in frames per second) at which the generated video will be sampled.
-
+            num_chunks (`int`, *optional*, defaults to None):
+                The number of chunks to process. If not provided, the number of chunks will be
+                determined by the audio input to generate whole audio. E.g., If the input audio has 4 chunks, then user can set num_chunks=1 to see 1 out of 4 chunks only without generating the whole video.
         Examples:
 
         Returns:
@@ -823,12 +797,12 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             audio_embeds,
         )
 
-        if num_frames % self.vae_scale_factor_temporal != 1:
+        if num_frames_per_chunk % self.vae_scale_factor_temporal != 1:
             logger.warning(
-                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
+                f"`num_frames_per_chunk - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
             )
-            num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
-        num_frames = max(num_frames, 1)
+            num_frames_per_chunk = num_frames_per_chunk // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+        num_frames_per_chunk = max(num_frames_per_chunk, 1)
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
@@ -863,10 +837,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         if audio_embeds is None:
-            audio_embeds, num_repeat = self.encode_audio(audio, sampling_rate, num_frames, sampling_fps, device)
-        # TODO: num_repeat_input vs. num_repeat?
-        if num_repeat_input is None or num_repeat_input > num_repeat:
-            num_repeat_input = num_repeat
+            audio_embeds, num_chunks_audio = self.encode_audio(
+                audio, sampling_rate, num_frames_per_chunk, sampling_fps, device
+            )
+        if num_chunks is None or num_chunks > num_chunks_audio:
+            num_chunks = num_chunks_audio
         audio_embeds = audio_embeds.repeat(batch_size, 1, 1)
         audio_embeds = audio_embeds.to(transformer_dtype)
 
@@ -880,21 +855,21 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
 
-        latents_outputs, motion_latents = self.prepare_latents(
+        latents_outputs, motion_latents, videos_last_latents, pose_condition = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
             width,
-            num_frames,
+            num_frames_per_chunk,
             torch.float32,
             device,
             generator,
             latents,
             init_first_frame,
             pose_video,
-            num_repeat_input,
-            sampling_fps
+            num_chunks,
+            sampling_fps,
         )
 
         latents, condition = latents_outputs
@@ -903,57 +878,111 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
+        all_latents = []
+        for r in range(num_chunks):
+            latent_target_frames = (num_frames_per_chunk + 3 + self.motion_frames) // 4 - latent_motion_frames
+            target_shape = [latent_target_frames, height // 8, width // 8]
+            max_seq_len = np.prod(target_shape) // 4
+            latents = deepcopy(latents)
+            with torch.no_grad():
+                left_idx = r * num_frames_per_chunk
+                right_idx = r * num_frames_per_chunk + num_frames_per_chunk
+                pose_latents = pose_condition[r] if pose_video else pose_condition[0]
+                pose_latents = pose_latents.to(dtype=transformer_dtype, device=device)
+                audio_embeds_input = audio_embeds[..., left_idx:right_idx]
+            motion_latents_input = motion_latents.clone()
 
-                self._current_timestep = t
+            with self.progress_bar(total=num_inference_steps) as progress_bar:
+                for i, t in enumerate(timesteps):
+                    if self.interrupt:
+                        continue
 
-                latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
-                timestep = t.expand(latents.shape[0])
+                    self._current_timestep = t
 
-                with self.transformer.cache_context("cond"):
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep,
-                        encoder_hidden_states=prompt_embeds,
-                        encoder_hidden_states_image=image_embeds,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
+                    latent_model_input = latents.to(transformer_dtype)
+                    timestep = t.expand(latents.shape[0])
 
-                if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
-                        noise_uncond = self.transformer(
+                    with self.transformer.cache_context("cond"):
+                        noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
-                            encoder_hidden_states=negative_prompt_embeds,
-                            encoder_hidden_states_image=image_embeds,
+                            encoder_hidden_states=prompt_embeds,
+                            motion_latents=motion_latents_input,
+                            image_latents=condition,
+                            pose_latents=pose_latents,
+                            audio_embeds=audio_embeds_input,
+                            motion_frames=[self.motion_frames, latent_motion_frames],
+                            drop_motion_frames=self.drop_first_motion and r == 0,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
-                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context("uncond"):
+                            noise_uncond = self.transformer(
+                                hidden_states=latent_model_input,
+                                timestep=timestep,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                motion_latents=motion_latents_input,
+                                image_latents=condition,
+                                audio_embeds=0.0 * audio_embeds_input,
+                                motion_frames=[self.motion_frames, latent_motion_frames],
+                                drop_motion_frames=self.drop_first_motion and r == 0,
+                                attention_kwargs=attention_kwargs,
+                                return_dict=False,
+                            )[0]
+                            noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {}
+                        for k in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[k] = locals()[k]
+                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
+                        latents = callback_outputs.pop("latents", latents)
+                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                if XLA_AVAILABLE:
-                    xm.mark_step()
+                    # call the callback, if provided
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
+
+                    if XLA_AVAILABLE:
+                        xm.mark_step()
+
+            if not (self.drop_first_motion and r == 0):
+                decode_latents = torch.cat([motion_latents, latents], dim=2)
+            else:
+                decode_latents = torch.cat([condition, latents], dim=2)
+
+            # Work in latent space - no decode-encode cycle
+            num_latent_frames = (num_frames_per_chunk + 3) // 4
+            segment_latents = decode_latents[:, :, -num_latent_frames:]
+            if self.drop_first_motion and r == 0:
+                # Adjust for latent space temporal compression
+                segment_latents = segment_latents[:, :, (3 + 3) // 4 :]
+
+            num_latent_overlap_frames = min(latent_motion_frames, segment_latents.shape[2])
+            videos_last_latents = torch.cat(
+                [
+                    videos_last_latents[:, :, num_latent_overlap_frames:],
+                    segment_latents[:, :, -num_latent_overlap_frames:],
+                ],
+                dim=2,
+            )
+
+            # Update motion_latents for next iteration (stay in latent space)
+            motion_latents = videos_last_latents.to(dtype=motion_latents.dtype, device=motion_latents.device)
+
+            # Store latents instead of decoded frames
+            all_latents.append(segment_latents)
+
+        # Decode all accumulated latents once at the end
+        all_latents = torch.cat(all_latents, dim=2)
+        latents = all_latents
 
         self._current_timestep = None
 

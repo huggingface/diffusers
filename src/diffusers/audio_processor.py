@@ -50,7 +50,7 @@ def is_valid_audio_audiolist(audios):
 
     The input can be one of the following formats:
     - A 4D tensor or numpy array (batch of audios).
-    - A valid single audio: 2D `np.ndarray` or `torch.Tensor` (grayscale audio), 3D `np.ndarray` or `torch.Tensor`.
+    - A valid single audio: `np.ndarray` or `torch.Tensor`.
     - A list of valid audios.
 
     Args:
