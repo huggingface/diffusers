@@ -24,6 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, deprecate, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -409,6 +410,18 @@ class LTXVideoTransformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["norm"]
     _repeated_blocks = ["LTXVideoTransformerBlock"]
+    _cp_plan = {
+        "": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_attention_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
+        "rope": {
+            0: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+            1: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(
