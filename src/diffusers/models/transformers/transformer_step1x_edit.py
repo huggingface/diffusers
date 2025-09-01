@@ -2,7 +2,6 @@ import inspect
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import math
-from einops import rearrange
 from functools import partial
 import numpy as np
 import torch
@@ -18,6 +17,7 @@ from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import (
+    Timesteps,
     apply_rotary_emb,
     get_1d_rotary_pos_embed,
 )
@@ -58,29 +58,8 @@ def _get_qkv_projections(attn: "Step1XEditAttention", hidden_states, encoder_hid
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-def get_activation_layer(act_type):
-    """get activation layer
-
-    Args:
-        act_type (str): the activation type
-
-    Returns:
-        torch.nn.functional: the activation layer
-    """
-    if act_type == "gelu":
-        return lambda: nn.GELU()
-    elif act_type == "gelu_tanh":
-        return lambda: nn.GELU(approximate="tanh")
-    elif act_type == "relu":
-        return nn.ReLU
-    elif act_type == "silu":
-        return nn.SiLU
-    else:
-        raise ValueError(f"Unknown activation type: {act_type}")
-
-
 def apply_gate(x, gate=None, tanh=False):
-    """AI is creating summary for apply_gate
+    """Applies a gating mechanism to the input tensor
 
     Args:
         x (torch.Tensor): input tensor.
@@ -96,22 +75,6 @@ def apply_gate(x, gate=None, tanh=False):
         return x * gate.unsqueeze(1).tanh()
     else:
         return x * gate.unsqueeze(1)
-
-
-def get_norm_layer(norm_layer):
-    """
-    Get the normalization layer.
-
-    Args:
-        norm_layer (str): The type of normalization layer.
-
-    Returns:
-        norm_layer (nn.Module): The normalization layer.
-    """
-    if norm_layer == "layer":
-        return nn.LayerNorm
-    else:
-        raise NotImplementedError(f"Norm layer {norm_layer} is not implemented")
 
 
 class Step1XEditAttnProcessor:
@@ -175,141 +138,10 @@ class Step1XEditAttnProcessor:
             return hidden_states
 
 
-class Step1XEditIPAdapterAttnProcessor(torch.nn.Module):
-    """Step1XEdit Attention processor for IP-Adapter."""
-
-    _attention_backend = None
-
-    def __init__(
-        self, hidden_size: int, cross_attention_dim: int, num_tokens=(4,), scale=1.0, device=None, dtype=None
-    ):
-        super().__init__()
-
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-
-        if not isinstance(num_tokens, (tuple, list)):
-            num_tokens = [num_tokens]
-
-        if not isinstance(scale, list):
-            scale = [scale] * len(num_tokens)
-        if len(scale) != len(num_tokens):
-            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
-        self.scale = scale
-
-        self.to_k_ip = nn.ModuleList(
-            [
-                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
-                for _ in range(len(num_tokens))
-            ]
-        )
-        self.to_v_ip = nn.ModuleList(
-            [
-                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
-                for _ in range(len(num_tokens))
-            ]
-        )
-
-    def __call__(
-        self,
-        attn: "Step1XEditAttention",
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        ip_hidden_states: Optional[List[torch.Tensor]] = None,
-        ip_adapter_masks: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        batch_size = hidden_states.shape[0]
-
-        query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
-            attn, hidden_states, encoder_hidden_states
-        )
-
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
-
-        query = attn.norm_q(query)
-        key = attn.norm_k(key)
-        ip_query = query
-
-        if encoder_hidden_states is not None:
-            encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))
-            encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))
-            encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
-
-            encoder_query = attn.norm_added_q(encoder_query)
-            encoder_key = attn.norm_added_k(encoder_key)
-
-            query = torch.cat([encoder_query, query], dim=1)
-            key = torch.cat([encoder_key, key], dim=1)
-            value = torch.cat([encoder_value, value], dim=1)
-
-        if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
-
-        hidden_states = dispatch_attention_fn(
-            query,
-            key,
-            value,
-            attn_mask=attention_mask,
-            dropout_p=0.0,
-            is_causal=False,
-            backend=self._attention_backend,
-        )
-        hidden_states = hidden_states.flatten(2, 3)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
-                [encoder_hidden_states.shape[1], hidden_states.shape[1] - encoder_hidden_states.shape[1]], dim=1
-            )
-            hidden_states = attn.to_out[0](hidden_states)
-            hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-            # IP-adapter
-            ip_attn_output = torch.zeros_like(hidden_states)
-
-            for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
-                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
-            ):
-                ip_key = to_k_ip(current_ip_hidden_states)
-                ip_value = to_v_ip(current_ip_hidden_states)
-
-                ip_key = ip_key.view(batch_size, -1, attn.heads, attn.head_dim)
-                ip_value = ip_value.view(batch_size, -1, attn.heads, attn.head_dim)
-
-                current_ip_hidden_states = dispatch_attention_fn(
-                    ip_query,
-                    ip_key,
-                    ip_value,
-                    attn_mask=None,
-                    dropout_p=0.0,
-                    is_causal=False,
-                    backend=self._attention_backend,
-                )
-                current_ip_hidden_states = current_ip_hidden_states.reshape(batch_size, -1, attn.heads * attn.head_dim)
-                current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
-                ip_attn_output += scale * current_ip_hidden_states
-
-            return hidden_states, encoder_hidden_states, ip_attn_output
-        else:
-            return hidden_states
-
-
 class Step1XEditAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = Step1XEditAttnProcessor
     _available_processors = [
         Step1XEditAttnProcessor,
-        Step1XEditIPAdapterAttnProcessor,
     ]
 
     def __init__(
@@ -396,17 +228,7 @@ class Step1XEditSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        if is_torch_npu_available():
-            from ..attention_processor import Step1XEditAttnProcessor2_0_NPU
-
-            deprecation_message = (
-                "Defaulting to Step1XEditAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
-                "should be set explicitly using the `set_attn_processor` method."
-            )
-            deprecate("npu_processor", "0.34.0", deprecation_message)
-            processor = Step1XEditAttnProcessor2_0_NPU()
-        else:
-            processor = Step1XEditAttnProcessor()
+        processor = Step1XEditAttnProcessor()
 
         self.attn = Step1XEditAttention(
             query_dim=dim,
@@ -589,7 +411,7 @@ class Step1XEditMLP(nn.Module):
         hidden_channels = hidden_channels or in_channels
         bias = (bias, bias)
         drop_probs = (drop, drop)
-        linear_layer = partial(nn.Conv2d, kernel_size=1) if use_conv else nn.Linear
+        linear_layer = nn.Linear
 
         self.fc1 = linear_layer(
             in_channels, hidden_channels, bias=bias[0], device=device, dtype=dtype
@@ -625,17 +447,11 @@ class Step1XEditMLPEmbedder(nn.Module):
 
         self.gradient_checkpointing = False 
 
-    def enable_gradient_checkpointing(self):
-        self.gradient_checkpointing = True
-
-    def disable_gradient_checkpointing(self):
-        self.gradient_checkpointing = False
-
-    def _forward(self, x: torch.Tensor) -> torch.Tensor:
+    def set_gradient_checkpointing(self, enable: bool):
+        self.gradient_checkpointing = enable
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.out_layer(self.silu(self.in_layer(x)))
-
-    def forward(self, *args, **kwargs):
-        return self._forward(*args, **kwargs)
 
 
 class Step1XEditCrossAttnBlock(torch.nn.Module):
@@ -645,53 +461,50 @@ class Step1XEditCrossAttnBlock(torch.nn.Module):
         heads_num,
         mlp_width_ratio: str = 4.0,
         mlp_drop_rate: float = 0.0,
-        act_type: str = "silu",
         qk_norm: bool = False,
-        qk_norm_type: str = "layer",
         qkv_bias: bool = True,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.heads_num = heads_num
         head_dim = hidden_size // heads_num
 
         self.norm1 = nn.LayerNorm(
-            hidden_size, elementwise_affine=True, eps=1e-6, **factory_kwargs
+            hidden_size, elementwise_affine=True, eps=1e-6
         )
         self.norm1_2 = nn.LayerNorm(
-            hidden_size, elementwise_affine=True, eps=1e-6, **factory_kwargs
+            hidden_size, elementwise_affine=True, eps=1e-6
         )
         self.self_attn_q = nn.Linear(
-            hidden_size, hidden_size, bias=qkv_bias, **factory_kwargs
+            hidden_size, hidden_size, bias=qkv_bias
         )
         self.self_attn_kv = nn.Linear(
-            hidden_size, hidden_size*2, bias=qkv_bias, **factory_kwargs
+            hidden_size, hidden_size*2, bias=qkv_bias
         )
-        qk_norm_layer = get_norm_layer(qk_norm_type)
+        qk_norm_layer = nn.LayerNorm
         self.self_attn_q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs)
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
             if qk_norm
             else nn.Identity()
         )
         self.self_attn_k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs)
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
             if qk_norm
             else nn.Identity()
         )
         self.self_attn_proj = nn.Linear(
-            hidden_size, hidden_size, bias=qkv_bias, **factory_kwargs
+            hidden_size, hidden_size, bias=qkv_bias
         )
 
         self.norm2 = nn.LayerNorm(
-            hidden_size, elementwise_affine=True, eps=1e-6, **factory_kwargs
+            hidden_size, elementwise_affine=True, eps=1e-6
         )
-        act_layer = get_activation_layer(act_type)
+        act_layer = nn.SiLU
 
         self.adaLN_modulation = nn.Sequential(
             act_layer(),
-            nn.Linear(hidden_size, 2 * hidden_size, bias=True, **factory_kwargs),
+            nn.Linear(hidden_size, 2 * hidden_size, bias=True),
         )
         # Zero-initialize the modulation
         nn.init.zeros_(self.adaLN_modulation[1].weight)
@@ -710,9 +523,9 @@ class Step1XEditCrossAttnBlock(torch.nn.Module):
         norm_x = self.norm1(x)
         norm_y = self.norm1_2(y)
         q = self.self_attn_q(norm_x)
-        q = rearrange(q, "B L (H D) -> B H L D",  H=self.heads_num)
+        q = q.view(q.size(0), q.size(1), self.heads_num, -1).permute(0, 2, 1, 3).contiguous()
         kv = self.self_attn_kv(norm_y)
-        k, v = rearrange(kv, "B L (K H D) -> K B H L D", K=2, H=self.heads_num)
+        k, v = kv.view(kv.size(0), kv.size(1), 2, self.heads_num, -1).permute(2, 0, 3, 1, 4).contiguous().unbind(0)
         # Apply QK-Norm if needed
         q = self.self_attn_q_norm(q).to(v)
         k = self.self_attn_k_norm(k).to(v)
@@ -733,68 +546,52 @@ class Step1XEditIndividualTokenRefinerBlock(torch.nn.Module):
         heads_num,
         mlp_width_ratio: str = 4.0,
         mlp_drop_rate: float = 0.0,
-        act_type: str = "silu",
         qk_norm: bool = False,
-        qk_norm_type: str = "layer",
         qkv_bias: bool = True,
-        need_CA: bool = False,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
-        self.need_CA = need_CA
         self.heads_num = heads_num
         head_dim = hidden_size // heads_num
         mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
 
         self.norm1 = nn.LayerNorm(
-            hidden_size, elementwise_affine=True, eps=1e-6, **factory_kwargs
+            hidden_size, elementwise_affine=True, eps=1e-6
         )
         self.self_attn_qkv = nn.Linear(
-            hidden_size, hidden_size * 3, bias=qkv_bias, **factory_kwargs
+            hidden_size, hidden_size * 3, bias=qkv_bias
         )
-        qk_norm_layer = get_norm_layer(qk_norm_type)
+        qk_norm_layer = nn.LayerNorm
         self.self_attn_q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs)
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
             if qk_norm
             else nn.Identity()
         )
         self.self_attn_k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs)
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
             if qk_norm
             else nn.Identity()
         )
         self.self_attn_proj = nn.Linear(
-            hidden_size, hidden_size, bias=qkv_bias, **factory_kwargs
+            hidden_size, hidden_size, bias=qkv_bias
         )
         self.norm2 = nn.LayerNorm(
-            hidden_size, elementwise_affine=True, eps=1e-6, **factory_kwargs
+            hidden_size, elementwise_affine=True, eps=1e-6
         )
-        act_layer = get_activation_layer(act_type)
+        act_layer = nn.SiLU
         self.mlp = Step1XEditMLP(
             in_channels=hidden_size,
             hidden_channels=mlp_hidden_dim,
             act_layer=act_layer,
             drop=mlp_drop_rate,
-            **factory_kwargs,
         )
 
         self.adaLN_modulation = nn.Sequential(
             act_layer(),
-            nn.Linear(hidden_size, 2 * hidden_size, bias=True, **factory_kwargs),
+            nn.Linear(hidden_size, 2 * hidden_size, bias=True),
         )
 
-        if self.need_CA:
-            self.cross_attnblock = Step1XEditCrossAttnBlock(hidden_size=hidden_size,
-                        heads_num=heads_num,
-                        mlp_width_ratio=mlp_width_ratio,
-                        mlp_drop_rate=mlp_drop_rate,
-                        act_type=act_type,
-                        qk_norm=qk_norm,
-                        qk_norm_type=qk_norm_type,
-                        qkv_bias=qkv_bias,
-                        **factory_kwargs,)
         # Zero-initialize the modulation
         nn.init.zeros_(self.adaLN_modulation[1].weight)
         nn.init.zeros_(self.adaLN_modulation[1].bias)
@@ -810,7 +607,7 @@ class Step1XEditIndividualTokenRefinerBlock(torch.nn.Module):
 
         norm_x = self.norm1(x)
         qkv = self.self_attn_qkv(norm_x)
-        q, k, v = rearrange(qkv, "B L (K H D) -> K B H L D", K=3, H=self.heads_num)
+        q, k, v = qkv.view(qkv.size(0), qkv.size(1), 3, self.heads_num, -1).permute(2, 0, 3, 1, 4).contiguous().unbind(0)
         # Apply QK-Norm if needed
         q = self.self_attn_q_norm(q).to(v)
         k = self.self_attn_k_norm(k).to(v)
@@ -821,9 +618,6 @@ class Step1XEditIndividualTokenRefinerBlock(torch.nn.Module):
 
         x = x + apply_gate(self.self_attn_proj(attn), gate_msa)
         
-        if self.need_CA:
-            x = self.cross_attnblock(x, c, attn_mask, y)
-
         # FFN Layer
         x = x + apply_gate(self.mlp(self.norm2(x)), gate_mlp)
 
@@ -838,18 +632,12 @@ class Step1XEditIndividualTokenRefiner(torch.nn.Module):
         depth,
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
-        act_type: str = "silu",
         qk_norm: bool = False,
-        qk_norm_type: str = "layer",
         qkv_bias: bool = True,
-        need_CA:bool=False,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
     ):  
-        
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
-        self.need_CA = need_CA
         self.blocks = nn.ModuleList(
             [
                 Step1XEditIndividualTokenRefinerBlock(
@@ -857,12 +645,8 @@ class Step1XEditIndividualTokenRefiner(torch.nn.Module):
                     heads_num=heads_num,
                     mlp_width_ratio=mlp_width_ratio,
                     mlp_drop_rate=mlp_drop_rate,
-                    act_type=act_type,
                     qk_norm=qk_norm,
-                    qk_norm_type=qk_norm_type,
                     qkv_bias=qkv_bias,
-                    need_CA=self.need_CA,
-                    **factory_kwargs,
                 )
                 for _ in range(depth)
             ]
@@ -912,7 +696,6 @@ class Step1XEditTimestepEmbedder(nn.Module):
         dtype=None,
         device=None,
     ):
-        factory_kwargs = {"dtype": dtype, "device": device}
         super().__init__()
         self.frequency_embedding_size = frequency_embedding_size
         self.max_period = max_period
@@ -921,10 +704,10 @@ class Step1XEditTimestepEmbedder(nn.Module):
 
         self.mlp = nn.Sequential(
             nn.Linear(
-                frequency_embedding_size, hidden_size, bias=True, **factory_kwargs
+                frequency_embedding_size, hidden_size, bias=True
             ),
             act_layer(),
-            nn.Linear(hidden_size, out_size, bias=True, **factory_kwargs),
+            nn.Linear(hidden_size, out_size, bias=True),
         )
         nn.init.normal_(self.mlp[0].weight, std=0.02)  # type: ignore
         nn.init.normal_(self.mlp[2].weight, std=0.02)  # type: ignore
@@ -974,20 +757,17 @@ class Step1XEditTextProjection(nn.Module):
     """
 
     def __init__(self, in_channels, hidden_size, act_layer, dtype=None, device=None):
-        factory_kwargs = {"dtype": dtype, "device": device}
         super().__init__()
         self.linear_1 = nn.Linear(
             in_features=in_channels,
             out_features=hidden_size,
             bias=True,
-            **factory_kwargs,
         )
         self.act_1 = act_layer()
         self.linear_2 = nn.Linear(
             in_features=hidden_size,
             out_features=hidden_size,
             bias=True,
-            **factory_kwargs,
         )
 
     def forward(self, caption):
@@ -1009,35 +789,26 @@ class Step1XEditSingleTokenRefiner(torch.nn.Module):
         depth,
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
-        act_type: str = "silu",
         qk_norm: bool = False,
-        qk_norm_type: str = "layer",
         qkv_bias: bool = True,
-        need_CA:bool=False,
         attn_mode: str = "torch",
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.attn_mode = attn_mode
-        self.need_CA = need_CA
         assert self.attn_mode == "torch", "Only support 'torch' mode for token refiner."
 
         self.input_embedder = nn.Linear(
-            in_channels, hidden_size, bias=True, **factory_kwargs
-        )
-        if self.need_CA:
-            self.input_embedder_CA = nn.Linear(
-            in_channels, hidden_size, bias=True, **factory_kwargs
+            in_channels, hidden_size, bias=True
         )
 
-        act_layer = get_activation_layer(act_type)
+        act_layer = nn.SiLU
         # Build timestep embedding layer
-        self.t_embedder = Step1XEditTimestepEmbedder(hidden_size, act_layer, **factory_kwargs)
+        self.t_embedder = Step1XEditTimestepEmbedder(hidden_size, act_layer)
         # Build context embedding layer
         self.c_embedder = Step1XEditTextProjection(
-            in_channels, hidden_size, act_layer, **factory_kwargs
+            in_channels, hidden_size, act_layer
         )
 
         self.individual_token_refiner = Step1XEditIndividualTokenRefiner(
@@ -1046,12 +817,8 @@ class Step1XEditSingleTokenRefiner(torch.nn.Module):
             depth=depth,
             mlp_width_ratio=mlp_width_ratio,
             mlp_drop_rate=mlp_drop_rate,
-            act_type=act_type,
             qk_norm=qk_norm,
-            qk_norm_type=qk_norm_type,
             qkv_bias=qkv_bias,
-            need_CA=need_CA,
-            **factory_kwargs,
         )
 
     def forward(
@@ -1059,7 +826,6 @@ class Step1XEditSingleTokenRefiner(torch.nn.Module):
         x: torch.Tensor,
         t: torch.LongTensor,
         mask: Optional[torch.LongTensor] = None,
-        y: torch.LongTensor=None,
     ):
         timestep_aware_representations = self.t_embedder(t)
 
@@ -1074,11 +840,7 @@ class Step1XEditSingleTokenRefiner(torch.nn.Module):
         c = timestep_aware_representations + context_aware_representations
 
         x = self.input_embedder(x)
-        if self.need_CA:
-            y = self.input_embedder_CA(y)
-            x = self.individual_token_refiner(x, c, mask, y)
-        else:
-            x = self.individual_token_refiner(x, c, mask)
+        x = self.individual_token_refiner(x, c, mask)
 
         return x
 
@@ -1090,18 +852,14 @@ class Step1XEditConnector(torch.nn.Module):
         hidden_size=4096,
         heads_num=32,
         depth=2,
-        need_CA=False,
-        device=None,
-        dtype=torch.bfloat16,
     ):
         super().__init__()
-        factory_kwargs = {"device": device, "dtype":dtype}
 
-        self.S = Step1XEditSingleTokenRefiner(in_channels=in_channels,hidden_size=hidden_size,heads_num=heads_num,depth=depth,need_CA=need_CA,**factory_kwargs)
+        self.S = Step1XEditSingleTokenRefiner(in_channels=in_channels,hidden_size=hidden_size,heads_num=heads_num,depth=depth)
         self.global_proj_out=nn.Linear(in_channels, 768)
 
     def forward(self, x, t, mask):
-        t = t * 1000 # fix the times embedding bug
+        t = t * 1000
         mask_float = mask.unsqueeze(-1)  # [b, s1, 1]
 
         x_mean = (x * mask_float).sum(
@@ -1109,7 +867,6 @@ class Step1XEditConnector(torch.nn.Module):
             ) / mask_float.sum(dim=1)
         
         global_out = self.global_proj_out(x_mean)
-        
         encoder_hidden_states = self.S(x,t,mask)
         return encoder_hidden_states, global_out
 
@@ -1175,7 +932,6 @@ class Step1XEditTransformer2DModel(
         connector_hidden_size=4096,
         connector_heads_num=32,
         connector_depth=2,
-        connector_need_CA=False,
         guidance_embeds: bool = False,
         axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
     ):
@@ -1183,6 +939,7 @@ class Step1XEditTransformer2DModel(
         self.out_channels = out_channels or in_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.pos_embed = Step1XEditPosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
         self.time_embed = Step1XEditMLPEmbedder(timestep_in_dim, self.inner_dim)
@@ -1196,7 +953,6 @@ class Step1XEditTransformer2DModel(
             connector_hidden_size,
             connector_heads_num,
             connector_depth,
-            connector_need_CA
         )
 
         self.transformer_blocks = nn.ModuleList(
@@ -1226,36 +982,6 @@ class Step1XEditTransformer2DModel(
 
         self.gradient_checkpointing = False
 
-    @staticmethod
-    def timestep_embedding(
-        t: torch.Tensor, dim=256, max_period=10000, time_factor: float = 1000.0
-    ):
-        """
-        Create sinusoidal timestep embeddings.
-        :param t: a 1-D Tensor of N indices, one per batch element.
-                        These may be fractional.
-        :param dim: the dimension of the output.
-        :param max_period: controls the minimum frequency of the embeddings.
-        :return: an (N, D) Tensor of positional embeddings.
-        """
-        t = time_factor * t
-        half = dim // 2
-        freqs = torch.exp(
-            -math.log(max_period)
-            * torch.arange(start=0, end=half, dtype=torch.float32)
-            / half
-        ).to(t.device)
-
-        args = t[:, None].float() * freqs[None]
-        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-        if dim % 2:
-            embedding = torch.cat(
-                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
-            )
-        if torch.is_floating_point(t):
-            embedding = embedding.to(t)
-        return embedding
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1266,8 +992,6 @@ class Step1XEditTransformer2DModel(
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_block_samples=None,
-        controlnet_single_block_samples=None,
         return_dict: bool = True,
         controlnet_blocks_repeat: bool = False,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
@@ -1317,30 +1041,12 @@ class Step1XEditTransformer2DModel(
         )
         hidden_states = self.x_embedder(hidden_states)
 
-        temb = self.time_embed(self.timestep_embedding(timestep))
+        temb = self.time_embed(self.time_proj(timestep * 1000).to(timestep))
         temb = temb + self.vec_embed(y)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
-        
-        if txt_ids.ndim == 3:
-            logger.warning(
-                "Passing `txt_ids` 3d torch.Tensor is deprecated."
-                "Please remove the batch dimension and pass it as a 2d torch Tensor"
-            )
-            txt_ids = txt_ids[0]
-        if img_ids.ndim == 3:
-            logger.warning(
-                "Passing `img_ids` 3d torch.Tensor is deprecated."
-                "Please remove the batch dimension and pass it as a 2d torch Tensor"
-            )
-            img_ids = img_ids[0]
 
         ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
-
-        if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
-            ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
-            ip_hidden_states = self.encoder_hid_proj(ip_adapter_image_embeds)
-            joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -1362,18 +1068,6 @@ class Step1XEditTransformer2DModel(
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
 
-            # controlnet residual
-            if controlnet_block_samples is not None:
-                interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
-                interval_control = int(np.ceil(interval_control))
-                # For Xlabs ControlNet.
-                if controlnet_blocks_repeat:
-                    hidden_states = (
-                        hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
-                    )
-                else:
-                    hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
-            
         for index_block, block in enumerate(self.single_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
@@ -1394,12 +1088,6 @@ class Step1XEditTransformer2DModel(
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
 
-            # controlnet residual
-            if controlnet_single_block_samples is not None:
-                interval_control = len(self.single_transformer_blocks) / len(controlnet_single_block_samples)
-                interval_control = int(np.ceil(interval_control))
-                hidden_states = hidden_states + controlnet_single_block_samples[index_block // interval_control]
-        
         hidden_states = self.norm_out(hidden_states, temb)
         output = self.proj_out(hidden_states)
 

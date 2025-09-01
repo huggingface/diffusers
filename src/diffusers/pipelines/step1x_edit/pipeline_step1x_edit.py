@@ -18,10 +18,9 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import torch
 import math
-from qwen_vl_utils import process_vision_info
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLProcessor
 
-from ...image_processor import Image, PipelineImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKL, Step1XEditTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 
@@ -48,31 +47,23 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = Step1XEditPipeline.from_pretrained("stepfun-ai/Step1X-Edit-diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> image = load_image(
-        ...     "https://github.com/stepfun-ai/Step1X-Edit/blob/main/examples/0000.jpg?raw=true"
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
         ... ).convert("RGB")
-        >>> prompt = "Add pendant with a ruby around this girl's neck."
-        
+        >>> prompt = "Make Pikachu hold a sign that says 'Step1X-Edit is awesome', yarn art style, detailed, vibrant colors"
+
         >>> image = pipe(
                 image=image,
                 prompt=prompt, 
                 num_inference_steps=28,
-                size_level=1024,
-                guidance_scale=6.0,
-                generator=torch.Generator().manual_seed(1234),
+                true_cfg_scale=6.0,
+                generator=torch.Generator().manual_seed(42),
             ).images[0]
         >>> image.save("output.png")
         ```
 """
 
-QWEN25VL_PREFIX = '''Given a user prompt, generate an "Enhanced prompt" that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:
-- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.
-- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.\n
-Here are examples of how to transform or refine prompts:
-- User Prompt: A cat sleeping -> Enhanced: A small, fluffy white cat curled up in a round shape, sleeping peacefully on a warm sunny windowsill, surrounded by pots of blooming red flowers.
-- User Prompt: A busy city street -> Enhanced: A bustling city street scene at dusk, featuring glowing street lamps, a diverse crowd of people in colorful clothing, and a double-decker bus passing by towering glass skyscrapers.\n
-Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:
-User Prompt:'''
 
+ # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift 
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -205,9 +196,17 @@ class Step1XEditPipeline(DiffusionPipeline):
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
-        self.max_length = 640
+        self.max_token_length = 640
         self.default_sample_size = 128
-    
+        self.QWEN25VL_PREFIX = '''Given a user prompt, generate an "Enhanced prompt" that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:
+- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.
+- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.\n
+Here are examples of how to transform or refine prompts:
+- User Prompt: A cat sleeping -> Enhanced: A small, fluffy white cat curled up in a round shape, sleeping peacefully on a warm sunny windowsill, surrounded by pots of blooming red flowers.
+- User Prompt: A busy city street -> Enhanced: A bustling city street scene at dusk, featuring glowing street lamps, a diverse crowd of people in colorful clothing, and a double-decker bus passing by towering glass skyscrapers.\n
+Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:
+User Prompt:'''
+
     def _split_string(self, s):
         s = s.replace("'", '"').replace("“", '"').replace("”", '"')  # use english quotes
         result = []
@@ -246,27 +245,24 @@ class Step1XEditPipeline(DiffusionPipeline):
         text_list = prompt
         embs = torch.zeros(
             len(text_list),
-            self.max_length,
+            self.max_token_length,
             self.text_encoder.config.hidden_size,
             dtype=dtype,
             device=device,
         )
         hidden_states = torch.zeros(
             len(text_list),
-            self.max_length,
+            self.max_token_length,
             self.text_encoder.config.hidden_size,
             dtype=dtype,
             device=device,
         )
         masks = torch.zeros(
             len(text_list),
-            self.max_length,
+            self.max_token_length,
             dtype=torch.long,
             device=device,
         )
-        input_ids_list = []
-        attention_mask_list = []
-        emb_list = []
 
         for idx, (txt, imgs) in enumerate(zip(text_list, ref_image)):
             
@@ -277,7 +273,7 @@ class Step1XEditPipeline(DiffusionPipeline):
                 }
             ]
 
-            messages[0]["content"].append({"type": "text", "text": f"{QWEN25VL_PREFIX}"})
+            messages[0]["content"].append({"type": "text", "text": f"{self.QWEN25VL_PREFIX}"})
             messages[0]['content'].append({"type": "image", "image": imgs})
             messages[0]["content"].append({"type": "text", "text": f"{txt}"})
 
@@ -285,7 +281,7 @@ class Step1XEditPipeline(DiffusionPipeline):
             text = self.processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True, add_vision_id=True
             )
-            image_inputs, video_inputs = process_vision_info(messages)
+            image_inputs = [imgs]
 
             inputs = self.processor(
                 text=[text],
@@ -323,8 +319,8 @@ class Step1XEditPipeline(DiffusionPipeline):
             outputs = self.text_encoder(input_ids = inputs.input_ids, attention_mask = inputs.attention_mask, pixel_values = inputs.pixel_values.to("cuda"), image_grid_thw = inputs.image_grid_thw.to("cuda"), output_hidden_states=True)
             
             emb = outputs['hidden_states'][-1]
-            embs[idx,:min(self.max_length,emb.shape[1]-217)] = emb[0,217:][:self.max_length]
-            masks[idx,:min(self.max_length,emb.shape[1]-217)]=torch.ones((min(self.max_length,emb.shape[1]-217)), dtype=torch.long, device=torch.cuda.current_device())
+            embs[idx,:min(self.max_token_length,emb.shape[1]-217)] = emb[0,217:][:self.max_token_length]
+            masks[idx,:min(self.max_token_length,emb.shape[1]-217)]=torch.ones((min(self.max_token_length,emb.shape[1]-217)), dtype=torch.long, device=torch.cuda.current_device())
 
         return embs, masks
 
@@ -336,7 +332,6 @@ class Step1XEditPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_embeds_mask: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 1024,
     ):
         r"""
 
@@ -374,7 +369,6 @@ class Step1XEditPipeline(DiffusionPipeline):
         image: Optional[torch.Tensor],
         width: Optional[int] = None,
         height: Optional[int] = None,
-        size_level: int = 512,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
     ):
@@ -382,14 +376,14 @@ class Step1XEditPipeline(DiffusionPipeline):
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             img_info = image.size
             width, height = img_info
-            r = width / height 
+            aspect_ratio = width / height 
 
             if width > height:
-                width_new = math.ceil(math.sqrt(size_level * size_level * r))
-                height_new = math.ceil(width_new / r)
+                width_new = math.ceil(math.sqrt(1024 * 1024 * aspect_ratio))
+                height_new = math.ceil(width_new / aspect_ratio)
             else:
-                height_new = math.ceil(math.sqrt(size_level * size_level / r))
-                width_new = math.ceil(height_new * r)
+                height_new = math.ceil(math.sqrt(1024 * 1024 / aspect_ratio))
+                width_new = math.ceil(height_new * aspect_ratio)
             
             multiple_of = self.vae_scale_factor * 2
             height_new = height_new // multiple_of * multiple_of
@@ -403,10 +397,10 @@ class Step1XEditPipeline(DiffusionPipeline):
             ref_image = self.image_processor.resize(image, height, width)
             image = self.image_processor.preprocess(ref_image, height, width).contiguous()
         else:
-            width = width if width is not None else size_level
-            height = height if height is not None else size_level
+            width = width if width is not None else 1024
+            height = height if height is not None else 1024
             img_info = (width, height)
-            ref_image = torch.zeros(3, size_level, size_level).unsqueeze(0).to(device)
+            ref_image = torch.zeros(3, 1024, 1024).unsqueeze(0).to(device)
             ref_image = self.image_processor.pt_to_numpy(ref_image)
             ref_image = self.image_processor.numpy_to_pil(ref_image)[0]
             image = None
@@ -425,7 +419,6 @@ class Step1XEditPipeline(DiffusionPipeline):
         prompt_embeds_mask=None,
         negative_prompt_embeds_mask=None,
         callback_on_step_end_tensor_inputs=None,
-        max_sequence_length=None,
     ):
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
@@ -465,9 +458,6 @@ class Step1XEditPipeline(DiffusionPipeline):
             raise ValueError(
                 "If `negative_prompt_embeds` are provided, `negative_prompt_embeds_mask` also have to be passed. Make sure to generate `negative_prompt_embeds_mask` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
-
-        if max_sequence_length is not None and max_sequence_length > 512:
-            raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
     @staticmethod
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
@@ -688,8 +678,6 @@ class Step1XEditPipeline(DiffusionPipeline):
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: int = 512,
-        size_level: int = 512,
         timesteps_truncate: float = 0.93,
         process_norm_power: float = 0.4
     ):
@@ -723,7 +711,7 @@ class Step1XEditPipeline(DiffusionPipeline):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 6.0):
+            guidance_scale (`float`, *optional*, defaults to 3.5):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
@@ -763,9 +751,6 @@ class Step1XEditPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
-            size_level (`int` defaults to 512): The maximum size level of the generated image in pixels. The height and width will be adjusted to fit this
-                area while maintaining the aspect ratio.
 
         Examples:
 
@@ -782,7 +767,6 @@ class Step1XEditPipeline(DiffusionPipeline):
             image, 
             width,
             height,
-            size_level, 
             device, 
             num_images_per_prompt
         )
@@ -798,7 +782,6 @@ class Step1XEditPipeline(DiffusionPipeline):
             prompt_embeds_mask=prompt_embeds_mask,
             negative_prompt_embeds_mask=negative_prompt_embeds_mask,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            max_sequence_length=max_sequence_length,
         )
 
         self._guidance_scale = guidance_scale
@@ -834,7 +817,6 @@ class Step1XEditPipeline(DiffusionPipeline):
             prompt_embeds_mask=prompt_embeds_mask,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
-            max_sequence_length=max_sequence_length,
         )
         if do_true_cfg:
             (
@@ -848,7 +830,6 @@ class Step1XEditPipeline(DiffusionPipeline):
                 prompt_embeds_mask=negative_prompt_embeds_mask,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
             )
 
         # 4. Prepare latent variables
@@ -974,11 +955,11 @@ class Step1XEditPipeline(DiffusionPipeline):
                     if t.item() > timesteps_truncate:
                         diff = noise_pred - neg_noise_pred
                         diff_norm = torch.norm(diff, dim=(2), keepdim=True)
-                        noise_pred = neg_noise_pred + guidance_scale * (
+                        noise_pred = neg_noise_pred + true_cfg_scale * (
                             noise_pred - neg_noise_pred
                         ) / self.process_diff_norm(diff_norm, k=process_norm_power)
                     else:
-                        noise_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
+                        noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
