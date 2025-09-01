@@ -33,7 +33,8 @@ from diffusers import (
 )
 from diffusers.image_processor import IPAdapterMaskProcessor
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     enable_full_determinism,

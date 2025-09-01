@@ -26,12 +26,13 @@ from diffusers import (
     Lumina2Pipeline,
     Lumina2Transformer2DModel,
 )
-from diffusers.utils.testing_utils import floats_tensor, is_torch_version, require_peft_backend, skip_mps, torch_device
+
+from ..testing_utils import floats_tensor, is_torch_version, require_peft_backend, skip_mps, torch_device
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 @require_peft_backend

@@ -27,7 +27,11 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.pipelines.bria import BriaPipeline
-from diffusers.utils.testing_utils import (
+
+# from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
+from tests.pipelines.test_pipelines_common import PipelineTesterMixin, to_np
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -35,9 +39,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
-# from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
-from tests.pipelines.test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
