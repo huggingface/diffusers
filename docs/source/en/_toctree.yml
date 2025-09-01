@@ -21,7 +21,7 @@
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
-    title: Reproducible pipelines
+    title: Reproducibility
   - local: using-diffusers/schedulers
     title: Load schedulers and models
   - local: using-diffusers/scheduler_features
@@ -62,8 +62,6 @@
     title: Scheduler features
   - local: using-diffusers/callback
     title: Pipeline callbacks
-  - local: using-diffusers/reusing_seeds
-    title: Reproducible pipelines
   - local: using-diffusers/image_quality
     title: Controlling image quality
 
@@ -194,8 +192,6 @@
 - title: Model accelerators and hardware
   isExpanded: false
   sections:
-  - local: using-diffusers/stable_diffusion_jax_how_to
-    title: JAX/Flax
   - local: optimization/onnx
     title: ONNX
   - local: optimization/open_vino
