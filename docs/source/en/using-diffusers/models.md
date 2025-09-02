@@ -38,8 +38,7 @@ model = QwenImageTransformer2DModel.from_pretrained("Qwen/Qwen-Image", subfolder
 from diffusers import AutoModel
 
 model = AutoModel.from_pretrained(
-    "Qwen/Qwen-Image",
-    subfolder="transformer"
+    "Qwen/Qwen-Image", subfolder="transformer"
 )
 ```
 
@@ -53,19 +52,18 @@ from diffusers import QwenImageTransformer2DModel
 
 model = QwenImageTransformer2DModel.from_pretrained(
     "Qwen/Qwen-Image",
-    subfolder="transformer"
-    torch_dtype=torch.float16
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16
 )
 ```
 
-[torch.Tensor.to](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.to.html) can also convert to a specific data type on the fly. However, it converts *all* weights to the requested data type unlike `torch_dtype` which respects `_keep_in_fp32_modules`. This argument preserves layers in `torch.float32` for numerical stability and best generation quality (see example [_keep_in_fp32_modules](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374))
+[nn.Module.to](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.to) can also convert to a specific data type on the fly. However, it converts *all* weights to the requested data type unlike `torch_dtype` which respects `_keep_in_fp32_modules`. This argument preserves layers in `torch.float32` for numerical stability and best generation quality (see example [_keep_in_fp32_modules](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374))
 
 ```py
 from diffusers import QwenImageTransformer2DModel
 
 model = QwenImageTransformer2DModel.from_pretrained(
-    "Qwen/Qwen-Image",, 
-    subfolder="transformer"
+    "Qwen/Qwen-Image", subfolder="transformer"
 )
 model = model.to(dtype=torch.float16) 
 ```
@@ -78,7 +76,7 @@ Diffusers currently provides three options to `device_map` for individual models
 
 | parameter | description |
 |---|---|
-| `"cuda"` | places pipeline on CUDA device |
+| `"cuda"` | places pipeline on a supported accelerator (CUDA) |
 | `"balanced"` | evenly distributes pipeline on all GPUs |
 | `"auto"` | distribute model from fastest device first to slowest |
 
@@ -86,12 +84,11 @@ Use the `max_memory` argument in [`~ModelMixin.from_pretrained`] to allocate a m
 
 ```py
 import torch
-from diffusers import QwenImageTransformer2DModel
+from diffusers import QwenImagePipeline
 
 max_memory = {0: "16GB", 1: "16GB"}
-transformer = QwenImageTransformer2DModel.from_pretrained(
+pipeline = QwenImagePipeline.from_pretrained(
     "Qwen/Qwen-Image", 
-    subfolder="transformer",
     torch_dtype=torch.bfloat16,
     device_map="cuda",
     max_memory=max_memory
