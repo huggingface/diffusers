@@ -67,6 +67,112 @@ pipeline = DiffusionPipeline.from_single_file(
 
 ### Configuration options
 
+Models have a `config.json` file in their repositories with important attributes such as the number of layers and attention heads. The [`~loaders.FromSingleFileMixin.from_single_file`] method automatically determines the appropriate config to use from `config.json`.
+
+But if the models in a pipeline are different from the original implementation or if it doesn't have to necessary metadata to determine the correct config, then you need to use the `config` argument.
+
+```py
+from diffusers import QwenImagePipeline
+
+ckpt_path = "https://huggingface.co/lightx2v/Qwen-Image-Lightning/blob/main/Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
+
+pipeline = QwenImagePipeline.from_single_file(
+    ckpt_path,
+    config="lightx2v/Qwen-Image-Lightning"
+)
+```
+
+You could also load a config file not stored on the Hub by passing a local path or URL of the config file to the `original_config` argument.
+
+```py
+from diffusers import WanPipeline
+
+ckpt_path = "https://huggingface.co/lightx2v/Qwen-Image-Lightning/blob/main/Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
+original_config = "https://raw.githubusercontent.com/Wan-Video/Wan2.2/refs/heads/main/wan/configs/wan_ti2v_5B.py"
+
+pipeline = WanPipeline.from_single_file(
+    ckpt_path,
+    original_config=original_config
+)
+```
+
+Diffusers attempts to infer the pipeline components based on the signature types of the pipeline class when using `original_config` with `local_files_only=True`. It won't download the config files from a Hub repository to avoid backward breaking changes when you can't connect to the internet. This method isn't as reliable as providing a path to a local model with the `config` argument and may lead to errors. You should run the pipeline with `local_files_only=False` to download the config files to the local cache to avoid errors.
+
+Override default configs by passing the arguments directly to [`~loaders.FromSingleFileMixin.from_single_file`]. The examples below demonstrate how to override the configs in a pipeline or model.
+
+```py
+from diffusers import StableDiffusionXLInstructPix2PixPipeline
+
+ckpt_path = "https://huggingface.co/stabilityai/cosxl/blob/main/cosxl_edit.safetensors"
+pipeline = StableDiffusionXLInstructPix2PixPipeline.from_single_file(
+    ckpt_path, config="diffusers/sdxl-instructpix2pix-768", is_cosxl_edit=True
+)
+```
+
+```py
+from diffusers import UNet2DConditionModel
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
+model = UNet2DConditionModel.from_single_file(ckpt_path, upcast_attention=True)
+```
+
+### Local files
+
+The [`~loaders.FromSingleFileMixin.from_single_file`] method attempts to configure a pipeline or model by inferring the model type from the keys in the checkpoint file. For example, any single file checkpoint based on the Stable Diffusion XL base model is configured from [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).
+
+If you're working with local files, download the config files with the [`~huggingface_hub.snapshot_download`] method and the model checkpoint with [`~huggingface_hub.hf_hub_download`]. These files are downloaded to your [cache directory](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache), but you can download them to a specific directory with the `local_dir` argument.
+
+```py
+from huggingface_hub import hf_hub_download, snapshot_download
+from diffusers import QwenImagePipeline
+
+my_local_checkpoint_path = hf_hub_download(
+    repo_id="lightx2v/Qwen-Image-Lightning",
+    filename="Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
+)
+
+my_local_config_path = snapshot_download(
+    repo_id="lightx2v/Qwen-Image-Lightning",
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+)
+
+pipeline = QwenImagePipeline.from_single_file(
+    my_local_checkpoint_path, config=my_local_config_path, local_files_only=True
+)
+```
+
+### Symlink
+
+If you're working with a file system that does not support symlinking, download the checkpoint file to a local directory first. Disable symlinking with `local_dir_use_symlink=False` in [`~huggingface_hub.snapshot_download`] and [`~huggingface_hub.hf_hub_download`].
+
+```py
+from huggingface_hub import hf_hub_download, snapshot_download
+
+my_local_checkpoint_path = hf_hub_download(
+    repo_id="lightx2v/Qwen-Image-Lightning",
+    filename="Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors",
+    local_dir="my_local_checkpoints",
+    local_dir_use_symlinks=False,
+)
+print("My local checkpoint: ", my_local_checkpoint_path)
+
+my_local_config_path = snapshot_download(
+    repo_id="lightx2v/Qwen-Image-Lightning",
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"],
+    local_dir_use_symlinks=False,
+)
+print("My local config: ", my_local_config_path)
+```
+
+Pass these paths to [`~loaders.FromSingleFileMixin.from_single_file`].
+
+```py
+from diffusers import QwenImagePipeline
+
+pipeline = QwenImagePipeline.from_single_file(
+    my_local_checkpoint_path, config=my_local_config_path, local_files_only=True
+)
+```
 
 ## File types
 
@@ -115,7 +221,7 @@ pipeline = DiffusionPipeline.from_single_file(
 
 ### dduf
 
-> [~TIP]
+> [!TIP]
 > DDUF is an experimental file type and the API may change. Refer to the DDUF [docs](https://huggingface.co/docs/hub/dduf) to learn more.
 
 DDUF is a file type designed to unify different diffusion model distribution methods and weight-saving formats. It is a standardized and flexible method to package all components of a diffusion model into a single file, providing a balance between the Diffusers and single-file formats.
