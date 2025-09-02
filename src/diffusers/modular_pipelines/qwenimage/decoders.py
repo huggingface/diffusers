@@ -165,20 +165,21 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("images", required=True, description="the generated image from decoders step"),
-            InputParam("original_image"),
-            InputParam("original_mask"),
-            InputParam("crop_coords"),
+            InputParam("mask_overlay_kwargs"),
         ]
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
+        if block_state.mask_overlay_kwargs is None:
+            mask_overlay_kwargs = {}
+        else:
+            mask_overlay_kwargs = block_state.mask_overlay_kwargs
+
         block_state.images = components.image_mask_processor.postprocess(
             image=block_state.images,
-            original_image=block_state.original_image,
-            original_mask=block_state.original_mask,
-            crops_coords=block_state.crop_coords,
+            **mask_overlay_kwargs,
         )
 
         self.set_block_state(state, block_state)

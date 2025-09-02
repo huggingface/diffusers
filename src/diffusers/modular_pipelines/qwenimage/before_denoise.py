@@ -419,10 +419,10 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(
-                name="mask_image",
+                name="processed_mask_image",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The mask to use for the inpainting process.",
+                description="The processed mask to use for the inpainting process.",
             ),
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
@@ -450,7 +450,7 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
         width_latents = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
 
         block_state.mask = torch.nn.functional.interpolate(
-            block_state.mask_image,
+            block_state.processed_mask_image,
             size=(height_latents, width_latents),
         )
 

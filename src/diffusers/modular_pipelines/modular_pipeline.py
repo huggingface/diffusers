@@ -135,8 +135,8 @@ class PipelineState:
         Allow attribute access to intermediate values. If an attribute is not found in the object, look for it in the
         intermediates dict.
         """
-        if name in self.intermediates:
-            return self.intermediates[name]
+        if name in self.values:
+            return self.values[name]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def __repr__(self):

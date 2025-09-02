@@ -30,6 +30,7 @@ from .denoise import (
     QwenImageControlNetDenoiseStep,
     QwenImageDenoiseStep,
     QwenImageEditDenoiseStep,
+    QwenImageEditInpaintDenoiseStep,
     QwenImageInpaintControlNetDenoiseStep,
     QwenImageInpaintDenoiseStep,
     QwenImageLoopBeforeDenoiserControlNet,
@@ -37,6 +38,7 @@ from .denoise import (
 from .encoders import (
     QwenImageEditResizeStep,
     QwenImageEditTextEncoderStep,
+    QwenImageEditInpaintVaeEncoderStep,
     QwenImageInpaintVaeEncoderStep,
     QwenImageTextEncoderStep,
     QwenImageVaeEncoderDynamicStep,
@@ -87,11 +89,11 @@ class QwenImageBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [
         QwenImageInputsDynamicStep(),
+        QwenImageRoPEInputsStep(),
         QwenImagePrepareLatentsStep(),
         QwenImageSetTimestepsStep(),
-        QwenImageRoPEInputsStep(),
     ]
-    block_names = ["inputs", "prepare_latents", "set_timesteps", "prepare_rope_inputs"]
+    block_names = ["inputs", "prepare_rope_inputs", "prepare_latents", "set_timesteps"]
 
     @property
     def description(self):
@@ -99,9 +101,9 @@ class QwenImageBeforeDenoiseStep(SequentialPipelineBlocks):
             "Before denoise step that prepare the inputs for the denoise step.\n"
             + "This is a sequential pipeline blocks:\n"
             + " - `QwenImageInputsDynamicStep` is used to adjust the batch size of the model inputs\n"
+            + " - `QwenImageRoPEInputsStep` is used to prepare the RoPE inputs\n"
             + " - `QwenImagePrepareLatentsStep` is used to prepare the latents\n"
             + " - `QwenImageSetTimestepsStep` is used to set the timesteps\n"
-            + " - `QwenImageRoPEInputsStep` is used to prepare the RoPE inputs\n"
         )
 
 
@@ -109,12 +111,12 @@ class QwenImageInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [
         QwenImageInputsDynamicStep(image_latent_input_names=["image_latents"]),
+        QwenImageRoPEInputsStep(),
         QwenImagePrepareLatentsStep(),
         QwenImageSetTimestepsWithStrengthStep(),
         QwenImageInpaintPrepareLatentsStep(),
-        QwenImageRoPEInputsStep(),
     ]
-    block_names = ["inputs", "prepare_latents", "set_timesteps", "prepare_inpaint_latents", "prepare_rope_inputs"]
+    block_names = ["inputs", "prepare_rope_inputs", "prepare_latents", "set_timesteps", "prepare_inpaint_latents"]
 
     @property
     def description(self):
@@ -122,10 +124,10 @@ class QwenImageInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
             "Before denoise step that prepare the inputs for the denoise step.\n"
             + "This is a sequential pipeline blocks:\n"
             + " - `QwenImageInputsDynamicStep` is used to adjust the batch size of the model inputs\n"
+            + " - `QwenImageRoPEInputsStep` is used to prepare the RoPE inputs\n"
             + " - `QwenImagePrepareLatentsStep` is used to generate the initial noise\n"
             + " - `QwenImageSetTimestepsWithStrengthStep` is used to set the timesteps\n"
             + " - `QwenImageInpaintPrepareLatentsStep` is used to prepare the inpaint latents\n"
-            + " - `QwenImageRoPEInputsStep` is used to prepare the RoPE inputs\n"
         )
 
 
@@ -246,9 +248,9 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", QwenImageTextEncoderStep()),
         ("input", QwenImageInputsDynamicStep()),
+        ("prepare_rope_inputs", QwenImageRoPEInputsStep()),
         ("prepare_latents", QwenImagePrepareLatentsStep()),
         ("set_timesteps", QwenImageSetTimestepsStep()),
-        ("prepare_additional_inputs", QwenImageRoPEInputsStep()),
         ("denoise", QwenImageDenoiseStep()),
         ("decode", QwenImageDecodeDynamicStep()),
     ]
@@ -260,10 +262,10 @@ INPAINT_BLOCKS = InsertableDict(
         ("text_encoder", QwenImageTextEncoderStep()),
         ("vae_encoder", QwenImageInpaintVaeEncoderStep()),
         ("input", QwenImageInputsDynamicStep(image_latent_input_names=["image_latents"])),
+        ("prepare_rope_inputs", QwenImageRoPEInputsStep()),
         ("prepare_latents", QwenImagePrepareLatentsStep()),
         ("set_timesteps", QwenImageSetTimestepsWithStrengthStep()),
         ("prepare_inpaint_latents", QwenImageInpaintPrepareLatentsStep()),
-        ("prepare_additional_inputs", QwenImageRoPEInputsStep()),
         ("denoise", QwenImageInpaintDenoiseStep()),
         ("decode", QwenImageInpaintDecodeStep()),
     ]
@@ -305,12 +307,28 @@ EDIT_BLOCKS = InsertableDict(
             QwenImageVaeEncoderDynamicStep(input_name="image", output_name="image_latents", do_resize=False),
         ),
         ("input", QwenImageInputsDynamicStep(image_latent_input_names=["image_latents"])),
+        ("prepare_rope_inputs", QwenImageEditRoPEInputsStep()),
         ("prepare_image_latents", QwenImagePackLatentsDynamicStep("image_latents")),
         ("prepare_latents", QwenImagePrepareLatentsStep()),
         ("set_timesteps", QwenImageSetTimestepsStep()),
-        ("prepare_additional_inputs", QwenImageEditRoPEInputsStep()),
         ("denoise", QwenImageEditDenoiseStep()),
         ("decode", QwenImageDecodeDynamicStep()),
+    ]
+)
+
+
+EDIT_INPAINT_BLOCKS = InsertableDict(
+    [
+        ("image_resize", QwenImageEditResizeStep()),
+        ("text_encoder", QwenImageEditTextEncoderStep()),
+        ("vae_encoder", QwenImageEditInpaintVaeEncoderStep()),
+        ("input", QwenImageInputsDynamicStep(image_latent_input_names=["image_latents"])),
+        ("prepare_rope_inputs", QwenImageEditRoPEInputsStep()),
+        ("prepare_latents", QwenImagePrepareLatentsStep()),
+        ("set_timesteps", QwenImageSetTimestepsWithStrengthStep()),
+        ("prepare_inpaint_latents", QwenImageInpaintPrepareLatentsStep()),
+        ("denoise", QwenImageEditInpaintDenoiseStep()),
+        ("decode", QwenImageInpaintDecodeStep()),
     ]
 )
 
@@ -318,6 +336,7 @@ ALL_BLOCKS = {
     "text2image": TEXT2IMAGE_BLOCKS,
     "edit": EDIT_BLOCKS,
     "inpaint": INPAINT_BLOCKS,
+    "edit_inpaint": EDIT_INPAINT_BLOCKS,
     "controlnet": CONTROLNET_BLOCKS,
     "auto": AUTO_BLOCKS,
 }

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict
 
 import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
@@ -167,6 +167,53 @@ def encode_vae_image(
     return image_latents
 
 
+class QwenImageResizeStep(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    @property
+    def description(self) -> str:
+        return "Image Resize step that resize the image to the target size."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_resize_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(name="image", required=True, type_hint=torch.Tensor, description="The image to resize"),
+            InputParam(name="height"),
+            InputParam(name="width"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        images = block_state.image
+        if not isinstance(images, list):
+            images = [images]
+        
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
+
+        resized_images = [
+            components.image_resize_processor.resize(image, height=height, width=width)
+            for image in images
+        ]
+
+        block_state.image = resized_images
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class QwenImageEditResizeStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -203,7 +250,7 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
         calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_width / image_height)
 
         resized_images = [
-            components.image_processor.resize(image, height=calculated_height, width=calculated_width)
+            components.image_resize_processor.resize(image, height=calculated_height, width=calculated_width)
             for image in images
         ]
 
@@ -462,7 +509,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Image Preprocess step for inpainting task. This processes the image and mask inputs together."
+        return "Image Preprocess step for inpainting task. This processes the image and mask inputs together. Images need to be resized first using either the QwenImageResizeStep or QwenImageEditResizeStep."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -480,20 +527,17 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
         return [
             InputParam("image", required=True),
             InputParam("mask_image", required=True),
-            InputParam("height"),
-            InputParam("width"),
             InputParam("padding_mask_crop"),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="original_image", type_hint=torch.Tensor, description="The original image"),
-            OutputParam(name="original_mask", type_hint=torch.Tensor, description="The original mask"),
-            OutputParam(
-                name="crop_coords",
-                type_hint=List[Tuple[int, int]],
-                description="The crop coordinates to use for the preprocess/postprocess of the image and mask",
+            OutputParam(name="processed_image"),
+            OutputParam(name="processed_mask_image"),
+            OutputParam(name="mask_overlay_kwargs",
+                type_hint=Dict,
+                description="The kwargs for the postprocess step to apply the mask overlay",
             ),
         ]
 
@@ -501,21 +545,15 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        block_state.height = block_state.height or components.default_height
-        block_state.width = block_state.width or components.default_width
+        width, height = block_state.image[0].size
 
-        block_state.image, block_state.mask_image, postprocessing_kwargs = components.image_mask_processor.preprocess(
+        block_state.processed_image, block_state.processed_mask_image, block_state.mask_overlay_kwargs = components.image_mask_processor.preprocess(
             image=block_state.image,
             mask=block_state.mask_image,
-            height=block_state.height,
-            width=block_state.width,
+            height=height,
+            width=width,
             padding_mask_crop=block_state.padding_mask_crop,
         )
-
-        if postprocessing_kwargs:
-            block_state.original_image = postprocessing_kwargs["original_image"]
-            block_state.original_mask = postprocessing_kwargs["original_mask"]
-            block_state.crop_coords = postprocessing_kwargs["crops_coords"]
 
         self.set_block_state(state, block_state)
         return components, state
@@ -686,19 +724,72 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
         - Creates `image_latents`.
 
     Components:
-        image_processor (`InpaintProcessor`) [subfolder=] vae (`AutoencoderKLQwenImage`) [subfolder=]
+        image_processor (`InpaintProcessor`) [subfolder=] 
+        vae (`AutoencoderKLQwenImage`) [subfolder=]
 
     Inputs:
-        image (`None`): mask_image (`None`): height (`None`): width (`None`): padding_mask_crop (`None`, optional):
+        image (`None`)
+        mask_image (`None`)
+        height (`None`)
+        width (`None`)
+        padding_mask_crop (`None`, optional)
         generator (`None`, optional):
 
     New Outputs:
-        original_image (`Tensor`):
-            The original image
-        original_mask (`Tensor`):
-            The original mask_imagge
-        crop_coords (`List`):
-            The crop coordinates to use for the preprocess/postprocess of the image and mask
+        processed_image (`Tensor`):
+            The processed image
+        processed_mask_image (`Tensor`):
+            The processed mask_imagge
+        mask_overlay_kwargs (`Dict`):
+            The kwargs for the postprocess step to apply the mask overlay
+        image_latents (`Tensor`):
+            The latents representing the reference image
+    """
+
+    block_classes = [
+        QwenImageResizeStep,
+        QwenImageInpaintProcessImagesInputStep,
+        QwenImageVaeEncoderDynamicStep(
+            input_name="processed_image", output_name="image_latents", include_image_processor=False
+        ),  # encode
+    ]
+
+    block_names = ["resize", "preprocess", "encode"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "This step is used for processing image and mask inputs for inpainting tasks. It:\n"
+            " - Resizes the image to the target size, based on `height` and `width`.\n"
+            " - Processes and updates `image` and `mask_image`.\n"
+            " - Creates `image_latents`."
+        )
+
+
+class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
+    model_name = "qwenimage"
+
+    """This step is used for processing image and mask inputs forinpainting tasks. It:
+        - Processes and updates `image` and `mask_image`.
+        - Creates `image_latents`.
+
+    Components:
+        image_processor (`InpaintProcessor`) [subfolder=] 
+        vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+    Inputs:
+        image (`None`)
+        mask_image (`None`)
+        padding_mask_crop (`None`, optional)
+        generator (`None`, optional)
+
+    New Outputs:
+        processed_image (`Tensor`):
+            The processed image
+        processed_mask_image (`Tensor`):
+            The processed mask_imagge
+        mask_overlay_kwargs (`Dict`):
+            The kwargs for the postprocess step to apply the mask overlay
         image_latents (`Tensor`):
             The latents representing the reference image
     """
@@ -706,7 +797,7 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
     block_classes = [
         QwenImageInpaintProcessImagesInputStep,
         QwenImageVaeEncoderDynamicStep(
-            input_name="image", output_name="image_latents", include_image_processor=False
+            input_name="processed_image", output_name="image_latents", include_image_processor=False
         ),  # encode
     ]
 
@@ -718,4 +809,5 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
             "This step is used for processing image and mask inputs for inpainting tasks. It:\n"
             " - Processes and updates `image` and `mask_image`.\n"
             " - Creates `image_latents`."
+            " Note: This step expects the image that has already been resized using the `QwenImageEditResizeStep` block."
         )
