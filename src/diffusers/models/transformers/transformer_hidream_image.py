@@ -592,7 +592,7 @@ class HiDreamBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> torch.Tensor:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         return self.block(
             hidden_states=hidden_states,
             hidden_states_masks=hidden_states_masks,
