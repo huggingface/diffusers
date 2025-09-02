@@ -14,7 +14,6 @@
 
 import html
 import math
-from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -899,10 +898,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             else:
                 latents = latents_outputs
 
-            latent_target_frames = (num_frames_per_chunk + 3 + self.motion_frames) // 4 - latent_motion_frames
-            target_shape = [latent_target_frames, height // 8, width // 8]
-            max_seq_len = np.prod(target_shape) // 4
-            latents = deepcopy(latents)
             with torch.no_grad():
                 left_idx = r * num_frames_per_chunk
                 right_idx = r * num_frames_per_chunk + num_frames_per_chunk
