@@ -369,7 +369,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
     elif backend in [AttentionBackendName._FLASH_3_HUB]:
         if not DIFFUSERS_ENABLE_HUB_KERNELS:
             raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it `DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
+                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
             )
         if not is_kernels_available():
             raise RuntimeError(

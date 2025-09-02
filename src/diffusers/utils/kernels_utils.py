@@ -16,7 +16,7 @@ def _get_fa3_from_hub():
 
         try:
             # TODO: temporary revision for now. Remove when merged upstream into `main`.
-            flash_attn_3_hub = get_kernel(_DEFAULT_HUB_ID_FA3, revision="fake-ops-return-prob")
+            flash_attn_3_hub = get_kernel(_DEFAULT_HUB_ID_FA3, revision="fake-ops-return-probs")
             return flash_attn_3_hub
         except Exception as e:
             logger.error(f"An error occurred while fetching kernel '{_DEFAULT_HUB_ID_FA3}' from the Hub: {e}")
