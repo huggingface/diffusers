@@ -279,7 +279,7 @@ class CausalAudioEncoder(nn.Module):
     def __init__(self, dim=5120, num_layers=25, out_dim=2048, num_audio_token=4, need_global=False):
         super().__init__()
         self.encoder = MotionEncoder_tc(
-            in_dim=dim, hidden_dim=out_dim, num_heads=num_audio_token, need_global=need_global
+            in_dim=dim, hidden_dim=out_dim, num_attention_heads=num_audio_token, need_global=need_global
         )
         weight = torch.ones((1, num_layers, 1, 1)) * 0.01
 
