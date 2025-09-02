@@ -59,7 +59,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxKontextAutoBeforeDenoiseStep,
             FluxKontextAutoDenoiseStep,
         )
-        from .modular_pipeline import FluxModularPipeline
+        from .modular_pipeline import FluxKontextModularPipeline, FluxModularPipeline
 else:
     import sys
 

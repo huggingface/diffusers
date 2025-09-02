@@ -19,6 +19,7 @@ from .before_denoise import (
     FluxImg2ImgPrepareLatentsStep,
     FluxImg2ImgSetTimestepsStep,
     FluxInputStep,
+    FluxKontextInputStep,
     FluxKontextPrepareLatentsStep,
     FluxPrepareLatentsStep,
     FluxSetTimestepsStep,
@@ -121,7 +122,8 @@ class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
 
 # flux kontext (both text2img and img2img)
 class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
-    block_classes = [FluxKontextBeforeDenoiseStep]
+    # Kontext should follow `FluxBeforeDenoiseStep` when T2I mode is on.
+    block_classes = [FluxBeforeDenoiseStep, FluxKontextBeforeDenoiseStep]
     block_names = ["text2image", "img2img"]
     block_trigger_inputs = [None, "image_latents"]
 
@@ -130,7 +132,7 @@ class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
         return (
             "Before denoise step that prepare the inputs for the denoise step.\n"
             + "This is an auto pipeline block that works for text2image.\n"
-            + " - `FluxKontextBeforeDenoiseStep` (text2img) is used when only `image_latents` is None.\n"
+            + " - `FluxBeforeDenoiseStep` (text2img) is used when only `image_latents` is None.\n"
             + " - `FluxKontextBeforeDenoiseStep` (img2img) is used when only `image_latents` is provided.\n"
         )
 
@@ -249,9 +251,11 @@ AUTO_BLOCKS = InsertableDict(
 AUTO_BLOCKS_KONTEXT = InsertableDict(
     [
         ("text_encoder", FluxTextEncoderStep),
-        ("before_denoise", FluxKontextAutoBeforeDenoiseStep),
-        ("denoise", FluxKontextAutoDenoiseStep),
-        ("decode", FluxAutoDecodeStep),
+        ("input", FluxKontextInputStep),
+        ("prepare_latents", FluxKontextPrepareLatentsStep),
+        ("set_timesteps", FluxSetTimestepsStep),
+        ("denoise", FluxKontextDenoiseStep),
+        ("decode", FluxDecodeStep),
     ]
 )
 

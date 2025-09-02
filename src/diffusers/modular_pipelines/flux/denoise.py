@@ -26,7 +26,7 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import FluxModularPipeline
+from .modular_pipeline import FluxKontextModularPipeline, FluxModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -179,7 +179,7 @@ class FluxKontextLoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: FluxModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+        self, components: FluxKontextModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> PipelineState:
         latent_ids = block_state.latent_ids
         image_ids = block_state.image_ids

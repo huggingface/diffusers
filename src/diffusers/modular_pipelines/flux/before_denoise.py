@@ -17,6 +17,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+from PIL import Image
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
@@ -26,7 +27,7 @@ from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import FluxModularPipeline
+from .modular_pipeline import FluxKontextModularPipeline, FluxModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -313,6 +314,141 @@ class FluxInputStep(ModularPipelineBlocks):
         block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
         block_state.prompt_embeds = block_state.prompt_embeds.view(
             block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+        )
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class FluxKontextInputStep(ModularPipelineBlocks):
+    model_name = "flux_kontext"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Input processing step that:\n"
+            "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
+            "  2. Adjusts input tensor shapes based on `batch_size` (number of prompts) and `num_images_per_prompt`\n\n"
+            "All input tensors are expected to have either batch_size=1 or match the batch_size\n"
+            "of prompt_embeds. The tensors will be duplicated across the batch dimension to\n"
+            "have a final batch_size of batch_size * num_images_per_prompt.\n"
+            "  3. Processes the input `image`."
+        )
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("num_images_per_prompt", default=1),
+            InputParam(
+                "prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Pre-generated text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Pre-generated pooled text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "image",
+                required=False,
+                type_hint=Union[Image.Image, torch.Tensor],
+                description="Input image/image latents to perform denoising.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[str]:
+        return [
+            OutputParam(
+                "batch_size",
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
+            ),
+            OutputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="Data type of model tensor inputs (determined by `prompt_embeds`)",
+            ),
+            OutputParam(
+                "prompt_embeds",
+                type_hint=torch.Tensor,
+                description="text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="pooled text embeddings used to guide the image generation",
+            ),
+            OutputParam(
+                "image",
+                type_hint=torch.Tensor,
+                description="Processed image/image latents.",
+            ),
+        ]
+
+    def check_inputs(self, components, block_state):
+        if block_state.prompt_embeds is not None and block_state.pooled_prompt_embeds is not None:
+            if block_state.prompt_embeds.shape[0] != block_state.pooled_prompt_embeds.shape[0]:
+                raise ValueError(
+                    "`prompt_embeds` and `pooled_prompt_embeds` must have the same batch size when passed directly, but"
+                    f" got: `prompt_embeds` {block_state.prompt_embeds.shape} != `pooled_prompt_embeds`"
+                    f" {block_state.pooled_prompt_embeds.shape}."
+                )
+
+    @staticmethod
+    def preprocess_image(
+        image, image_processor: VaeImageProcessor, vae_scale_factor: int, latent_channels: int, _auto_resize=True
+    ) -> torch.Tensor:
+        from ...pipelines.flux.pipeline_flux_kontext import PREFERRED_KONTEXT_RESOLUTIONS
+
+        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == latent_channels):
+            multiple_of = vae_scale_factor * 2
+            img = image[0] if isinstance(image, list) else image
+            image_height, image_width = image_processor.get_default_height_width(img)
+            aspect_ratio = image_width / image_height
+            if _auto_resize:
+                # Kontext is trained on specific resolutions, using one of them is recommended
+                _, image_width, image_height = min(
+                    (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS
+                )
+            image_width = image_width // multiple_of * multiple_of
+            image_height = image_height // multiple_of * multiple_of
+            image = image_processor.resize(image, image_height, image_width)
+            image = image_processor.preprocess(image, image_height, image_width)
+        return image
+
+    @torch.no_grad()
+    def __call__(self, components: FluxKontextModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(components, block_state)
+
+        block_state.batch_size = block_state.prompt_embeds.shape[0]
+        block_state.dtype = block_state.prompt_embeds.dtype
+
+        _, seq_len, _ = block_state.prompt_embeds.shape
+        block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
+        block_state.prompt_embeds = block_state.prompt_embeds.view(
+            block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+        )
+        # TODO: `_auto_resize` is currently forced to True. Since it's private anyway, I thought of not adding it.
+        block_state.image = self.preprocess_image(
+            image=block_state.image,
+            image_processor=components.image_processor,
+            vae_scale_factor=components.vae_scale_factor,
+            latent_channels=components.num_channels_latents,
         )
         self.set_block_state(state, block_state)
 
@@ -696,25 +832,18 @@ class FluxKontextPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec(
-                "image_processor",
-                VaeImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config",
-            ),
-        ]
+        return [ComponentSpec("vae", AutoencoderKL)]
 
     @property
     def description(self) -> str:
-        return "Prepare latents step that prepares the latents for the image-to-image generation process with Flux Kontext"
+        return "Step that prepares the latents for the image-to-image generation process with Flux Kontext."
 
     @property
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
+            InputParam("image", type_hint=Union[Image.Image, torch.Tensor], required=False),
             InputParam("max_area", type_hint=int, default=1024**2),
             InputParam("latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_images_per_prompt", type_hint=int, default=1),
@@ -759,28 +888,6 @@ class FluxKontextPrepareLatentsStep(ModularPipelineBlocks):
             )
 
     @staticmethod
-    def preprocess_image(
-        image, image_processor: VaeImageProcessor, vae_scale_factor: int, latent_channels: int, _auto_resize=True
-    ):
-        from ...pipelines.flux.pipeline_flux_kontext import PREFERRED_KONTEXT_RESOLUTIONS
-
-        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == latent_channels):
-            multiple_of = vae_scale_factor * 2
-            img = image[0] if isinstance(image, list) else image
-            image_height, image_width = image_processor.get_default_height_width(img)
-            aspect_ratio = image_width / image_height
-            if _auto_resize:
-                # Kontext is trained on specific resolutions, using one of them is recommended
-                _, image_width, image_height = min(
-                    (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS
-                )
-            image_width = image_width // multiple_of * multiple_of
-            image_height = image_height // multiple_of * multiple_of
-            image = image_processor.resize(image, image_height, image_width)
-            image = image_processor.preprocess(image, image_height, image_width)
-        return image
-
-    @staticmethod
     def prepare_latents(
         comp,
         image,
@@ -807,7 +914,7 @@ class FluxKontextPrepareLatentsStep(ModularPipelineBlocks):
         if image is not None:
             image = image.to(device=device, dtype=dtype)
             if image.shape[1] != num_channels_latents:
-                image_latents = _encode_vae_image(image=image, generator=generator, sample_mode="argmax")
+                image_latents = _encode_vae_image(vae=comp.vae, image=image, generator=generator, sample_mode="argmax")
             else:
                 image_latents = image
             if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
@@ -871,20 +978,11 @@ class FluxKontextPrepareLatentsStep(ModularPipelineBlocks):
             block_state.height = height
             block_state.width = width
 
-        # Process input image(s).
-        # `_auto_resize` is currently forced to True. Since it's private anyway, I thought of not adding it.
-        image = block_state.image
-        block_state.image = self.preprocess_image(
-            image=image,
-            image_processor=components.image_processor,
-            vae_scale_factor=components.vae_scale_factor,
-            latent_channels=components.num_channels_latents,
-        )
-
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
         block_state.latents, block_state.image_latents, block_state.latent_ids, block_state.image_ids = (
             self.prepare_latents(
                 components,
+                block_state.image,
                 batch_size,
                 block_state.num_channels_latents,
                 block_state.height,
