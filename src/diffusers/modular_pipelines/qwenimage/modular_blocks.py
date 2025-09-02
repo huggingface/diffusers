@@ -36,9 +36,9 @@ from .denoise import (
     QwenImageLoopBeforeDenoiserControlNet,
 )
 from .encoders import (
+    QwenImageEditInpaintVaeEncoderStep,
     QwenImageEditResizeStep,
     QwenImageEditTextEncoderStep,
-    QwenImageEditInpaintVaeEncoderStep,
     QwenImageInpaintVaeEncoderStep,
     QwenImageTextEncoderStep,
     QwenImageVaeEncoderDynamicStep,
@@ -335,8 +335,8 @@ EDIT_INPAINT_BLOCKS = InsertableDict(
 ALL_BLOCKS = {
     "text2image": TEXT2IMAGE_BLOCKS,
     "edit": EDIT_BLOCKS,
-    "inpaint": INPAINT_BLOCKS,
     "edit_inpaint": EDIT_INPAINT_BLOCKS,
+    "inpaint": INPAINT_BLOCKS,
     "controlnet": CONTROLNET_BLOCKS,
     "auto": AUTO_BLOCKS,
 }

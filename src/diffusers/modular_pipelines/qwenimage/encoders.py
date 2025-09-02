@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union, Dict
+from typing import Dict, List, Optional, Union
 
 import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
@@ -200,13 +200,12 @@ class QwenImageResizeStep(ModularPipelineBlocks):
         images = block_state.image
         if not isinstance(images, list):
             images = [images]
-        
+
         height = block_state.height or components.default_height
         width = block_state.width or components.default_width
 
         resized_images = [
-            components.image_resize_processor.resize(image, height=height, width=width)
-            for image in images
+            components.image_resize_processor.resize(image, height=height, width=width) for image in images
         ]
 
         block_state.image = resized_images
@@ -535,7 +534,8 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
         return [
             OutputParam(name="processed_image"),
             OutputParam(name="processed_mask_image"),
-            OutputParam(name="mask_overlay_kwargs",
+            OutputParam(
+                name="mask_overlay_kwargs",
                 type_hint=Dict,
                 description="The kwargs for the postprocess step to apply the mask overlay",
             ),
@@ -547,12 +547,14 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
 
         width, height = block_state.image[0].size
 
-        block_state.processed_image, block_state.processed_mask_image, block_state.mask_overlay_kwargs = components.image_mask_processor.preprocess(
-            image=block_state.image,
-            mask=block_state.mask_image,
-            height=height,
-            width=width,
-            padding_mask_crop=block_state.padding_mask_crop,
+        block_state.processed_image, block_state.processed_mask_image, block_state.mask_overlay_kwargs = (
+            components.image_mask_processor.preprocess(
+                image=block_state.image,
+                mask=block_state.mask_image,
+                height=height,
+                width=width,
+                padding_mask_crop=block_state.padding_mask_crop,
+            )
         )
 
         self.set_block_state(state, block_state)
@@ -724,15 +726,10 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
         - Creates `image_latents`.
 
     Components:
-        image_processor (`InpaintProcessor`) [subfolder=] 
-        vae (`AutoencoderKLQwenImage`) [subfolder=]
+        image_processor (`InpaintProcessor`) vae (`AutoencoderKLQwenImage`)
 
     Inputs:
-        image (`None`)
-        mask_image (`None`)
-        height (`None`)
-        width (`None`)
-        padding_mask_crop (`None`, optional)
+        image (`None`) mask_image (`None`) height (`None`) width (`None`) padding_mask_crop (`None`, optional)
         generator (`None`, optional):
 
     New Outputs:
@@ -774,14 +771,10 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
         - Creates `image_latents`.
 
     Components:
-        image_processor (`InpaintProcessor`) [subfolder=] 
-        vae (`AutoencoderKLQwenImage`) [subfolder=]
+        image_processor (`InpaintProcessor`) vae (`AutoencoderKLQwenImage`)
 
     Inputs:
-        image (`None`)
-        mask_image (`None`)
-        padding_mask_crop (`None`, optional)
-        generator (`None`, optional)
+        image (`None`) mask_image (`None`) padding_mask_crop (`None`, optional) generator (`None`, optional)
 
     New Outputs:
         processed_image (`Tensor`):

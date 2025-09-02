@@ -644,6 +644,7 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
             "This block supports image-to-image tasks for QwenImage Edit."
         )
 
+
 class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
     block_classes = [
         QwenImageEditLoopBeforeDenoiser,

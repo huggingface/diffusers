@@ -24,8 +24,10 @@ else:
     _import_structure["encoders"] = ["QwenImageTextEncoderStep"]
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
+        "AUTO_BLOCKS",
         "CONTROLNET_BLOCKS",
         "EDIT_BLOCKS",
+        "EDIT_INPAINT_BLOCKS",
         "INPAINT_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
         "QwenImageAutoBlocks",
@@ -46,6 +48,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ALL_BLOCKS,
             CONTROLNET_BLOCKS,
             EDIT_BLOCKS,
+            EDIT_INPAINT_BLOCKS,
             INPAINT_BLOCKS,
             TEXT2IMAGE_BLOCKS,
             QwenImageAutoBlocks,
