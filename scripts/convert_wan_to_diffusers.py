@@ -114,8 +114,51 @@ VACE_TRANSFORMER_KEYS_RENAME_DICT = {
     "after_proj": "proj_out",
 }
 
+S2V_TRANSFORMER_KEYS_RENAME_DICT = {
+    "time_embedding.0": "condition_embedder.time_embedder.linear_1",
+    "time_embedding.2": "condition_embedder.time_embedder.linear_2",
+    "text_embedding.0": "condition_embedder.text_embedder.linear_1",
+    "text_embedding.2": "condition_embedder.text_embedder.linear_2",
+    "time_projection.1": "condition_embedder.time_proj",
+    "head.modulation": "scale_shift_table",
+    "head.head": "proj_out",
+    "modulation": "scale_shift_table",
+    "ffn.0": "ffn.net.0.proj",
+    "ffn.2": "ffn.net.2",
+    # Hack to swap the layer names
+    # The original model calls the norms in following order: norm1, norm3, norm2
+    # We convert it to: norm1, norm2, norm3
+    "norm2": "norm__placeholder",
+    "norm3": "norm2",
+    "norm__placeholder": "norm3",
+    # Add attention component mappings
+    "self_attn.q": "attn1.to_q",
+    "self_attn.k": "attn1.to_k",
+    "self_attn.v": "attn1.to_v",
+    "self_attn.o": "attn1.to_out.0",
+    "self_attn.norm_q": "attn1.norm_q",
+    "self_attn.norm_k": "attn1.norm_k",
+    "cross_attn.q": "attn2.to_q",
+    "cross_attn.k": "attn2.to_k",
+    "cross_attn.v": "attn2.to_v",
+    "cross_attn.o": "attn2.to_out.0",
+    "cross_attn.norm_q": "attn2.norm_q",
+    "cross_attn.norm_k": "attn2.norm_k",
+    "attn2.to_k_img": "attn2.add_k_proj",
+    "attn2.to_v_img": "attn2.add_v_proj",
+    "attn2.norm_k_img": "attn2.norm_added_k",
+    # S2V-specific audio component mappings
+    "casual_audio_encoder.encoder": "condition_embedder.casual_audio_encoder.encoder",
+    "casual_audio_encoder.weights": "condition_embedder.casual_audio_encoder.weights",
+    # Pose condition encoder mappings
+    "cond_encoder.weight": "condition_embedder.pose_embedder.weight",
+    "cond_encoder.bias": "condition_embedder.pose_embedder.bias",
+    "trainable_cond_mask": "trainable_condition_mask",
+}
+
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 VACE_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+S2V_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 
 
 def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
@@ -358,19 +401,28 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
                 "attention_head_dim": 128,
                 "cross_attn_norm": True,
                 "eps": 1e-06,
-                "ffn_dim": 14336,
+                "ffn_dim": 13824,
                 "freq_dim": 256,
-                "in_channels": 48,
-                "num_attention_heads": 24,
-                "num_layers": 30,
-                "out_channels": 48,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
+                "audio_dim": 1024,
+                "audio_inject_layers": [0, 4, 8, 12, 16, 20, 24, 27, 30, 33, 36, 39],
+                "enable_adain": True,
+                "adain_mode": "attn_norm",
+                "pose_dim": 1280,
+                "enable_framepack": True,
+                "framepack_drop_mode": "padd",
+                "add_last_motion": True,
+                "zero_timestep": True,
             },
         }
-        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
-        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+        RENAME_DICT = S2V_TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = S2V_TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, RENAME_DICT, SPECIAL_KEYS_REMAP
 
 
