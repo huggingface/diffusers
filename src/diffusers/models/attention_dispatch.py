@@ -141,6 +141,7 @@ else:
         return wrap if fn is None else fn
 
     _custom_op = custom_op_no_op
+    _register_fake = register_fake_no_op
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -366,6 +367,10 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
 
     # TODO: add support Hub variant of FA3 varlen later
     elif backend in [AttentionBackendName._FLASH_3_HUB]:
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            raise RuntimeError(
+                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it `DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
+            )
         if not is_kernels_available():
             raise RuntimeError(
                 f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
@@ -708,9 +713,11 @@ def _flash_attention_3_hub(
         pack_gqa=None,
         deterministic=deterministic,
         sm_margin=0,
+        return_attn_probs=return_attn_probs,
     )
-    lse = None
-    return (out, lse) if return_attn_probs else out
+    # When `return_attn_probs` is True, the above returns a tuple of
+    # actual outputs and lse.
+    return (out[0], out[1]) if return_attn_probs else out
 
 
 @_AttentionBackendRegistry.register(
