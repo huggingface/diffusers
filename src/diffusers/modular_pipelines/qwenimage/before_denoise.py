@@ -23,7 +23,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import QwenImageModularPipeline
+from .modular_pipeline import QwenImageModularPipeline, QwenImageEditModularPipeline
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -172,7 +172,7 @@ class QwenImagePackLatentsDynamicStep(ModularPipelineBlocks):
             raise ValueError(f"`{latents_input_name}` must have 4 or 5 dimensions, but got {latents_input.ndim}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: Union[QwenImageModularPipeline, QwenImageEditModularPipeline], state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         final_batch_size = block_state.batch_size * block_state.num_images_per_prompt

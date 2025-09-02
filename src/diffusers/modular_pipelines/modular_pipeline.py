@@ -57,6 +57,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("wan", "WanModularPipeline"),
         ("flux", "FluxModularPipeline"),
         ("qwenimage", "QwenImageModularPipeline"),
+        ("qwenimage-edit", "QwenImageEditModularPipeline"),
     ]
 )
 
@@ -66,6 +67,7 @@ MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
         ("WanModularPipeline", "WanAutoBlocks"),
         ("FluxModularPipeline", "FluxAutoBlocks"),
         ("QwenImageModularPipeline", "QwenImageAutoBlocks"),
+        ("QwenImageEditModularPipeline", "QwenImageEditAutoBlocks"),
     ]
 )
 

@@ -69,3 +69,59 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
             requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
 
         return requires_unconditional_embeds
+
+
+
+class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
+    """
+    A ModularPipeline for QwenImage-Edit.
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
+    """
+    
+    # YiYi TODO: qwen edit should not provide default height/width, should be derived from the resized input image (after adjustment) produced by the resize step.
+    @property
+    def default_height(self):
+        return self.default_sample_size * self.vae_scale_factor
+
+    @property
+    def default_width(self):
+        return self.default_sample_size * self.vae_scale_factor
+
+    @property
+    def default_sample_size(self):
+        return 128
+
+    @property
+    def vae_scale_factor(self):
+        vae_scale_factor = 8
+        if hasattr(self, "vae") and self.vae is not None:
+            vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
+        return vae_scale_factor
+
+    @property
+    def num_channels_latents(self):
+        num_channels_latents = 16
+        if hasattr(self, "transformer") and self.transformer is not None:
+            num_channels_latents = self.transformer.config.in_channels // 4
+        return num_channels_latents
+
+    @property
+    def is_guidance_distilled(self):
+        is_guidance_distilled = False
+        if hasattr(self, "transformer") and self.transformer is not None:
+            is_guidance_distilled = self.transformer.config.guidance_embeds
+        return is_guidance_distilled
+
+    @property
+    def requires_unconditional_embeds(self):
+        requires_unconditional_embeds = False
+
+        if hasattr(self, "guider") and self.guider is not None:
+            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
+
+        return requires_unconditional_embeds
