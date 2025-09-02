@@ -203,6 +203,24 @@ pipeline = DiffusionPipeline.from_single_file(
 )
 ```
 
+If you're using a checkpoint trained with a Diffusers training script, metadata such as the LoRA configuration, is automatically saved. When the file is loaded, the metadata is parsed to correctly configure the LoRA and avoid missing or incorrect LoRA configs. Inspect the metadata of a safetensors file by clicking on the <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/safetensors/logo.png" alt="safetensors logo" height="15em" style="vertical-align: middle;"> logo next to the file on the Hub.
+
+Save the metadata for LoRAs that aren't trained with Diffusers with the `transformer_lora_adapter_metadata` and `text_encoder_lora_adapter_metadata` arguments in [`~loaders.FluxLoraLoaderMixin.save_lora_weights`]. This is only supported for safetensors files.
+
+```py
+import torch
+from diffusers import FluxPipeline
+
+pipeline = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+).to("cuda")
+pipeline.load_lora_weights("linoyts/yarn_art_Flux_LoRA")
+pipeline.save_lora_weights(
+    transformer_lora_adapter_metadata={"r": 16, "lora_alpha": 16},
+    text_encoder_lora_adapter_metadata={"r": 8, "lora_alpha": 8}
+)
+```
+
 ### ckpt
 
 Older model weights are commonly saved with Python's [pickle](https://docs.python.org/3/library/pickle.html) utility in a ckpt file.
