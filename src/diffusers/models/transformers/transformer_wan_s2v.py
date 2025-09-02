@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
@@ -320,7 +321,7 @@ class AudioInjector(nn.Module):
                         self.injected_block_id[inject_id] = audio_injector_id
                         audio_injector_id += 1
 
-        # 2. Cross-attention
+        # Cross-attention
         self.injector = nn.ModuleList(
             [
                 WanAttention(
@@ -336,24 +337,10 @@ class AudioInjector(nn.Module):
             ]
         )
         self.injector_pre_norm_feat = nn.ModuleList(
-            [
-                nn.LayerNorm(
-                    dim,
-                    elementwise_affine=False,
-                    eps=1e-6,
-                )
-                for _ in range(audio_injector_id)
-            ]
+            [nn.LayerNorm(dim, elementwise_affine=False, eps=eps) for _ in range(audio_injector_id)]
         )
         self.injector_pre_norm_vec = nn.ModuleList(
-            [
-                nn.LayerNorm(
-                    dim,
-                    elementwise_affine=False,
-                    eps=1e-6,
-                )
-                for _ in range(audio_injector_id)
-            ]
+            [nn.LayerNorm(dim, elementwise_affine=False, eps=eps) for _ in range(audio_injector_id)]
         )
         if enable_adain:
             self.injector_adain_layers = nn.ModuleList(
@@ -418,9 +405,9 @@ class FramePackMotioner(nn.Module):
             padd_lat = padd_lat.unsqueeze(0)
             clean_latents_4x, clean_latents_2x, clean_latents_post = padd_lat[
                 :, :, -self.zip_frame_buckets.sum() :, :, :
-            ].split(list(self.zip_frame_buckets)[::-1], dim=2)  # 16, 2 ,1
+            ].split(list(self.zip_frame_buckets)[::-1], dim=2)  # 16, 2, 1
 
-            # patchfy
+            # patchify
             clean_latents_post = self.proj(clean_latents_post).flatten(2).transpose(1, 2)
             clean_latents_2x = self.proj_2x(clean_latents_2x).flatten(2).transpose(1, 2)
             clean_latents_4x = self.proj_4x(clean_latents_4x).flatten(2).transpose(1, 2)
@@ -545,54 +532,46 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
         return temb, timestep_proj, encoder_hidden_states, audio_hidden_states, pose_hidden_states
 
 
+@maybe_allow_in_graph
 class WanS2VTransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
         ffn_dim: int,
         num_heads: int,
+        qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
-        apply_input_projection: bool = False,
-        apply_output_projection: bool = False,
     ):
         super().__init__()
 
-        # 1. Input projection
-        self.proj_in = None
-        if apply_input_projection:
-            self.proj_in = nn.Linear(dim, dim)
-
-        # 2. Self-attention
+        # 1. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.attn1 = WanAttention(
             dim=dim,
             heads=num_heads,
             dim_head=dim // num_heads,
             eps=eps,
+            cross_attention_dim_head=None,
             processor=WanAttnProcessor(),
         )
 
-        # 3. Cross-attention
+        # 2. Cross-attention
         self.attn2 = WanAttention(
             dim=dim,
             heads=num_heads,
             dim_head=dim // num_heads,
             eps=eps,
             added_kv_proj_dim=added_kv_proj_dim,
+            cross_attention_dim_head=dim // num_heads,
             processor=WanAttnProcessor(),
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
-        # 4. Feed-forward
+        # 3. Feed-forward
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
         self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-
-        # 5. Output projection
-        self.proj_out = None
-        if apply_output_projection:
-            self.proj_out = nn.Linear(dim, dim)
 
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
@@ -600,44 +579,45 @@ class WanS2VTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        control_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
-        if self.proj_in is not None:
-            control_hidden_states = self.proj_in(control_hidden_states)
-            control_hidden_states = control_hidden_states + hidden_states
-
-        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb.float()
-        ).chunk(6, dim=1)
+        if temb.ndim == 4:
+            # temb: batch_size, seq_len, 6, inner_dim (wan2.2 ti2v)
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
+                self.scale_shift_table.unsqueeze(0) + temb.float()
+            ).chunk(6, dim=2)
+            # batch_size, seq_len, 1, inner_dim
+            shift_msa = shift_msa.squeeze(2)
+            scale_msa = scale_msa.squeeze(2)
+            gate_msa = gate_msa.squeeze(2)
+            c_shift_msa = c_shift_msa.squeeze(2)
+            c_scale_msa = c_scale_msa.squeeze(2)
+            c_gate_msa = c_gate_msa.squeeze(2)
+        else:
+            # temb: batch_size, 6, inner_dim (wan2.1/wan2.2 14B)
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
+                self.scale_shift_table + temb.float()
+            ).chunk(6, dim=1)
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(control_hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(
-            control_hidden_states
-        )
+        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-        control_hidden_states = (control_hidden_states.float() + attn_output * gate_msa).type_as(control_hidden_states)
+        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
-        norm_hidden_states = self.norm2(control_hidden_states.float()).type_as(control_hidden_states)
+        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
         attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
-        control_hidden_states = control_hidden_states + attn_output
+        hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm3(control_hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            control_hidden_states
+        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
+            hidden_states
         )
         ff_output = self.ffn(norm_hidden_states)
-        control_hidden_states = (control_hidden_states.float() + ff_output.float() * c_gate_msa).type_as(
-            control_hidden_states
-        )
+        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
-        conditioning_states = None
-        if self.proj_out is not None:
-            conditioning_states = self.proj_out(control_hidden_states)
-
-        return conditioning_states, control_hidden_states
+        return hidden_states
 
 
 class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
@@ -675,6 +655,8 @@ class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             Whether to use img_emb.
         added_kv_proj_dim (`int`, *optional*, defaults to `None`):
             The number of channels to use for the added key and value projections. If `None`, no projection is used.
+        zero_timestep (`bool`, defaults to `True`):
+            Whether to assign 0 value timestep to image/motion
     """
 
     _supports_gradient_checkpointing = True
@@ -704,26 +686,20 @@ class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
-        enable_motioner: bool = False,
         enable_framepack: bool = False,
-        framepack_drop_mode="padd",
+        framepack_drop_mode: str = "padd",
         add_last_motion: bool = False,
+        zero_timestep: bool = True,
     ) -> None:
         super().__init__()
 
+        self.add_last_motion = add_last_motion
         self.inner_dim = inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
         self.rope = WanRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
-
-        # Init motioner
-        if enable_motioner and enable_framepack:
-            raise ValueError(
-                "enable_motioner and enable_framepack are mutually exclusive, please set one of them to False"
-            )
-        self.add_last_motion = add_last_motion
 
         if enable_framepack:
             self.frame_packer = FramePackMotioner(
@@ -756,6 +732,7 @@ class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 for _ in range(num_layers)
             ]
         )
+
         # 4. Audio Injector
         all_modules, all_modules_names = torch_dfs(self.blocks, parent_name="root.transformer_blocks")
         self.audio_injector = AudioInjector(
@@ -764,10 +741,10 @@ class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             dim=inner_dim,
             num_heads=num_attention_heads,
             inject_layer=audio_inject_layers,
-            root_net=self,
             enable_adain=enable_adain,
             adain_dim=inner_dim,
             need_adain_ont=adain_mode != "attn_norm",
+            eps=eps,
         )
 
         # 4. Output norm & projection
@@ -816,7 +793,14 @@ class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             return flattern_mot, mot_remb
 
     def inject_motion(
-        self, x, seq_lens, rope_embs, mask_input, motion_latents, drop_motion_frames=False, add_last_motion=True
+        self,
+        hidden_states,
+        seq_lens,
+        rope_embs,
+        mask_input,
+        motion_latents,
+        drop_motion_frames=False,
+        add_last_motion=True,
     ):
         # Inject the motion frames token to the hidden states
         if self.enable_framepack:
@@ -825,14 +809,49 @@ class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             mot, mot_remb = self.process_motion(motion_latents, drop_motion_frames)
 
         if len(mot) > 0:
-            x = [torch.cat([u, m], dim=1) for u, m in zip(x, mot)]
+            hidden_states = [torch.cat([u, m], dim=1) for u, m in zip(hidden_states, mot)]
             seq_lens = seq_lens + torch.tensor([r.size(1) for r in mot], dtype=torch.long)
             rope_embs = [torch.cat([u, m], dim=1) for u, m in zip(rope_embs, mot_remb)]
             mask_input = [
                 torch.cat([m, 2 * torch.ones([1, u.shape[1] - m.shape[1]], device=m.device, dtype=m.dtype)], dim=1)
-                for m, u in zip(mask_input, x)
+                for m, u in zip(mask_input, hidden_states)
             ]
-        return x, seq_lens, rope_embs, mask_input
+        return hidden_states, seq_lens, rope_embs, mask_input
+
+    def after_transformer_block(
+        self,
+        block_idx,
+        hidden_states,
+        original_sequence_length,
+        merged_audio_emb_num_frames,
+        attn_audio_emb,
+        audio_emb_global,
+    ):
+        if block_idx in self.audio_injector.injected_block_id.keys():
+            audio_attn_id = self.audio_injector.injected_block_id[block_idx]
+
+            input_hidden_states = hidden_states[:, :original_sequence_length].clone()  # B (F H W) C
+            input_hidden_states = input_hidden_states.unflatten(1, (merged_audio_emb_num_frames, -1)).flatten(0, 1)
+
+            if self.enbale_adain and self.adain_mode == "attn_norm":
+                attn_hidden_states = self.audio_injector.injector_adain_layers[audio_attn_id](
+                    input_hidden_states, temb=audio_emb_global[:, 0]
+                )
+            else:
+                attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
+
+            residual_out = self.audio_injector.injector[audio_attn_id](
+                x=attn_hidden_states,
+                context=attn_audio_emb,
+                context_lens=torch.ones(
+                    attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device
+                )
+                * attn_audio_emb.shape[1],
+            )
+            residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
+            hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
+
+        return hidden_states
 
     def forward(
         self,
@@ -840,14 +859,25 @@ class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         motion_latents: torch.Tensor,
+        audio_embeds: torch.Tensor,
         image_latents: torch.Tensor = None,
         pose_latents: torch.Tensor = None,
-        audio_embeds: torch.Tensor = None,
-        motion_frames: List[int] = None,
+        motion_frames: List[int] = [17, 5],
         drop_motion_frames: bool = False,
+        add_last_motion: int = 2,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        """
+        ... audio_embeds The input audio embedding [B, num_wav2vec_layer, C_a, T_a]. motion_frames The number of motion
+        frames and motion latents frames encoded by vae, i.e. [17, 5] add_last_motion For the motioner, if
+        add_last_motion > 0, it means that the most recent frame (i.e., the last frame) will be added.
+                            For frame packing, the behavior depends on the value of add_last_motion: add_last_motion =
+                            0: Only the farthest part of the latent (i.e., clean_latents_4x) is included.
+                            add_last_motion = 1: Both clean_latents_2x and clean_latents_4x are included.
+                            add_last_motion = 2: All motion-related latents are used.
+        drop_motion_frames Bool, whether drop the motion frames info
+        """
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -868,31 +898,119 @@ class WanS2VTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         post_patch_num_frames = num_frames // p_t
         post_patch_height = height // p_h
         post_patch_width = width // p_w
-
-        # 1. Rotary position embedding
-        rotary_emb = self.rope(hidden_states)
+        add_last_motion = self.add_last_motion * add_last_motion
 
         # 2. Patch embedding
         hidden_states = self.patch_embedding(hidden_states)
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
-        # 3. Time embedding
+        # 3. Condition embeddings
+        audio_embeds = torch.cat([audio_embeds[..., 0].repeat(1, 1, 1, motion_frames[0]), audio_embeds], dim=-1)
+
+        if self.config.zero_timestep:
+            timestep = torch.cat([timestep, torch.zeros([1], dtype=timestep.dtype, device=timestep.device)])
+
         temb, timestep_proj, encoder_hidden_states, audio_hidden_states, pose_hidden_states = self.condition_embedder(
             timestep, encoder_hidden_states, audio_embeds, pose_latents
         )
         timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
-        # 4. Image embedding
+        if self.enable_adain:
+            audio_emb_global, audio_emb = audio_hidden_states
+            audio_emb_global = audio_emb_global[:, motion_frames[1] :].clone()
+        else:
+            audio_emb = audio_hidden_states
+        merged_audio_emb = audio_emb[:, motion_frames[1] :, :]
+
+        hidden_states = hidden_states + pose_hidden_states
+        grid_sizes = torch.tensor(
+            [post_patch_num_frames, post_patch_height, post_patch_width], dtype=torch.long
+        ).unsqueeze(0)
+        grid_sizes = [[torch.zeros_like(grid_sizes), grid_sizes, grid_sizes]]
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        sequence_length = hidden_states.shape[1].to(torch.long)
+        original_sequence_length = sequence_length
+
+        if self.config.zero_timestep:
+            temb = temb[:-1]
+            zero_timestep_proj = timestep_proj[-1:]
+            timestep_proj = timestep_proj[:-1]
+            timestep_proj = torch.cat(
+                [timestep_proj.unsqueeze(2), zero_timestep_proj.unsqueeze(2).repeat(timestep_proj.shape[0], 1, 1, 1)],
+                dim=2,
+            )
+            timestep_proj = [timestep_proj, original_sequence_length]
+        else:
+            timestep_proj = timestep_proj.unsqueeze(2).repeat(1, 1, 2, 1)
+            timestep_proj = [timestep_proj, 0]
+
+        image_latents = self.patch_embedding(image_latents)
+        image_latents = image_latents.flatten(2).transpose(1, 2)
+        image_grid_sizes = [
+            [
+                # The start index
+                torch.tensor([30, 0, 0]).unsqueeze(0).repeat(batch_size, 1),
+                # The end index
+                torch.tensor([31, height, width]).unsqueeze(0).repeat(batch_size, 1),
+                # The range
+                torch.tensor([1, height, width]).unsqueeze(0).repeat(batch_size, 1),
+            ]
+        ]
+
+        sequence_length = sequence_length + image_latents.shape[1].to(torch.long)
+        grid_sizes = grid_sizes + image_grid_sizes
+
+        hidden_states = torch.cat([hidden_states, image_latents], dim=1)
+
+        # Initialize masks to indicate noisy latent, image latent, and motion latent.
+        # However, at this point, only the first two (noisy and image latents) are marked;
+        # the marking of motion latent will be implemented inside `inject_motion`.
+        mask_input = torch.zeros([1, hidden_states.shape[1]], dtype=torch.long, device=hidden_states.device)
+        mask_input[:, original_sequence_length:] = 1
+
+        # Rotary position embedding
+        rotary_emb = self.rope(hidden_states)
+
+        hidden_states, sequence_length, pre_compute_freqs, mask_input = self.inject_motion(
+            hidden_states,
+            sequence_length,
+            # pre_compute_freqs,
+            mask_input,
+            motion_latents,
+            drop_motion_frames,
+            add_last_motion,
+        )
+
+        hidden_states = hidden_states + self.trainable_condition_mask(mask_input).to(hidden_states.dtype)
+
+        merged_audio_emb_num_frames = merged_audio_emb.shape[1]  # B F N C
+        attn_audio_emb = merged_audio_emb.flatten(0, 1)
+        audio_emb_global = audio_emb_global.flatten(0, 1)
 
         # 5. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for i, block in enumerate(self.blocks):
+            for block_idx, block in enumerate(self.blocks):
                 hidden_states = self._gradient_checkpointing_func(
                     block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
                 )
+                hidden_states = self.after_transformer_block(
+                    block_idx,
+                    hidden_states,
+                    original_sequence_length,
+                    merged_audio_emb_num_frames,
+                    attn_audio_emb,
+                    audio_emb_global,
+                )
         else:
-            for i, block in enumerate(self.blocks):
+            for block_idx, block in enumerate(self.blocks):
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+                hidden_states = self.after_transformer_block(
+                    block_idx,
+                    hidden_states,
+                    original_sequence_length,
+                    merged_audio_emb_num_frames,
+                    attn_audio_emb,
+                    audio_emb_global,
+                )
 
         # 6. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
