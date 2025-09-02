@@ -24,15 +24,19 @@ else:
     _import_structure["encoders"] = ["FluxTextEncoderStep"]
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
+        "ALL_BLOCKS_KONTEXT",
         "AUTO_BLOCKS",
+        "AUTO_BLOCKS_KONTEXT",
         "TEXT2IMAGE_BLOCKS",
         "FluxAutoBeforeDenoiseStep",
         "FluxAutoBlocks",
-        "FluxAutoBlocks",
         "FluxAutoDecodeStep",
         "FluxAutoDenoiseStep",
+        "FluxKontextAutoBeforeDenoiseStep",
+        "FluxKontextAutoBlocks",
+        "FluxKontextAutoDenoiseStep",
     ]
-    _import_structure["modular_pipeline"] = ["FluxModularPipeline"]
+    _import_structure["modular_pipeline"] = ["FluxKontextModularPipeline", "FluxModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -44,12 +48,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .encoders import FluxTextEncoderStep
         from .modular_blocks import (
             ALL_BLOCKS,
+            ALL_BLOCKS_KONTEXT,
             AUTO_BLOCKS,
+            AUTO_BLOCKS_KONTEXT,
             TEXT2IMAGE_BLOCKS,
             FluxAutoBeforeDenoiseStep,
             FluxAutoBlocks,
             FluxAutoDecodeStep,
             FluxAutoDenoiseStep,
+            FluxKontextAutoBeforeDenoiseStep,
+            FluxKontextAutoDenoiseStep,
         )
         from .modular_pipeline import FluxModularPipeline
 else:
