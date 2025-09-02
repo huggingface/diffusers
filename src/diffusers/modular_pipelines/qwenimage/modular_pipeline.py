@@ -71,7 +71,6 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
         return requires_unconditional_embeds
 
 
-
 class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage-Edit.
@@ -82,7 +81,7 @@ class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
 
     </Tip>
     """
-    
+
     # YiYi TODO: qwen edit should not provide default height/width, should be derived from the resized input image (after adjustment) produced by the resize step.
     @property
     def default_height(self):
