@@ -12,11 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # AutoPipeline
 
-[AutoPipeline](../api/models/auto_model) is a *task-first* pipeline that automatically selects the correct pipeline subclass based on the task. It handles the complexity of loading different pipeline subclasses without needing to know the specific pipeline subclass name.
+[AutoPipeline](../api/models/auto_model) is a *task-and-model* pipeline that automatically selects the correct pipeline subclass based on the task. It handles the complexity of loading different pipeline subclasses without needing to know the specific pipeline subclass name.
 
-This is unlike [`DiffusionPipeline`], a *model-first* pipeline that automatically selects the pipeline subclass based on the model.
+This is unlike [`DiffusionPipeline`], a *model-only* pipeline that automatically selects the pipeline subclass based on the model.
 
-[`AutoPipelineForImage2Image`] returns the specific pipeline subclass, [`StableDiffusionXLImg2ImgPipeline`], which can only be used for image-to-image tasks.
+[`AutoPipelineForImage2Image`] returns the specific pipeline subclass, [`StableDiffusionXLImg2ImgPipeline`] in the example below, which can only be used for image-to-image tasks.
 
 ```py
 import torch
@@ -61,3 +61,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
 )
 "ValueError: AutoPipeline can't find a pipeline linked to ShapEImg2ImgPipeline for None"
 ```
+
+There are three types of [AutoPipeline](../api/models/auto_model) classes, [`AutoPipelineForText2Image`], [`AutoPipelineForImage2Image`] and [`AutoPipelineForInpainting`]. Each of these classes have a predefined mapping, linking a pipeline to their task-specific subclass.
+
+When [`~AutoPipeline.from_pretrained`] is called, it extracts the class name from the `model_index.json` file and selects the appropriate pipeline subclass for the task based on the mapping.
