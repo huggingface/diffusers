@@ -208,6 +208,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # retrieve library
             if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
+            elif isinstance(module, list) and module[0] is not None:
+                for mod in module:
+                  library, class_name = _fetch_class_library_tuple(mod)
+                  register_dict = {name: (library, class_name)}
             else:
                 library, class_name = _fetch_class_library_tuple(module)
                 register_dict = {name: (library, class_name)}
