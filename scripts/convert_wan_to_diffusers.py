@@ -1092,4 +1092,4 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
 
-    pipe.save_pretrained(args.output_path, push_to_hub=True, safe_serialization=True, max_shard_size="5GB")
+    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")

@@ -34,7 +34,6 @@ from .transformer_wan import (
     WanAttention,
     WanAttnProcessor,
     WanRotaryPosEmbed,
-    WanTransformerBlock,
 )
 
 
@@ -289,7 +288,7 @@ class AudioInjector(nn.Module):
         self.injected_block_id = {}
         audio_injector_id = 0
         for mod_name, mod in zip(all_modules_names, all_modules):
-            if isinstance(mod, WanTransformerBlock):
+            if isinstance(mod, WanS2VTransformerBlock):
                 for inject_id in inject_layer:
                     if f"transformer_blocks.{inject_id}" in mod_name:
                         self.injected_block_id[inject_id] = audio_injector_id
@@ -665,6 +664,7 @@ class WanS2VTransformer3DModel(
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
+        qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
@@ -709,7 +709,7 @@ class WanS2VTransformer3DModel(
         self.blocks = nn.ModuleList(
             [
                 WanS2VTransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, cross_attn_norm, eps, added_kv_proj_dim
+                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
                 )
                 for _ in range(num_layers)
             ]
