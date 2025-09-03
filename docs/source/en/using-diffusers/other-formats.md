@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 Diffusion models are typically stored in the Diffusers format or single-file format. Model files can be stored in various file types such as safetensors, dduf, or ckpt.
 
 > [!TIP]
-> Format refers to the directory structure and file refers to the file type.
+> Format refers to whether the weights are stored in a directory structure and file refers to the file type.
 
 This guide will show you how to load pipelines and models from these formats and files.
 
@@ -41,12 +41,11 @@ Use [`~loaders.FromSingleFileMixin.from_single_file`] to load a single file.
 
 ```py
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import StableDiffusionXLPipeline
 
-pipeline = DiffusionPipeline.from_single_file(
+pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
     torch_dtype=torch.float16,
-    device_map="cuda"
 )
 ```
 
@@ -54,46 +53,41 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method also supports passi
 
 ```py
 import torch
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+from diffusers import FluxPipeline, FluxTransformer2DModel
 
-scheduler = DPMSolverMultistepScheduler()
-pipeline = DiffusionPipeline.from_single_file(
-    "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
-    scheduler=scheduler,
-    torch_dtype=torch.float16,
-    device_map="cuda"
+transformer = FluxTransformer2DModel.from_single_file(
+    "https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", torch_dtype=torch.bfloat16
+)
+pipeline = FluxPipeline.from_single_file(
+    "black-forest-labs/FLUX.1-dev",
+    transformer=transformer,
+    torch_dtype=torch.bfloat16,
 )
 ```
 
 ### Configuration options
 
-Models have a `config.json` file in their repositories with important attributes such as the number of layers and attention heads. The [`~loaders.FromSingleFileMixin.from_single_file`] method automatically determines the appropriate config to use from `config.json`.
+Diffusers format models have a `config.json` file in their repositories with important attributes such as the number of layers and attention heads. The [`~loaders.FromSingleFileMixin.from_single_file`] method automatically determines the appropriate config to use from `config.json`. This may fail in a few rare instances though, in which case, you should use the `config` argument.
 
-But if the models in a pipeline are different from the original implementation or if it doesn't have to necessary metadata to determine the correct config, then you need to use the `config` argument.
+You should also use the `config` argument if the models in a pipeline are different from the original implementation or if it doesn't have the necessary metadata to determine the correct config.
 
 ```py
-from diffusers import QwenImagePipeline
+from diffusers import StableDiffusionXLPipeline
 
-ckpt_path = "https://huggingface.co/lightx2v/Qwen-Image-Lightning/blob/main/Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
+ckpt_path = "https://huggingface.co/segmind/SSD-1B/blob/main/SSD-1B.safetensors"
 
-pipeline = QwenImagePipeline.from_single_file(
-    ckpt_path,
-    config="lightx2v/Qwen-Image-Lightning"
-)
+pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path, config="segmind/SSD-1B")
 ```
 
 You could also load a config file not stored on the Hub by passing a local path or URL of the config file to the `original_config` argument.
 
 ```py
-from diffusers import WanPipeline
+from diffusers import StableDiffusionXLPipeline
 
-ckpt_path = "https://huggingface.co/lightx2v/Qwen-Image-Lightning/blob/main/Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
-original_config = "https://raw.githubusercontent.com/Wan-Video/Wan2.2/refs/heads/main/wan/configs/wan_ti2v_5B.py"
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
+original_config = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
 
-pipeline = WanPipeline.from_single_file(
-    ckpt_path,
-    original_config=original_config
-)
+pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=original_config)
 ```
 
 Diffusers attempts to infer the pipeline components based on the signature types of the pipeline class when using `original_config` with `local_files_only=True`. It won't download the config files from a Hub repository to avoid backward breaking changes when you can't connect to the internet. This method isn't as reliable as providing a path to a local model with the `config` argument and may lead to errors. You should run the pipeline with `local_files_only=False` to download the config files to the local cache to avoid errors.
@@ -124,19 +118,19 @@ If you're working with local files, download the config files with the [`~huggin
 
 ```py
 from huggingface_hub import hf_hub_download, snapshot_download
-from diffusers import QwenImagePipeline
+from diffusers import StableDiffusionXLPipeline
 
 my_local_checkpoint_path = hf_hub_download(
-    repo_id="lightx2v/Qwen-Image-Lightning",
-    filename="Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
+    repo_id="segmind/SSD-1B",
+    filename="SSD-1B.safetensors"
 )
 
 my_local_config_path = snapshot_download(
-    repo_id="lightx2v/Qwen-Image-Lightning",
+    repo_id="segmind/SSD-1B",
     allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
 )
 
-pipeline = QwenImagePipeline.from_single_file(
+pipeline = StableDiffusionXLPipeline.from_single_file(
     my_local_checkpoint_path, config=my_local_config_path, local_files_only=True
 )
 ```
@@ -147,18 +141,19 @@ If you're working with a file system that does not support symlinking, download 
 
 ```py
 from huggingface_hub import hf_hub_download, snapshot_download
+from diffusers import StableDiffusionXLPipeline
 
 my_local_checkpoint_path = hf_hub_download(
-    repo_id="lightx2v/Qwen-Image-Lightning",
-    filename="Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors",
+    repo_id="segmind/SSD-1B",
+    filename="SSD-1B.safetensors"
     local_dir="my_local_checkpoints",
-    local_dir_use_symlinks=False,
+    local_dir_use_symlinks=False
 )
 print("My local checkpoint: ", my_local_checkpoint_path)
 
 my_local_config_path = snapshot_download(
-    repo_id="lightx2v/Qwen-Image-Lightning",
-    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"],
+    repo_id="segmind/SSD-1B",
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
     local_dir_use_symlinks=False,
 )
 print("My local config: ", my_local_config_path)
@@ -167,9 +162,7 @@ print("My local config: ", my_local_config_path)
 Pass these paths to [`~loaders.FromSingleFileMixin.from_single_file`].
 
 ```py
-from diffusers import QwenImagePipeline
-
-pipeline = QwenImagePipeline.from_single_file(
+pipeline = StableDiffusionXLPipeline.from_single_file(
     my_local_checkpoint_path, config=my_local_config_path, local_files_only=True
 )
 ```
@@ -182,7 +175,7 @@ Models can be stored in several file types. Safetensors is the most common file 
 
 [Safetensors](https://hf.co/docs/safetensors) is a safe and fast file type for securely storing and loading tensors. It restricts the header size to limit certain types of attacks, supports lazy loading (useful for distributed setups), and generally loads faster.
 
-Diffusers loads safetensors file by default if they are available and the Safetensors library is installed.
+Diffusers loads safetensors file by default (a required dependency) if they are available and the Safetensors library is installed.
 
 Use [`~DiffusionPipeline.from_pretrained`] or [`~loaders.FromSingleFileMixin.from_single_file`] to load safetensor files.
 
@@ -199,13 +192,12 @@ pipeline = DiffusionPipeline.from_pretrained(
 pipeline = DiffusionPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
     torch_dtype=torch.float16,
-    device_map="cuda"
 )
 ```
 
-If you're using a checkpoint trained with a Diffusers training script, metadata such as the LoRA configuration, is automatically saved. When the file is loaded, the metadata is parsed to correctly configure the LoRA and avoid missing or incorrect LoRA configs. Inspect the metadata of a safetensors file by clicking on the <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/safetensors/logo.png" alt="safetensors logo" height="15em" style="vertical-align: middle;"> logo next to the file on the Hub.
+If you're using a checkpoint trained with a Diffusers training script, metadata such as the LoRA configuration, is automatically saved. When the file is loaded, the metadata is parsed to correctly configure the LoRA and avoid missing or incorrect LoRA configs. Inspect the metadata of a safetensors file by clicking on the <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/safetensors/logo.png" alt="safetensors logo" style="vertical-align: middle; display: inline-block; max-height: 0.8em; max-width: 0.8em; margin: 0; padding: 0; line-height: 1;"> logo next to the file on the Hub.
 
-Save the metadata for LoRAs that aren't trained with Diffusers with the `transformer_lora_adapter_metadata` and `text_encoder_lora_adapter_metadata` arguments in [`~loaders.FluxLoraLoaderMixin.save_lora_weights`]. This is only supported for safetensors files.
+Save the metadata for LoRAs that aren't trained with Diffusers with either `transformer_lora_adapter_metadata` or `unet_lora_adapter_metadata` depending on your model. For the text encoder, use the `text_encoder_lora_adapter_metadata` and `text_encoder_2_lora_adapter_metadata` arguments in [`~loaders.FluxLoraLoaderMixin.save_lora_weights`]. This is only supported for safetensors files.
 
 ```py
 import torch
@@ -216,8 +208,8 @@ pipeline = FluxPipeline.from_pretrained(
 ).to("cuda")
 pipeline.load_lora_weights("linoyts/yarn_art_Flux_LoRA")
 pipeline.save_lora_weights(
-    transformer_lora_adapter_metadata={"r": 16, "lora_alpha": 16},
-    text_encoder_lora_adapter_metadata={"r": 8, "lora_alpha": 8}
+    text_encoder_lora_adapter_metadata={"r": 8, "lora_alpha": 8},
+    text_encoder_2_lora_adapter_metadata={"r": 8, "lora_alpha": 8}
 )
 ```
 

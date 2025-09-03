@@ -343,6 +343,13 @@ else:
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
+    _import_structure["image_processor"] = [
+        "VaeImageProcessor",
+        "VaeImageProcessorLDM3D",
+        "PixArtImageProcessor",
+        "IPAdapterMaskProcessor",
+    ]
+    _import_structure["video_processor"] = ["VideoProcessor"]
 
 try:
     if not (is_torch_available() and is_scipy_available()):
@@ -1019,6 +1026,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionScheduler,
         )
         from .training_utils import EMAModel
+        from .image_processor import (
+            VaeImageProcessor,
+            VaeImageProcessorLDM3D,
+            PixArtImageProcessor,
+            IPAdapterMaskProcessor,
+        )
+        from .video_processor import VideoProcessor
 
     try:
         if not (is_torch_available() and is_scipy_available()):
