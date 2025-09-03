@@ -1481,7 +1481,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
             )
 
-    def parallelize(self, *, config: ParallelConfig, cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None):
+    def enable_parallelism(self, *, config: ParallelConfig, cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None):
         from ..hooks.context_parallel import apply_context_parallel
 
         logger.warning(
