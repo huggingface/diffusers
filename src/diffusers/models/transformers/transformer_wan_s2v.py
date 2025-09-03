@@ -405,11 +405,9 @@ class FramePackMotioner(nn.Module):
                 if add_last_motion < 2 and self.drop_mode == "drop"
                 else [
                     [
-                        torch.tensor([start_time_id, 0, 0]).unsqueeze(0).repeat(1, 1),
-                        torch.tensor([end_time_id, lat_height // 2, lat_width // 2]).unsqueeze(0).repeat(1, 1),
-                        torch.tensor([self.zip_frame_buckets[0], lat_height // 2, lat_width // 2])
-                        .unsqueeze(0)
-                        .repeat(1, 1),
+                        torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
+                        torch.tensor([end_time_id, lat_height // 2, lat_width // 2]).unsqueeze(0),
+                        torch.tensor([self.zip_frame_buckets[0], lat_height // 2, lat_width // 2]).unsqueeze(0),
                     ]
                 ]
             )
@@ -421,11 +419,9 @@ class FramePackMotioner(nn.Module):
                 if add_last_motion < 1 and self.drop_mode == "drop"
                 else [
                     [
-                        torch.tensor([start_time_id, 0, 0]).unsqueeze(0).repeat(1, 1),
-                        torch.tensor([end_time_id, lat_height // 4, lat_width // 4]).unsqueeze(0).repeat(1, 1),
-                        torch.tensor([self.zip_frame_buckets[1], lat_height // 2, lat_width // 2])
-                        .unsqueeze(0)
-                        .repeat(1, 1),
+                        torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
+                        torch.tensor([end_time_id, lat_height // 4, lat_width // 4]).unsqueeze(0),
+                        torch.tensor([self.zip_frame_buckets[1], lat_height // 2, lat_width // 2]).unsqueeze(0),
                     ]
                 ]
             )
@@ -434,18 +430,18 @@ class FramePackMotioner(nn.Module):
             end_time_id = start_time_id + self.zip_frame_buckets[2] // 4
             grid_sizes_4x = [
                 [
-                    torch.tensor([start_time_id, 0, 0]).unsqueeze(0).repeat(1, 1),
-                    torch.tensor([end_time_id, lat_height // 8, lat_width // 8]).unsqueeze(0).repeat(1, 1),
-                    torch.tensor([self.zip_frame_buckets[2], lat_height // 2, lat_width // 2])
-                    .unsqueeze(0)
-                    .repeat(1, 1),
+                    torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
+                    torch.tensor([end_time_id, lat_height // 8, lat_width // 8]).unsqueeze(0),
+                    torch.tensor([self.zip_frame_buckets[2], lat_height // 2, lat_width // 2]).unsqueeze(0),
                 ]
             ]
 
             grid_sizes = grid_sizes + grid_sizes_2x + grid_sizes_4x
 
             motion_rope_emb = rope_precompute(
-                motion_lat.detach().view(1, motion_lat.shape[1], self.num_heads, self.inner_dim // self.num_heads),
+                motion_lat.detach().view(
+                    1, motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads
+                ),
                 grid_sizes,
                 self.freqs,
                 start=None,
@@ -475,7 +471,7 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
         self.act_fn = nn.SiLU()
         self.time_proj = nn.Linear(dim, time_proj_dim)
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
-        self.casual_audio_encoder = CausalAudioEncoder(
+        self.causal_audio_encoder = CausalAudioEncoder(
             dim=audio_embed_dim, out_dim=dim, num_audio_token=4, need_global=enable_adain
         )
 
@@ -503,7 +499,7 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)
 
-        audio_hidden_states = self.casual_audio_encoder(audio_hidden_states)
+        audio_hidden_states = self.causal_audio_encoder(audio_hidden_states)
 
         if self.pose_embedder is not None:
             pose_hidden_states = self.pose_embedder(pose_hidden_states)
@@ -769,9 +765,9 @@ class WanS2VTransformer3DModel(
             flat_mot = mot[bs].flatten(2).transpose(1, 2).contiguous()
             motion_grid_sizes = [
                 [
-                    torch.tensor([-self.latent_motion_frames, 0, 0]).unsqueeze(0).repeat(1, 1),
-                    torch.tensor([0, height, width]).unsqueeze(0).repeat(1, 1),
-                    torch.tensor([self.latent_motion_frames, height, width]).unsqueeze(0).repeat(1, 1),
+                    torch.tensor([-self.latent_motion_frames, 0, 0]).unsqueeze(0),
+                    torch.tensor([0, height, width]).unsqueeze(0),
+                    torch.tensor([self.latent_motion_frames, height, width]).unsqueeze(0),
                 ]
             ]
             motion_rope_emb = rope_precompute(
@@ -834,7 +830,7 @@ class WanS2VTransformer3DModel(
             input_hidden_states = hidden_states[:, :original_sequence_length].clone()  # B (F H W) C
             input_hidden_states = input_hidden_states.unflatten(1, (merged_audio_emb_num_frames, -1)).flatten(0, 1)
 
-            if self.enbale_adain and self.adain_mode == "attn_norm":
+            if self.enable_adain and self.adain_mode == "attn_norm":
                 attn_hidden_states = self.audio_injector.injector_adain_layers[audio_attn_id](
                     input_hidden_states, temb=audio_emb_global[:, 0]
                 )
