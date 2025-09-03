@@ -131,52 +131,32 @@ class AdaLayerNorm(nn.Module):
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`, *optional*): The size of the embeddings dictionary.
         output_dim (`int`, *optional*):
         norm_elementwise_affine (`bool`, defaults to `False):
         norm_eps (`bool`, defaults to `False`):
-        chunk_dim (`int`, defaults to `0`):
     """
 
     def __init__(
         self,
         embedding_dim: int,
-        num_embeddings: Optional[int] = None,
         output_dim: Optional[int] = None,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-5,
-        chunk_dim: int = 0,
     ):
         super().__init__()
 
-        self.chunk_dim = chunk_dim
         output_dim = output_dim or embedding_dim * 2
-
-        if num_embeddings is not None:
-            self.emb = nn.Embedding(num_embeddings, embedding_dim)
-        else:
-            self.emb = None
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, output_dim)
         self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
 
-    def forward(
-        self, x: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        if self.emb is not None:
-            temb = self.emb(timestep)
-
+    def forward(self, x: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         temb = self.linear(self.silu(temb))
 
-        if self.chunk_dim == 1:
-            # This is a bit weird why we have the order of "shift, scale" here and "scale, shift" in the
-            # other if-branch. This branch is specific to CogVideoX and OmniGen for now.
-            shift, scale = temb.chunk(2, dim=1)
-            shift = shift[:, None, :]
-            scale = scale[:, None, :]
-        else:
-            scale, shift = temb.chunk(2, dim=0)
+        shift, scale = temb.chunk(2, dim=1)
+        shift = shift[:, None, :]
+        scale = scale[:, None, :]
 
         x = self.norm(x) * (1 + scale) + shift
         return x
@@ -339,10 +319,7 @@ class AudioInjector(nn.Module):
 
         if enable_adain:
             self.injector_adain_layers = nn.ModuleList(
-                [
-                    AdaLayerNorm(output_dim=dim * 2, embedding_dim=adain_dim, chunk_dim=1)
-                    for _ in range(audio_injector_id)
-                ]
+                [AdaLayerNorm(output_dim=dim * 2, embedding_dim=adain_dim) for _ in range(audio_injector_id)]
             )
             if need_adain_ont:
                 self.injector_adain_output_layers = nn.ModuleList(
