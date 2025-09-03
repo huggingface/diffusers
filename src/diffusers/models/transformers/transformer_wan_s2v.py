@@ -187,8 +187,7 @@ class CausalConv1d(nn.Module):
         super().__init__()
 
         self.pad_mode = pad_mode
-        padding = (kernel_size - 1, 0)  # T
-        self.time_causal_padding = padding
+        self.time_causal_padding = (kernel_size - 1, 0)  # T
 
         self.conv = nn.Conv1d(chan_in, chan_out, kernel_size, stride=stride, dilation=dilation, **kwargs)
 
@@ -198,10 +197,7 @@ class CausalConv1d(nn.Module):
 
 
 class MotionEncoder_tc(nn.Module):
-    def __init__(
-        self, in_dim: int, hidden_dim: int, num_attention_heads=int, need_global=True, dtype=None, device=None
-    ):
-        factory_kwargs = {"dtype": dtype, "device": device}
+    def __init__(self, in_dim: int, hidden_dim: int, num_attention_heads=int, need_global=True):
         super().__init__()
 
         self.num_attention_heads = num_attention_heads
@@ -209,19 +205,16 @@ class MotionEncoder_tc(nn.Module):
         self.conv1_local = CausalConv1d(in_dim, hidden_dim // 4 * num_attention_heads, 3, stride=1)
         if need_global:
             self.conv1_global = CausalConv1d(in_dim, hidden_dim // 4, 3, stride=1)
-        self.norm1 = nn.LayerNorm(hidden_dim // 4, elementwise_affine=False, eps=1e-6, **factory_kwargs)
         self.act = nn.SiLU()
         self.conv2 = CausalConv1d(hidden_dim // 4, hidden_dim // 2, 3, stride=2)
         self.conv3 = CausalConv1d(hidden_dim // 2, hidden_dim, 3, stride=2)
 
         if need_global:
-            self.final_linear = nn.Linear(hidden_dim, hidden_dim, **factory_kwargs)
+            self.final_linear = nn.Linear(hidden_dim, hidden_dim)
 
-        self.norm1 = nn.LayerNorm(hidden_dim // 4, elementwise_affine=False, eps=1e-6, **factory_kwargs)
-
-        self.norm2 = nn.LayerNorm(hidden_dim // 2, elementwise_affine=False, eps=1e-6, **factory_kwargs)
-
-        self.norm3 = nn.LayerNorm(hidden_dim, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.norm1 = nn.LayerNorm(hidden_dim // 4, elementwise_affine=False, eps=1e-6)
+        self.norm2 = nn.LayerNorm(hidden_dim // 2, elementwise_affine=False, eps=1e-6)
+        self.norm3 = nn.LayerNorm(hidden_dim, elementwise_affine=False, eps=1e-6)
 
         self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, hidden_dim))
 
@@ -336,12 +329,14 @@ class AudioInjector(nn.Module):
                 for _ in range(audio_injector_id)
             ]
         )
+
         self.injector_pre_norm_feat = nn.ModuleList(
             [nn.LayerNorm(dim, elementwise_affine=False, eps=eps) for _ in range(audio_injector_id)]
         )
         self.injector_pre_norm_vec = nn.ModuleList(
             [nn.LayerNorm(dim, elementwise_affine=False, eps=eps) for _ in range(audio_injector_id)]
         )
+
         if enable_adain:
             self.injector_adain_layers = nn.ModuleList(
                 [
@@ -359,7 +354,7 @@ class FramePackMotioner(nn.Module):
     def __init__(
         self,
         inner_dim=1024,
-        num_heads=16,  # Used to indicate the number of heads in the backbone network; unrelated to this module's design
+        num_attention_heads=16,  # Used to indicate the number of heads in the backbone network; unrelated to this module's design
         zip_frame_buckets=[
             1,
             2,
@@ -370,21 +365,28 @@ class FramePackMotioner(nn.Module):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.inner_dim = inner_dim
+        self.num_attention_heads = num_attention_heads
+        if (inner_dim % num_attention_heads) != 0 or (inner_dim // num_attention_heads) % 2 != 0:
+            raise ValueError(
+                "inner_dim must be divisible by num_attention_heads and inner_dim // num_attention_heads must be even"
+            )
+        self.drop_mode = drop_mode
+
         self.proj = nn.Conv3d(16, inner_dim, kernel_size=(1, 2, 2), stride=(1, 2, 2))
         self.proj_2x = nn.Conv3d(16, inner_dim, kernel_size=(2, 4, 4), stride=(2, 4, 4))
         self.proj_4x = nn.Conv3d(16, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
         self.zip_frame_buckets = torch.tensor(zip_frame_buckets, dtype=torch.long)
 
-        self.inner_dim = inner_dim
-        self.num_heads = num_heads
-
-        assert (inner_dim % num_heads) == 0 and (inner_dim // num_heads) % 2 == 0
-        d = inner_dim // num_heads
+        head_dim = inner_dim // num_attention_heads
         self.freqs = torch.cat(
-            [rope_params(1024, d - 4 * (d // 6)), rope_params(1024, 2 * (d // 6)), rope_params(1024, 2 * (d // 6))],
+            [
+                rope_params(1024, head_dim - 4 * (head_dim // 6)),
+                rope_params(1024, 2 * (head_dim // 6)),
+                rope_params(1024, 2 * (head_dim // 6)),
+            ],
             dim=1,
         )
-        self.drop_mode = drop_mode
 
     def forward(self, motion_latents, add_last_motion=2):
         mot = []
@@ -870,15 +872,20 @@ class WanS2VTransformer3DModel(
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        """
-        ... audio_embeds The input audio embedding [B, num_wav2vec_layer, C_a, T_a]. motion_frames The number of motion
-        frames and motion latents frames encoded by vae, i.e. [17, 5] add_last_motion For the motioner, if
-        add_last_motion > 0, it means that the most recent frame (i.e., the last frame) will be added.
-                            For frame packing, the behavior depends on the value of add_last_motion: add_last_motion =
-                            0: Only the farthest part of the latent (i.e., clean_latents_4x) is included.
-                            add_last_motion = 1: Both clean_latents_2x and clean_latents_4x are included.
-                            add_last_motion = 2: All motion-related latents are used.
-        drop_motion_frames Bool, whether drop the motion frames info
+        r"""
+        Parameters:
+            audio_embeds:
+                The input audio embedding [B, num_wav2vec_layer, C_a, T_a].
+            motion_frames:
+                The number of motion frames and motion latents frames encoded by vae, i.e. [17, 5].
+            add_last_motion:
+                For the motioner, if add_last_motion > 0, it means that the most recent frame (i.e., the last frame)
+                will be added. For frame packing, the behavior depends on the value of add_last_motion: add_last_motion
+                = 0: Only the farthest part of the latent (i.e., clean_latents_4x) is included. add_last_motion = 1:
+                Both clean_latents_2x and clean_latents_4x are included. add_last_motion = 2: All motion-related
+                latents are used.
+            drop_motion_frames:
+                Bool, whether drop the motion frames info.
         """
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
