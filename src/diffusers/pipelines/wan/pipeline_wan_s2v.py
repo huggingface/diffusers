@@ -146,7 +146,11 @@ def get_sample_indices(original_fps, total_frames, target_fps, num_sample, fixed
 
 def linear_interpolation(features, input_fps, output_fps, output_len=None):
     """
-    features: shape=[1, T, 512] input_fps: fps for audio, f_a output_fps: fps for video, f_m output_len: video length
+    Args:
+        features: shape=[1, T, 512]
+        input_fps: fps for audio, f_a
+        output_fps: fps for video, f_m
+        output_len: video length
     """
     features = features.transpose(1, 2)  # [1, 512, T]
     seq_len = features.shape[2] / float(input_fps)  # T/f_a
@@ -604,12 +608,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             cond_tensors = [-torch.ones([1, 3, num_frames_per_chunk, HEIGHT, WIDTH])]
 
         pose_condition = []
-        for r in range(len(cond_tensors)):
-            cond = cond_tensors[r]
-            cond = torch.cat([cond[:, :, 0:1].repeat(1, 1, 1, 1, 1), cond], dim=2)
-            cond_lat = torch.stack(self.vae.encode(cond.to(dtype=self.param_dtype, device=self.device)))[
-                :, :, 1:
-            ].cpu()  # for mem save
+        for cond in cond_tensors:
+            cond = torch.cat([cond[:, :, 0:1], cond], dim=2)
+            cond = cond.to(dtype=self.config.dtype, device=self._execution_device)
+            cond_lat = self.vae.encode(cond)[:, :, 1:]
             pose_condition.append(cond_lat)
 
         return pose_condition
