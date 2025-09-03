@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 This is unlike [`DiffusionPipeline`], a *model-only* pipeline that automatically selects the pipeline subclass based on the model.
 
-[`AutoPipelineForImage2Image`] returns the specific pipeline subclass, [`StableDiffusionXLImg2ImgPipeline`] in the example below, which can only be used for image-to-image tasks.
+[`AutoPipelineForImage2Image`] returns a specific pipeline subclass, (for example, [`StableDiffusionXLImg2ImgPipeline`]), which can only be used for image-to-image tasks.
 
 ```py
 import torch
