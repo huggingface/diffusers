@@ -26,7 +26,8 @@ from diffusers import (
     CogVideoXPipeline,
     CogVideoXTransformer3DModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     floats_tensor,
     require_peft_backend,
     require_torch_accelerator,
@@ -35,7 +36,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend

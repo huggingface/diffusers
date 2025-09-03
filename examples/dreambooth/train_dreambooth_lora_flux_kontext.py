@@ -1270,6 +1270,7 @@ def main(args):
                 subfolder="transformer",
                 revision=args.revision,
                 variant=args.variant,
+                torch_dtype=torch_dtype,
             )
             pipeline = FluxKontextPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
@@ -1292,7 +1293,8 @@ def main(args):
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                with torch.autocast(device_type=accelerator.device.type, dtype=torch_dtype):
+                    images = pipeline(prompt=example["prompt"]).images
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
@@ -1898,6 +1900,10 @@ def main(args):
                             max_sequence_length=args.max_sequence_length,
                             device=accelerator.device,
                             prompt=args.instance_prompt,
+                        )
+                    else:
+                        prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
+                            prompts, text_encoders, tokenizers
                         )
 
                 # Convert images to latent space
