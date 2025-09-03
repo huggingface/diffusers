@@ -558,31 +558,39 @@ class WanS2VTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
+        temb: List[torch.Tensor, torch.Tensor],
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
-        if temb.ndim == 4:
-            # temb: batch_size, seq_len, 6, inner_dim (wan2.2 ti2v)
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-                self.scale_shift_table.unsqueeze(0) + temb.float()
-            ).chunk(6, dim=2)
-            # batch_size, seq_len, 1, inner_dim
-            shift_msa = shift_msa.squeeze(2)
-            scale_msa = scale_msa.squeeze(2)
-            gate_msa = gate_msa.squeeze(2)
-            c_shift_msa = c_shift_msa.squeeze(2)
-            c_scale_msa = c_scale_msa.squeeze(2)
-            c_gate_msa = c_gate_msa.squeeze(2)
-        else:
-            # temb: batch_size, 6, inner_dim (wan2.1/wan2.2 14B)
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-                self.scale_shift_table + temb.float()
-            ).chunk(6, dim=1)
+        seg_idx = temb[1].item()
+        seg_idx = min(max(0, seg_idx), hidden_states.shape[1])
+        seg_idx = [0, seg_idx, hidden_states.shape[1]]
+        temb = temb[0]
+        # temb: batch_size, 6, 2, inner_dim
+        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
+            self.scale_shift_table.unsqueeze(2) + temb.float()
+        ).chunk(6, dim=1)
+        # batch_size, 1, seq_len, inner_dim
+        shift_msa = shift_msa.squeeze(1)
+        scale_msa = scale_msa.squeeze(1)
+        gate_msa = gate_msa.squeeze(1)
+        c_shift_msa = c_shift_msa.squeeze(1)
+        c_scale_msa = c_scale_msa.squeeze(1)
+        c_gate_msa = c_gate_msa.squeeze(1)
+
+        norm_hidden_states = self.norm1(hidden_states.float())
+        parts = []
+        for i in range(2):
+            parts.append(norm_hidden_states[:, seg_idx[i]:seg_idx[i + 1]] *
+                         (1 + scale_msa[:, i:i + 1]) + shift_msa[:, i:i + 1])
+        norm_hidden_states = torch.cat(parts, dim=1).type_as(hidden_states)
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        z = []
+        for i in range(2):
+            z.append(attn_output[:, seg_idx[i]:seg_idx[i + 1]] * gate_msa[:, i:i + 1])
+        attn_output = torch.cat(z, dim=1)
+        hidden_states = (hidden_states.float() + attn_output).type_as(hidden_states)
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
@@ -590,11 +598,18 @@ class WanS2VTransformerBlock(nn.Module):
         hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
-        )
-        ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+        norm3_hidden_states = self.norm3(hidden_states.float())
+        parts = []
+        for i in range(2):
+            parts.append(norm3_hidden_states[:, seg_idx[i]:seg_idx[i + 1]] *
+                         (1 + c_scale_msa[:, i:i + 1]) + c_shift_msa[:, i:i + 1])
+        norm3_hidden_states = torch.cat(parts, dim=1).type_as(hidden_states)
+        ff_output = self.ffn(norm3_hidden_states)
+        z = []
+        for i in range(2):
+            z.append(ff_output[:, seg_idx[i]:seg_idx[i + 1]] * c_gate_msa[:, i:i + 1])
+        ff_output = torch.cat(z, dim=1)
+        hidden_states = (hidden_states.float() + ff_output.float()).type_as(hidden_states)
 
         return hidden_states
 
