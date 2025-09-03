@@ -580,15 +580,17 @@ class WanS2VTransformerBlock(nn.Module):
         norm_hidden_states = self.norm1(hidden_states.float())
         parts = []
         for i in range(2):
-            parts.append(norm_hidden_states[:, seg_idx[i]:seg_idx[i + 1]] *
-                         (1 + scale_msa[:, i:i + 1]) + shift_msa[:, i:i + 1])
+            parts.append(
+                norm_hidden_states[:, seg_idx[i] : seg_idx[i + 1]] * (1 + scale_msa[:, i : i + 1])
+                + shift_msa[:, i : i + 1]
+            )
         norm_hidden_states = torch.cat(parts, dim=1).type_as(hidden_states)
 
         # 1. Self-attention
         attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
         z = []
         for i in range(2):
-            z.append(attn_output[:, seg_idx[i]:seg_idx[i + 1]] * gate_msa[:, i:i + 1])
+            z.append(attn_output[:, seg_idx[i] : seg_idx[i + 1]] * gate_msa[:, i : i + 1])
         attn_output = torch.cat(z, dim=1)
         hidden_states = (hidden_states.float() + attn_output).type_as(hidden_states)
 
@@ -601,13 +603,15 @@ class WanS2VTransformerBlock(nn.Module):
         norm3_hidden_states = self.norm3(hidden_states.float())
         parts = []
         for i in range(2):
-            parts.append(norm3_hidden_states[:, seg_idx[i]:seg_idx[i + 1]] *
-                         (1 + c_scale_msa[:, i:i + 1]) + c_shift_msa[:, i:i + 1])
+            parts.append(
+                norm3_hidden_states[:, seg_idx[i] : seg_idx[i + 1]] * (1 + c_scale_msa[:, i : i + 1])
+                + c_shift_msa[:, i : i + 1]
+            )
         norm3_hidden_states = torch.cat(parts, dim=1).type_as(hidden_states)
         ff_output = self.ffn(norm3_hidden_states)
         z = []
         for i in range(2):
-            z.append(ff_output[:, seg_idx[i]:seg_idx[i + 1]] * c_gate_msa[:, i:i + 1])
+            z.append(ff_output[:, seg_idx[i] : seg_idx[i + 1]] * c_gate_msa[:, i : i + 1])
         ff_output = torch.cat(z, dim=1)
         hidden_states = (hidden_states.float() + ff_output.float()).type_as(hidden_states)
 
