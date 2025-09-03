@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import numpy as np
         >>> from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
-        >>> from diffusers.utils import export_to_video, load_image, load_audio
+        >>> from diffusers.utils import export_to_video, load_image, load_audio, load_video
 
         >>> # Available models: Wan-AI/Wan2.2-S2V-14B-Diffusers
         >>> model_id = "Wan-AI/Wan2.2-S2V-14B-Diffusers"
@@ -64,9 +64,16 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = WanSpeechToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+        >>> first_frame = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png"
         ... )
+        >>> audio, sampling_rate = load_audio(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png"
+        ... )
+        >>> pose_video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_pose_video.mp4"
+        ... )
+
         >>> max_area = 480 * 832
         >>> aspect_ratio = image.height / image.width
         >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
@@ -84,6 +91,8 @@ EXAMPLE_DOC_STRING = """
         ...     prompt=prompt,
         ...     image=image,
         ...     audio=audio,
+        ...     sampling_rate=sampling_rate,
+        ...     # pose_video=pose_video,
         ...     negative_prompt=negative_prompt,
         ...     height=height,
         ...     width=width,

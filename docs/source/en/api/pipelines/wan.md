@@ -253,7 +253,7 @@ The example below demonstrates how to use the speech-to-video pipeline to genera
 import numpy as np
 import torch
 from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
-from diffusers.utils import export_to_video, load_image, load_audio
+from diffusers.utils import export_to_video, load_image, load_audio, load_video
 from transformers import Wav2Vec2ForCTC
 
 
@@ -283,8 +283,8 @@ prompt = "CG animation style, a small blue bird takes off from the ground, flapp
 
 output = pipe(
     image=first_frame, audio=audio, sampling_rate=sampling_rate,
-    prompt=prompt, height=height, width=width, guidance_scale=5.0,
-    # pose_video=pose_video
+    prompt=prompt, height=height, width=width, guidance_scale=5.0, num_frames_per_chunk=81,
+    #pose_video=pose_video
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)
 ```
