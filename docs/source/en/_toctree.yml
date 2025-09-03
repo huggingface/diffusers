@@ -188,6 +188,8 @@
     title: torchao
   - local: quantization/quanto
     title: quanto
+  - local: quantization/modelopt
+    title: NVIDIA ModelOpt
 
 - title: Model accelerators and hardware
   isExpanded: false
