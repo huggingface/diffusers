@@ -87,7 +87,7 @@ EXAMPLE_DOC_STRING = """
         ...     negative_prompt=negative_prompt,
         ...     height=height,
         ...     width=width,
-        ...     num_frames=81,
+        ...     num_frames_per_chunk=81,
         ...     guidance_scale=5.0,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=16)
@@ -304,7 +304,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             fixed_start=0,
         )
         batch_audio_eb = []
-        audio_sample_stride = int(self.video_rate / fps)
+        audio_sample_stride = int(video_rate / fps)
         for bi in batch_idx:
             if bi < audio_frame_num:
                 chosen_idx = list(
@@ -330,7 +330,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             batch_audio_eb.append(frame_audio_embed)
         audio_embed_bucket = torch.cat([c.unsqueeze(0) for c in batch_audio_eb], dim=0)
 
-        audio_embed_bucket = audio_embed_bucket.to(self.device, self.param_dtype)
+        audio_embed_bucket = audio_embed_bucket.to(device, self.config.dtype)
         audio_embed_bucket = audio_embed_bucket.unsqueeze(0)
         if len(audio_embed_bucket.shape) == 3:
             audio_embed_bucket = audio_embed_bucket.permute(0, 2, 1)
@@ -939,6 +939,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 encoder_hidden_states=negative_prompt_embeds,
                                 motion_latents=motion_latents_input,
                                 image_latents=condition,
+                                pose_latents=pose_latents,
                                 audio_embeds=0.0 * audio_embeds_input,
                                 motion_frames=[self.motion_frames, latent_motion_frames],
                                 drop_motion_frames=self.drop_first_motion and r == 0,
