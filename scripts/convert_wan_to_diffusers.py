@@ -414,7 +414,7 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
                 "audio_inject_layers": [0, 4, 8, 12, 16, 20, 24, 27, 30, 33, 36, 39],
                 "enable_adain": True,
                 "adain_mode": "attn_norm",
-                "pose_dim": 1280,
+                "pose_dim": 16,
                 "enable_framepack": True,
                 "framepack_drop_mode": "padd",
                 "add_last_motion": True,

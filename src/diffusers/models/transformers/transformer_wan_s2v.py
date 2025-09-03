@@ -685,7 +685,7 @@ class WanS2VTransformer3DModel(
         if enable_framepack:
             self.frame_packer = FramePackMotioner(
                 inner_dim=inner_dim,
-                num_heads=num_attention_heads,
+                num_attention_heads=num_attention_heads,
                 zip_frame_buckets=[1, 2, 16],
                 drop_mode=framepack_drop_mode,
             )
