@@ -34,6 +34,7 @@ from .transformer_wan import (
     WanAttention,
     WanAttnProcessor,
     WanRotaryPosEmbed,
+    WanTransformerBlock,
 )
 
 
@@ -288,7 +289,7 @@ class AudioInjector(nn.Module):
         self.injected_block_id = {}
         audio_injector_id = 0
         for mod_name, mod in zip(all_modules_names, all_modules):
-            if isinstance(mod, WanAttention):
+            if isinstance(mod, WanTransformerBlock):
                 for inject_id in inject_layer:
                     if f"transformer_blocks.{inject_id}" in mod_name:
                         self.injected_block_id[inject_id] = audio_injector_id
