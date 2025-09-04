@@ -27,6 +27,7 @@ from ..utils import (
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
+    is_kernels_available,
     is_sageattention_available,
     is_sageattention_version,
     is_torch_npu_available,
@@ -36,7 +37,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ENABLE_HUB_KERNELS
 
 
 if TYPE_CHECKING:
@@ -74,6 +75,17 @@ else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
 
+if DIFFUSERS_ENABLE_HUB_KERNELS:
+    if not is_kernels_available():
+        raise ImportError(
+            "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
+        )
+    from ..utils.kernels_utils import _get_fa3_from_hub
+
+    flash_attn_interface_hub = _get_fa3_from_hub()
+    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
+else:
+    flash_attn_3_func_hub = None
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -160,6 +172,8 @@ class AttentionBackendName(str, Enum):
     FLASH_VARLEN = "flash_varlen"
     _FLASH_3 = "_flash_3"
     _FLASH_VARLEN_3 = "_flash_varlen_3"
+    _FLASH_3_HUB = "_flash_3_hub"
+    # _FLASH_VARLEN_3_HUB = "_flash_varlen_3_hub"  # not supported yet.
 
     # PyTorch native
     FLEX = "flex"
@@ -384,6 +398,17 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if not _CAN_USE_FLASH_ATTN_3:
             raise RuntimeError(
                 f"Flash Attention 3 backend '{backend.value}' is not usable because of missing package or the version is too old. Please build FA3 beta release from source."
+            )
+
+    # TODO: add support Hub variant of FA3 varlen later
+    elif backend in [AttentionBackendName._FLASH_3_HUB]:
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            raise RuntimeError(
+                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
+            )
+        if not is_kernels_available():
+            raise RuntimeError(
+                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
             )
 
     elif backend in [
@@ -1228,6 +1253,44 @@ def _flash_attention_3(
         causal=is_causal,
     )
     return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._FLASH_3_HUB,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _flash_attention_3_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    scale: Optional[float] = None,
+    is_causal: bool = False,
+    window_size: Tuple[int, int] = (-1, -1),
+    softcap: float = 0.0,
+    deterministic: bool = False,
+    return_attn_probs: bool = False,
+) -> torch.Tensor:
+    out = flash_attn_3_func_hub(
+        q=query,
+        k=key,
+        v=value,
+        softmax_scale=scale,
+        causal=is_causal,
+        qv=None,
+        q_descale=None,
+        k_descale=None,
+        v_descale=None,
+        window_size=window_size,
+        softcap=softcap,
+        num_splits=1,
+        pack_gqa=None,
+        deterministic=deterministic,
+        sm_margin=0,
+        return_attn_probs=return_attn_probs,
+    )
+    # When `return_attn_probs` is True, the above returns a tuple of
+    # actual outputs and lse.
+    return (out[0], out[1]) if return_attn_probs else out
 
 
 @_AttentionBackendRegistry.register(
