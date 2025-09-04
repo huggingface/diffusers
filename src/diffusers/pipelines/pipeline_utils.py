@@ -1425,10 +1425,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         from ..hooks import apply_group_offloading
 
-        if exclude_modules is not None and isinstance(exclude_modules, str):
+        if isinstance(exclude_modules, str):
             exclude_modules = [exclude_modules]
+        elif exclude_modules is None:
+            exclude_modules = []
 
-        unknown = set(exclude_modules) - set(self.components.keys())
+        unknown = set(exclude_modules) - self.components.keys()
         if unknown:
             logger.info(
                 f"The following modules are not present in pipeline: {', '.join(unknown)}. Ignore if this is expected."
