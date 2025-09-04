@@ -959,7 +959,7 @@ class WanS2VTransformer3DModel(
         # 1. Rotary position embeddings
         rotary_emb = self.rope(hidden_states, image_latents)
 
-        # 2. Patch embedding
+        # 2. Patch embeddings
         hidden_states = self.patch_embedding(hidden_states)
         image_latents = self.patch_embedding(image_latents)
 
@@ -985,7 +985,7 @@ class WanS2VTransformer3DModel(
 
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
         image_latents = image_latents.flatten(2).transpose(1, 2)
-        hidden_states = [torch.cat([hs, il], dim=1) for hs, il in zip(hidden_states, image_latents)]
+        hidden_states = torch.cat([hidden_states, image_latents], dim=1)
 
         sequence_length = hidden_states.shape[1].to(torch.long)
         original_sequence_length = sequence_length
@@ -1004,8 +1004,6 @@ class WanS2VTransformer3DModel(
             timestep_proj = [timestep_proj, 0]
 
         sequence_length = sequence_length + image_latents.shape[1].to(torch.long)
-
-        hidden_states = torch.cat([hidden_states, image_latents], dim=1)
 
         # Initialize masks to indicate noisy latent, image latent, and motion latent.
         # However, at this point, only the first two (noisy and image latents) are marked;
