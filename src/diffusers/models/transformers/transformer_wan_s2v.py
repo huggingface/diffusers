@@ -26,7 +26,7 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
 from ..cache_utils import CacheMixin
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
+from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
@@ -539,6 +539,8 @@ class WanS2VRotaryPosEmbed(nn.Module):
         self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
 
     def forward(self, hidden_states: torch.Tensor, image_latents: torch.Tensor) -> torch.Tensor:
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+
         grid_sizes = torch.stack([torch.tensor(u.shape[-3:], dtype=torch.long) for u in hidden_states])
         grid_sizes = [torch.zeros_like(grid_sizes), grid_sizes, grid_sizes]
         image_grid_sizes = [
@@ -549,10 +551,6 @@ class WanS2VRotaryPosEmbed(nn.Module):
             # The range
             torch.tensor([1, image_latents.shape[3], image_latents.shape[4]]).unsqueeze(0).repeat(batch_size, 1),
         ]
-
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        p_t, p_h, p_w = self.patch_size
-        ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
         split_sizes = [
             self.attention_head_dim - 2 * (self.attention_head_dim // 3),
@@ -574,37 +572,39 @@ class WanS2VRotaryPosEmbed(nn.Module):
                 seq_f, seq_h, seq_w = f - f_0, h - h_0, w - w_0
                 seq_len = int(seq_f * seq_h * seq_w)
                 seq_lens[i].append(seq_len)
-    
+
                 if seq_len > 0:
                     if t_f > 0:
-                        factor_f = (t_f / seq_f).item()
-                        factor_h = (t_h / seq_h).item()
-                        factor_w = (t_w / seq_w).item()
-
                         # Generate a list of seq_f integers starting from f_0 and ending at math.ceil(factor_f * seq_f.item() + f_0.item())
                         if f_0 >= 0:
                             f_sam = np.linspace(f_0.item(), (t_f + f_0).item() - 1, seq_f).astype(int).tolist()
                         else:
                             f_sam = np.linspace(-f_0.item(), (-t_f - f_0).item() + 1, seq_f).astype(int).tolist()
-                        
+
                         h_sam = np.linspace(h_0.item(), (t_h + h_0).item() - 1, seq_h).astype(int).tolist()
                         w_sam = np.linspace(w_0.item(), (t_w + w_0).item() - 1, seq_w).astype(int).tolist()
 
                         if f_0 * f < 0 or h_0 * h < 0 or w_0 * w < 0:
                             raise ValueError("The RoPE is not supported for negative dimensions :S")
-                        
-                        freqs_cos_combined = torch.cat([
-                            freqs_cos[0][f_sam].view(seq_f, 1, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                            freqs_cos[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                            freqs_cos[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
-                        ], dim=-1).reshape(seq_len, 1, -1)
 
-                        freqs_sin_combined = torch.cat([
-                            freqs_sin[0][f_sam].view(seq_f, 1, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                            freqs_sin[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                            freqs_sin[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
-                        ], dim=-1).reshape(seq_len, 1, -1)
-                    
+                        freqs_cos_combined = torch.cat(
+                            [
+                                freqs_cos[0][f_sam].view(seq_f, 1, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                                freqs_cos[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                                freqs_cos[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
+                            ],
+                            dim=-1,
+                        ).reshape(seq_len, 1, -1)
+
+                        freqs_sin_combined = torch.cat(
+                            [
+                                freqs_sin[0][f_sam].view(seq_f, 1, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                                freqs_sin[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                                freqs_sin[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
+                            ],
+                            dim=-1,
+                        ).reshape(seq_len, 1, -1)
+
                     freqs_cos_list.append(freqs_cos_combined)
                     freqs_sin_list.append(freqs_sin_combined)
 
@@ -613,8 +613,12 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
             for i in range(batch_size):
                 for j in range(2):
-                    freqs_cos[seq_lens[i][j]: seq_lens[i][j + 1]] = freqs_cos[seq_lens[i][j]: seq_lens[i][j + 1]].reshape(batch_size, seq_lens[i], 1, -1)
-                    freqs_sin[seq_lens[i][j]: seq_lens[i][j + 1]] = freqs_sin[seq_lens[i][j]: seq_lens[i][j + 1]].reshape(batch_size, seq_lens[i], 1, -1)
+                    freqs_cos[seq_lens[i][j] : seq_lens[i][j + 1]] = freqs_cos[
+                        seq_lens[i][j] : seq_lens[i][j + 1]
+                    ].reshape(batch_size, seq_lens[i], 1, -1)
+                    freqs_sin[seq_lens[i][j] : seq_lens[i][j + 1]] = freqs_sin[
+                        seq_lens[i][j] : seq_lens[i][j + 1]
+                    ].reshape(batch_size, seq_lens[i], 1, -1)
 
         return freqs_cos, freqs_sin
 
@@ -1061,7 +1065,6 @@ class WanS2VTransformer3DModel(
         else:
             timestep_proj = timestep_proj.unsqueeze(2).repeat(1, 1, 2, 1)
             timestep_proj = [timestep_proj, 0]
-
 
         image_latents = image_latents.flatten(2).transpose(1, 2)
 
