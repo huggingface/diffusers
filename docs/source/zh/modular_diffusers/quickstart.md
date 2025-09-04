@@ -175,7 +175,7 @@ print(dd_blocks)
 将 [`SequentialPipelineBlocks`] 转换为 [`ModularPipeline`]，使用 [`ModularPipeline.init_pipeline`] 方法。这会初始化从 `modular_model_index.json` 文件加载的预期组件。通过调用 [`ModularPipeline.load_defau
 lt_components`]。
 
-初始化[`ComponentManager`]时传入pipeline是一个好主意，以帮助管理不同的组件。一旦调用[`~ModularPipeline.load_default_components`]，组件就会被注册到[`ComponentManager`]中，并且可以在工作流之间共享。下面的例子使用`collection`参数为组件分配了一个`"diffdiff"`标签，以便更好地组织。
+初始化[`ComponentManager`]时传入pipeline是一个好主意，以帮助管理不同的组件。一旦调用[`~ModularPipeline.load_components`]，组件就会被注册到[`ComponentManager`]中，并且可以在工作流之间共享。下面的例子使用`collection`参数为组件分配了一个`"diffdiff"`标签，以便更好地组织。
 
 ```py
 from diffusers.modular_pipelines import ComponentsManager
@@ -209,11 +209,11 @@ ip_adapter_block = StableDiffusionXLAutoIPAdapterStep()
 dd_blocks.sub_blocks.insert("ip_adapter", ip_adapter_block, 0)
 ```
 
-调用[`~ModularPipeline.init_pipeline`]来初始化一个[`ModularPipeline`]，并使用[`~ModularPipeline.load_default_components`]加载模型组件。加载并设置IP-Adapter以运行pipeline。
+调用[`~ModularPipeline.init_pipeline`]来初始化一个[`ModularPipeline`]，并使用[`~ModularPipeline.load_components`]加载模型组件。加载并设置IP-Adapter以运行pipeline。
 
 ```py
 dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_default_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(torch_dtype=torch.float16)
 dd_pipeline.loader.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 dd_pipeline.loader.set_ip_adapter_scale(0.6)
 dd_pipeline = dd_pipeline.to(device)
@@ -261,14 +261,14 @@ class SDXLDiffDiffControlNetDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
 controlnet_denoise_block = SDXLDiffDiffControlNetDenoiseStep()
 ```
 
-插入 `controlnet_input` 块并用新的 `controlnet_denoise_block` 替换 `denoise` 块。初始化一个 [`ModularPipeline`] 并将 [`~ModularPipeline.load_default_components`] 加载到其中。
+插入 `controlnet_input` 块并用新的 `controlnet_denoise_block` 替换 `denoise` 块。初始化一个 [`ModularPipeline`] 并将 [`~ModularPipeline.load_components`] 加载到其中。
 
 ```py
 dd_blocks.sub_blocks.insert("controlnet_input", control_input_block, 7)
 dd_blocks.sub_blocks["denoise"] = controlnet_denoise_block
 
 dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_default_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(torch_dtype=torch.float16)
 dd_pipeline = dd_pipeline.to(device)
 
 control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_tomato_canny.jpeg")
@@ -322,7 +322,7 @@ DIFFDIFF_AUTO_BLOCKS.insert("controlnet_input",StableDiffusionXLControlNetAutoIn
 ```py
 dd_auto_blocks = SequentialPipelineBlocks.from_blocks_dict(DIFFDIFF_AUTO_BLOCKS)
 dd_pipeline = dd_auto_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_default_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(torch_dtype=torch.float16)
 ```
 
 ## 分享
@@ -342,5 +342,5 @@ from diffusers.modular_pipelines import ModularPipeline, ComponentsManager
 components = ComponentsManager()
 
 diffdiff_pipeline = ModularPipeline.from_pretrained("YiYiXu/modular-diffdiff-0704", trust_remote_code=True, components_manager=components, collection="diffdiff")
-diffdiff_pipeline.load_default_components(torch_dtype=torch.float16)
+diffdiff_pipeline.load_components(torch_dtype=torch.float16)
 ```

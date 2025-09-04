@@ -706,6 +706,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1269,6 +1270,7 @@ def main(args):
                 subfolder="transformer",
                 revision=args.revision,
                 variant=args.variant,
+                torch_dtype=torch_dtype,
             )
             pipeline = FluxKontextPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
@@ -1291,7 +1293,8 @@ def main(args):
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                with torch.autocast(device_type=accelerator.device.type, dtype=torch_dtype):
+                    images = pipeline(prompt=example["prompt"]).images
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
@@ -1353,6 +1356,13 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
+
+    if args.enable_npu_flash_attention:
+        if is_torch_npu_available():
+            logger.info("npu flash attention enabled.")
+            transformer.set_attention_backend("_native_npu")
+        else:
+            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
 
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -1890,6 +1900,10 @@ def main(args):
                             max_sequence_length=args.max_sequence_length,
                             device=accelerator.device,
                             prompt=args.instance_prompt,
+                        )
+                    else:
+                        prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
+                            prompts, text_encoders, tokenizers
                         )
 
                 # Convert images to latent space
