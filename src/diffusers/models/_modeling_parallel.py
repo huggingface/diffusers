@@ -41,11 +41,26 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class ContextParallelConfig:
-    # Number of GPUs to use for ring attention within a context parallel region
+    """
+    Configuration for context parallelism.
+
+    Args:
+        ring_degree (`int`, *optional*, defaults to `1`):
+            Number of devices to use for ring attention within a context parallel region. Must be a divisor of the
+            total number of devices in the context parallel mesh.
+        ulysses_degree (`int`, *optional*, defaults to `1`):
+            Number of devices to use for ulysses attention within a context parallel region. Must be a divisor of the
+            total number of devices in the context parallel mesh.
+        convert_to_fp32 (`bool`, *optional*, defaults to `True`):
+            Whether to convert output and LSE to float32 for ring attention numerical stability.
+        rotate_method (`str`, *optional*, defaults to `"allgather"`):
+            Method to use for rotating key/value states across devices in ring attention. Currently, only `"allgather"`
+            is supported.
+
+    """
+
     ring_degree: Optional[int] = None
-    # Number of context parallel regions to use for ulysses attention within a context parallel region
     ulysses_degree: Optional[int] = None
-    # Whether to convert output and LSE to float32 for ring attention numerical stability
     convert_to_fp32: bool = True
     # TODO: support alltoall
     rotate_method: Literal["allgather", "alltoall"] = "allgather"
@@ -93,6 +108,14 @@ class ContextParallelConfig:
 
 @dataclass
 class ParallelConfig:
+    """
+    Configuration for applying different parallelisms.
+
+    Args:
+        context_parallel_config (`ContextParallelConfig`, *optional*):
+            Configuration for context parallelism.
+    """
+
     context_parallel_config: Optional[ContextParallelConfig] = None
 
     _rank: int = None
@@ -118,6 +141,21 @@ class ParallelConfig:
 
 @dataclass(frozen=True)
 class ContextParallelInput:
+    """
+    Configuration for splitting an input tensor across context parallel region.
+
+    Args:
+        split_dim (`int`):
+            The dimension along which to split the tensor.
+        expected_dims (`int`, *optional*):
+            The expected number of dimensions of the tensor. If provided, a check will be performed to ensure that the
+            tensor has the expected number of dimensions before splitting.
+        split_output (`bool`, *optional*, defaults to `False`):
+            Whether to split the output tensor of the layer along the given `split_dim` instead of the input tensor.
+            This is useful for layers whose outputs should be split after it does some preprocessing on the inputs (ex:
+            RoPE).
+    """
+
     split_dim: int
     expected_dims: Optional[int] = None
     split_output: bool = False
@@ -128,6 +166,17 @@ class ContextParallelInput:
 
 @dataclass(frozen=True)
 class ContextParallelOutput:
+    """
+    Configuration for gathering an output tensor across context parallel region.
+
+    Args:
+        gather_dim (`int`):
+            The dimension along which to gather the tensor.
+        expected_dims (`int`, *optional*):
+            The expected number of dimensions of the tensor. If provided, a check will be performed to ensure that the
+            tensor has the expected number of dimensions before gathering.
+    """
+
     gather_dim: int
     expected_dims: Optional[int] = None
 
@@ -198,6 +247,15 @@ _ENABLE_PARALLELISM_WARN_ONCE = False
 
 @contextlib.contextmanager
 def enable_parallelism(model_or_pipeline: Union["DiffusionPipeline", "ModelMixin"]):
+    """
+    A context manager to set the parallelism context for models or pipelines that have been parallelized.
+
+    Args:
+        model_or_pipeline (`DiffusionPipeline` or `ModelMixin`):
+            The model or pipeline to set the parallelism context for. The model or pipeline must have been parallelized
+            with `.enable_parallelism(ParallelConfig(...), ...)` before using this context manager.
+    """
+
     from diffusers import DiffusionPipeline, ModelMixin
 
     from .attention_dispatch import _AttentionBackendRegistry
