@@ -56,74 +56,6 @@ def torch_dfs(model: nn.Module, parent_name="root"):
     return modules, module_names
 
 
-def rope_precompute(x, grid_sizes, freqs, start=None):
-    b, s, n, c = x.size(0), x.size(1), x.size(2), x.size(3) // 2
-
-    # split freqs
-    if type(freqs) is list:
-        trainable_freqs = freqs[1]
-        freqs = freqs[0]
-    freqs = freqs.split([c - 2 * (c // 3), c // 3, c // 3], dim=1)
-
-    # loop over samples
-    output = torch.view_as_complex(x.detach().reshape(b, s, n, -1, 2).to(torch.float64))
-    seq_bucket = [0]
-    if type(grid_sizes) is not list:
-        grid_sizes = [grid_sizes]
-    for g in grid_sizes:
-        if type(g) is not list:
-            g = [torch.zeros_like(g), g]
-        batch_size = g[0].shape[0]
-        for i in range(batch_size):
-            if start is None:
-                f_o, h_o, w_o = g[0][i]
-            else:
-                f_o, h_o, w_o = start[i]
-
-            f, h, w = g[1][i]
-            t_f, t_h, t_w = g[2][i]
-            seq_f, seq_h, seq_w = f - f_o, h - h_o, w - w_o
-            seq_len = int(seq_f * seq_h * seq_w)
-            if seq_len > 0:
-                if t_f > 0:
-                    # Generate a list of seq_f integers starting from f_o and ending at math.ceil(factor_f * seq_f.item() + f_o.item())
-                    if f_o >= 0:
-                        f_sam = np.linspace(f_o.item(), (t_f + f_o).item() - 1, seq_f).astype(int).tolist()
-                    else:
-                        f_sam = np.linspace(-f_o.item(), (-t_f - f_o).item() + 1, seq_f).astype(int).tolist()
-                    h_sam = np.linspace(h_o.item(), (t_h + h_o).item() - 1, seq_h).astype(int).tolist()
-                    w_sam = np.linspace(w_o.item(), (t_w + w_o).item() - 1, seq_w).astype(int).tolist()
-
-                    assert f_o * f >= 0 and h_o * h >= 0 and w_o * w >= 0
-                    freqs_0 = freqs[0][f_sam] if f_o >= 0 else freqs[0][f_sam].conj()
-                    freqs_0 = freqs_0.view(seq_f, 1, 1, -1)
-
-                    freqs_i = torch.cat(
-                        [
-                            freqs_0.expand(seq_f, seq_h, seq_w, -1),
-                            freqs[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                            freqs[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
-                        ],
-                        dim=-1,
-                    ).reshape(seq_len, 1, -1)
-                elif t_f < 0:
-                    freqs_i = trainable_freqs.unsqueeze(1)
-                # apply rotary embedding
-                output[i, seq_bucket[-1] : seq_bucket[-1] + seq_len] = freqs_i
-        seq_bucket.append(seq_bucket[-1] + seq_len)
-    return output
-
-
-@torch.amp.autocast("cuda", enabled=False)
-def rope_params(max_seq_len, dim, theta=10000):
-    assert dim % 2 == 0
-    freqs = torch.outer(
-        torch.arange(max_seq_len), 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float64).div(dim))
-    )
-    freqs = torch.polar(torch.ones_like(freqs), freqs)
-    return freqs
-
-
 class AdaLayerNorm(nn.Module):
     r"""
     Norm layer modified to incorporate timestep embeddings.
@@ -350,15 +282,7 @@ class FramePackMotioner(nn.Module):
         self.proj_4x = nn.Conv3d(16, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
         self.zip_frame_buckets = torch.tensor(zip_frame_buckets, dtype=torch.long)
 
-        head_dim = inner_dim // num_attention_heads
-        self.freqs = torch.cat(
-            [
-                rope_params(1024, head_dim - 4 * (head_dim // 6)),
-                rope_params(1024, 2 * (head_dim // 6)),
-                rope_params(1024, 2 * (head_dim // 6)),
-            ],
-            dim=1,
-        )
+        self.rope = WanS2VRotaryPosEmbed(inner_dim // num_attention_heads, max_seq_len=1024)
 
     def forward(self, motion_latents, add_last_motion=2):
         mot = []
@@ -433,13 +357,11 @@ class FramePackMotioner(nn.Module):
 
             grid_sizes = grid_sizes + grid_sizes_2x + grid_sizes_4x
 
-            motion_rope_emb = rope_precompute(
+            motion_rope_emb = self.rope(
                 motion_lat.detach().view(
                     1, motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads
                 ),
                 grid_sizes,
-                self.freqs,
-                start=None,
             )
 
             mot.append(motion_lat)
@@ -506,14 +428,12 @@ class WanS2VRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         attention_head_dim: int,
-        patch_size: Tuple[int, int, int],
         max_seq_len: int,
         theta: float = 10000.0,
     ):
         super().__init__()
 
         self.attention_head_dim = attention_head_dim
-        self.patch_size = patch_size
         self.max_seq_len = max_seq_len
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
@@ -810,7 +730,7 @@ class WanS2VTransformer3DModel(
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
-        self.rope = WanS2VRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
+        self.rope = WanS2VRotaryPosEmbed(attention_head_dim, rope_max_seq_len)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         if enable_framepack:
@@ -885,7 +805,7 @@ class WanS2VTransformer3DModel(
                     torch.tensor([self.latent_motion_frames, height, width]).unsqueeze(0),
                 ]
             ]
-            motion_rope_emb = rope_precompute(
+            motion_rope_emb = self.rope(
                 flat_mot.detach().view(
                     1,
                     flat_mot.shape[1],
@@ -893,8 +813,6 @@ class WanS2VTransformer3DModel(
                     self.inner_dim // self.config.num_attention_heads,
                 ),
                 motion_grid_sizes,
-                self.freqs,
-                start=None,
             )
             mot_remb.append(motion_rope_emb)
             flattern_mot.append(flat_mot)
