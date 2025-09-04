@@ -33,7 +33,6 @@ from ..normalization import FP32LayerNorm
 from .transformer_wan import (
     WanAttention,
     WanAttnProcessor,
-    WanRotaryPosEmbed,
 )
 
 
@@ -503,6 +502,123 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
         return temb, timestep_proj, encoder_hidden_states, audio_hidden_states, pose_hidden_states
 
 
+class WanS2VRotaryPosEmbed(nn.Module):
+    def __init__(
+        self,
+        attention_head_dim: int,
+        patch_size: Tuple[int, int, int],
+        max_seq_len: int,
+        theta: float = 10000.0,
+    ):
+        super().__init__()
+
+        self.attention_head_dim = attention_head_dim
+        self.patch_size = patch_size
+        self.max_seq_len = max_seq_len
+
+        h_dim = w_dim = 2 * (attention_head_dim // 6)
+        t_dim = attention_head_dim - h_dim - w_dim
+        freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
+
+        freqs_cos = []
+        freqs_sin = []
+
+        for dim in [t_dim, h_dim, w_dim]:
+            freq_cos, freq_sin = get_1d_rotary_pos_embed(
+                dim,
+                max_seq_len,
+                theta,
+                use_real=True,
+                repeat_interleave_real=True,
+                freqs_dtype=freqs_dtype,
+            )
+            freqs_cos.append(freq_cos)
+            freqs_sin.append(freq_sin)
+
+        self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
+        self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
+
+    def forward(self, hidden_states: torch.Tensor, image_latents: torch.Tensor) -> torch.Tensor:
+        grid_sizes = torch.stack([torch.tensor(u.shape[-3:], dtype=torch.long) for u in hidden_states])
+        grid_sizes = [torch.zeros_like(grid_sizes), grid_sizes, grid_sizes]
+        image_grid_sizes = [
+            # The start index
+            torch.tensor([30, 0, 0]).unsqueeze(0).repeat(batch_size, 1),
+            # The end index
+            torch.tensor([31, image_latents.shape[3], image_latents.shape[4]]).unsqueeze(0).repeat(batch_size, 1),
+            # The range
+            torch.tensor([1, image_latents.shape[3], image_latents.shape[4]]).unsqueeze(0).repeat(batch_size, 1),
+        ]
+
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        p_t, p_h, p_w = self.patch_size
+        ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
+
+        split_sizes = [
+            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
+            self.attention_head_dim // 3,
+            self.attention_head_dim // 3,
+        ]
+
+        freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
+        freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
+
+        freqs_cos_list = []
+        freqs_sin_list = []
+        seq_lens = [[0] * batch_size]
+        for grid_size in [grid_sizes, image_grid_sizes]:
+            for i in range(batch_size):
+                f_0, h_0, w_0 = grid_size[0][i]
+                f, h, w = grid_size[1][i]
+                t_f, t_h, t_w = grid_size[2][i]
+                seq_f, seq_h, seq_w = f - f_0, h - h_0, w - w_0
+                seq_len = int(seq_f * seq_h * seq_w)
+                seq_lens[i].append(seq_len)
+    
+                if seq_len > 0:
+                    if t_f > 0:
+                        factor_f = (t_f / seq_f).item()
+                        factor_h = (t_h / seq_h).item()
+                        factor_w = (t_w / seq_w).item()
+
+                        # Generate a list of seq_f integers starting from f_0 and ending at math.ceil(factor_f * seq_f.item() + f_0.item())
+                        if f_0 >= 0:
+                            f_sam = np.linspace(f_0.item(), (t_f + f_0).item() - 1, seq_f).astype(int).tolist()
+                        else:
+                            f_sam = np.linspace(-f_0.item(), (-t_f - f_0).item() + 1, seq_f).astype(int).tolist()
+                        
+                        h_sam = np.linspace(h_0.item(), (t_h + h_0).item() - 1, seq_h).astype(int).tolist()
+                        w_sam = np.linspace(w_0.item(), (t_w + w_0).item() - 1, seq_w).astype(int).tolist()
+
+                        if f_0 * f < 0 or h_0 * h < 0 or w_0 * w < 0:
+                            raise ValueError("The RoPE is not supported for negative dimensions :S")
+                        
+                        freqs_cos_combined = torch.cat([
+                            freqs_cos[0][f_sam].view(seq_f, 1, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                            freqs_cos[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                            freqs_cos[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
+                        ], dim=-1).reshape(seq_len, 1, -1)
+
+                        freqs_sin_combined = torch.cat([
+                            freqs_sin[0][f_sam].view(seq_f, 1, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                            freqs_sin[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                            freqs_sin[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
+                        ], dim=-1).reshape(seq_len, 1, -1)
+                    
+                    freqs_cos_list.append(freqs_cos_combined)
+                    freqs_sin_list.append(freqs_sin_combined)
+
+            freqs_cos = torch.cat(freqs_cos_list, dim=0)
+            freqs_sin = torch.cat(freqs_sin_list, dim=0)
+
+            for i in range(batch_size):
+                for j in range(2):
+                    freqs_cos[seq_lens[i][j]: seq_lens[i][j + 1]] = freqs_cos[seq_lens[i][j]: seq_lens[i][j + 1]].reshape(batch_size, seq_lens[i], 1, -1)
+                    freqs_sin[seq_lens[i][j]: seq_lens[i][j + 1]] = freqs_sin[seq_lens[i][j]: seq_lens[i][j + 1]].reshape(batch_size, seq_lens[i], 1, -1)
+
+        return freqs_cos, freqs_sin
+
+
 @maybe_allow_in_graph
 class WanS2VTransformerBlock(nn.Module):
     def __init__(
@@ -686,12 +802,11 @@ class WanS2VTransformer3DModel(
     ) -> None:
         super().__init__()
 
-        self.add_last_motion = add_last_motion
         self.inner_dim = inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
-        self.rope = WanRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
+        self.rope = WanS2VRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         if enable_framepack:
@@ -856,8 +971,8 @@ class WanS2VTransformer3DModel(
         encoder_hidden_states: torch.Tensor,
         motion_latents: torch.Tensor,
         audio_embeds: torch.Tensor,
-        image_latents: torch.Tensor = None,
-        pose_latents: torch.Tensor = None,
+        image_latents: torch.Tensor,
+        pose_latents: torch.Tensor,
         motion_frames: List[int] = [17, 5],
         drop_motion_frames: bool = False,
         add_last_motion: int = 2,
@@ -899,10 +1014,11 @@ class WanS2VTransformer3DModel(
         post_patch_num_frames = num_frames // p_t
         post_patch_height = height // p_h
         post_patch_width = width // p_w
-        add_last_motion = self.add_last_motion * add_last_motion
+        add_last_motion = self.config.add_last_motion * add_last_motion
 
         # 2. Patch embedding
         hidden_states = self.patch_embedding(hidden_states)
+        image_latents = self.patch_embedding(image_latents)
 
         # 3. Condition embeddings
         audio_embeds = torch.cat([audio_embeds[..., 0].repeat(1, 1, 1, motion_frames[0]), audio_embeds], dim=-1)
@@ -923,10 +1039,12 @@ class WanS2VTransformer3DModel(
         merged_audio_emb = audio_emb[:, motion_frames[1] :, :]
 
         hidden_states = hidden_states + pose_hidden_states
-        grid_sizes = torch.tensor(
-            [post_patch_num_frames, post_patch_height, post_patch_width], dtype=torch.long
-        ).unsqueeze(0)
-        grid_sizes = [[torch.zeros_like(grid_sizes), grid_sizes, grid_sizes]]
+
+        hidden_states = [torch.cat([hs, il], dim=1) for hs, il in zip(hidden_states, image_latents)]
+
+        # Rotary position embedding
+        rotary_emb = self.rope(hidden_states, image_latents)
+
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
         sequence_length = hidden_states.shape[1].to(torch.long)
         original_sequence_length = sequence_length
@@ -944,21 +1062,10 @@ class WanS2VTransformer3DModel(
             timestep_proj = timestep_proj.unsqueeze(2).repeat(1, 1, 2, 1)
             timestep_proj = [timestep_proj, 0]
 
-        image_latents = self.patch_embedding(image_latents)
+
         image_latents = image_latents.flatten(2).transpose(1, 2)
-        image_grid_sizes = [
-            [
-                # The start index
-                torch.tensor([30, 0, 0]).unsqueeze(0).repeat(batch_size, 1),
-                # The end index
-                torch.tensor([31, height, width]).unsqueeze(0).repeat(batch_size, 1),
-                # The range
-                torch.tensor([1, height, width]).unsqueeze(0).repeat(batch_size, 1),
-            ]
-        ]
 
         sequence_length = sequence_length + image_latents.shape[1].to(torch.long)
-        grid_sizes = grid_sizes + image_grid_sizes
 
         hidden_states = torch.cat([hidden_states, image_latents], dim=1)
 
@@ -968,13 +1075,10 @@ class WanS2VTransformer3DModel(
         mask_input = torch.zeros([1, hidden_states.shape[1]], dtype=torch.long, device=hidden_states.device)
         mask_input[:, original_sequence_length:] = 1
 
-        # Rotary position embedding
-        rotary_emb = self.rope(hidden_states)
-
-        hidden_states, sequence_length, pre_compute_freqs, mask_input = self.inject_motion(
+        hidden_states, sequence_length, rotary_emb, mask_input = self.inject_motion(
             hidden_states,
             sequence_length,
-            # pre_compute_freqs,
+            rotary_emb,
             mask_input,
             motion_latents,
             drop_motion_frames,
