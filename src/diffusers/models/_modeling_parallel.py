@@ -40,31 +40,20 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-class ParallelConfig:
+class ContextParallelConfig:
+    # Number of GPUs to use for ring attention within a context parallel region
     ring_degree: Optional[int] = None
+    # Number of context parallel regions to use for ulysses attention within a context parallel region
     ulysses_degree: Optional[int] = None
-
-    def __post_init__(self):
-        if self.ring_degree is None:
-            self.ring_degree = 1
-        if self.ulysses_degree is None:
-            self.ulysses_degree = 1
-
-
-@dataclass
-class _InternalParallelConfig:
-    rank: int
-    world_size: int
-    ring_degree: int
-    ulysses_degree: int
-    device: torch.device
-    cp_mesh: torch.distributed.device_mesh.DeviceMesh
-
     # Whether to convert output and LSE to float32 for ring attention numerical stability
     convert_to_fp32: bool = True
     # TODO: support alltoall
     rotate_method: Literal["allgather", "alltoall"] = "allgather"
 
+    _rank: int = None
+    _world_size: int = None
+    _device: torch.device = None
+    _mesh: torch.distributed.device_mesh.DeviceMesh = None
     _flattened_mesh: torch.distributed.device_mesh.DeviceMesh = None
     _ring_mesh: torch.distributed.device_mesh.DeviceMesh = None
     _ulysses_mesh: torch.distributed.device_mesh.DeviceMesh = None
@@ -72,18 +61,59 @@ class _InternalParallelConfig:
     _ulysses_local_rank: int = None
 
     def __post_init__(self):
+        if self.ring_degree is None:
+            self.ring_degree = 1
+        if self.ulysses_degree is None:
+            self.ulysses_degree = 1
+
+    def setup(self, rank: int, world_size: int, device: torch.device, mesh: torch.distributed.device_mesh.DeviceMesh):
+        self._rank = rank
+        self._world_size = world_size
+        self._device = device
+        self._mesh = mesh
+        if self.ring_degree is None:
+            self.ring_degree = 1
+        if self.ulysses_degree is None:
+            self.ulysses_degree = 1
         if self.rotate_method != "allgather":
-            raise ValueError(f"Only rotate_method='allgather' is supported for now, but got {self.rotate_method}.")
+            raise NotImplementedError(
+                f"Only rotate_method='allgather' is supported for now, but got {self.rotate_method}."
+            )
         if self._flattened_mesh is None:
-            self._flattened_mesh = self.cp_mesh._flatten()
+            self._flattened_mesh = self._mesh._flatten()
         if self._ring_mesh is None:
-            self._ring_mesh = self.cp_mesh["ring"]
+            self._ring_mesh = self._mesh["ring"]
         if self._ulysses_mesh is None:
-            self._ulysses_mesh = self.cp_mesh["ulysses"]
+            self._ulysses_mesh = self._mesh["ulysses"]
         if self._ring_local_rank is None:
             self._ring_local_rank = self._ring_mesh.get_local_rank()
         if self._ulysses_local_rank is None:
             self._ulysses_local_rank = self._ulysses_mesh.get_local_rank()
+
+
+@dataclass
+class ParallelConfig:
+    context_parallel_config: Optional[ContextParallelConfig] = None
+
+    _rank: int = None
+    _world_size: int = None
+    _device: torch.device = None
+    _cp_mesh: torch.distributed.device_mesh.DeviceMesh = None
+
+    def setup(
+        self,
+        rank: int,
+        world_size: int,
+        device: torch.device,
+        *,
+        cp_mesh: Optional[torch.distributed.device_mesh.DeviceMesh] = None,
+    ):
+        self._rank = rank
+        self._world_size = world_size
+        self._device = device
+        self._cp_mesh = cp_mesh
+        if self.context_parallel_config is not None:
+            self.context_parallel_config.setup(rank, world_size, device, cp_mesh)
 
 
 @dataclass(frozen=True)
@@ -145,7 +175,7 @@ def enable_parallelism(model_or_pipeline: Union["DiffusionPipeline", "ModelMixin
         parallelized_components = [
             (name, component)
             for name, component in model_or_pipeline.components.items()
-            if getattr(component, "_internal_parallel_config", None) is not None
+            if getattr(component, "_parallel_config", None) is not None
         ]
         if len(parallelized_components) > 1:
             raise ValueError(
@@ -158,7 +188,7 @@ def enable_parallelism(model_or_pipeline: Union["DiffusionPipeline", "ModelMixin
             )
         _, model_or_pipeline = parallelized_components[0]
     elif isinstance(model_or_pipeline, ModelMixin):
-        if getattr(model_or_pipeline, "_internal_parallel_config", None) is None:
+        if getattr(model_or_pipeline, "_parallel_config", None) is None:
             raise ValueError(
                 "The model is not parallelized. Please ensure the model is parallelized with `.parallelize()` before using this context manager."
             )
@@ -167,8 +197,9 @@ def enable_parallelism(model_or_pipeline: Union["DiffusionPipeline", "ModelMixin
             f"Expected a `DiffusionPipeline` or `ModelMixin` instance, but got {type(model_or_pipeline)}. Please provide a valid model or pipeline."
         )
 
+    # TODO: needs to be updated when more parallelism strategies are supported
     old_parallel_config = _AttentionBackendRegistry._parallel_config
-    _AttentionBackendRegistry._parallel_config = model_or_pipeline._internal_parallel_config
+    _AttentionBackendRegistry._parallel_config = model_or_pipeline._parallel_config.context_parallel_config
 
     yield
 

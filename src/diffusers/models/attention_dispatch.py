@@ -40,7 +40,7 @@ from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 
 
 if TYPE_CHECKING:
-    from ._modeling_parallel import _InternalParallelConfig
+    from ._modeling_parallel import ContextParallelConfig
 
 _REQUIRED_FLASH_VERSION = "2.6.3"
 _REQUIRED_SAGE_VERSION = "2.1.1"
@@ -193,7 +193,7 @@ class _AttentionBackendRegistry:
     _supports_context_parallel = {}
     _active_backend = AttentionBackendName(DIFFUSERS_ATTN_BACKEND)
     _checks_enabled = DIFFUSERS_ATTN_CHECKS
-    _parallel_config: Optional["_InternalParallelConfig"] = None
+    _parallel_config: Optional["ContextParallelConfig"] = None
 
     @classmethod
     def register(
@@ -729,7 +729,7 @@ def _flash_attention_forward_op(
 
     # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
     parallel_config = _AttentionBackendRegistry._parallel_config
-    if grad_enabled or (parallel_config is not None and parallel_config.world_size > 1):
+    if grad_enabled or (parallel_config is not None and parallel_config._world_size > 1):
         dropout_p = dropout_p if dropout_p > 0 else 1e-30
 
     with torch.set_grad_enabled(grad_enabled):

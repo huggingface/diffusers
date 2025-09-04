@@ -1053,7 +1053,7 @@ class OmniGenTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class ParallelConfig(metaclass=DummyObject):
+class ContextParallelConfig(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

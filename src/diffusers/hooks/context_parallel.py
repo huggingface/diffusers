@@ -20,10 +20,10 @@ import torch
 import torch.distributed._functional_collectives as funcol
 
 from ..models._modeling_parallel import (
+    ContextParallelConfig,
     ContextParallelInput,
     ContextParallelModelPlan,
     ContextParallelOutput,
-    _InternalParallelConfig,
 )
 from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
@@ -74,11 +74,11 @@ class ModuleForwardMetadata:
 
 def apply_context_parallel(
     module: torch.nn.Module,
-    parallel_config: _InternalParallelConfig,
+    parallel_config: ContextParallelConfig,
     plan: Dict[str, ContextParallelModelPlan],
 ) -> None:
     """Apply context parallel on a model."""
-    logger.debug(f"Applying context parallel with CP mesh: {parallel_config.cp_mesh} and plan: {plan}")
+    logger.debug(f"Applying context parallel with CP mesh: {parallel_config._mesh} and plan: {plan}")
 
     for module_id, cp_model_plan in plan.items():
         submodule = _get_submodule_by_name(module, module_id)
@@ -122,7 +122,7 @@ def remove_context_parallel(module: torch.nn.Module, plan: Dict[str, ContextPara
 
 
 class ContextParallelSplitHook(ModelHook):
-    def __init__(self, metadata: ContextParallelModelPlan, parallel_config: _InternalParallelConfig) -> None:
+    def __init__(self, metadata: ContextParallelModelPlan, parallel_config: ContextParallelConfig) -> None:
         super().__init__()
         self.metadata = metadata
         self.parallel_config = parallel_config
@@ -207,7 +207,7 @@ class ContextParallelSplitHook(ModelHook):
 
 
 class ContextParallelGatherHook(ModelHook):
-    def __init__(self, metadata: ContextParallelModelPlan, parallel_config: _InternalParallelConfig) -> None:
+    def __init__(self, metadata: ContextParallelModelPlan, parallel_config: ContextParallelConfig) -> None:
         super().__init__()
         self.metadata = metadata
         self.parallel_config = parallel_config
@@ -251,7 +251,11 @@ class AllGatherFunction(torch.autograd.Function):
 class EquipartitionSharder:
     @classmethod
     def shard(cls, tensor: torch.Tensor, dim: int, mesh: torch.distributed.device_mesh.DeviceMesh) -> torch.Tensor:
-        assert tensor.size()[dim] % mesh.size() == 0
+        # NOTE: the following assertion does not have to be true in general. We simply enforce it for now
+        # because the alternate case has not yet been tested/required for any model.
+        assert tensor.size()[dim] % mesh.size() == 0, (
+            "Tensor size along dimension to be sharded must be divisible by mesh size"
+        )
 
         # The following is not fullgraph compatible with Dynamo (fails in DeviceMesh.get_rank)
         # return tensor.chunk(mesh.size(), dim=dim)[mesh.get_rank()]
