@@ -963,6 +963,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+        parallel_config: Optional[Union[ParallelConfig, ContextParallelConfig]] = kwargs.pop("parallel_config", None)
 
         is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
@@ -1342,6 +1343,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
+
+        if parallel_config is not None:
+            model.enable_parallelism(config=parallel_config)
 
         if output_loading_info:
             return model, loading_info
