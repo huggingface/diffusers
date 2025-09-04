@@ -177,7 +177,7 @@ class CausalConv1d(nn.Module):
 
 
 class MotionEncoder_tc(nn.Module):
-    def __init__(self, in_dim: int, hidden_dim: int, num_attention_heads=int, need_global=True):
+    def __init__(self, in_dim: int, hidden_dim: int, num_attention_heads: int, need_global: bool = True):
         super().__init__()
 
         self.num_attention_heads = num_attention_heads
@@ -203,11 +203,7 @@ class MotionEncoder_tc(nn.Module):
         residual = x.clone()
         batch_size, num_channels, seq_len = x.shape
         x = self.conv1_local(x)
-        x = (
-            x.unflatten(1, (self.num_attention_heads, -1))
-            .permute(0, 1, 3, 2)
-            .reshape(batch_size * self.num_attention_heads, seq_len, num_channels)
-        )
+        x = x.unflatten(1, (self.num_attention_heads, -1)).permute(0, 1, 3, 2).flatten(0, 1)
         x = self.norm1(x)
         x = self.act(x)
         x = x.permute(0, 2, 1)
@@ -772,7 +768,10 @@ class WanS2VTransformer3DModel(
             ]
             motion_rope_emb = rope_precompute(
                 flat_mot.detach().view(
-                    1, flat_mot.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads
+                    1,
+                    flat_mot.shape[1],
+                    self.config.num_attention_heads,
+                    self.inner_dim // self.config.num_attention_heads,
                 ),
                 motion_grid_sizes,
                 self.freqs,
@@ -800,7 +799,7 @@ class WanS2VTransformer3DModel(
         add_last_motion=True,
     ):
         # Inject the motion frames token to the hidden states
-        if self.enable_framepack:
+        if self.config.enable_framepack:
             mot, mot_remb = self.process_motion_frame_pack(motion_latents, drop_motion_frames, add_last_motion)
         else:
             mot, mot_remb = self.process_motion(motion_latents, drop_motion_frames)
@@ -830,7 +829,7 @@ class WanS2VTransformer3DModel(
             input_hidden_states = hidden_states[:, :original_sequence_length].clone()  # B (F H W) C
             input_hidden_states = input_hidden_states.unflatten(1, (merged_audio_emb_num_frames, -1)).flatten(0, 1)
 
-            if self.enable_adain and self.adain_mode == "attn_norm":
+            if self.config.enable_adain and self.config.adain_mode == "attn_norm":
                 attn_hidden_states = self.audio_injector.injector_adain_layers[audio_attn_id](
                     input_hidden_states, temb=audio_emb_global[:, 0]
                 )
@@ -916,7 +915,7 @@ class WanS2VTransformer3DModel(
         )
         timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
-        if self.enable_adain:
+        if self.config.enable_adain:
             audio_emb_global, audio_emb = audio_hidden_states
             audio_emb_global = audio_emb_global[:, motion_frames[1] :].clone()
         else:
