@@ -648,6 +648,21 @@ class ConsistencyDecoderVAE(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class ContextParallelConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class ControlNetModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1053,7 +1068,7 @@ class OmniGenTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class ContextParallelConfig(metaclass=DummyObject):
+class ParallelConfig(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
