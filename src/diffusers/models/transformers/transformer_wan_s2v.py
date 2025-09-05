@@ -483,7 +483,9 @@ class FramePackMotioner(nn.Module):
             grid_sizes = grid_sizes + grid_sizes_2x + grid_sizes_4x
 
             motion_rope_emb = self.rope(
-                motion_lat.detach().view(1, motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads),
+                motion_lat.detach().view(
+                    1, motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads
+                ),
                 grid_sizes=grid_sizes,
             )
 
@@ -580,8 +582,6 @@ class WanS2VRotaryPosEmbed(nn.Module):
         image_latents: torch.Tensor,
         grid_sizes: Optional[List[List[torch.Tensor]]] = None,
     ) -> torch.Tensor:
-
-
         if grid_sizes is None:
             batch_size, num_channels, num_frames, height, width = hidden_states.shape
             p_t, p_h, p_w = self.patch_size
@@ -592,9 +592,7 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
             image_grid_sizes = [
                 # The start index
-                torch.tensor([30, 0, 0])
-                .unsqueeze(0)
-                .repeat(batch_size, 1),
+                torch.tensor([30, 0, 0]).unsqueeze(0).repeat(batch_size, 1),
                 # The end index
                 torch.tensor([31, image_latents.shape[3] // p_h, image_latents.shape[4] // p_w])
                 .unsqueeze(0)
@@ -944,7 +942,7 @@ class WanS2VTransformer3DModel(
 
     def process_motion_frame_pack(self, motion_latents, drop_motion_frames=False, add_last_motion=2):
         flattern_mot, mot_remb = self.frame_packer(motion_latents, add_last_motion)
-        
+
         if drop_motion_frames:
             return [m[:, :0] for m in flattern_mot], [m[:, :0] for m in mot_remb]
         else:
@@ -1103,7 +1101,11 @@ class WanS2VTransformer3DModel(
         # Initialize masks to indicate noisy latent, image latent, and motion latent.
         # However, at this point, only the first two (noisy and image latents) are marked;
         # the marking of motion latent will be implemented inside `inject_motion`.
-        mask_input = torch.zeros([1, hidden_states.shape[1]], dtype=torch.long, device=hidden_states.device).unsqueeze(0).repeat(batch_size, 1, 1)
+        mask_input = (
+            torch.zeros([1, hidden_states.shape[1]], dtype=torch.long, device=hidden_states.device)
+            .unsqueeze(0)
+            .repeat(batch_size, 1, 1)
+        )
         mask_input[:, :, original_sequence_length:] = 1
 
         hidden_states, sequence_length, rotary_emb, mask_input = self.inject_motion(
