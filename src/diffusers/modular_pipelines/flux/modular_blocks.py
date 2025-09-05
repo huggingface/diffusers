@@ -148,8 +148,8 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", FluxTextEncoderStep),
         ("input", FluxInputStep),
-        ("set_timesteps", FluxSetTimestepsStep),
         ("prepare_latents", FluxPrepareLatentsStep),
+        ("set_timesteps", FluxSetTimestepsStep),
         ("denoise", FluxDenoiseStep),
         ("decode", FluxDecodeStep),
     ]
