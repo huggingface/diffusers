@@ -964,7 +964,7 @@ class WanS2VTransformer3DModel(
         image_latents = self.patch_embedding(image_latents)
 
         # 3. Condition embeddings
-        audio_embeds = torch.cat([audio_embeds[..., 0].repeat(1, 1, 1, motion_frames[0]), audio_embeds], dim=-1)
+        audio_embeds = torch.cat([audio_embeds[..., 0].unsqueeze(-1).repeat(1, 1, 1, motion_frames[0]), audio_embeds], dim=-1)
 
         if self.config.zero_timestep:
             timestep = torch.cat([timestep, torch.zeros([1], dtype=timestep.dtype, device=timestep.device)])
