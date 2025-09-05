@@ -46,6 +46,7 @@ from ..utils import (
 )
 from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..utils.hub_utils import _get_model_file
+from ..utils.torch_utils import empty_device_cache
 
 
 if is_transformers_available():
@@ -54,11 +55,12 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
 
-    from ..models.modeling_utils import load_model_dict_into_meta
+    from ..models.model_loading_utils import load_model_dict_into_meta
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 CHECKPOINT_KEY_NAMES = {
+    "v1": "model.diffusion_model.output_blocks.11.0.skip_connection.weight",
     "v2": "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight",
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
@@ -126,7 +128,18 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "wan": ["model.diffusion_model.head.modulation", "head.modulation"],
     "wan_vae": "decoder.middle.0.residual.0.gamma",
+    "wan_vace": "vace_blocks.0.after_proj.bias",
     "hidream": "double_stream_blocks.0.block.adaLN_modulation.1.bias",
+    "cosmos-1.0": [
+        "net.x_embedder.proj.1.weight",
+        "net.blocks.block1.blocks.0.block.attn.to_q.0.weight",
+        "net.extra_pos_embedder.pos_emb_h",
+    ],
+    "cosmos-2.0": [
+        "net.x_embedder.proj.1.weight",
+        "net.blocks.0.self_attn.q_proj.weight",
+        "net.pos_embedder.dim_spatial_range",
+    ],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -192,7 +205,17 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-t2v-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"},
     "wan-t2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-14B-Diffusers"},
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
+    "wan-vace-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-1.3B-diffusers"},
+    "wan-vace-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-14B-diffusers"},
     "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
+    "cosmos-1.0-t2w-7B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-7B-Text2World"},
+    "cosmos-1.0-t2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-14B-Text2World"},
+    "cosmos-1.0-v2w-7B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-7B-Video2World"},
+    "cosmos-1.0-v2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-14B-Video2World"},
+    "cosmos-2.0-t2i-2B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-2B-Text2Image"},
+    "cosmos-2.0-t2i-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-14B-Text2Image"},
+    "cosmos-2.0-v2w-2B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-2B-Video2World"},
+    "cosmos-2.0-v2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-14B-Video2World"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -698,17 +721,44 @@ def infer_diffusers_model_type(checkpoint):
         else:
             target_key = "patch_embedding.weight"
 
-        if checkpoint[target_key].shape[0] == 1536:
+        if CHECKPOINT_KEY_NAMES["wan_vace"] in checkpoint:
+            if checkpoint[target_key].shape[0] == 1536:
+                model_type = "wan-vace-1.3B"
+            elif checkpoint[target_key].shape[0] == 5120:
+                model_type = "wan-vace-14B"
+
+        elif checkpoint[target_key].shape[0] == 1536:
             model_type = "wan-t2v-1.3B"
         elif checkpoint[target_key].shape[0] == 5120 and checkpoint[target_key].shape[1] == 16:
             model_type = "wan-t2v-14B"
         else:
             model_type = "wan-i2v-14B"
+
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
         model_type = "wan-t2v-14B"
+
     elif CHECKPOINT_KEY_NAMES["hidream"] in checkpoint:
         model_type = "hidream"
+
+    elif all(key in checkpoint for key in CHECKPOINT_KEY_NAMES["cosmos-1.0"]):
+        x_embedder_shape = checkpoint[CHECKPOINT_KEY_NAMES["cosmos-1.0"][0]].shape
+        if x_embedder_shape[1] == 68:
+            model_type = "cosmos-1.0-t2w-7B" if x_embedder_shape[0] == 4096 else "cosmos-1.0-t2w-14B"
+        elif x_embedder_shape[1] == 72:
+            model_type = "cosmos-1.0-v2w-7B" if x_embedder_shape[0] == 4096 else "cosmos-1.0-v2w-14B"
+        else:
+            raise ValueError(f"Unexpected x_embedder shape: {x_embedder_shape} when loading Cosmos 1.0 model.")
+
+    elif all(key in checkpoint for key in CHECKPOINT_KEY_NAMES["cosmos-2.0"]):
+        x_embedder_shape = checkpoint[CHECKPOINT_KEY_NAMES["cosmos-2.0"][0]].shape
+        if x_embedder_shape[1] == 68:
+            model_type = "cosmos-2.0-t2i-2B" if x_embedder_shape[0] == 2048 else "cosmos-2.0-t2i-14B"
+        elif x_embedder_shape[1] == 72:
+            model_type = "cosmos-2.0-v2w-2B" if x_embedder_shape[0] == 2048 else "cosmos-2.0-v2w-14B"
+        else:
+            raise ValueError(f"Unexpected x_embedder shape: {x_embedder_shape} when loading Cosmos 2.0 model.")
+
     else:
         model_type = "v1"
 
@@ -1641,6 +1691,7 @@ def create_diffusers_clip_model_from_ldm(
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        empty_device_cache()
     else:
         model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
@@ -2100,6 +2151,7 @@ def create_diffusers_t5_model_from_checkpoint(
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        empty_device_cache()
     else:
         model.load_state_dict(diffusers_format_checkpoint)
 
@@ -3093,6 +3145,9 @@ def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
         "img_emb.proj.1": "condition_embedder.image_embedder.ff.net.0.proj",
         "img_emb.proj.3": "condition_embedder.image_embedder.ff.net.2",
         "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
+        # For the VACE model
+        "before_proj": "proj_in",
+        "after_proj": "proj_out",
     }
 
     for key in list(checkpoint.keys()):
@@ -3477,5 +3532,118 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     converted_state_dict["proj_out.weight"] = checkpoint.pop("final_layer.linear.weight")
     converted_state_dict["proj_out.bias"] = checkpoint.pop("final_layer.linear.bias")
+
+    return converted_state_dict
+
+
+def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    def remove_keys_(key: str, state_dict):
+        state_dict.pop(key)
+
+    def rename_transformer_blocks_(key: str, state_dict):
+        block_index = int(key.split(".")[1].removeprefix("block"))
+        new_key = key
+        old_prefix = f"blocks.block{block_index}"
+        new_prefix = f"transformer_blocks.{block_index}"
+        new_key = new_prefix + new_key.removeprefix(old_prefix)
+        state_dict[new_key] = state_dict.pop(key)
+
+    TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0 = {
+        "t_embedder.1": "time_embed.t_embedder",
+        "affline_norm": "time_embed.norm",
+        ".blocks.0.block.attn": ".attn1",
+        ".blocks.1.block.attn": ".attn2",
+        ".blocks.2.block": ".ff",
+        ".blocks.0.adaLN_modulation.1": ".norm1.linear_1",
+        ".blocks.0.adaLN_modulation.2": ".norm1.linear_2",
+        ".blocks.1.adaLN_modulation.1": ".norm2.linear_1",
+        ".blocks.1.adaLN_modulation.2": ".norm2.linear_2",
+        ".blocks.2.adaLN_modulation.1": ".norm3.linear_1",
+        ".blocks.2.adaLN_modulation.2": ".norm3.linear_2",
+        "to_q.0": "to_q",
+        "to_q.1": "norm_q",
+        "to_k.0": "to_k",
+        "to_k.1": "norm_k",
+        "to_v.0": "to_v",
+        "layer1": "net.0.proj",
+        "layer2": "net.2",
+        "proj.1": "proj",
+        "x_embedder": "patch_embed",
+        "extra_pos_embedder": "learnable_pos_embed",
+        "final_layer.adaLN_modulation.1": "norm_out.linear_1",
+        "final_layer.adaLN_modulation.2": "norm_out.linear_2",
+        "final_layer.linear": "proj_out",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_1_0 = {
+        "blocks.block": rename_transformer_blocks_,
+        "logvar.0.freqs": remove_keys_,
+        "logvar.0.phases": remove_keys_,
+        "logvar.1.weight": remove_keys_,
+        "pos_embedder.seq": remove_keys_,
+    }
+
+    TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0 = {
+        "t_embedder.1": "time_embed.t_embedder",
+        "t_embedding_norm": "time_embed.norm",
+        "blocks": "transformer_blocks",
+        "adaln_modulation_self_attn.1": "norm1.linear_1",
+        "adaln_modulation_self_attn.2": "norm1.linear_2",
+        "adaln_modulation_cross_attn.1": "norm2.linear_1",
+        "adaln_modulation_cross_attn.2": "norm2.linear_2",
+        "adaln_modulation_mlp.1": "norm3.linear_1",
+        "adaln_modulation_mlp.2": "norm3.linear_2",
+        "self_attn": "attn1",
+        "cross_attn": "attn2",
+        "q_proj": "to_q",
+        "k_proj": "to_k",
+        "v_proj": "to_v",
+        "output_proj": "to_out.0",
+        "q_norm": "norm_q",
+        "k_norm": "norm_k",
+        "mlp.layer1": "ff.net.0.proj",
+        "mlp.layer2": "ff.net.2",
+        "x_embedder.proj.1": "patch_embed.proj",
+        "final_layer.adaln_modulation.1": "norm_out.linear_1",
+        "final_layer.adaln_modulation.2": "norm_out.linear_2",
+        "final_layer.linear": "proj_out",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0 = {
+        "accum_video_sample_counter": remove_keys_,
+        "accum_image_sample_counter": remove_keys_,
+        "accum_iteration": remove_keys_,
+        "accum_train_in_hours": remove_keys_,
+        "pos_embedder.seq": remove_keys_,
+        "pos_embedder.dim_spatial_range": remove_keys_,
+        "pos_embedder.dim_temporal_range": remove_keys_,
+        "_extra_state": remove_keys_,
+    }
+
+    PREFIX_KEY = "net."
+    if "net.blocks.block1.blocks.0.block.attn.to_q.0.weight" in checkpoint:
+        TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0
+        TRANSFORMER_SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_1_0
+    else:
+        TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0
+        TRANSFORMER_SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0
+
+    state_dict_keys = list(converted_state_dict.keys())
+    for key in state_dict_keys:
+        new_key = key[:]
+        if new_key.startswith(PREFIX_KEY):
+            new_key = new_key.removeprefix(PREFIX_KEY)
+        for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    state_dict_keys = list(converted_state_dict.keys())
+    for key in state_dict_keys:
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
 
     return converted_state_dict

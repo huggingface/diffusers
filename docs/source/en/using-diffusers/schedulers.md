@@ -165,53 +165,6 @@ image
 
 Most images look very similar and are comparable in quality. Again, it often comes down to your specific use case so a good approach is to run multiple different schedulers and compare the results.
 
-### Flax schedulers
-
-To compare Flax schedulers, you need to additionally load the scheduler state into the model parameters. For example, let's change the default scheduler in [`FlaxStableDiffusionPipeline`] to use the super fast [`FlaxDPMSolverMultistepScheduler`].
-
-> [!WARNING]
-> The [`FlaxLMSDiscreteScheduler`] and [`FlaxDDPMScheduler`] are not compatible with the [`FlaxStableDiffusionPipeline`] yet.
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline, FlaxDPMSolverMultistepScheduler
-
-scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    subfolder="scheduler"
-)
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    scheduler=scheduler,
-    variant="bf16",
-    dtype=jax.numpy.bfloat16,
-)
-params["scheduler"] = scheduler_state
-```
-
-Then you can take advantage of Flax's compatibility with TPUs to generate a number of images in parallel. You'll need to make a copy of the model parameters for each available device and then split the inputs across them to generate your desired number of images.
-
-```py
-# Generate 1 image per parallel device (8 on TPUv2-8 or TPUv3-8)
-prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
-num_samples = jax.device_count()
-prompt_ids = pipeline.prepare_inputs([prompt] * num_samples)
-
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 25
-
-# shard inputs and rng
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-```
-
 ## Models
 
 Models are loaded from the [`ModelMixin.from_pretrained`] method, which downloads and caches the latest version of the model weights and configurations. If the latest files are available in the local cache, [`~ModelMixin.from_pretrained`] reuses files in the cache instead of re-downloading them.
@@ -242,3 +195,15 @@ unet = UNet2DConditionModel.from_pretrained(
 )
 unet.save_pretrained("./local-unet", variant="non_ema")
 ```
+
+Use the `torch_dtype` argument in [`~ModelMixin.from_pretrained`] to specify the dtype to load a model in.
+
+```py
+from diffusers import AutoModel
+
+unet = AutoModel.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", torch_dtype=torch.float16
+)
+```
+
+You can also use the [torch.Tensor.to](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.to.html) method to convert to the specified dtype on the fly. It converts *all* weights unlike the `torch_dtype` argument that respects the `_keep_in_fp32_modules`. This is important for models whose layers must remain in fp32 for numerical stability and best generation quality (see example [here](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374)).

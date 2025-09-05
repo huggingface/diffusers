@@ -19,7 +19,7 @@ The `train_dreambooth_flux.py` script shows how to implement the training proced
 > As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 This will also allow us to push the trained model parameters to the Hugging Face Hub platform.
@@ -259,6 +259,98 @@ to enable `latent_caching` simply pass `--cache_latents`.
 ### Precision of saved LoRA layers
 By default, trained transformer layers are saved in the precision dtype in which training was performed. E.g. when training in mixed precision is enabled with `--mixed_precision="bf16"`, final finetuned layers will be saved in `torch.bfloat16` as well. 
 This reduces memory requirements significantly w/o a significant quality loss. Note that if you do wish to save the final layers in float32 at the expanse of more memory usage, you can do so by passing `--upcast_before_saving`.
+
+## Training Kontext
+
+[Kontext](https://bfl.ai/announcements/flux-1-kontext) lets us perform image editing as well as image generation. Even though it can accept both image and text as inputs, one can use it for text-to-image (T2I) generation, too. We
+provide a simple script for LoRA fine-tuning Kontext in [train_dreambooth_lora_flux_kontext.py](./train_dreambooth_lora_flux_kontext.py) for both T2I and I2I. The optimizations discussed above apply this script, too.
+
+**important**
+
+> [!NOTE] 
+> To make sure you can successfully run the latest version of the kontext example script, we highly recommend installing from source, specifically from the commit mentioned below.
+> To do this, execute the following steps in a new virtual environment:
+> ```
+> git clone https://github.com/huggingface/diffusers
+> cd diffusers
+> git checkout 05e7a854d0a5661f5b433f6dd5954c224b104f0b
+> pip install -e .
+> ```
+
+Below is an example training command:
+
+```bash
+accelerate launch train_dreambooth_lora_flux_kontext.py \
+  --pretrained_model_name_or_path=black-forest-labs/FLUX.1-Kontext-dev  \
+  --instance_data_dir="dog" \
+  --output_dir="kontext-dog" \
+  --mixed_precision="bf16" \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --guidance_scale=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --optimizer="adamw" \
+  --use_8bit_adam \
+  --cache_latents \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=500 \
+  --seed="0" 
+```
+
+Fine-tuning Kontext on the T2I task can be useful when working with specific styles/subjects where it may not
+perform as expected.
+
+Image-guided fine-tuning (I2I) is also supported. To start, you must have a dataset containing triplets:
+
+* Condition image
+* Target image
+* Instruction
+
+[kontext-community/relighting](https://huggingface.co/datasets/kontext-community/relighting) is a good example of such a dataset. If you are using such a dataset, you can use the command below to launch training:
+
+```bash
+accelerate launch train_dreambooth_lora_flux_kontext.py \
+  --pretrained_model_name_or_path=black-forest-labs/FLUX.1-Kontext-dev  \
+  --output_dir="kontext-i2i" \
+  --dataset_name="kontext-community/relighting" \
+  --image_column="output" --cond_image_column="file_name" --caption_column="instruction" \
+  --mixed_precision="bf16" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --guidance_scale=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --optimizer="adamw" \
+  --use_8bit_adam \
+  --cache_latents \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=200 \
+  --max_train_steps=1000 \
+  --rank=16\
+  --seed="0" 
+```
+
+More generally, when performing I2I fine-tuning, we expect you to:
+
+* Have a dataset `kontext-community/relighting`
+* Supply `image_column`, `cond_image_column`, and `caption_column` values when launching training
+
+### Misc notes
+
+* By default, we use `mode` as the value of `--vae_encode_mode` argument. This is because Kontext uses `mode()` of the distribution predicted by the VAE instead of sampling from it.
+### Aspect Ratio Bucketing
+we've added aspect ratio bucketing support which allows training on images with different aspect ratios without cropping them to a single square resolution. This technique helps preserve the original composition of training images and can improve training efficiency.
+
+To enable aspect ratio bucketing, pass `--aspect_ratio_buckets` argument with a semicolon-separated list of height,width pairs, such as:
+
+`--aspect_ratio_buckets="672,1568;688,1504;720,1456;752,1392;800,1328;832,1248;880,1184;944,1104;1024,1024;1104,944;1184,880;1248,832;1328,800;1392,752;1456,720;1504,688;1568,672"
+`
+Since Flux Kontext finetuning is still an experimental phase, we encourage you to explore different settings and share your insights! 🤗 
 
 ## Other notes
 Thanks to `bghira` and `ostris` for their help with reviewing & insight sharing ♥️

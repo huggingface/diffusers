@@ -1452,17 +1452,21 @@ class StableDiffusionXLControlNetUnionPipeline(
         is_controlnet_compiled = is_compiled_module(self.controlnet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
 
+        control_type_repeat_factor = (
+            batch_size * num_images_per_prompt * (2 if self.do_classifier_free_guidance else 1)
+        )
+
         if isinstance(controlnet, ControlNetUnionModel):
             control_type = (
                 control_type.reshape(1, -1)
                 .to(self._execution_device, dtype=prompt_embeds.dtype)
-                .repeat(batch_size * num_images_per_prompt * 2, 1)
+                .repeat(control_type_repeat_factor, 1)
             )
-        if isinstance(controlnet, MultiControlNetUnionModel):
+        elif isinstance(controlnet, MultiControlNetUnionModel):
             control_type = [
                 _control_type.reshape(1, -1)
                 .to(self._execution_device, dtype=prompt_embeds.dtype)
-                .repeat(batch_size * num_images_per_prompt * 2, 1)
+                .repeat(control_type_repeat_factor, 1)
                 for _control_type in control_type
             ]
 

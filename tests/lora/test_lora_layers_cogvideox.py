@@ -16,6 +16,7 @@ import sys
 import unittest
 
 import torch
+from parameterized import parameterized
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
@@ -25,15 +26,17 @@ from diffusers import (
     CogVideoXPipeline,
     CogVideoXTransformer3DModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     floats_tensor,
     require_peft_backend,
+    require_torch_accelerator,
 )
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
@@ -126,6 +129,13 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     def test_lora_scale_kwargs_match_fusion(self):
         super().test_lora_scale_kwargs_match_fusion(expected_atol=9e-3, expected_rtol=9e-3)
+
+    @parameterized.expand([("block_level", True), ("leaf_level", False)])
+    @require_torch_accelerator
+    def test_group_offloading_inference_denoiser(self, offload_type, use_stream):
+        # TODO: We don't run the (leaf_level, True) test here that is enabled for other models.
+        # The reason for this can be found here: https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
+        super()._test_group_offloading_inference_denoiser(offload_type, use_stream)
 
     @unittest.skip("Not supported in CogVideoX.")
     def test_simple_inference_with_text_denoiser_block_scale(self):

@@ -23,7 +23,8 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, logging
+from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
+from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
@@ -31,6 +32,7 @@ from .single_file_utils import (
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_chroma_transformer_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
+    convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
@@ -60,8 +62,12 @@ logger = logging.get_logger(__name__)
 if is_accelerate_available():
     from accelerate import dispatch_model, init_empty_weights
 
-    from ..models.modeling_utils import load_model_dict_into_meta
+    from ..models.model_loading_utils import load_model_dict_into_meta
 
+if is_torch_version(">=", "1.9.0") and is_accelerate_available():
+    _LOW_CPU_MEM_USAGE_DEFAULT = True
+else:
+    _LOW_CPU_MEM_USAGE_DEFAULT = False
 
 SINGLE_FILE_LOADABLE_CLASSES = {
     "StableCascadeUNet": {
@@ -135,6 +141,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "WanVACETransformer3DModel": {
+        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "AutoencoderKLWan": {
         "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
         "default_subfolder": "vae",
@@ -143,7 +153,19 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_hidream_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "CosmosTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "QwenImageTransformer2DModel": {
+        "checkpoint_mapping_fn": lambda x: x,
+        "default_subfolder": "transformer",
+    },
 }
+
+
+def _should_convert_state_dict_to_diffusers(model_state_dict, checkpoint_state_dict):
+    return not set(model_state_dict.keys()).issubset(set(checkpoint_state_dict.keys()))
 
 
 def _get_single_file_loadable_mapping_class(cls):
@@ -218,6 +240,11 @@ class FromOriginalModelMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 and
+                is_accelerate_available() else `False`): Speed up model loading only loading the pretrained weights and
+                not initializing the weights. This also tries to not use more than 1x model size in CPU memory
+                (including peak memory) while loading the model. Only supported for PyTorch >= 1.9.0. If you are using
+                an older version of PyTorch, setting this argument to `True` will raise an error.
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
@@ -267,6 +294,7 @@ class FromOriginalModelMixin:
         config_revision = kwargs.pop("config_revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         quantization_config = kwargs.pop("quantization_config", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         device = kwargs.pop("device", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
@@ -371,19 +399,23 @@ class FromOriginalModelMixin:
             model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
             diffusers_model_config.update(model_kwargs)
 
+        ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+        with ctx():
+            model = cls.from_config(diffusers_model_config)
+
         checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
-        diffusers_format_checkpoint = checkpoint_mapping_fn(
-            config=diffusers_model_config, checkpoint=checkpoint, **checkpoint_mapping_kwargs
-        )
+
+        if _should_convert_state_dict_to_diffusers(model.state_dict(), checkpoint):
+            diffusers_format_checkpoint = checkpoint_mapping_fn(
+                config=diffusers_model_config, checkpoint=checkpoint, **checkpoint_mapping_kwargs
+            )
+        else:
+            diffusers_format_checkpoint = checkpoint
+
         if not diffusers_format_checkpoint:
             raise SingleFileComponentError(
                 f"Failed to load {mapping_class_name}. Weights for this component appear to be missing in the checkpoint."
             )
-
-        ctx = init_empty_weights if is_accelerate_available() else nullcontext
-        with ctx():
-            model = cls.from_config(diffusers_model_config)
-
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
             (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
@@ -405,7 +437,7 @@ class FromOriginalModelMixin:
             )
 
         device_map = None
-        if is_accelerate_available():
+        if low_cpu_mem_usage:
             param_device = torch.device(device) if device else torch.device("cpu")
             empty_state_dict = model.state_dict()
             unexpected_keys = [
@@ -421,6 +453,7 @@ class FromOriginalModelMixin:
                 keep_in_fp32_modules=keep_in_fp32_modules,
                 unexpected_keys=unexpected_keys,
             )
+            empty_device_cache()
         else:
             _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
 

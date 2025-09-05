@@ -19,12 +19,13 @@ import torch
 from transformers import Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
+
+from ..testing_utils import floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend

@@ -20,7 +20,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import pytest
 import safetensors.torch
 import torch
 from parameterized import parameterized
@@ -29,7 +28,8 @@ from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderM
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxControlPipeline, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image, logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     floats_tensor,
@@ -49,7 +49,7 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 @require_peft_backend
@@ -813,7 +813,6 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace.
 
@@ -960,7 +959,6 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxControlLoRAIntegrationTests(unittest.TestCase):
     num_inference_steps = 10
     seed = 0

@@ -290,6 +290,10 @@ class FlaxModelMixin(PushToHubMixin):
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
         """
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         config = kwargs.pop("config", None)
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -369,8 +373,7 @@ class FlaxModelMixin(PushToHubMixin):
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                     "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                    "token having permission to this repo with `token` or log in with `huggingface-cli "
-                    "login`."
+                    "token having permission to this repo with `token` or log in with `hf auth login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
