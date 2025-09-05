@@ -711,7 +711,7 @@ class WanS2VTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb: List[torch.Tensor, torch.Tensor],
+        temb: Tuple[torch.Tensor, torch.Tensor],
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
         seg_idx = temb[1].item()

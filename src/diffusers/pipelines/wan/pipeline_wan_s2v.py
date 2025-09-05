@@ -1005,8 +1005,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # Accumulate latents so as to decode them all at once at the end
             all_latents.append(segment_latents)
 
-        all_latents = torch.cat(all_latents, dim=2)
-        latents = all_latents
+        latents = torch.cat(all_latents, dim=2)
 
         self._current_timestep = None
 
