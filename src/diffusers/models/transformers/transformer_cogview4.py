@@ -494,7 +494,7 @@ class CogView4TransformerBlock(nn.Module):
         ] = None,
         attention_mask: Optional[Dict[str, torch.Tensor]] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # 1. Timestep conditioning
         (
             norm_hidden_states,

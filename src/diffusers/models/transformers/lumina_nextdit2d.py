@@ -124,7 +124,7 @@ class LuminaNextDiTBlock(nn.Module):
         encoder_mask: torch.Tensor,
         temb: torch.Tensor,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> torch.Tensor:
         """
         Perform a forward pass through the LuminaNextDiTBlock.
 

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Dict, Union
+from typing import Dict, Union, Tuple
 
 import torch
 import torch.nn as nn
@@ -79,7 +79,7 @@ class CogView3PlusTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         emb: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         text_seq_length = encoder_hidden_states.size(1)
 
         # norm & modulate

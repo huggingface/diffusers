@@ -173,7 +173,7 @@ class AuraFlowSingleTransformerBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         attention_kwargs: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> torch.Tensor:
         residual = hidden_states
         attention_kwargs = attention_kwargs or {}
 

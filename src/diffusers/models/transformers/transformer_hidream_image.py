@@ -534,7 +534,7 @@ class HiDreamImageTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         wtype = hidden_states.dtype
         (
             shift_msa_i,
