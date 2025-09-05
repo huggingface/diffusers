@@ -1149,7 +1149,11 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return self.tiled_encode(x)
 
         self.clear_cache()
-        if self.config.patch_size is not None:
+        # Apply patchify only if needed - check if model expects patchified input
+        # If in_channels equals original_channels * patch_size^2, model expects patchified input
+        if (self.config.patch_size is not None and self.config.patch_size > 1 and
+            self.config.in_channels != x.shape[1] and
+            self.config.in_channels == x.shape[1] * self.config.patch_size * self.config.patch_size):
             x = patchify(x, patch_size=self.config.patch_size)
         iter_ = 1 + (num_frame - 1) // 4
         for i in range(iter_):
@@ -1215,7 +1219,12 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 out_ = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
                 out = torch.cat([out, out_], 2)
 
-        if self.config.patch_size is not None:
+        # Apply unpatchify only if needed - check if model outputs patchified data
+        # If out_channels is greater than expected output channels, model outputs patchified data
+        expected_out_channels = 3  # Assuming RGB output
+        if (self.config.patch_size is not None and self.config.patch_size > 1 and
+            self.config.out_channels != expected_out_channels and 
+            self.config.out_channels == expected_out_channels * self.config.patch_size * self.config.patch_size):
             out = unpatchify(out, patch_size=self.config.patch_size)
 
         out = torch.clamp(out, min=-1.0, max=1.0)
@@ -1277,6 +1286,11 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             `torch.Tensor`:
                 The latent representation of the encoded videos.
         """
+        if (self.config.patch_size is not None and self.config.patch_size > 1 and
+            self.config.in_channels != x.shape[1] and
+            self.config.in_channels == x.shape[1] * self.config.patch_size * self.config.patch_size):
+            x = patchify(x, patch_size=self.config.patch_size)
+
         _, _, num_frames, height, width = x.shape
         latent_height = height // self.spatial_compression_ratio
         latent_width = width // self.spatial_compression_ratio
@@ -1368,10 +1382,11 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 self.clear_cache()
                 time = []
                 for k in range(num_frames):
+                    first_chunk = True if k == 0 else False
                     self._conv_idx = [0]
                     tile = z[:, :, k : k + 1, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
                     tile = self.post_quant_conv(tile)
-                    decoded = self.decoder(tile, feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                    decoded = self.decoder(tile, feat_cache=self._feat_map, feat_idx=self._conv_idx, first_chunk=first_chunk)
                     time.append(decoded)
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
@@ -1391,6 +1406,14 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             result_rows.append(torch.cat(result_row, dim=-1))
 
         dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
+
+        expected_out_channels = 3  # Assuming RGB output
+        if (self.config.patch_size is not None and self.config.patch_size > 1 and
+            self.config.out_channels != expected_out_channels and
+            self.config.out_channels == expected_out_channels * self.config.patch_size * self.config.patch_size):
+            dec = unpatchify(dec, patch_size=self.config.patch_size)
+
+        dec = torch.clamp(dec, min=-1.0, max=1.0)
 
         if not return_dict:
             return (dec,)
