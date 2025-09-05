@@ -22,7 +22,8 @@ from parameterized import parameterized
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, QuantoConfig
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     CaptureLogger,
     is_transformers_available,
     require_accelerate,

@@ -37,7 +37,7 @@ from diffusers import (
 )
 
 # from diffusers.image_processor import VaeImageProcessor
-from diffusers.utils.testing_utils import (
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,

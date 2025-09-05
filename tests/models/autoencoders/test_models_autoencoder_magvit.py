@@ -16,8 +16,8 @@
 import unittest
 
 from diffusers import AutoencoderKLMagvit
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
 
+from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 

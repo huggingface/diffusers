@@ -220,7 +220,7 @@ class FluxDenoiseStep(FluxDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `FluxDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `FluxLoopDenoiser`\n"
             " - `FluxLoopAfterDenoiser`\n"
             "This block supports both text2image and img2img tasks."

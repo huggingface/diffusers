@@ -23,7 +23,8 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
 from diffusers.models import StableCascadeUNet
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     load_numpy,

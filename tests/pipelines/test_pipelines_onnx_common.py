@@ -1,4 +1,4 @@
-from diffusers.utils.testing_utils import require_onnxruntime
+from ..testing_utils import require_onnxruntime
 
 
 @require_onnxruntime

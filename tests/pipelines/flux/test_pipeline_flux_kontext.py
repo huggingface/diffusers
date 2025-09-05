@@ -12,8 +12,8 @@ from diffusers import (
     FluxKontextPipeline,
     FluxTransformer2DModel,
 )
-from diffusers.utils.testing_utils import torch_device
 
+from ...testing_utils import torch_device
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
     FluxIPAdapterTesterMixin,

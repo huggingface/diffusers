@@ -7,7 +7,8 @@ from huggingface_hub import hf_hub_download, snapshot_download
 
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.models.attention_processor import AttnProcessor
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     numpy_cosine_similarity_distance,
     torch_device,
 )

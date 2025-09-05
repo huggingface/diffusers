@@ -253,7 +253,7 @@ class WanDenoiseStep(WanDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
             "This block supports both text2vid tasks."

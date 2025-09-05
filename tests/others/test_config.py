@@ -28,7 +28,8 @@ from diffusers import (
     logging,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.utils.testing_utils import CaptureLogger
+
+from ..testing_utils import CaptureLogger
 
 
 class SampleObject(ConfigMixin):

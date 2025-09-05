@@ -19,8 +19,8 @@ import torch
 
 from diffusers import AutoencoderKLLTXVideo, LTXLatentUpsamplePipeline
 from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
-from diffusers.utils.testing_utils import enable_full_determinism
 
+from ...testing_utils import enable_full_determinism
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 

@@ -21,8 +21,8 @@ import torch
 from diffusers.models import ModelMixin, UNet3DConditionModel
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, skip_mps, torch_device
 
+from ...testing_utils import enable_full_determinism, floats_tensor, skip_mps, torch_device
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 

@@ -30,12 +30,12 @@ from diffusers import (
     PixArtTransformer2DModel,
 )
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     torch_device,
 )
-
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,

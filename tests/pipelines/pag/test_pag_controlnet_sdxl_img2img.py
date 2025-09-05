@@ -29,8 +29,8 @@ from diffusers import (
     StableDiffusionXLControlNetPAGImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor
 
+from ...testing_utils import enable_full_determinism, floats_tensor
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,

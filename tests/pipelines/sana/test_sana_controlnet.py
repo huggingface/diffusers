@@ -26,12 +26,12 @@ from diffusers import (
     SanaControlNetPipeline,
     SanaTransformer2DModel,
 )
-from diffusers.utils.testing_utils import (
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import (
     enable_full_determinism,
     torch_device,
 )
-from diffusers.utils.torch_utils import randn_tensor
-
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 

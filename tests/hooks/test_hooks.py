@@ -20,7 +20,8 @@ import torch
 from diffusers.hooks import HookRegistry, ModelHook
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
-from diffusers.utils.testing_utils import CaptureLogger, torch_device
+
+from ..testing_utils import CaptureLogger, torch_device
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name

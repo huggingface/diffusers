@@ -7,14 +7,14 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-
 from .single_file_testing_utils import SDSingleFileTesterMixin
 
 

@@ -22,8 +22,8 @@ from diffusers import (
     KandinskyV22Img2ImgCombinedPipeline,
     KandinskyV22InpaintCombinedPipeline,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 
+from ...testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 from ..test_pipelines_common import PipelineTesterMixin
 from .test_kandinsky import Dummies
 from .test_kandinsky_img2img import Dummies as Img2ImgDummies

@@ -48,19 +48,6 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
-from diffusers.utils.testing_utils import (
-    CaptureLogger,
-    backend_empty_cache,
-    numpy_cosine_similarity_distance,
-    require_accelerate_version_greater,
-    require_accelerator,
-    require_hf_hub_version_greater,
-    require_torch,
-    require_torch_accelerator,
-    require_transformers_version_greater,
-    skip_mps,
-    torch_device,
-)
 
 from ..models.autoencoders.vae import (
     get_asym_autoencoder_kl_config,
@@ -74,6 +61,19 @@ from ..models.unets.test_models_unet_2d_condition import (
     create_ip_adapter_state_dict,
 )
 from ..others.test_utils import TOKEN, USER, is_staging_test
+from ..testing_utils import (
+    CaptureLogger,
+    backend_empty_cache,
+    numpy_cosine_similarity_distance,
+    require_accelerate_version_greater,
+    require_accelerator,
+    require_hf_hub_version_greater,
+    require_torch,
+    require_torch_accelerator,
+    require_transformers_version_greater,
+    skip_mps,
+    torch_device,
+)
 
 
 def to_np(tensor):

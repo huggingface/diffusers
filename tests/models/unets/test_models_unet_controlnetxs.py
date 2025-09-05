@@ -21,8 +21,8 @@ from torch import nn
 
 from diffusers import ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, is_flaky, torch_device
 
+from ...testing_utils import enable_full_determinism, floats_tensor, is_flaky, torch_device
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 

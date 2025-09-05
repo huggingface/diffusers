@@ -6,14 +6,14 @@ import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_big_accelerator,
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import (
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,

@@ -21,7 +21,8 @@ import torch
 
 from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQModel
 from diffusers.utils import PIL_INTERPOLATION
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,

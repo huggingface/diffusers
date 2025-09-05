@@ -32,7 +32,8 @@ from diffusers import (
     StableDiffusionPipeline,
 )
 from diffusers.utils.import_utils import is_accelerate_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     Expectations,
     backend_empty_cache,
     load_image,
@@ -47,7 +48,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 if is_accelerate_available():

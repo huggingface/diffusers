@@ -6,7 +6,8 @@ import torch
 
 from diffusers import FluxPipeline, FluxPriorReduxPipeline
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     numpy_cosine_similarity_distance,

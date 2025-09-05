@@ -51,10 +51,10 @@ t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id, components_manager=comp
 </hfoption>
 </hfoptions>
 
-Components are only loaded and registered when using [`~ModularPipeline.load_components`] or [`~ModularPipeline.load_default_components`]. The example below uses [`~ModularPipeline.load_default_components`] to create a second pipeline that reuses all the components from the first one, and assigns it to a different collection
+Components are only loaded and registered when using [`~ModularPipeline.load_components`] or [`~ModularPipeline.load_components`]. The example below uses [`~ModularPipeline.load_components`] to create a second pipeline that reuses all the components from the first one, and assigns it to a different collection
 
 ```py
-pipe.load_default_components()
+pipe.load_components()
 pipe2 = ModularPipeline.from_pretrained("YiYiXu/modular-demo-auto", components_manager=comp, collection="test2")
 ```
 

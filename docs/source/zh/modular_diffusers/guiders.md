@@ -73,13 +73,13 @@ ComponentSpec(name='guider', type_hint=<class 'diffusers.guiders.perturbed_atten
 }
 ```
 
-引导器只有在调用 [`~ModularPipeline.load_default_components`] 之后才会创建，基于 `modular_model_index.json` 中的加载规范。
+引导器只有在调用 [`~ModularPipeline.load_components`] 之后才会创建，基于 `modular_model_index.json` 中的加载规范。
 
 ```py
 t2i_pipeline = t2i_blocks.init_pipeline("YiYiXu/modular-doc-guider")
 # 在初始化时未创建
 assert t2i_pipeline.guider is None
-t2i_pipeline.load_default_components()
+t2i_pipeline.load_components()
 # 加载为 PAG 引导器
 t2i_pipeline.guider
 ```

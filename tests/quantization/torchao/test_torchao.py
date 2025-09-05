@@ -31,7 +31,8 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import Attention
 from diffusers.quantizers import PipelineQuantizationConfig
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     backend_synchronize,
     enable_full_determinism,
@@ -45,7 +46,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_torch_compile_utils import QuantCompileTests
 
 

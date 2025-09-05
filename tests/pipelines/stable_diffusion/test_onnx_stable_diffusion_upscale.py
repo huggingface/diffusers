@@ -26,7 +26,8 @@ from diffusers import (
     OnnxStableDiffusionUpscalePipeline,
     PNDMScheduler,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     floats_tensor,
     is_onnx_available,
     load_image,
@@ -34,7 +35,6 @@ from diffusers.utils.testing_utils import (
     require_onnxruntime,
     require_torch_gpu,
 )
-
 from ..test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
 

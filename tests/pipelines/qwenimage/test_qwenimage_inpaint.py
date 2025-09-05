@@ -25,8 +25,8 @@ from diffusers import (
     QwenImageInpaintPipeline,
     QwenImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
 
+from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 

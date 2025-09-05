@@ -17,11 +17,11 @@ import unittest
 import torch
 
 from diffusers import SanaTransformer2DModel
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     torch_device,
 )
-
 from ..test_modeling_common import ModelTesterMixin
 
 

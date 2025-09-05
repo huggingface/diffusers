@@ -20,7 +20,8 @@ import torch
 
 from diffusers import StableCascadeUNet
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,

@@ -8,7 +8,8 @@ from diffusers import (
     StableDiffusionXLImg2ImgPipeline,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -16,7 +17,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from .single_file_testing_utils import SDXLSingleFileTesterMixin
 
 

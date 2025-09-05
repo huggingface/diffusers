@@ -695,7 +695,7 @@ class StableDiffusionXLDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLLoopDenoiser`\n"
             " - `StableDiffusionXLLoopAfterDenoiser`\n"
@@ -717,7 +717,7 @@ class StableDiffusionXLControlNetDenoiseStep(StableDiffusionXLDenoiseLoopWrapper
         return (
             "Denoise step that iteratively denoise the latents with controlnet. \n"
             "Its loop logic is defined in  `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLControlNetLoopDenoiser`\n"
             " - `StableDiffusionXLLoopAfterDenoiser`\n"
@@ -739,7 +739,7 @@ class StableDiffusionXLInpaintDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents(for inpainting task only). \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLInpaintLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLLoopDenoiser`\n"
             " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"
@@ -761,7 +761,7 @@ class StableDiffusionXLInpaintControlNetDenoiseStep(StableDiffusionXLDenoiseLoop
         return (
             "Denoise step that iteratively denoise the latents(for inpainting task only) with controlnet. \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLInpaintLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLControlNetLoopDenoiser`\n"
             " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"

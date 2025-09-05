@@ -48,10 +48,10 @@ t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id, components_manager=comp
 </hfoption>
 </hfoptions>
 
-组件仅在调用 [`~ModularPipeline.load_components`] 或 [`~ModularPipeline.load_default_components`] 时加载和注册。以下示例使用 [`~ModularPipeline.load_default_components`] 创建第二个管道，重用第一个管道的所有组件，并将其分配到不同的集合。
+组件仅在调用 [`~ModularPipeline.load_components`] 或 [`~ModularPipeline.load_components`] 时加载和注册。以下示例使用 [`~ModularPipeline.load_components`] 创建第二个管道，重用第一个管道的所有组件，并将其分配到不同的集合。
 
 ```py
-pipe.load_default_components()
+pipe.load_components()
 pipe2 = ModularPipeline.from_pretrained("YiYiXu/modular-demo-auto", components_manager=comp, collection="test2")
 ```
 

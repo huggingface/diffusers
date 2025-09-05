@@ -61,7 +61,7 @@ def project(v0: torch.Tensor, v1: torch.Tensor, upcast_to_double: bool = True) -
 def build_image_from_pyramid(pyramid: List[torch.Tensor]) -> torch.Tensor:
     """
     Recovers the data space latents from the Laplacian pyramid frequency space. Implementation from the paper
-    (Algorihtm 2).
+    (Algorithm 2).
     """
     # pyramid shapes: [[B, C, H, W], [B, C, H/2, W/2], ...]
     img = pyramid[-1]

@@ -5,8 +5,8 @@ import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, ChromaPipeline, ChromaTransformer2DModel, FlowMatchEulerDiscreteScheduler
-from diffusers.utils.testing_utils import torch_device
 
+from ...testing_utils import torch_device
 from ..test_pipelines_common import FluxIPAdapterTesterMixin, PipelineTesterMixin, check_qkv_fused_layers_exist
 
 

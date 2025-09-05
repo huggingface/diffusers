@@ -34,7 +34,8 @@ from diffusers.models.attention_processor import (
 from diffusers.models.embeddings import ImageProjection, IPAdapterFaceIDImageProjection, IPAdapterPlusImageProjection
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -51,7 +52,6 @@ from diffusers.utils.testing_utils import (
     torch_all_close,
     torch_device,
 )
-
 from ..test_modeling_common import (
     LoraHotSwappingForModelTesterMixin,
     ModelTesterMixin,

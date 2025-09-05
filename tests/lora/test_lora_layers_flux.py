@@ -28,7 +28,8 @@ from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderM
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxControlPipeline, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image, logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     floats_tensor,
@@ -48,7 +49,7 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 @require_peft_backend

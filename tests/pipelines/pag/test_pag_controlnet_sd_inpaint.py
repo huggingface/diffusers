@@ -32,9 +32,9 @@ from diffusers import (
     StableDiffusionControlNetPAGInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
+from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,

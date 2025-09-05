@@ -31,7 +31,8 @@ from diffusers.utils.remote_utils import (
     remote_decode,
     remote_encode,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     enable_full_determinism,
     slow,
 )

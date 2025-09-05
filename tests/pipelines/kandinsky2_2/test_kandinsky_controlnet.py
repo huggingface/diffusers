@@ -27,7 +27,8 @@ from diffusers import (
     UNet2DConditionModel,
     VQModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -38,7 +39,6 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 

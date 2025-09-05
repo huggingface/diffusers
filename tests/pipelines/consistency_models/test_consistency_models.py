@@ -10,7 +10,9 @@ from diffusers import (
     ConsistencyModelPipeline,
     UNet2DModel,
 )
-from diffusers.utils.testing_utils import (
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     enable_full_determinism,
@@ -19,8 +21,6 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-from diffusers.utils.torch_utils import randn_tensor
-
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 

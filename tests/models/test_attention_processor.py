@@ -7,7 +7,8 @@ import torch
 
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
-from diffusers.utils.testing_utils import torch_device
+
+from ..testing_utils import torch_device
 
 
 class AttnAddedKVProcessorTests(unittest.TestCase):
