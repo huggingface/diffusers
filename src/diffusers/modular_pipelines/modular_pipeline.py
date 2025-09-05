@@ -229,7 +229,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     Base class for all Pipeline Blocks: PipelineBlock, AutoPipelineBlocks, SequentialPipelineBlocks,
     LoopSequentialPipelineBlocks
 
-    [`ModularPipelineBlocks`] provides method to load and save the defination of pipeline blocks.
+    [`ModularPipelineBlocks`] provides method to load and save the definition of pipeline blocks.
 
     <Tip warning={true}>
 
@@ -1418,7 +1418,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 # YiYi TODO:
 # 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
 # 2. do we need ConfigSpec? the are basically just key/val kwargs
-# 3. imnprove docstring and potentially add validator for methods where we accpet kwargs to be passed to from_pretrained/save_pretrained/load_components()
+# 3. imnprove docstring and potentially add validator for methods where we accept kwargs to be passed to from_pretrained/save_pretrained/load_components()
 class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines.
