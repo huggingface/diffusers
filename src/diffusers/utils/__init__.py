@@ -122,7 +122,7 @@ from .import_utils import (
     is_xformers_version,
     requires_backends,
 )
-from .loading_utils import get_module_from_name, get_submodule_by_name, load_image, load_video, load_audio
+from .loading_utils import get_module_from_name, get_submodule_by_name, load_audio, load_image, load_video
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (

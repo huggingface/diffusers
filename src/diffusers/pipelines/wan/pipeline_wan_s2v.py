@@ -568,9 +568,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latent_condition = latent_condition.to(dtype)
             latent_condition = (latent_condition - latents_mean) * latents_std
 
-            motion_pixels = torch.zeros(
-                [1, 3, self.motion_frames, height, width], dtype=transformer_dtype, device=device
-            )
+            motion_pixels = torch.zeros([1, 3, self.motion_frames, height, width], dtype=self.vae.dtype, device=device)
             # Get pose condition input if needed
             pose_condition = self.load_pose_condition(
                 pose_video, num_chunks, num_frames_per_chunk, (height, width), sampling_fps
@@ -579,7 +577,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if init_first_frame:
                 self.drop_first_motion = False
                 motion_pixels[:, :, -6:] = latent_condition
-            motion_latents = torch.stack(self.vae.encode(motion_pixels))
+            motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
             videos_last_latents = motion_latents.detach()
 
             return latents, latent_condition, videos_last_latents, motion_latents, pose_condition
@@ -610,8 +608,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         pose_condition = []
         for cond in cond_tensors:
             cond = torch.cat([cond[:, :, 0:1], cond], dim=2)
-            cond = cond.to(dtype=self.config.dtype, device=self._execution_device)
-            cond_lat = self.vae.encode(cond)[:, :, 1:]
+            cond = cond.to(dtype=self.dtype, device=self._execution_device)
+            cond_lat = retrieve_latents(self.vae.encode(cond), sample_mode="argmax")[:, :, 1:]
             pose_condition.append(cond_lat)
 
         return pose_condition
@@ -866,7 +864,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
         if num_chunks is None or num_chunks > num_chunks_audio:
             num_chunks = num_chunks_audio
-        #audio_embeds = audio_embeds.repeat(batch_size, 1, 1)
         audio_embeds = audio_embeds.to(transformer_dtype)
 
         latent_motion_frames = (self.motion_frames + 3) // 4
@@ -915,7 +912,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 pose_latents = pose_condition[r] if pose_video else pose_condition[0]
                 pose_latents = pose_latents.to(dtype=transformer_dtype, device=device)
                 audio_embeds_input = audio_embeds[..., left_idx:right_idx]
-            motion_latents_input = motion_latents.clone()
+            motion_latents_input = motion_latents.to(transformer_dtype).clone()
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
@@ -925,6 +922,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     self._current_timestep = t
 
                     latent_model_input = latents.to(transformer_dtype)
+                    condition = condition.to(transformer_dtype)
                     timestep = t.expand(latents.shape[0])
 
                     with self.transformer.cache_context("cond"):

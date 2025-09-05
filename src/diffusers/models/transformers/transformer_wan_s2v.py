@@ -560,6 +560,7 @@ class WanS2VRotaryPosEmbed(nn.Module):
         super().__init__()
 
         self.attention_head_dim = attention_head_dim
+        self.patch_size = patch_size
         self.max_seq_len = max_seq_len
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
@@ -579,7 +580,7 @@ class WanS2VRotaryPosEmbed(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        image_latents: torch.Tensor,
+        image_latents: Optional[torch.Tensor] = None,
         grid_sizes: Optional[List[List[torch.Tensor]]] = None,
     ) -> torch.Tensor:
         if grid_sizes is None:
@@ -611,7 +612,7 @@ class WanS2VRotaryPosEmbed(nn.Module):
             grids = grid_sizes
 
         split_sizes = [
-            self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 3),
+            self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
             self.attention_head_dim // 6,
             self.attention_head_dim // 6,
         ]
@@ -620,7 +621,9 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
         # Loop over samples
         output = torch.view_as_complex(
-            torch.zeros((batch_size, S, num_heads, -1, 2), device=hidden_states.device).to(torch.float64)
+            torch.zeros((batch_size, S, num_heads, self.attention_head_dim // 2, 2), device=hidden_states.device).to(
+                torch.float64
+            )
         )
         seq_bucket = [0]
         for g in grids:
@@ -1093,9 +1096,9 @@ class WanS2VTransformer3DModel(
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
         image_latents = image_latents.flatten(2).transpose(1, 2)
 
-        sequence_length = hidden_states.shape[1].to(torch.long)
+        sequence_length = torch.tensor([hidden_states.shape[1]], dtype=torch.long)
         original_sequence_length = sequence_length
-        sequence_length = sequence_length + image_latents.shape[1].to(torch.long)
+        sequence_length = sequence_length + torch.tensor([image_latents.shape[1]], dtype=torch.long)
         hidden_states = torch.cat([hidden_states, image_latents], dim=1)
 
         # Initialize masks to indicate noisy latent, image latent, and motion latent.
