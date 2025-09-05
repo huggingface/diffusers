@@ -613,7 +613,7 @@ def _assign_components_to_devices(
 
 
 def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dict, library, max_memory, **kwargs):
-    # TODO: seperate out different device_map methods when it gets to it.
+    # TODO: separate out different device_map methods when it gets to it.
     if device_map != "balanced":
         return device_map
     # To avoid circular import problem.
