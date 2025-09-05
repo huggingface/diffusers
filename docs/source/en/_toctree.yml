@@ -29,7 +29,7 @@
   - local: using-diffusers/other-formats
     title: Model files and layouts
   - local: using-diffusers/push_to_hub
-    title: Push files to the Hub
+    title: Sharing pipelines and models
 
 - title: Adapters
   isExpanded: false
