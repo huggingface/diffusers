@@ -258,7 +258,7 @@ from transformers import Wav2Vec2ForCTC
 
 
 model_id = "Wan-AI/Wan2.2-S2V-14B-Diffusers"
-audio_encoder = Wav2Vec2ForCTC.from_pretrained(model_id, subfolder="audio_encoder", torch_dtype=torch.float32)
+audio_encoder = Wav2Vec2ForCTC.from_pretrained(model_id, subfolder="audio_encoder", dtype=torch.float32)
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipe = WanSpeechToVideoPipeline.from_pretrained(
     model_id, vae=vae, audio_encoder=audio_encoder, torch_dtype=torch.bfloat16
