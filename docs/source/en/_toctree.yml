@@ -58,12 +58,6 @@
     title: Batch inference
   - local: training/distributed_inference
     title: Distributed inference
-  - local: using-diffusers/scheduler_features
-    title: Scheduler features
-  - local: using-diffusers/callback
-    title: Pipeline callbacks
-  - local: using-diffusers/image_quality
-    title: Controlling image quality
 
 - title: Inference optimization
   isExpanded: false
@@ -92,6 +86,8 @@
       title: xDiT
     - local: optimization/para_attn
       title: ParaAttention
+    - local: using-diffusers/image_quality
+      title: FreeU
 
 - title: Hybrid Inference
   isExpanded: false
