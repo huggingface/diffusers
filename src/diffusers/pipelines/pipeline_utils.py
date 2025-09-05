@@ -1334,6 +1334,143 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 offload_buffers = len(model._parameters) > 0
                 cpu_offload(model, device, offload_buffers=offload_buffers)
 
+    def enable_group_offload(
+        self,
+        onload_device: torch.device,
+        offload_device: torch.device = torch.device("cpu"),
+        offload_type: str = "block_level",
+        num_blocks_per_group: Optional[int] = None,
+        non_blocking: bool = False,
+        use_stream: bool = False,
+        record_stream: bool = False,
+        low_cpu_mem_usage=False,
+        offload_to_disk_path: Optional[str] = None,
+        exclude_modules: Optional[Union[str, List[str]]] = None,
+    ) -> None:
+        r"""
+        Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is,
+        and where it is beneficial, we need to first provide some context on how other supported offloading methods
+        work.
+
+        Typically, offloading is done at two levels:
+        - Module-level: In Diffusers, this can be enabled using the `ModelMixin::enable_model_cpu_offload()` method. It
+        works by offloading each component of a pipeline to the CPU for storage, and onloading to the accelerator
+        device when needed for computation. This method is more memory-efficient than keeping all components on the
+        accelerator, but the memory requirements are still quite high. For this method to work, one needs memory
+        equivalent to size of the model in runtime dtype + size of largest intermediate activation tensors to be able
+        to complete the forward pass.
+        - Leaf-level: In Diffusers, this can be enabled using the `ModelMixin::enable_sequential_cpu_offload()` method.
+          It
+        works by offloading the lowest leaf-level parameters of the computation graph to the CPU for storage, and
+        onloading only the leafs to the accelerator device for computation. This uses the lowest amount of accelerator
+        memory, but can be slower due to the excessive number of device synchronizations.
+
+        Group offloading is a middle ground between the two methods. It works by offloading groups of internal layers,
+        (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method uses lower memory than module-level
+        offloading. It is also faster than leaf-level/sequential offloading, as the number of device synchronizations
+        is reduced.
+
+        Another supported feature (for CUDA devices with support for asynchronous data transfer streams) is the ability
+        to overlap data transfer and computation to reduce the overall execution time compared to sequential
+        offloading. This is enabled using layer prefetching with streams, i.e., the layer that is to be executed next
+        starts onloading to the accelerator device while the current layer is being executed - this increases the
+        memory requirements slightly. Note that this implementation also supports leaf-level offloading but can be made
+        much faster when using streams.
+
+        Args:
+            onload_device (`torch.device`):
+                The device to which the group of modules are onloaded.
+            offload_device (`torch.device`, defaults to `torch.device("cpu")`):
+                The device to which the group of modules are offloaded. This should typically be the CPU. Default is
+                CPU.
+            offload_type (`str` or `GroupOffloadingType`, defaults to "block_level"):
+                The type of offloading to be applied. Can be one of "block_level" or "leaf_level". Default is
+                "block_level".
+            offload_to_disk_path (`str`, *optional*, defaults to `None`):
+                The path to the directory where parameters will be offloaded. Setting this option can be useful in
+                limited RAM environment settings where a reasonable speed-memory trade-off is desired.
+            num_blocks_per_group (`int`, *optional*):
+                The number of blocks per group when using offload_type="block_level". This is required when using
+                offload_type="block_level".
+            non_blocking (`bool`, defaults to `False`):
+                If True, offloading and onloading is done with non-blocking data transfer.
+            use_stream (`bool`, defaults to `False`):
+                If True, offloading and onloading is done asynchronously using a CUDA stream. This can be useful for
+                overlapping computation and data transfer.
+            record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
+                as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to
+                the [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html)
+                more details.
+            low_cpu_mem_usage (`bool`, defaults to `False`):
+                If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them.
+                This option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be
+                useful when the CPU memory is a bottleneck but may counteract the benefits of using streams.
+            exclude_modules (`Union[str, List[str]]`, defaults to `None`): List of modules to exclude from offloading.
+
+        Example:
+            ```python
+            >>> from diffusers import DiffusionPipeline
+            >>> import torch
+
+            >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
+
+            >>> pipe.enable_group_offload(
+            ...     onload_device=torch.device("cuda"),
+            ...     offload_device=torch.device("cpu"),
+            ...     offload_type="leaf_level",
+            ...     use_stream=True,
+            ... )
+            >>> image = pipe("a beautiful sunset").images[0]
+            ```
+        """
+        from ..hooks import apply_group_offloading
+
+        if isinstance(exclude_modules, str):
+            exclude_modules = [exclude_modules]
+        elif exclude_modules is None:
+            exclude_modules = []
+
+        unknown = set(exclude_modules) - self.components.keys()
+        if unknown:
+            logger.info(
+                f"The following modules are not present in pipeline: {', '.join(unknown)}. Ignore if this is expected."
+            )
+
+        for name, component in self.components.items():
+            if name not in exclude_modules and isinstance(component, torch.nn.Module):
+                if hasattr(component, "enable_group_offload"):
+                    component.enable_group_offload(
+                        onload_device=onload_device,
+                        offload_device=offload_device,
+                        offload_type=offload_type,
+                        num_blocks_per_group=num_blocks_per_group,
+                        non_blocking=non_blocking,
+                        use_stream=use_stream,
+                        record_stream=record_stream,
+                        low_cpu_mem_usage=low_cpu_mem_usage,
+                        offload_to_disk_path=offload_to_disk_path,
+                    )
+                else:
+                    apply_group_offloading(
+                        module=component,
+                        onload_device=onload_device,
+                        offload_device=offload_device,
+                        offload_type=offload_type,
+                        num_blocks_per_group=num_blocks_per_group,
+                        non_blocking=non_blocking,
+                        use_stream=use_stream,
+                        record_stream=record_stream,
+                        low_cpu_mem_usage=low_cpu_mem_usage,
+                        offload_to_disk_path=offload_to_disk_path,
+                    )
+
+        if exclude_modules:
+            for module_name in exclude_modules:
+                module = getattr(self, module_name, None)
+                if module is not None and isinstance(module, torch.nn.Module):
+                    module.to(onload_device)
+                    logger.debug(f"Placed `{module_name}` on {onload_device} device as it was in `exclude_modules`.")
+
     def reset_device_map(self):
         r"""
         Resets the device maps (if any) to None.
