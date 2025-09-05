@@ -970,9 +970,9 @@ class WanS2VTransformer3DModel(
         if len(mot) > 0:
             hidden_states = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(hidden_states, mot)]
             seq_lens = seq_lens + torch.tensor([r.size(1) for r in mot], dtype=torch.long)
-            rope_embs = [torch.cat([u, m], dim=1) for u, m in zip(rope_embs, mot_remb)]
+            rope_embs = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(rope_embs, mot_remb)]
             mask_input = [
-                torch.cat([m, 2 * torch.ones([1, u.shape[1] - m.shape[1]], device=m.device, dtype=m.dtype)], dim=1)
+                torch.cat([m.unsqueeze(0), 2 * torch.ones([1, u.shape[2] - m.shape[2]], device=m.device, dtype=m.dtype)], dim=1)
                 for m, u in zip(mask_input, hidden_states)
             ]
         return hidden_states, seq_lens, rope_embs, mask_input
