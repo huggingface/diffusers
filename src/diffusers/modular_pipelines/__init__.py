@@ -46,7 +46,7 @@ else:
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
     _import_structure["wan"] = ["WanAutoBlocks", "WanModularPipeline"]
-    _import_structure["flux"] = ["FluxAutoBlocks", "FluxModularPipeline"]
+    _import_structure["flux"] = ["FluxAutoBlocks", "FluxModularPipeline", "FluxKontextModularPipeline"]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -57,7 +57,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
         from .components_manager import ComponentsManager
-        from .flux import FluxAutoBlocks, FluxModularPipeline
+        from .flux import FluxAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
