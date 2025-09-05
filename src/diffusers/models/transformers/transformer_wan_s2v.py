@@ -412,25 +412,25 @@ class FramePackMotioner(nn.Module):
     def forward(self, motion_latents, add_last_motion=2):
         mot = []
         mot_remb = []
-        for m in motion_latents:
-            lat_height, lat_width = m.shape[2], m.shape[3]
-            padd_lat = torch.zeros(16, self.zip_frame_buckets.sum(), lat_height, lat_width).to(
-                device=m.device, dtype=m.dtype
+        for motion_latent in motion_latents:
+            latent_height, latent_width = motion_latent.shape[2], motion_latent.shape[3]
+            padd_latent = torch.zeros(16, self.zip_frame_buckets.sum(), latent_height, latent_width).to(
+                device=motion_latent.device, dtype=motion_latent.dtype
             )
-            overlap_frame = min(padd_lat.shape[1], m.shape[1])
+            overlap_frame = min(padd_latent.shape[1], motion_latent.shape[1])
             if overlap_frame > 0:
-                padd_lat[:, -overlap_frame:] = m[:, -overlap_frame:]
+                padd_latent[:, -overlap_frame:] = motion_latent[:, -overlap_frame:]
 
             if add_last_motion < 2 and self.drop_mode != "drop":
-                zero_end_frame = self.zip_frame_buckets[: self.zip_frame_buckets.__len__() - add_last_motion - 1].sum()
-                padd_lat[:, -zero_end_frame:] = 0
+                zero_end_frame = self.zip_frame_buckets[: len(self.zip_frame_buckets) - add_last_motion - 1].sum()
+                padd_latent[:, -zero_end_frame:] = 0
 
-            padd_lat = padd_lat.unsqueeze(0)
-            clean_latents_4x, clean_latents_2x, clean_latents_post = padd_lat[
+            padd_latent = padd_latent.unsqueeze(0)
+            clean_latents_4x, clean_latents_2x, clean_latents_post = padd_latent[
                 :, :, -self.zip_frame_buckets.sum() :, :, :
             ].split(list(self.zip_frame_buckets)[::-1], dim=2)  # 16, 2, 1
 
-            # patchify
+            # Patchify
             clean_latents_post = self.proj(clean_latents_post).flatten(2).transpose(1, 2)
             clean_latents_2x = self.proj_2x(clean_latents_2x).flatten(2).transpose(1, 2)
             clean_latents_4x = self.proj_4x(clean_latents_4x).flatten(2).transpose(1, 2)
@@ -441,7 +441,7 @@ class FramePackMotioner(nn.Module):
 
             motion_lat = torch.cat([clean_latents_post, clean_latents_2x, clean_latents_4x], dim=1)
 
-            # rope
+            # RoPE
             start_time_id = -(self.zip_frame_buckets[:1].sum())
             end_time_id = start_time_id + self.zip_frame_buckets[0]
             grid_sizes = (
@@ -450,8 +450,8 @@ class FramePackMotioner(nn.Module):
                 else [
                     [
                         torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
-                        torch.tensor([end_time_id, lat_height // 2, lat_width // 2]).unsqueeze(0),
-                        torch.tensor([self.zip_frame_buckets[0], lat_height // 2, lat_width // 2]).unsqueeze(0),
+                        torch.tensor([end_time_id, latent_height // 2, latent_width // 2]).unsqueeze(0),
+                        torch.tensor([self.zip_frame_buckets[0], latent_height // 2, latent_width // 2]).unsqueeze(0),
                     ]
                 ]
             )
@@ -464,8 +464,8 @@ class FramePackMotioner(nn.Module):
                 else [
                     [
                         torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
-                        torch.tensor([end_time_id, lat_height // 4, lat_width // 4]).unsqueeze(0),
-                        torch.tensor([self.zip_frame_buckets[1], lat_height // 2, lat_width // 2]).unsqueeze(0),
+                        torch.tensor([end_time_id, latent_height // 4, latent_width // 4]).unsqueeze(0),
+                        torch.tensor([self.zip_frame_buckets[1], latent_height // 2, latent_width // 2]).unsqueeze(0),
                     ]
                 ]
             )
@@ -475,18 +475,16 @@ class FramePackMotioner(nn.Module):
             grid_sizes_4x = [
                 [
                     torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
-                    torch.tensor([end_time_id, lat_height // 8, lat_width // 8]).unsqueeze(0),
-                    torch.tensor([self.zip_frame_buckets[2], lat_height // 2, lat_width // 2]).unsqueeze(0),
+                    torch.tensor([end_time_id, latent_height // 8, latent_width // 8]).unsqueeze(0),
+                    torch.tensor([self.zip_frame_buckets[2], latent_height // 2, latent_width // 2]).unsqueeze(0),
                 ]
             ]
 
             grid_sizes = grid_sizes + grid_sizes_2x + grid_sizes_4x
 
             motion_rope_emb = self.rope(
-                motion_lat.detach().view(
-                    1, motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads
-                ),
-                grid_sizes,
+                motion_lat.detach().view(1, motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads),
+                grid_sizes=grid_sizes,
             )
 
             mot.append(motion_lat)
@@ -582,17 +580,21 @@ class WanS2VRotaryPosEmbed(nn.Module):
         image_latents: torch.Tensor,
         grid_sizes: Optional[List[List[torch.Tensor]]] = None,
     ) -> torch.Tensor:
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        p_t, p_h, p_w = self.patch_size
-        ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
+
 
         if grid_sizes is None:
+            batch_size, num_channels, num_frames, height, width = hidden_states.shape
+            p_t, p_h, p_w = self.patch_size
+            ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
+
             grid_sizes = torch.tensor([ppf, pph, ppw]).unsqueeze(0).repeat(batch_size, 1)
             grid_sizes = [torch.zeros_like(grid_sizes), grid_sizes, grid_sizes]
 
             image_grid_sizes = [
                 # The start index
-                torch.tensor([30, 0, 0]).unsqueeze(0).repeat(batch_size, 1),
+                torch.tensor([30, 0, 0])
+                .unsqueeze(0)
+                .repeat(batch_size, 1),
                 # The end index
                 torch.tensor([31, image_latents.shape[3] // p_h, image_latents.shape[4] // p_w])
                 .unsqueeze(0)
@@ -604,7 +606,10 @@ class WanS2VRotaryPosEmbed(nn.Module):
             ]
 
             grids = [grid_sizes, image_grid_sizes]
+            S = ppf * pph * ppw + image_latents.shape[3] // p_h * image_latents.shape[4] // p_w
+            num_heads = num_channels // self.attention_head_dim
         else:  # FramePack's RoPE
+            batch_size, S, num_heads, _ = hidden_states.shape
             grids = grid_sizes
 
         split_sizes = [
@@ -613,18 +618,13 @@ class WanS2VRotaryPosEmbed(nn.Module):
             self.attention_head_dim // 6,
         ]
 
-        S = ppf * pph * ppw + image_latents.shape[3] // p_h * image_latents.shape[4] // p_w
-
-        num_heads = num_channels // self.attention_head_dim
-
         freqs = self.freqs.split(split_sizes, dim=1)
 
-        # loop over samples
+        # Loop over samples
         output = torch.view_as_complex(
             torch.zeros((batch_size, S, num_heads, -1, 2), device=hidden_states.device).to(torch.float64)
         )
         seq_bucket = [0]
-
         for g in grids:
             if type(g) is not list:
                 g = [torch.zeros_like(g), g]
@@ -944,6 +944,7 @@ class WanS2VTransformer3DModel(
 
     def process_motion_frame_pack(self, motion_latents, drop_motion_frames=False, add_last_motion=2):
         flattern_mot, mot_remb = self.frame_packer(motion_latents, add_last_motion)
+        
         if drop_motion_frames:
             return [m[:, :0] for m in flattern_mot], [m[:, :0] for m in mot_remb]
         else:
@@ -1102,8 +1103,8 @@ class WanS2VTransformer3DModel(
         # Initialize masks to indicate noisy latent, image latent, and motion latent.
         # However, at this point, only the first two (noisy and image latents) are marked;
         # the marking of motion latent will be implemented inside `inject_motion`.
-        mask_input = torch.zeros([1, hidden_states.shape[1]], dtype=torch.long, device=hidden_states.device)
-        mask_input[:, original_sequence_length:] = 1
+        mask_input = torch.zeros([1, hidden_states.shape[1]], dtype=torch.long, device=hidden_states.device).unsqueeze(0).repeat(batch_size, 1, 1)
+        mask_input[:, :, original_sequence_length:] = 1
 
         hidden_states, sequence_length, rotary_emb, mask_input = self.inject_motion(
             hidden_states,
@@ -1114,6 +1115,10 @@ class WanS2VTransformer3DModel(
             drop_motion_frames,
             add_last_motion,
         )
+
+        hidden_states = torch.cat(hidden_states)
+        rotary_emb = torch.cat(rotary_emb)
+        mask_input = torch.cat(mask_input)
 
         hidden_states = hidden_states + self.trainable_condition_mask(mask_input).to(hidden_states.dtype)
 
@@ -1159,6 +1164,8 @@ class WanS2VTransformer3DModel(
                     attn_audio_emb,
                     audio_emb_global,
                 )
+
+        hidden_states = hidden_states[:, :original_sequence_length]
 
         # 6. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
