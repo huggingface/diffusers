@@ -54,7 +54,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
       "bnb_4bit_quant_type": "nf4",
       "bnb_4bit_compute_dtype": torch.bfloat16
       },
-    components_to_quantize=["transformer"]
+    components_to_quantize="transformer"
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
@@ -91,7 +91,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
       "bnb_4bit_quant_type": "nf4",
       "bnb_4bit_compute_dtype": torch.bfloat16
       },
-    components_to_quantize=["transformer"]
+    components_to_quantize="transformer"
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
@@ -139,7 +139,7 @@ export_to_video(video, "output.mp4", fps=15)
         "bnb_4bit_quant_type": "nf4",
         "bnb_4bit_compute_dtype": torch.bfloat16
         },
-      components_to_quantize=["transformer"]
+      components_to_quantize="transformer"
   )
 
   pipeline = HunyuanVideoPipeline.from_pretrained(
