@@ -343,7 +343,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             batch_audio_eb.append(frame_audio_embed)
         audio_embed_bucket = torch.cat([c.unsqueeze(0) for c in batch_audio_eb], dim=0)
 
-        audio_embed_bucket = audio_embed_bucket.to(device, self.config.dtype)
+        audio_embed_bucket = audio_embed_bucket.to(device, self.dtype)
         audio_embed_bucket = audio_embed_bucket.unsqueeze(0)
         if len(audio_embed_bucket.shape) == 3:
             audio_embed_bucket = audio_embed_bucket.permute(0, 2, 1)
@@ -497,8 +497,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             raise ValueError(
                 "Provide either `audio` or `audio_embeds`. Cannot leave both `audio` and `audio_embeds` undefined."
             )
-        elif audio is not None and not isinstance(audio, (torch.Tensor, list)):
-            raise ValueError(f"`audio` has to be of type `torch.Tensor` or `list` but is {type(audio)}")
+        elif audio is not None and not isinstance(audio, (np.ndarray)):
+            raise ValueError(f"`audio` has to be of type `np.ndarray` but is {type(audio)}")
 
     def prepare_latents(
         self,
@@ -866,7 +866,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
         if num_chunks is None or num_chunks > num_chunks_audio:
             num_chunks = num_chunks_audio
-        audio_embeds = audio_embeds.repeat(batch_size, 1, 1)
+        #audio_embeds = audio_embeds.repeat(batch_size, 1, 1)
         audio_embeds = audio_embeds.to(transformer_dtype)
 
         latent_motion_frames = (self.motion_frames + 3) // 4

@@ -175,13 +175,6 @@ def load_audio(
             "Incorrect format used for the audio. Should be a URL linking to an audio, a local path, or a PIL audio."
         )
 
-    # audio = PIL.ImageOps.exif_transpose(audio)
-
-    if convert_method is not None:
-        audio = convert_method(audio)
-    else:
-        audio = audio.convert("RGB")
-
     return audio, sample_rate
 
 
