@@ -25,6 +25,7 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -32,7 +33,6 @@ from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
 from .transformer_wan import (
     WanAttention,
-    WanAttnProcessor,
 )
 
 
@@ -54,6 +54,130 @@ def torch_dfs(model: nn.Module, parent_name="root"):
         module_names += child_names
         modules += child_modules
     return modules, module_names
+
+
+def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
+    # encoder_hidden_states is only passed for cross-attention
+    if encoder_hidden_states is None:
+        encoder_hidden_states = hidden_states
+
+    if attn.fused_projections:
+        if attn.cross_attention_dim_head is None:
+            # In self-attention layers, we can fuse the entire QKV projection into a single linear
+            query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+        else:
+            # In cross-attention layers, we can only fuse the KV projections into a single linear
+            query = attn.to_q(hidden_states)
+            key, value = attn.to_kv(encoder_hidden_states).chunk(2, dim=-1)
+    else:
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+    return query, key, value
+
+
+def _get_added_kv_projections(attn: "WanAttention", encoder_hidden_states_img: torch.Tensor):
+    if attn.fused_projections:
+        key_img, value_img = attn.to_added_kv(encoder_hidden_states_img).chunk(2, dim=-1)
+    else:
+        key_img = attn.add_k_proj(encoder_hidden_states_img)
+        value_img = attn.add_v_proj(encoder_hidden_states_img)
+    return key_img, value_img
+
+
+class WanAttnProcessor:
+    _attention_backend = None
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "WanAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
+            )
+
+    def __call__(
+        self,
+        attn: "WanAttention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        encoder_hidden_states_img = None
+        if attn.add_k_proj is not None:
+            # 512 is the context length of the text encoder, hardcoded for now
+            image_context_length = encoder_hidden_states.shape[1] - 512
+            encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
+            encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
+
+        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        query = query.unflatten(2, (attn.heads, -1))
+        key = key.unflatten(2, (attn.heads, -1))
+        value = value.unflatten(2, (attn.heads, -1))
+
+        if rotary_emb is not None:
+
+            def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
+                # dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
+                n = query.size(2)
+                # loop over samples
+                output = []
+                for i in range(query.size(0)):
+                    s = query.size(1)
+                    x_i = torch.view_as_complex(query[i, :s].to(torch.float64).reshape(s, n, -1, 2))
+                    freqs_i = freqs[i, :s]
+                    # apply rotary embedding
+                    x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
+                    x_i = torch.cat([x_i, hidden_states[i, s:]])
+                    # append to collection
+                    output.append(x_i)
+                return torch.stack(output).float()
+
+            query = apply_rotary_emb(query, rotary_emb)
+            key = apply_rotary_emb(key, rotary_emb)
+
+        # I2V task
+        hidden_states_img = None
+        if encoder_hidden_states_img is not None:
+            key_img, value_img = _get_added_kv_projections(attn, encoder_hidden_states_img)
+            key_img = attn.norm_added_k(key_img)
+
+            key_img = key_img.unflatten(2, (attn.heads, -1))
+            value_img = value_img.unflatten(2, (attn.heads, -1))
+
+            hidden_states_img = dispatch_attention_fn(
+                query,
+                key_img,
+                value_img,
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
+            )
+            hidden_states_img = hidden_states_img.flatten(2, 3)
+            hidden_states_img = hidden_states_img.type_as(query)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+        )
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
+
+        if hidden_states_img is not None:
+            hidden_states = hidden_states + hidden_states_img
+
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
 
 
 class AdaLayerNorm(nn.Module):
@@ -442,26 +566,21 @@ class WanS2VRotaryPosEmbed(nn.Module):
         t_dim = attention_head_dim - h_dim - w_dim
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
 
-        freqs_cos = []
-        freqs_sin = []
+        freqs = []
 
         for dim in [t_dim, h_dim, w_dim]:
-            freq_cos, freq_sin = get_1d_rotary_pos_embed(
-                dim,
-                max_seq_len,
-                theta,
-                use_real=True,
-                repeat_interleave_real=True,
-                freqs_dtype=freqs_dtype,
+            freq = get_1d_rotary_pos_embed(
+                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=freqs_dtype
             )
-            freqs_cos.append(freq_cos)
-            freqs_sin.append(freq_sin)
+            freqs.append(freq)
 
-        self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
-        self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
+        self.freqs = torch.cat(freqs, dim=1)
 
     def forward(
-        self, hidden_states: torch.Tensor, image_latents: torch.Tensor, grid_sizes: List[List[torch.Tensor]]
+        self,
+        hidden_states: torch.Tensor,
+        image_latents: torch.Tensor,
+        grid_sizes: Optional[List[List[torch.Tensor]]] = None,
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
@@ -489,75 +608,62 @@ class WanS2VRotaryPosEmbed(nn.Module):
             grids = grid_sizes
 
         split_sizes = [
-            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
-            self.attention_head_dim // 3,
-            self.attention_head_dim // 3,
+            self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 3),
+            self.attention_head_dim // 6,
+            self.attention_head_dim // 6,
         ]
 
-        freqs_cos = [self.freqs_cos.split(split_sizes, dim=1) for _ in range(batch_size)]
-        freqs_sin = [self.freqs_sin.split(split_sizes, dim=1) for _ in range(batch_size)]
+        S = ppf * pph * ppw + image_latents.shape[3] // p_h * image_latents.shape[4] // p_w
 
-        freqs_cos_list = [[] for _ in range(batch_size)]
-        freqs_sin_list = [[] for _ in range(batch_size)]
-        seq_lens = [[0] for _ in range(batch_size)]
-        for grid_size in grids:
+        num_heads = num_channels // self.attention_head_dim
+
+        freqs = self.freqs.split(split_sizes, dim=1)
+
+        # loop over samples
+        output = torch.view_as_complex(
+            torch.zeros((batch_size, S, num_heads, -1, 2), device=hidden_states.device).to(torch.float64)
+        )
+        seq_bucket = [0]
+
+        for g in grids:
+            if type(g) is not list:
+                g = [torch.zeros_like(g), g]
+            batch_size = g[0].shape[0]
             for i in range(batch_size):
-                f_0, h_0, w_0 = grid_size[0][i]
-                f, h, w = grid_size[1][i]
-                t_f, t_h, t_w = grid_size[2][i]
-                seq_f, seq_h, seq_w = f - f_0, h - h_0, w - w_0
-                seq_len = int(seq_f * seq_h * seq_w)
-                seq_lens[i].append(seq_len)
+                f_o, h_o, w_o = g[0][i]
 
+                f, h, w = g[1][i]
+                t_f, t_h, t_w = g[2][i]
+                seq_f, seq_h, seq_w = f - f_o, h - h_o, w - w_o
+                seq_len = int(seq_f * seq_h * seq_w)
                 if seq_len > 0:
                     if t_f > 0:
-                        # Generate a list of seq_f integers starting from f_0 and ending at math.ceil(factor_f * seq_f.item() + f_0.item())
-                        if f_0 >= 0:
-                            f_sam = np.linspace(f_0.item(), (t_f + f_0).item() - 1, seq_f).astype(int).tolist()
+                        # Generate a list of seq_f integers starting from f_o and ending at math.ceil(factor_f * seq_f.item() + f_o.item())
+                        if f_o >= 0:
+                            f_sam = np.linspace(f_o.item(), (t_f + f_o).item() - 1, seq_f).astype(int).tolist()
                         else:
-                            f_sam = np.linspace(-f_0.item(), (-t_f - f_0).item() + 1, seq_f).astype(int).tolist()
+                            f_sam = np.linspace(-f_o.item(), (-t_f - f_o).item() + 1, seq_f).astype(int).tolist()
+                        h_sam = np.linspace(h_o.item(), (t_h + h_o).item() - 1, seq_h).astype(int).tolist()
+                        w_sam = np.linspace(w_o.item(), (t_w + w_o).item() - 1, seq_w).astype(int).tolist()
 
-                        h_sam = np.linspace(h_0.item(), (t_h + h_0).item() - 1, seq_h).astype(int).tolist()
-                        w_sam = np.linspace(w_0.item(), (t_w + w_0).item() - 1, seq_w).astype(int).tolist()
+                        assert f_o * f >= 0 and h_o * h >= 0 and w_o * w >= 0
+                        freqs_0 = freqs[0][f_sam] if f_o >= 0 else freqs[0][f_sam].conj()
+                        freqs_0 = freqs_0.view(seq_f, 1, 1, -1)
 
-                        if f_0 * f < 0 or h_0 * h < 0 or w_0 * w < 0:
-                            raise ValueError("The RoPE is not supported for negative dimensions.")
-
-                        freqs_cos_combined = torch.cat(
+                        freqs_i = torch.cat(
                             [
-                                freqs_cos[0][f_sam].view(seq_f, 1, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                                freqs_cos[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                                freqs_cos[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
+                                freqs_0.expand(seq_f, seq_h, seq_w, -1),
+                                freqs[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
+                                freqs[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
                             ],
                             dim=-1,
                         ).reshape(seq_len, 1, -1)
 
-                        freqs_sin_combined = torch.cat(
-                            [
-                                freqs_sin[0][f_sam].view(seq_f, 1, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                                freqs_sin[1][h_sam].view(1, seq_h, 1, -1).expand(seq_f, seq_h, seq_w, -1),
-                                freqs_sin[2][w_sam].view(1, 1, seq_w, -1).expand(seq_f, seq_h, seq_w, -1),
-                            ],
-                            dim=-1,
-                        ).reshape(seq_len, 1, -1)
+                    # apply rotary embedding
+                    output[i, seq_bucket[-1] : seq_bucket[-1] + seq_len] = freqs_i
+            seq_bucket.append(seq_bucket[-1] + seq_len)
 
-                    freqs_cos_list[i].append(freqs_cos_combined)
-                    freqs_sin_list[i].append(freqs_sin_combined)
-
-            for i in range(batch_size):
-                freqs_cos_list[i] = torch.cat(freqs_cos_list[i], dim=0)
-                freqs_sin_list[i] = torch.cat(freqs_sin_list[i], dim=0)
-
-            for i in range(batch_size):
-                for j in range(2):
-                    freqs_cos[i][seq_lens[i][j] : seq_lens[i][j + 1]] = freqs_cos_list[i][
-                        seq_lens[i][j] : seq_lens[i][j + 1]
-                    ].reshape(batch_size, seq_lens[i], 1, -1)
-                    freqs_sin[i][seq_lens[i][j] : seq_lens[i][j + 1]] = freqs_sin_list[i][
-                        seq_lens[i][j] : seq_lens[i][j + 1]
-                    ].reshape(batch_size, seq_lens[i], 1, -1)
-
-        return freqs_cos, freqs_sin
+        return output
 
 
 @maybe_allow_in_graph
@@ -964,7 +1070,9 @@ class WanS2VTransformer3DModel(
         image_latents = self.patch_embedding(image_latents)
 
         # 3. Condition embeddings
-        audio_embeds = torch.cat([audio_embeds[..., 0].unsqueeze(-1).repeat(1, 1, 1, motion_frames[0]), audio_embeds], dim=-1)
+        audio_embeds = torch.cat(
+            [audio_embeds[..., 0].unsqueeze(-1).repeat(1, 1, 1, motion_frames[0]), audio_embeds], dim=-1
+        )
 
         if self.config.zero_timestep:
             timestep = torch.cat([timestep, torch.zeros([1], dtype=timestep.dtype, device=timestep.device)])
@@ -985,25 +1093,11 @@ class WanS2VTransformer3DModel(
 
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
         image_latents = image_latents.flatten(2).transpose(1, 2)
-        hidden_states = torch.cat([hidden_states, image_latents], dim=1)
 
         sequence_length = hidden_states.shape[1].to(torch.long)
         original_sequence_length = sequence_length
-
-        if self.config.zero_timestep:
-            temb = temb[:-1]
-            zero_timestep_proj = timestep_proj[-1:]
-            timestep_proj = timestep_proj[:-1]
-            timestep_proj = torch.cat(
-                [timestep_proj.unsqueeze(2), zero_timestep_proj.unsqueeze(2).repeat(timestep_proj.shape[0], 1, 1, 1)],
-                dim=2,
-            )
-            timestep_proj = [timestep_proj, original_sequence_length]
-        else:
-            timestep_proj = timestep_proj.unsqueeze(2).repeat(1, 1, 2, 1)
-            timestep_proj = [timestep_proj, 0]
-
         sequence_length = sequence_length + image_latents.shape[1].to(torch.long)
+        hidden_states = torch.cat([hidden_states, image_latents], dim=1)
 
         # Initialize masks to indicate noisy latent, image latent, and motion latent.
         # However, at this point, only the first two (noisy and image latents) are marked;
@@ -1022,6 +1116,19 @@ class WanS2VTransformer3DModel(
         )
 
         hidden_states = hidden_states + self.trainable_condition_mask(mask_input).to(hidden_states.dtype)
+
+        if self.config.zero_timestep:
+            temb = temb[:-1]
+            zero_timestep_proj = timestep_proj[-1:]
+            timestep_proj = timestep_proj[:-1]
+            timestep_proj = torch.cat(
+                [timestep_proj.unsqueeze(2), zero_timestep_proj.unsqueeze(2).repeat(timestep_proj.shape[0], 1, 1, 1)],
+                dim=2,
+            )
+            timestep_proj = [timestep_proj, original_sequence_length]
+        else:
+            timestep_proj = timestep_proj.unsqueeze(2).repeat(1, 1, 2, 1)
+            timestep_proj = [timestep_proj, 0]
 
         merged_audio_emb_num_frames = merged_audio_emb.shape[1]  # B F N C
         attn_audio_emb = merged_audio_emb.flatten(0, 1)
