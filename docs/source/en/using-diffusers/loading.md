@@ -112,7 +112,7 @@ A pipeline supports two options for `device_map`, `"cuda"` and `"balanced"`. Ref
 
 | parameter | description |
 |---|---|
-| `"cuda"` | places pipeline on CUDA device |
+| `"cuda"` | places pipeline on a supported accelerator device like CUDA |
 | `"balanced"` | evenly distributes pipeline on all GPUs |
 
 Use the `max_memory` argument in [`~DiffusionPipeline.from_pretrained`] to allocate a maximum amount of memory to use on each device. By default, Diffusers uses the maximum amount available.
