@@ -91,6 +91,14 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .qwenimage import (
+    QwenImageControlNetPipeline,
+    QwenImageEditInpaintPipeline,
+    QwenImageEditPipeline,
+    QwenImageImg2ImgPipeline,
+    QwenImageInpaintPipeline,
+    QwenImagePipeline,
+)
 from .sana import SanaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
@@ -150,6 +158,8 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
         ("cogview4-control", CogView4ControlPipeline),
+        ("qwenimage", QwenImagePipeline),
+        ("qwenimage-controlnet", QwenImageControlNetPipeline),
     ]
 )
 
@@ -174,6 +184,8 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-controlnet", FluxControlNetImg2ImgPipeline),
         ("flux-control", FluxControlImg2ImgPipeline),
         ("flux-kontext", FluxKontextPipeline),
+        ("qwenimage", QwenImageImg2ImgPipeline),
+        ("qwenimage-edit", QwenImageEditPipeline),
     ]
 )
 
@@ -195,6 +207,8 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("flux-controlnet", FluxControlNetInpaintPipeline),
         ("flux-control", FluxControlInpaintPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGInpaintPipeline),
+        ("qwenimage", QwenImageInpaintPipeline),
+        ("qwenimage-edit", QwenImageEditInpaintPipeline),
     ]
 )
 
