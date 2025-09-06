@@ -579,7 +579,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             return latents
 
-    def load_pose_condition(self, pose_video, num_chunks, num_frames_per_chunk, size, sampling_fps, latents_mean, latents_std):
+    def load_pose_condition(
+        self, pose_video, num_chunks, num_frames_per_chunk, size, sampling_fps, latents_mean, latents_std
+    ):
         HEIGHT, WIDTH = size
         if pose_video is not None:
             pose_seq = self.read_last_n_frames(
