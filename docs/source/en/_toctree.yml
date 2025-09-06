@@ -688,6 +688,10 @@
       title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/flow_match_heun_discrete
       title: FlowMatchHeunDiscreteScheduler
+    - local: api/schedulers/flow_match_stochastic_curved_euler
+      title: FlowMatchStochasticCurvedEuler
+    - local: api/schedulers/flow_match_stochastic_overshoot
+      title: FlowMatchStochasticOvershoot
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
